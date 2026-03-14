@@ -50,7 +50,7 @@ module Profiler
             db_data = profile.collector_data("database")
             query_count = db_data ? db_data["total_queries"] : 0
 
-            lines << "| #{profile.started_at.strftime('%H:%M:%S')} | #{profile.method} | #{profile.path} | #{profile.duration.round(2)}ms | #{query_count} | #{profile.status} | #{profile.token[0..7]}... |"
+            lines << "| #{profile.started_at.strftime('%H:%M:%S')} | #{profile.method} | #{profile.path} | #{profile.duration.round(2)}ms | #{query_count} | #{profile.status} | #{profile.token} |"
           end
 
           lines.join("\n")

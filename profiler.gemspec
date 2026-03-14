@@ -39,6 +39,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "rails", ">= 7.0"
   spec.add_dependency "rack", ">= 2.0"
   spec.add_dependency "concurrent-ruby", "~> 1.2"
+  spec.add_dependency "mcp"
 
   # Development dependencies
   spec.add_development_dependency "rspec-rails", "~> 6.0"

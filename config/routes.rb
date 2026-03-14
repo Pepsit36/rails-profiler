@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
+require "profiler/mcp/server"
+
 Profiler::Engine.routes.draw do
+  mount Profiler::MCP::Server.rack_app, at: "mcp"
+
   root to: "profiles#index"
 
   resources :profiles, only: [:index, :show] do
