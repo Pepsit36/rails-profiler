@@ -1,0 +1,130 @@
+export interface Profile {
+  token: string;
+  method: string;
+  path: string;
+  status: number;
+  duration: number;
+  memory?: number;
+  started_at: string;
+  params?: Record<string, any>;
+  headers?: Record<string, any>;
+  response_headers?: Record<string, any>;
+  collectors_data?: {
+    database?: DatabaseData;
+    cache?: CacheData;
+    dump?: DumpData;
+    request?: RequestData;
+    performance?: PerformanceData;
+    view?: ViewData;
+    ajax?: AjaxData;
+    [key: string]: any;  // Allow custom collector data
+  };
+  tabs?: TabConfig[];  // Tab configurations from collectors
+}
+
+export interface TabConfig {
+  key: string;
+  label: string;
+  icon?: string;
+  priority: number;
+  enabled: boolean;
+  default_active?: boolean;
+  render_mode: 'auto' | 'custom' | 'client';
+  html?: string;
+  has_data: boolean;
+}
+
+export interface DatabaseData {
+  total_queries: number;
+  total_duration: number;
+  slow_queries: number;
+  cached_queries: number;
+  queries: DatabaseQuery[];
+}
+
+export interface DatabaseQuery {
+  sql: string;
+  duration: number;
+  slow: boolean;
+  cached: boolean;
+  name?: string;
+}
+
+export interface CacheData {
+  total_reads: number;
+  total_writes: number;
+  total_deletes: number;
+  hit_rate: number;
+  hits: number;
+  misses: number;
+  reads?: CacheOperation[];
+  writes?: CacheOperation[];
+  deletes?: CacheOperation[];
+}
+
+export interface CacheOperation {
+  key: string;
+  duration: number;
+  hit?: boolean;
+}
+
+export interface DumpData {
+  count: number;
+  dumps: Dump[];
+}
+
+export interface Dump {
+  label?: string;
+  file: string;
+  line: number;
+  timestamp: string;
+  formatted: string;
+}
+
+export interface RequestData {
+  headers: Record<string, any>;
+  params: Record<string, any>;
+  response_headers?: Record<string, any>;
+}
+
+export interface PerformanceData {
+  total_events: number;
+  total_duration: number;
+  events: PerformanceEvent[];
+}
+
+export interface PerformanceEvent {
+  name: string;
+  duration: number;
+  payload?: Record<string, any>;
+}
+
+export interface ViewData {
+  total_views: number;
+  total_partials: number;
+  total_duration: number;
+  views?: ViewRender[];
+  partials?: ViewRender[];
+}
+
+export interface ViewRender {
+  identifier: string;
+  duration: number;
+}
+
+export interface AjaxData {
+  total_requests: number;
+  total_duration: number;
+  by_method: Record<string, number>;
+  by_status: Record<string, number>;
+  requests: AjaxRequest[];
+}
+
+export interface AjaxRequest {
+  token: string;
+  path: string;
+  method: string;
+  status: number;
+  duration: number;
+  started_at: string;
+}

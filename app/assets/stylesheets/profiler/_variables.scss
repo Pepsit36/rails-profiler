@@ -1,0 +1,290 @@
+// ============================================================================
+// PROFILER — "THERMAL" DESIGN SYSTEM
+// Inspired by heat-map instruments. Amber accents on deep obsidian.
+// A profiler should feel like a precision diagnostic tool.
+// ============================================================================
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+// ============================================================================
+// DARK THEME (Default) — Deep Obsidian + Thermal Amber
+// ============================================================================
+:root,
+[data-theme="dark"] {
+  // Surfaces — deep navy-black with warmth
+  --profiler-bg:          #080b10;
+  --profiler-bg-light:    #0d1117;
+  --profiler-bg-lighter:  #131920;
+  --profiler-bg-elevated: #1a2030;
+  --profiler-bg-overlay:  rgba(8, 11, 16, 0.96);
+
+  // Text — warm white hierarchy
+  --profiler-text:           #eef2f7;
+  --profiler-text-secondary: #a8b4c2;
+  --profiler-text-muted:     #5e7080;
+  --profiler-text-subtle:    #3d4f5f;
+  --profiler-text-on-accent: #08090c;
+
+  // Accent — AMBER (the signature color of heat measurement)
+  --profiler-accent:          #f59e0b;
+  --profiler-accent-hover:    #fbbf24;
+  --profiler-accent-dim:      #92600a;
+  --profiler-accent-bg:       rgba(245, 158, 11, 0.1);
+  --profiler-accent-glow:     rgba(245, 158, 11, 0.35);
+
+  // Semantic
+  --profiler-success:          #22c55e;
+  --profiler-success-bg:       rgba(34, 197, 94, 0.1);
+  --profiler-success-glow:     rgba(34, 197, 94, 0.3);
+
+  --profiler-warning:          #fb923c;
+  --profiler-warning-bg:       rgba(251, 146, 60, 0.1);
+  --profiler-warning-glow:     rgba(251, 146, 60, 0.3);
+
+  --profiler-error:            #f87171;
+  --profiler-error-bg:         rgba(248, 113, 113, 0.1);
+  --profiler-error-glow:       rgba(248, 113, 113, 0.3);
+
+  --profiler-info:             #60a5fa;
+  --profiler-info-bg:          rgba(96, 165, 250, 0.1);
+  --profiler-info-glow:        rgba(96, 165, 250, 0.3);
+
+  // Borders — subtle to strong
+  --profiler-border:        rgba(255, 255, 255, 0.07);
+  --profiler-border-strong: rgba(255, 255, 255, 0.14);
+  --profiler-border-accent: rgba(245, 158, 11, 0.3);
+
+  // Shadows
+  --profiler-shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.4);
+  --profiler-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --profiler-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --profiler-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.7);
+
+  // Glass
+  --profiler-glass-bg:     rgba(13, 17, 23, 0.85);
+  --profiler-glass-border: rgba(255, 255, 255, 0.06);
+  --profiler-blur:         blur(20px) saturate(180%);
+}
+
+// ============================================================================
+// LIGHT THEME — Warm Stone + Dark Amber
+// ============================================================================
+[data-theme="light"] {
+  // Surfaces — warm stone, not cold white
+  --profiler-bg:          #f5f3ef;
+  --profiler-bg-light:    #edeae3;
+  --profiler-bg-lighter:  #e3ded5;
+  --profiler-bg-elevated: #ffffff;
+  --profiler-bg-overlay:  rgba(245, 243, 239, 0.96);
+
+  // Text — rich warm blacks
+  --profiler-text:           #1c1410;
+  --profiler-text-secondary: #4a3f35;
+  --profiler-text-muted:     #8a7a6e;
+  --profiler-text-subtle:    #b5a898;
+  --profiler-text-on-accent: #ffffff;
+
+  // Accent — dark amber (same family, more saturated for light bg)
+  --profiler-accent:          #b45309;
+  --profiler-accent-hover:    #92400e;
+  --profiler-accent-dim:      #d97706;
+  --profiler-accent-bg:       rgba(180, 83, 9, 0.08);
+  --profiler-accent-glow:     rgba(180, 83, 9, 0.2);
+
+  // Semantic
+  --profiler-success:          #15803d;
+  --profiler-success-bg:       rgba(21, 128, 61, 0.08);
+  --profiler-success-glow:     rgba(21, 128, 61, 0.2);
+
+  --profiler-warning:          #c2410c;
+  --profiler-warning-bg:       rgba(194, 65, 12, 0.08);
+  --profiler-warning-glow:     rgba(194, 65, 12, 0.2);
+
+  --profiler-error:            #dc2626;
+  --profiler-error-bg:         rgba(220, 38, 38, 0.08);
+  --profiler-error-glow:       rgba(220, 38, 38, 0.2);
+
+  --profiler-info:             #1d4ed8;
+  --profiler-info-bg:          rgba(29, 78, 216, 0.08);
+  --profiler-info-glow:        rgba(29, 78, 216, 0.2);
+
+  // Borders
+  --profiler-border:        rgba(28, 20, 16, 0.1);
+  --profiler-border-strong: rgba(28, 20, 16, 0.2);
+  --profiler-border-accent: rgba(180, 83, 9, 0.3);
+
+  // Shadows — warm-tinted
+  --profiler-shadow-sm: 0 1px 3px rgba(28, 20, 16, 0.08);
+  --profiler-shadow-md: 0 4px 12px rgba(28, 20, 16, 0.1);
+  --profiler-shadow-lg: 0 8px 24px rgba(28, 20, 16, 0.12);
+  --profiler-shadow-xl: 0 16px 40px rgba(28, 20, 16, 0.15);
+
+  // Glass
+  --profiler-glass-bg:     rgba(245, 243, 239, 0.88);
+  --profiler-glass-border: rgba(28, 20, 16, 0.08);
+  --profiler-blur:         blur(16px) saturate(140%);
+}
+
+// ============================================================================
+// SYSTEM PREFERENCE — Auto light mode
+// ============================================================================
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --profiler-bg:          #f5f3ef;
+    --profiler-bg-light:    #edeae3;
+    --profiler-bg-lighter:  #e3ded5;
+    --profiler-bg-elevated: #ffffff;
+    --profiler-bg-overlay:  rgba(245, 243, 239, 0.96);
+
+    --profiler-text:           #1c1410;
+    --profiler-text-secondary: #4a3f35;
+    --profiler-text-muted:     #8a7a6e;
+    --profiler-text-subtle:    #b5a898;
+    --profiler-text-on-accent: #ffffff;
+
+    --profiler-accent:          #b45309;
+    --profiler-accent-hover:    #92400e;
+    --profiler-accent-dim:      #d97706;
+    --profiler-accent-bg:       rgba(180, 83, 9, 0.08);
+    --profiler-accent-glow:     rgba(180, 83, 9, 0.2);
+
+    --profiler-success:          #15803d;
+    --profiler-success-bg:       rgba(21, 128, 61, 0.08);
+    --profiler-success-glow:     rgba(21, 128, 61, 0.2);
+
+    --profiler-warning:          #c2410c;
+    --profiler-warning-bg:       rgba(194, 65, 12, 0.08);
+    --profiler-warning-glow:     rgba(194, 65, 12, 0.2);
+
+    --profiler-error:            #dc2626;
+    --profiler-error-bg:         rgba(220, 38, 38, 0.08);
+    --profiler-error-glow:       rgba(220, 38, 38, 0.2);
+
+    --profiler-info:             #1d4ed8;
+    --profiler-info-bg:          rgba(29, 78, 216, 0.08);
+    --profiler-info-glow:        rgba(29, 78, 216, 0.2);
+
+    --profiler-border:        rgba(28, 20, 16, 0.1);
+    --profiler-border-strong: rgba(28, 20, 16, 0.2);
+    --profiler-border-accent: rgba(180, 83, 9, 0.3);
+
+    --profiler-shadow-sm: 0 1px 3px rgba(28, 20, 16, 0.08);
+    --profiler-shadow-md: 0 4px 12px rgba(28, 20, 16, 0.1);
+    --profiler-shadow-lg: 0 8px 24px rgba(28, 20, 16, 0.12);
+    --profiler-shadow-xl: 0 16px 40px rgba(28, 20, 16, 0.15);
+
+    --profiler-glass-bg:     rgba(245, 243, 239, 0.88);
+    --profiler-glass-border: rgba(28, 20, 16, 0.08);
+    --profiler-blur:         blur(16px) saturate(140%);
+  }
+}
+
+// ============================================================================
+// SHARED TOKENS
+// ============================================================================
+:root {
+  // Typography
+  --profiler-font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --profiler-font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+  // Scale (compact by design — a devtool should be dense)
+  --profiler-text-xs:   10px;
+  --profiler-text-sm:   11px;
+  --profiler-text-base: 13px;
+  --profiler-text-lg:   15px;
+  --profiler-text-xl:   18px;
+  --profiler-text-2xl:  22px;
+  --profiler-text-3xl:  28px;
+
+  // Spacing
+  --profiler-space-1:  4px;
+  --profiler-space-2:  8px;
+  --profiler-space-3:  12px;
+  --profiler-space-4:  16px;
+  --profiler-space-6:  24px;
+  --profiler-space-8:  32px;
+  --profiler-space-12: 48px;
+
+  // Radius — slightly less rounded than before, more industrial
+  --profiler-radius-sm:   4px;
+  --profiler-radius-md:   6px;
+  --profiler-radius-lg:   10px;
+  --profiler-radius-full: 9999px;
+
+  // Transitions
+  --profiler-transition-fast:    120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --profiler-transition-base:    220ms cubic-bezier(0.4, 0, 0.2, 1);
+  --profiler-transition-slow:    350ms cubic-bezier(0.4, 0, 0.2, 1);
+  --profiler-transition-elastic: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  // Z-index
+  --profiler-z-toolbar: 999999;
+  --profiler-z-panel:   1000000;
+  --profiler-z-modal:   1000001;
+}
+
+// ============================================================================
+// SCSS ALIASES (maps to CSS variables)
+// ============================================================================
+$bg-dark:     var(--profiler-bg);
+$bg-light:    var(--profiler-bg-light);
+$bg-lighter:  var(--profiler-bg-lighter);
+$bg-elevated: var(--profiler-bg-elevated);
+
+$text-color:     var(--profiler-text);
+$text-secondary: var(--profiler-text-secondary);
+$text-muted:     var(--profiler-text-muted);
+$text-subtle:    var(--profiler-text-subtle);
+
+$accent:        var(--profiler-accent);
+$accent-hover:  var(--profiler-accent-hover);
+// Keep these aliases so older SCSS files still compile:
+$accent-cyan:   var(--profiler-accent);
+$accent-mint:   var(--profiler-success);
+$accent-orange: var(--profiler-warning);
+$accent-purple: var(--profiler-info);
+
+$border-color:  var(--profiler-border);
+$border-strong: var(--profiler-border-strong);
+
+$success: var(--profiler-success);
+$warning: var(--profiler-warning);
+$error:   var(--profiler-error);
+$info:    var(--profiler-info);
+
+$font-sans: var(--profiler-font-sans);
+$font-mono: var(--profiler-font-mono);
+
+$transition-fast:    var(--profiler-transition-fast);
+$transition-base:    var(--profiler-transition-base);
+$transition-slow:    var(--profiler-transition-slow);
+$transition-elastic: var(--profiler-transition-elastic);
+
+// ============================================================================
+// THEME TOGGLE
+// ============================================================================
+.profiler-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--profiler-bg-lighter);
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-sm);
+  cursor: pointer;
+  transition: all var(--profiler-transition-base);
+  color: var(--profiler-text-muted);
+  font-size: 14px;
+
+  &:hover {
+    background: var(--profiler-accent-bg);
+    border-color: var(--profiler-border-accent);
+    color: var(--profiler-accent);
+    transform: scale(1.08);
+  }
+
+  &:active {
+    transform: scale(0.94);
+  }
+}

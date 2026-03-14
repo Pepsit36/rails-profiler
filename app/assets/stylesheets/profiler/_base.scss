@@ -1,0 +1,415 @@
+// ============================================================================
+// BASE — Global resets, typography, and utility primitives
+// ============================================================================
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--profiler-font-sans);
+  background: var(--profiler-bg);
+  color: var(--profiler-text);
+  line-height: 1.6;
+  font-size: var(--profiler-text-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+// ============================================================================
+// LAYOUT
+// ============================================================================
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--profiler-space-8) var(--profiler-space-6);
+
+  @media (max-width: 768px) {
+    padding: var(--profiler-space-6) var(--profiler-space-4);
+  }
+}
+
+// ============================================================================
+// PAGE HEADER
+// ============================================================================
+
+.header {
+  margin-bottom: var(--profiler-space-8);
+  padding-bottom: var(--profiler-space-6);
+  border-bottom: 1px solid var(--profiler-border);
+  animation: fadeInDown 400ms cubic-bezier(0.4, 0, 0.2, 1) both;
+
+  h1 {
+    font-size: var(--profiler-text-3xl);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    margin-bottom: var(--profiler-space-2);
+    color: var(--profiler-text);
+
+    // Amber gradient — the signature thermal look
+    background: linear-gradient(
+      125deg,
+      var(--profiler-accent) 0%,
+      var(--profiler-accent-hover) 60%,
+      var(--profiler-warning) 100%
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+
+    @media (max-width: 768px) {
+      font-size: var(--profiler-text-2xl);
+    }
+  }
+
+  p {
+    font-size: var(--profiler-text-sm);
+    color: var(--profiler-text-muted);
+    font-family: var(--profiler-font-mono);
+    letter-spacing: 0.03em;
+  }
+}
+
+// ============================================================================
+// LINKS
+// ============================================================================
+
+a {
+  color: var(--profiler-accent);
+  text-decoration: none;
+  transition: color var(--profiler-transition-fast);
+
+  &:hover {
+    color: var(--profiler-accent-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--profiler-border-accent);
+    outline-offset: 2px;
+    border-radius: var(--profiler-radius-sm);
+  }
+}
+
+// ============================================================================
+// TYPOGRAPHY
+// ============================================================================
+
+code,
+pre {
+  font-family: var(--profiler-font-mono);
+}
+
+code {
+  background: var(--profiler-accent-bg);
+  color: var(--profiler-accent);
+  padding: 2px 6px;
+  border-radius: var(--profiler-radius-sm);
+  border: 1px solid var(--profiler-border-accent);
+  font-size: var(--profiler-text-sm);
+}
+
+pre {
+  background: rgba(0, 0, 0, 0.25);
+  padding: var(--profiler-space-4);
+  border-radius: var(--profiler-radius-md);
+  border: 1px solid var(--profiler-border);
+  overflow-x: auto;
+  line-height: 1.65;
+  color: var(--profiler-text-secondary);
+
+  code {
+    background: none;
+    padding: 0;
+    border: none;
+    color: inherit;
+    font-size: inherit;
+  }
+}
+
+[data-theme="light"] pre {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+// ============================================================================
+// TABLE
+// ============================================================================
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--profiler-text-base);
+
+  th {
+    text-align: left;
+    font-weight: 600;
+    font-size: var(--profiler-text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--profiler-text-muted);
+    padding: var(--profiler-space-2) var(--profiler-space-3);
+    border-bottom: 1px solid var(--profiler-border-strong);
+    background: var(--profiler-bg-light);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: var(--profiler-space-3);
+    border-bottom: 1px solid var(--profiler-border);
+    color: var(--profiler-text);
+    vertical-align: middle;
+    font-size: var(--profiler-text-base);
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:hover td {
+    background: var(--profiler-bg-lighter);
+  }
+
+  a {
+    font-family: var(--profiler-font-mono);
+    font-size: var(--profiler-text-sm);
+  }
+}
+
+// ============================================================================
+// SCROLLBARS — minimal, theme-aware
+// ============================================================================
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--profiler-border-strong);
+  border-radius: var(--profiler-radius-full);
+
+  &:hover {
+    background: var(--profiler-text-subtle);
+  }
+}
+
+// ============================================================================
+// SELECTION
+// ============================================================================
+
+::selection {
+  background: var(--profiler-accent-bg);
+  color: var(--profiler-text);
+}
+
+// ============================================================================
+// FOCUS
+// ============================================================================
+
+:focus-visible {
+  outline: 2px solid var(--profiler-accent);
+  outline-offset: 2px;
+  border-radius: var(--profiler-radius-sm);
+}
+
+// ============================================================================
+// CARD
+// ============================================================================
+
+.card {
+  background: var(--profiler-bg-light);
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-lg);
+  padding: var(--profiler-space-6);
+  box-shadow: var(--profiler-shadow-md);
+  transition: all var(--profiler-transition-base);
+
+  &:hover {
+    border-color: var(--profiler-border-strong);
+    box-shadow: var(--profiler-shadow-lg);
+    transform: translateY(-2px);
+  }
+}
+
+// ============================================================================
+// BUTTON
+// ============================================================================
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--profiler-space-2);
+  padding: var(--profiler-space-2) var(--profiler-space-4);
+  font-family: var(--profiler-font-sans);
+  font-size: var(--profiler-text-base);
+  font-weight: 600;
+  border-radius: var(--profiler-radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--profiler-transition-base);
+  text-decoration: none;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  &.btn-primary {
+    background: var(--profiler-accent-bg);
+    color: var(--profiler-accent);
+    border-color: var(--profiler-border-accent);
+
+    &:hover:not(:disabled) {
+      background: var(--profiler-accent);
+      color: var(--profiler-text-on-accent);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px var(--profiler-accent-glow);
+    }
+  }
+
+  &.btn-secondary {
+    background: var(--profiler-bg-lighter);
+    color: var(--profiler-text-secondary);
+    border-color: var(--profiler-border);
+
+    &:hover:not(:disabled) {
+      background: var(--profiler-bg-elevated);
+      border-color: var(--profiler-border-strong);
+      color: var(--profiler-text);
+    }
+  }
+
+  &.btn-sm {
+    padding: var(--profiler-space-1) var(--profiler-space-3);
+    font-size: var(--profiler-text-sm);
+  }
+}
+
+// ============================================================================
+// BADGE — semantic status indicators
+// ============================================================================
+
+.badge,
+[class*="badge-"] {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--profiler-radius-sm);
+  font-family: var(--profiler-font-mono);
+  font-size: var(--profiler-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.badge {
+  background: var(--profiler-bg-lighter);
+  color: var(--profiler-text-secondary);
+  border: 1px solid var(--profiler-border);
+}
+
+.badge-success {
+  background: var(--profiler-success-bg);
+  color: var(--profiler-success);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.badge-warning {
+  background: var(--profiler-warning-bg);
+  color: var(--profiler-warning);
+  border: 1px solid rgba(251, 146, 60, 0.2);
+}
+
+.badge-error {
+  background: var(--profiler-error-bg);
+  color: var(--profiler-error);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+}
+
+.badge-info {
+  background: var(--profiler-info-bg);
+  color: var(--profiler-info);
+  border: 1px solid rgba(96, 165, 250, 0.2);
+}
+
+.badge-default {
+  background: var(--profiler-bg-lighter);
+  color: var(--profiler-text-muted);
+  border: 1px solid var(--profiler-border);
+}
+
+// ============================================================================
+// ANIMATIONS
+// ============================================================================
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
+.animate-fade-in    { animation: fadeIn    300ms ease both; }
+.animate-fade-in-up { animation: fadeInUp  400ms ease both; }
+
+.loading-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--profiler-border-strong);
+  border-top-color: var(--profiler-accent);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+// ============================================================================
+// RESPONSIVE UTILITIES
+// ============================================================================
+
+@media (max-width: 768px) {
+  .hidden-mobile  { display: none !important; }
+}
+@media (min-width: 769px) {
+  .hidden-desktop { display: none !important; }
+}

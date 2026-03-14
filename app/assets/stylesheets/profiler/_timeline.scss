@@ -1,0 +1,341 @@
+// Timeline visualization styles - Performance Dashboard Luxe
+
+.profiler-timeline {
+  margin: 24px 0;
+  padding: 24px;
+  background: linear-gradient(
+    135deg,
+    rgba(21, 25, 31, 0.4) 0%,
+    rgba(31, 35, 41, 0.4) 100%
+  );
+  backdrop-filter: blur(12px);
+  border: 1px solid $border-color;
+  border-radius: 12px;
+  box-shadow: var(--profiler-shadow-md);
+  animation: fadeIn 500ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.2));
+  }
+
+  .timeline-event {
+    cursor: pointer;
+    transition: all $transition-base;
+    transform-origin: center;
+
+    &:hover {
+      opacity: 0.85;
+      transform: scale(1.02);
+      filter: drop-shadow(0 4px 12px rgba(0, 217, 255, 0.3));
+    }
+
+    &:active {
+      transform: scale(0.98);
+    }
+  }
+
+  .timeline-label {
+    font-size: 11px;
+    font-family: $font-mono;
+    font-weight: 500;
+    fill: $text-secondary;
+    transition: fill $transition-base;
+
+    &:hover {
+      fill: $text-color;
+    }
+  }
+
+  .timeline-bar {
+    rx: 4;
+    transition: all $transition-base;
+    stroke-width: 1;
+    stroke: rgba(0, 0, 0, 0.3);
+
+    &.controller {
+      fill: #60a5fa;
+      stroke: rgba(96, 165, 250, 0.5);
+
+      &:hover {
+        fill: #93c5fd;
+        filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.6));
+      }
+    }
+
+    &.view {
+      fill: #34d399;
+      stroke: rgba(52, 211, 153, 0.5);
+
+      &:hover {
+        fill: #6ee7b7;
+        filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.6));
+      }
+    }
+
+    &.partial {
+      fill: #f59e0b;
+      stroke: rgba(245, 158, 11, 0.5);
+
+      &:hover {
+        fill: #fbbf24;
+        filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.6));
+      }
+    }
+
+    &.database {
+      fill: #fb923c;
+      stroke: rgba(251, 146, 60, 0.5);
+
+      &:hover {
+        fill: #fdba74;
+        filter: drop-shadow(0 0 8px rgba(251, 146, 60, 0.6));
+      }
+    }
+
+    &.default {
+      fill: #a78bfa;
+      stroke: rgba(167, 139, 250, 0.5);
+
+      &:hover {
+        fill: #c4b5fd;
+        filter: drop-shadow(0 0 8px rgba(167, 139, 250, 0.6));
+      }
+    }
+  }
+
+  .timeline-axis {
+    stroke: $border-strong;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .timeline-grid {
+    stroke: $border-color;
+    stroke-width: 1;
+    stroke-dasharray: 4 4;
+    opacity: 0.2;
+    transition: opacity $transition-base;
+
+    &:hover {
+      opacity: 0.4;
+    }
+  }
+
+  // Timeline legend
+  .timeline-legend {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid $border-color;
+    flex-wrap: wrap;
+    justify-content: center;
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-family: $font-sans;
+      color: $text-muted;
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 8px;
+      border: 1px solid $border-color;
+      transition: all $transition-base;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.05);
+        color: $text-color;
+        transform: translateY(-2px);
+      }
+
+      .legend-color {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1px solid rgba(0, 0, 0, 0.3);
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+
+        &.controller {
+          background: $accent-cyan;
+          box-shadow:
+            inset 0 1px 2px rgba(0, 0, 0, 0.2),
+            0 0 8px rgba(0, 217, 255, 0.3);
+        }
+
+        &.view {
+          background: $accent-mint;
+          box-shadow:
+            inset 0 1px 2px rgba(0, 0, 0, 0.2),
+            0 0 8px rgba(0, 255, 159, 0.3);
+        }
+
+        &.partial {
+          background: $accent-orange;
+          box-shadow:
+            inset 0 1px 2px rgba(0, 0, 0, 0.2),
+            0 0 8px rgba(255, 107, 53, 0.3);
+        }
+
+        &.database {
+          background: $warning;
+          box-shadow:
+            inset 0 1px 2px rgba(0, 0, 0, 0.2),
+            0 0 8px rgba(255, 184, 108, 0.3);
+        }
+
+        &.default {
+          background: $accent-purple;
+          box-shadow:
+            inset 0 1px 2px rgba(0, 0, 0, 0.2),
+            0 0 8px rgba(189, 147, 249, 0.3);
+        }
+      }
+    }
+  }
+
+  // Timeline metrics
+  .timeline-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+
+    .metric-card {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid $border-color;
+      border-radius: 8px;
+      padding: 16px;
+      transition: all $transition-base;
+
+      &:hover {
+        background: rgba(0, 0, 0, 0.3);
+        border-color: $border-strong;
+        transform: translateY(-2px);
+        box-shadow: var(--profiler-shadow-sm);
+      }
+
+      .metric-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: $text-muted;
+        margin-bottom: 8px;
+        font-family: $font-sans;
+      }
+
+      .metric-value {
+        font-size: 24px;
+        font-weight: 700;
+        font-family: $font-mono;
+        color: $accent-cyan;
+        line-height: 1;
+
+        small {
+          font-size: 14px;
+          color: $text-muted;
+          font-weight: 500;
+          margin-left: 4px;
+        }
+      }
+
+      .metric-change {
+        font-size: 11px;
+        margin-top: 6px;
+        font-family: $font-mono;
+
+        &.positive {
+          color: $success;
+        }
+
+        &.negative {
+          color: $error;
+        }
+
+        &.neutral {
+          color: $text-muted;
+        }
+      }
+    }
+  }
+
+  // Tooltip
+  .timeline-tooltip {
+    position: absolute;
+    background: linear-gradient(
+      135deg,
+      rgba(21, 25, 31, 0.98) 0%,
+      rgba(31, 35, 41, 0.98) 100%
+    );
+    backdrop-filter: blur(16px);
+    border: 1px solid $border-strong;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-family: $font-mono;
+    font-size: 12px;
+    color: $text-color;
+    pointer-events: none;
+    z-index: 1000;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.03);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: all $transition-base;
+
+    &.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .tooltip-header {
+      font-weight: 600;
+      color: $accent-cyan;
+      margin-bottom: 6px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid $border-color;
+    }
+
+    .tooltip-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 4px 0;
+
+      .label {
+        color: $text-muted;
+      }
+
+      .value {
+        color: $text-color;
+        font-weight: 600;
+      }
+    }
+  }
+}
+
+// Animation for timeline bars
+@keyframes barSlideIn {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+.profiler-timeline .timeline-bar {
+  animation: barSlideIn 600ms cubic-bezier(0.4, 0, 0.2, 1) backwards;
+
+  @for $i from 1 through 20 {
+    &:nth-child(#{$i}) {
+      animation-delay: #{$i * 30}ms;
+    }
+  }
+}

@@ -1,0 +1,230 @@
+// ============================================================================
+// PROFILES — list and detail page styles
+// All colors use CSS variables for dual-theme compatibility
+// ============================================================================
+
+// ============================================================================
+// PROFILE LIST TABLE
+// ============================================================================
+
+.container {
+  // Table inside the main profiler pages gets enhanced styling
+  > table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--profiler-bg-light);
+    border: 1px solid var(--profiler-border);
+    border-radius: var(--profiler-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--profiler-shadow-md);
+
+    thead {
+      background: var(--profiler-accent-bg);
+      border-bottom: 1px solid var(--profiler-border-accent);
+
+      th {
+        font-weight: 600;
+        font-size: var(--profiler-text-xs);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--profiler-accent);
+        padding: 14px 20px;
+        border-bottom: none;
+        background: transparent;
+      }
+    }
+
+    tbody {
+      td {
+        padding: 14px 20px;
+        font-size: var(--profiler-text-base);
+        color: var(--profiler-text-secondary);
+        border-bottom: 1px solid var(--profiler-border);
+        vertical-align: middle;
+      }
+
+      tr:last-child td {
+        border-bottom: none;
+      }
+
+      tr:hover td {
+        background: var(--profiler-accent-bg);
+        color: var(--profiler-text);
+      }
+
+      tr:hover td:first-child {
+        border-left: 2px solid var(--profiler-accent);
+        padding-left: 18px;
+      }
+    }
+
+    a {
+      font-family: var(--profiler-font-mono);
+      font-size: var(--profiler-text-sm);
+      color: var(--profiler-accent);
+
+      &:hover {
+        color: var(--profiler-accent-hover);
+      }
+    }
+  }
+}
+
+// ============================================================================
+// PROFILE TABS — top navigation
+// ============================================================================
+
+.tabs {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--profiler-border);
+  margin-bottom: var(--profiler-space-6);
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 18px;
+  color: var(--profiler-text-muted);
+  text-decoration: none;
+  font-size: var(--profiler-text-base);
+  font-weight: 500;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: color var(--profiler-transition-fast), border-color var(--profiler-transition-fast);
+  font-family: var(--profiler-font-sans);
+  cursor: pointer;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+
+  &:hover {
+    color: var(--profiler-text);
+    background: var(--profiler-accent-bg);
+  }
+
+  &.active {
+    color: var(--profiler-accent);
+    border-bottom-color: var(--profiler-accent);
+    font-weight: 600;
+  }
+
+  .tab-icon {
+    font-size: 14px;
+    line-height: 1;
+  }
+}
+
+// ============================================================================
+// TAB CONTENT CONTAINER
+// ============================================================================
+
+.tab-content {
+  display: none;
+
+  &.active {
+    display: block;
+  }
+
+  // Headers inside tab content
+  h2 {
+    font-size: var(--profiler-text-xl);
+    font-weight: 700;
+    color: var(--profiler-text);
+    margin-bottom: var(--profiler-space-4);
+    letter-spacing: -0.02em;
+  }
+
+  h3 {
+    font-size: var(--profiler-text-lg);
+    font-weight: 600;
+    color: var(--profiler-text);
+    margin-bottom: var(--profiler-space-3);
+  }
+
+  // Request detail table
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--profiler-bg-light);
+    border: 1px solid var(--profiler-border);
+    border-radius: var(--profiler-radius-md);
+    overflow: hidden;
+
+    th {
+      width: 180px;
+      text-align: left;
+      padding: 12px 16px;
+      font-size: var(--profiler-text-xs);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--profiler-accent);
+      background: var(--profiler-accent-bg);
+      border-bottom: 1px solid var(--profiler-border);
+      border-right: 1px solid var(--profiler-border);
+      vertical-align: top;
+    }
+
+    td {
+      padding: 12px 16px;
+      font-size: var(--profiler-text-base);
+      color: var(--profiler-text);
+      border-bottom: 1px solid var(--profiler-border);
+      vertical-align: top;
+    }
+
+    tr:last-child th,
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    pre {
+      margin: 0;
+      font-size: var(--profiler-text-sm);
+    }
+  }
+}
+
+// ============================================================================
+// PROFILER PANEL — container card
+// ============================================================================
+
+.profiler-panel {
+  background: var(--profiler-bg-elevated);
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-lg);
+  overflow: hidden;
+  box-shadow: var(--profiler-shadow-md);
+
+  &--sm {
+    padding: var(--profiler-space-3);
+    border-radius: var(--profiler-radius-md);
+  }
+}
+
+// ============================================================================
+// SECTION HEADERS (inside tab content)
+// ============================================================================
+
+.profiler-section__header {
+  font-size: var(--profiler-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--profiler-accent);
+  padding-bottom: var(--profiler-space-2);
+  margin-bottom: var(--profiler-space-4);
+  border-bottom: 1px solid var(--profiler-border-accent);
+  font-family: var(--profiler-font-mono);
+}

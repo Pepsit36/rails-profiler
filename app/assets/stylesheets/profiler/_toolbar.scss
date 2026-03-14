@@ -1,0 +1,343 @@
+// ============================================================================
+// TOOLBAR — Fixed bottom diagnostic bar
+// Thermal aesthetic: instrument-precise, amber-accented, information-dense
+// ============================================================================
+
+// ============================================================================
+// SHELL
+// ============================================================================
+
+#profiler-toolbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  background: var(--profiler-glass-bg);
+  backdrop-filter: var(--profiler-blur);
+  -webkit-backdrop-filter: var(--profiler-blur);
+  border-top: 1px solid var(--profiler-border-strong);
+  z-index: var(--profiler-z-toolbar);
+  font-family: var(--profiler-font-mono);
+  font-size: 11px;
+  animation: toolbarIn 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+
+  // Amber top-line — the signature thermal accent
+  &::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent         0%,
+      var(--profiler-accent) 15%,
+      var(--profiler-accent-hover) 50%,
+      var(--profiler-accent) 85%,
+      transparent         100%
+    );
+    opacity: 0.65;
+  }
+
+  @keyframes toolbarIn {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+}
+
+// ============================================================================
+// CONTAINER — horizontal scroll, no visible scrollbar
+// ============================================================================
+
+.profiler-toolbar-container {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+// ============================================================================
+// ITEMS — each clickable metric segment
+// ============================================================================
+
+.profiler-toolbar-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 16px;
+  color: var(--profiler-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: default;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--profiler-border);
+  transition:
+    color       var(--profiler-transition-fast),
+    background  var(--profiler-transition-fast);
+
+  // Bottom heat-indicator — 0-width by default, grows on hover or by state
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--profiler-accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--profiler-transition-base);
+  }
+
+  &:last-child {
+    border-right: none;
+    margin-left: auto;
+    padding-left: 20px;
+  }
+
+  &:hover {
+    color: var(--profiler-text);
+    background: var(--profiler-accent-bg);
+
+    &::after { transform: scaleX(1); }
+  }
+}
+
+// Links (clickable items)
+a.profiler-toolbar-item {
+  cursor: pointer;
+  font-family: var(--profiler-font-mono);
+  font-size: 11px;
+}
+
+// ============================================================================
+// SEMANTIC SEVERITY COLORS
+// These are applied via Ruby class names in the ERB template
+// ============================================================================
+
+.profiler-text--success { color: var(--profiler-success) !important; }
+.profiler-text--warning { color: var(--profiler-warning) !important; }
+.profiler-text--error   { color: var(--profiler-error)   !important; }
+.profiler-text--muted   { color: var(--profiler-text-muted) !important; }
+.profiler-text--accent  { color: var(--profiler-accent)  !important; }
+
+// Error state: the whole segment takes on a faint red tint
+a.profiler-toolbar-item.profiler-text--error {
+  &::after { background: var(--profiler-error); }
+}
+
+// Warning state
+a.profiler-toolbar-item.profiler-text--warning {
+  &::after { background: var(--profiler-warning); }
+}
+
+// ============================================================================
+// PANELS — popover detail cards that appear above toolbar items
+// ============================================================================
+
+.profiler-toolbar-hoverable {
+  position: relative;
+
+  .profiler-toolbar-panel {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 320px;
+    max-width: 440px;
+    background: var(--profiler-bg-elevated);
+    border: 1px solid var(--profiler-border-strong);
+    border-radius: var(--profiler-radius-lg);
+    box-shadow:
+      var(--profiler-shadow-xl),
+      0 0 0 1px var(--profiler-border-accent);
+    z-index: var(--profiler-z-panel);
+    overflow: hidden;
+
+    // Amber top bar on panels — thermal identity
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(
+        90deg,
+        var(--profiler-accent)       0%,
+        var(--profiler-accent-hover) 100%
+      );
+    }
+
+    // Arrow pointing down at toolbar item
+    &::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: var(--profiler-border-strong);
+    }
+
+    &.profiler-toolbar-panel-large {
+      min-width: 440px;
+      max-width: 580px;
+    }
+  }
+
+  // Panels are shown/hidden by JS (initPanelInteractions in toolbar.ts)
+  // to allow viewport-aware clamping — no CSS :hover rule here.
+}
+
+// ============================================================================
+// PANEL HEADER
+// ============================================================================
+
+.profiler-toolbar-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--profiler-accent);
+  background: var(--profiler-accent-bg);
+  border-bottom: 1px solid var(--profiler-border);
+  font-family: var(--profiler-font-mono);
+}
+
+.profiler-float-right {
+  color: var(--profiler-text-muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 10px;
+  font-family: var(--profiler-font-mono);
+}
+
+// ============================================================================
+// PANEL CONTENT
+// ============================================================================
+
+.profiler-toolbar-panel-content {
+  padding: 10px 16px 14px;
+  max-height: 420px;
+  overflow-y: auto;
+  font-size: 11px;
+  font-family: var(--profiler-font-mono);
+  scrollbar-width: thin;
+  scrollbar-color: var(--profiler-border-strong) transparent;
+
+  &::-webkit-scrollbar        { width: 4px; }
+  &::-webkit-scrollbar-thumb  {
+    background: var(--profiler-border-strong);
+    border-radius: var(--profiler-radius-full);
+  }
+}
+
+// ============================================================================
+// PANEL ROWS
+// ============================================================================
+
+.profiler-toolbar-panel-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--profiler-border);
+  gap: 12px;
+
+  &:last-child { border-bottom: none; }
+
+  span {
+    color: var(--profiler-text-muted);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  strong {
+    color: var(--profiler-text);
+    font-weight: 600;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    word-break: break-all;
+  }
+}
+
+// ============================================================================
+// SUB-SECTION HEADER within panel
+// ============================================================================
+
+.profiler-section__header {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--profiler-accent);
+  padding: 10px 0 4px;
+  border-bottom: 1px solid var(--profiler-border-accent);
+  margin-bottom: 6px;
+  font-family: var(--profiler-font-mono);
+
+  // first occurrence at top of content — no top padding
+  &:first-child { padding-top: 4px; }
+}
+
+// ============================================================================
+// QUERY ROWS within panel
+// ============================================================================
+
+.profiler-toolbar-panel-query {
+  padding: 9px 10px;
+  background: var(--profiler-bg-lighter);
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-sm);
+  margin-bottom: 6px;
+  transition: all var(--profiler-transition-fast);
+
+  &:last-child { margin-bottom: 0; }
+
+  &:hover {
+    border-color: var(--profiler-border-strong);
+    transform: translateX(2px);
+  }
+
+  &.profiler-toolbar-panel-query-slow {
+    border-left: 2px solid var(--profiler-error);
+    background: var(--profiler-error-bg);
+  }
+
+  code {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--profiler-info);
+    font-size: 10px;
+    line-height: 1.5;
+    margin-top: 4px;
+  }
+}
+
+// ============================================================================
+// "MORE" TRUNCATION HINT
+// ============================================================================
+
+.profiler-more {
+  text-align: center;
+  padding: 8px;
+  color: var(--profiler-text-muted);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  border-top: 1px dashed var(--profiler-border);
+  margin-top: 6px;
+}

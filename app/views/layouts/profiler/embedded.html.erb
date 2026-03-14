@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html data-theme="<%= params[:theme].presence&.then { |t| %w[light dark].include?(t) ? t : 'dark' } || 'dark' %>">
+<head>
+  <title>Rails Profiler</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <%= csrf_meta_tags %>
+  <%= csp_meta_tag %>
+
+  <%= stylesheet_link_tag "profiler" %>
+  <%= javascript_include_tag "profiler", defer: true %>
+
+  <style>
+    /* Embedded overrides — tighter layout, no page chrome */
+    body { overflow-y: auto; }
+    .container { padding: 16px 20px; }
+  </style>
+
+  <script>
+    // Receive theme changes from the Chrome extension panel via postMessage.
+    // The extension sends: { type: 'profiler:set-theme', theme: 'light' | 'dark' }
+    window.addEventListener('message', function(e) {
+      var data = e.data;
+      if (data && data.type === 'profiler:set-theme' &&
+          (data.theme === 'light' || data.theme === 'dark')) {
+        document.documentElement.setAttribute('data-theme', data.theme);
+      }
+    });
+  </script>
+</head>
+
+<body>
+  <%= yield %>
+</body>
+</html>

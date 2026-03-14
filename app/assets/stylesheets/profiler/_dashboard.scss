@@ -1,0 +1,316 @@
+// Dashboard styles using CSS variables for dual theme support
+// Modern, clean design with proper spacing and typography
+
+// ============================================================================
+// PROFILE HEADER
+// ============================================================================
+
+.profile-header {
+  margin-bottom: var(--profiler-space-6);
+  padding-bottom: var(--profiler-space-4);
+  border-bottom: 1px solid $border-color;
+
+  h2 {
+    font-size: var(--profiler-text-xl);
+    margin-bottom: var(--profiler-space-3);
+    color: $text-color;
+    font-weight: 600;
+  }
+}
+
+// ============================================================================
+// STATS GRID - Use profiler-stat-card from components
+// ============================================================================
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--profiler-space-4);
+  margin-bottom: var(--profiler-space-6);
+}
+
+.stat {
+  background: $bg-lighter;
+  padding: var(--profiler-space-3);
+  border-radius: var(--profiler-radius-md);
+  border: 1px solid $border-color;
+  transition: all $transition-base;
+
+  &:hover {
+    background: $bg-elevated;
+    border-color: $border-strong;
+    transform: translateY(-2px);
+    box-shadow: var(--profiler-shadow-sm);
+  }
+}
+
+.stat-label {
+  font-size: var(--profiler-text-xs);
+  color: $text-muted;
+  margin-bottom: var(--profiler-space-1);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.stat-value {
+  font-size: var(--profiler-text-xl);
+  font-weight: 600;
+  color: $accent;
+  font-family: $font-mono;
+}
+
+// ============================================================================
+// TABS
+// ============================================================================
+
+.tabs {
+  display: flex;
+  gap: var(--profiler-space-1);
+  border-bottom: 1px solid $border-color;
+  margin-bottom: var(--profiler-space-6);
+}
+
+.tab {
+  padding: var(--profiler-space-3) var(--profiler-space-4);
+  background: transparent;
+  border: none;
+  color: $text-muted;
+  cursor: pointer;
+  font-size: var(--profiler-text-base);
+  border-bottom: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: var(--profiler-space-2);
+  transition: all $transition-fast;
+
+  .tab-icon {
+    font-size: var(--profiler-text-lg);
+    line-height: 1;
+  }
+
+  &:hover {
+    color: $text-color;
+    background: rgba(0, 0, 0, 0.1);
+  }
+
+  &.active {
+    color: $accent;
+    border-bottom-color: $accent;
+  }
+}
+
+.tab-content {
+  display: none;
+
+  &.active {
+    display: block;
+  }
+}
+
+// ============================================================================
+// QUERY ITEMS - Should use profiler-query-card from components
+// ============================================================================
+
+.query-item {
+  background: $bg-lighter;
+  padding: var(--profiler-space-3);
+  margin-bottom: var(--profiler-space-3);
+  border-radius: var(--profiler-radius-md);
+  border-left: 3px solid $info;
+  transition: all $transition-base;
+
+  &:hover {
+    background: $bg-elevated;
+    transform: translateX(4px);
+    box-shadow: var(--profiler-shadow-sm);
+  }
+
+  &.slow {
+    border-left-color: $error;
+    background: var(--profiler-error-bg);
+
+    &:hover {
+      box-shadow: 0 0 16px var(--profiler-error-glow);
+    }
+  }
+}
+
+.query-sql {
+  font-family: $font-mono;
+  font-size: var(--profiler-text-sm);
+  color: $info;
+  margin-bottom: var(--profiler-space-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+}
+
+.query-meta {
+  display: flex;
+  gap: var(--profiler-space-3);
+  font-size: var(--profiler-text-xs);
+  color: $text-muted;
+}
+
+// ============================================================================
+// BADGES
+// ============================================================================
+
+.badge {
+  display: inline-flex;
+  padding: var(--profiler-space-1) var(--profiler-space-2);
+  border-radius: var(--profiler-radius-sm);
+  font-size: var(--profiler-text-xs);
+  font-weight: 600;
+  background: $info;
+  color: var(--profiler-text-on-accent);
+  font-family: $font-mono;
+}
+
+.badge-slow {
+  background: $error;
+}
+
+.badge-cached {
+  background: $success;
+}
+
+// ============================================================================
+// DUMP ITEMS - Should use profiler-dump-card from components
+// ============================================================================
+
+.dump-item {
+  background: $bg-lighter;
+  padding: var(--profiler-space-4);
+  margin-bottom: var(--profiler-space-4);
+  border-radius: var(--profiler-radius-md);
+  border-left: 3px solid $warning;
+}
+
+.dump-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--profiler-space-3);
+  font-size: var(--profiler-text-sm);
+}
+
+.dump-label {
+  color: $accent;
+  font-weight: 600;
+}
+
+.dump-location {
+  color: $info;
+  font-size: var(--profiler-text-xs);
+  font-family: $font-mono;
+}
+
+.dump-value {
+  font-family: $font-mono;
+  font-size: var(--profiler-text-sm);
+  color: $warning;
+  white-space: pre-wrap;
+  background: rgba(0, 0, 0, 0.3);
+  padding: var(--profiler-space-3);
+  border-radius: var(--profiler-radius-sm);
+  max-height: 400px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+// ============================================================================
+// CACHE STATS
+// ============================================================================
+
+.cache-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--profiler-space-3);
+  margin-bottom: var(--profiler-space-6);
+}
+
+.cache-stat {
+  background: $bg-lighter;
+  padding: var(--profiler-space-3);
+  border-radius: var(--profiler-radius-md);
+  text-align: center;
+  border: 1px solid $border-color;
+  transition: all $transition-base;
+
+  &:hover {
+    background: $bg-elevated;
+    border-color: $border-strong;
+    transform: translateY(-2px);
+    box-shadow: var(--profiler-shadow-sm);
+  }
+}
+
+.cache-stat-label {
+  font-size: var(--profiler-text-xs);
+  color: $text-muted;
+  margin-bottom: var(--profiler-space-1);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.cache-stat-value {
+  font-size: var(--profiler-text-xl);
+  font-weight: 600;
+  color: $accent;
+  font-family: $font-mono;
+}
+
+// ============================================================================
+// EMPTY STATE - Should use profiler-empty from components
+// ============================================================================
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  flex-direction: column;
+  gap: var(--profiler-space-2);
+  color: $text-muted;
+  padding: var(--profiler-space-12) var(--profiler-space-6);
+  text-align: center;
+}
+
+// ============================================================================
+// LOADING STATE
+// ============================================================================
+
+.loading {
+  text-align: center;
+  padding: var(--profiler-space-12) var(--profiler-space-6);
+  color: $text-muted;
+  font-size: var(--profiler-text-base);
+}
+
+// ============================================================================
+// ERROR STATE
+// ============================================================================
+
+.error {
+  background: var(--profiler-error-bg);
+  color: $error;
+  padding: var(--profiler-space-3);
+  border-radius: var(--profiler-radius-md);
+  margin-bottom: var(--profiler-space-3);
+  border-left: 3px solid $error;
+  font-size: var(--profiler-text-sm);
+}
+
+// ============================================================================
+// GENERIC TAB
+// ============================================================================
+
+.generic-tab {
+  pre {
+    color: $info;
+    font-family: $font-mono;
+    font-size: var(--profiler-text-sm);
+    line-height: 1.6;
+  }
+}

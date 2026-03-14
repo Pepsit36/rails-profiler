@@ -1,0 +1,166 @@
+// ============================================================================
+// AJAX TAB — breakdown and request list
+// ============================================================================
+
+.ajax-breakdown {
+  margin: var(--profiler-space-6) 0;
+  padding: var(--profiler-space-4);
+  background: var(--profiler-bg-light);
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-md);
+
+  h3 {
+    margin: 0 0 var(--profiler-space-3) 0;
+    font-size: var(--profiler-text-base);
+    color: var(--profiler-text);
+    font-weight: 600;
+  }
+}
+
+.ajax-breakdown-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--profiler-space-3);
+}
+
+.ajax-breakdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--profiler-space-2);
+  padding: var(--profiler-space-1) var(--profiler-space-3);
+  background: var(--profiler-bg-elevated);
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-md);
+  font-size: var(--profiler-text-base);
+  color: var(--profiler-text);
+  font-family: var(--profiler-font-mono);
+}
+
+.ajax-requests-list {
+  margin-top: var(--profiler-space-6);
+}
+
+.ajax-request-item {
+  background: var(--profiler-bg-light);
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-md);
+  padding: var(--profiler-space-3) var(--profiler-space-4);
+  margin-bottom: var(--profiler-space-3);
+  transition: all var(--profiler-transition-base);
+
+  &:hover {
+    background: var(--profiler-accent-bg);
+    border-color: var(--profiler-border-accent);
+    transform: translateX(3px);
+    box-shadow: var(--profiler-shadow-sm);
+  }
+}
+
+.ajax-request-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--profiler-space-2);
+}
+
+.ajax-request-method {
+  display: flex;
+  align-items: center;
+  gap: var(--profiler-space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.ajax-request-path {
+  color: var(--profiler-text);
+  font-size: var(--profiler-text-sm);
+  font-family: var(--profiler-font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ajax-request-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--profiler-space-3);
+}
+
+.ajax-request-duration {
+  color: var(--profiler-accent);
+  font-weight: 700;
+  font-size: var(--profiler-text-sm);
+  font-family: var(--profiler-font-mono);
+}
+
+.ajax-request-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--profiler-text-muted);
+  font-size: var(--profiler-text-sm);
+}
+
+.ajax-request-time {
+  font-family: var(--profiler-font-mono);
+  font-size: var(--profiler-text-xs);
+}
+
+.ajax-request-link {
+  color: var(--profiler-accent);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: var(--profiler-text-sm);
+  font-family: var(--profiler-font-mono);
+  transition: color var(--profiler-transition-fast);
+
+  &:hover {
+    color: var(--profiler-accent-hover);
+  }
+}
+
+// ============================================================================
+// METHOD BADGES
+// ============================================================================
+
+.method-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--profiler-radius-sm);
+  font-size: var(--profiler-text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-family: var(--profiler-font-mono);
+  letter-spacing: 0.05em;
+  color: #fff;
+
+  &.method-get     { background: var(--profiler-info); }
+  &.method-post    { background: var(--profiler-success); }
+  &.method-put     { background: var(--profiler-warning); }
+  &.method-patch   { background: var(--profiler-warning); }
+  &.method-delete  { background: var(--profiler-error); }
+  &.method-head,
+  &.method-options { background: var(--profiler-text-muted); }
+}
+
+// ============================================================================
+// STATUS BADGES
+// ============================================================================
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--profiler-radius-sm);
+  font-size: var(--profiler-text-xs);
+  font-weight: 700;
+  font-family: var(--profiler-font-mono);
+  color: #fff;
+
+  &.status-2xx   { background: var(--profiler-success); }
+  &.status-3xx   { background: var(--profiler-info); }
+  &.status-4xx   { background: var(--profiler-warning); }
+  &.status-5xx   { background: var(--profiler-error); }
+  &.status-other { background: var(--profiler-text-muted); }
+}
