@@ -1,0 +1,61 @@
+// SQL and code syntax highlighting
+
+pre[data-language="sql"],
+.sql-code {
+  background: $bg-dark;
+  padding: 15px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+
+  .sql-keyword {
+    color: #c586c0;
+    font-weight: 600;
+  }
+
+  .sql-string {
+    color: #ce9178;
+  }
+
+  .sql-number {
+    color: #b5cea8;
+  }
+
+  .sql-comment {
+    color: $text-muted;
+    font-style: italic;
+  }
+
+  .sql-function {
+    color: #dcdcaa;
+  }
+
+  .sql-operator {
+    color: $info;
+  }
+}
+
+.backtrace {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 11px;
+  color: $text-muted;
+  line-height: 1.6;
+
+  .file-path {
+    color: $info;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .line-number {
+    color: $warning;
+  }
+
+  .method-name {
+    color: #dcdcaa;
+  }
+}

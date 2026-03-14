@@ -1,0 +1,40 @@
+*.gem
+*.rbc
+/.config
+/coverage/
+/InstalledFiles
+/pkg/
+/spec/reports/
+/spec/examples.txt
+/test/tmp/
+/test/version_tmp/
+/tmp/
+
+# RSpec
+/.rspec_status
+
+# Bundler
+/.bundle/
+/vendor/bundle
+/vendor/
+Gemfile.lock
+
+# Documentation
+/.yardoc/
+/_yardoc/
+/doc/
+/rdoc/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Built assets (compiled TypeScript and SCSS)
+app/assets/builds/
