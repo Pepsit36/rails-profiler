@@ -1,4 +1,4 @@
-import { Profile, DatabaseData, AjaxData, PerformanceData, ViewData, CacheData, DumpData } from '../../dashboard/types'
+import { Profile, DatabaseData, AjaxData, PerformanceData, ViewData, CacheData, DumpData, HttpData } from '../../dashboard/types'
 import { ToolbarItem } from './ToolbarItem'
 import { RequestPanel } from './panels/RequestPanel'
 import { DatabasePanel } from './panels/DatabasePanel'
@@ -7,6 +7,7 @@ import { EventsPanel } from './panels/EventsPanel'
 import { ViewsPanel } from './panels/ViewsPanel'
 import { CachePanel } from './panels/CachePanel'
 import { DumpsPanel } from './panels/DumpsPanel'
+import { HttpPanel } from './panels/HttpPanel'
 
 interface Props {
   profile: Profile
@@ -44,6 +45,7 @@ export function ToolbarApp({ profile, token }: Props) {
   const viewData = cd['view'] as ViewData | undefined
   const cacheData = cd['cache'] as CacheData | undefined
   const dumpData = cd['dump'] as DumpData | undefined
+  const httpData = cd['http'] as HttpData | undefined
 
   const reqClass = statusClass(profile.status)
   const durClass = durationClass(profile.duration)
@@ -156,6 +158,22 @@ export function ToolbarApp({ profile, token }: Props) {
         >
           <span class="profiler-text--muted profiler-text--xs">CACHE</span>
           <span class={cacheClass}>{cacheData.hit_rate}%</span>
+        </ToolbarItem>
+      )}
+
+      {httpData && httpData.total_requests > 0 && (
+        <ToolbarItem
+          href={`/_profiler/profiles/${token}?tab=http`}
+          className={(httpData.error_requests > 0 || httpData.slow_requests > 0) ? 'profiler-text--error' : 'profiler-text--success'}
+          panelLarge
+          panel={<HttpPanel httpData={httpData} />}
+        >
+          <span class="profiler-text--muted profiler-text--xs">HTTP</span>
+          <span>{httpData.total_requests}</span>
+          {httpData.slow_requests > 0 && (
+            <span class="profiler-text--error profiler-text--xs">▲ {httpData.slow_requests}</span>
+          )}
+          <span class="profiler-text--muted profiler-text--xs">{httpData.total_duration.toFixed(1)}ms</span>
         </ToolbarItem>
       )}
 

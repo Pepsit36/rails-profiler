@@ -17,6 +17,7 @@ export interface Profile {
     performance?: PerformanceData;
     view?: ViewData;
     ajax?: AjaxData;
+    http?: HttpData;
     [key: string]: any;  // Allow custom collector data
   };
   tabs?: TabConfig[];  // Tab configurations from collectors
@@ -127,4 +128,29 @@ export interface AjaxRequest {
   status: number;
   duration: number;
   started_at: string;
+}
+
+export interface HttpData {
+  total_requests: number;
+  total_duration: number;
+  slow_requests: number;
+  error_requests: number;
+  by_host: Record<string, number>;
+  by_status: Record<string, number>;
+  requests: HttpRequest[];
+}
+
+export interface HttpRequest {
+  url: string;
+  method: string;
+  status: number;
+  duration: number;
+  request_headers: Record<string, string>;
+  request_body?: string;
+  request_size: number;
+  response_headers: Record<string, string>;
+  response_body?: string;
+  response_size: number;
+  backtrace: string[];
+  error?: string;
 }

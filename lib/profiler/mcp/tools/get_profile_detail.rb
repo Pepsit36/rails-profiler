@@ -182,6 +182,27 @@ module Profiler
             end
           end
 
+          # HTTP section
+          http_data = profile.collector_data("http")
+          if http_data && http_data["total_requests"].to_i > 0
+            threshold = Profiler.configuration.slow_http_threshold
+            lines << "## Outbound HTTP"
+            lines << "- Total: #{http_data['total_requests']}"
+            lines << "- Total Duration: #{http_data['total_duration'].round(2)} ms"
+            lines << "- Slow (>#{threshold}ms): #{http_data['slow_requests']}"
+            lines << "- Errors: #{http_data['error_requests']}\n"
+
+            if http_data["requests"] && !http_data["requests"].empty?
+              lines << "### Request List"
+              http_data["requests"].each do |req|
+                flag = req["duration"] >= threshold ? " [SLOW]" : ""
+                err = req["status"] >= 400 || req["status"] == 0 ? " [ERROR]" : ""
+                lines << "- **#{req['method']} #{req['url']}** — #{req['status'] == 0 ? 'error' : req['status']} — #{req['duration'].round(2)} ms#{flag}#{err}"
+              end
+              lines << ""
+            end
+          end
+
           # Dumps section
           dump_data = profile.collector_data("dump")
           if dump_data && dump_data["count"].to_i > 0

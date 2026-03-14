@@ -64,6 +64,7 @@ module Profiler
         require_relative "tools/analyze_queries"
         require_relative "tools/get_profile_ajax"
         require_relative "tools/get_profile_dumps"
+        require_relative "tools/get_profile_http"
 
         [
           define_tool(
@@ -122,6 +123,17 @@ module Profiler
               required: ["token"]
             },
             handler: Tools::GetProfileDumps
+          ),
+          define_tool(
+            name: "get_profile_http",
+            description: "Get outbound HTTP request breakdown for a profile (external API calls made during the request)",
+            input_schema: {
+              properties: {
+                token: { type: "string", description: "Profile token (required)" }
+              },
+              required: ["token"]
+            },
+            handler: Tools::GetProfileHttp
           )
         ]
       end

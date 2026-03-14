@@ -7,8 +7,9 @@ import { TimelineTab } from './tabs/TimelineTab'
 import { ViewsTab } from './tabs/ViewsTab'
 import { AjaxTab } from './tabs/AjaxTab'
 import { CacheTab } from './tabs/CacheTab'
+import { HttpTab } from './tabs/HttpTab'
 
-type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'timeline' | 'views' | 'cache'
+type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache'
 
 interface Props {
   profile: Profile
@@ -20,6 +21,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab)
   const cd = profile.collectors_data || {}
   const hasAjax = (cd['ajax'] as any)?.total_requests > 0
+  const hasHttp = (cd['http'] as any)?.total_requests > 0
 
   const handleTabClick = (tab: TabKey) => (e: MouseEvent) => {
     e.preventDefault()
@@ -53,6 +55,9 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {hasAjax && (
             <a href="#" class={tabClass('ajax')} onClick={handleTabClick('ajax')}>AJAX</a>
           )}
+          {hasHttp && (
+            <a href="#" class={tabClass('http')} onClick={handleTabClick('http')}>HTTP</a>
+          )}
           <a href="#" class={tabClass('timeline')} onClick={handleTabClick('timeline')}>Timeline</a>
           <a href="#" class={tabClass('views')} onClick={handleTabClick('views')}>Views</a>
           <a href="#" class={tabClass('cache')} onClick={handleTabClick('cache')}>Cache</a>
@@ -63,6 +68,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {activeTab === 'dump' && <DumpsTab dumpData={cd['dump'] as any} />}
           {activeTab === 'database' && <DatabaseTab dbData={cd['database'] as any} />}
           {activeTab === 'ajax' && <AjaxTab ajaxData={cd['ajax'] as any} />}
+          {activeTab === 'http' && <HttpTab httpData={cd['http'] as any} />}
           {activeTab === 'timeline' && <TimelineTab perfData={cd['performance'] as any} />}
           {activeTab === 'views' && <ViewsTab viewData={cd['view'] as any} />}
           {activeTab === 'cache' && <CacheTab cacheData={cd['cache'] as any} />}

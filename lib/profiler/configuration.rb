@@ -7,7 +7,8 @@ module Profiler
                   :track_memory, :memory_warning_threshold,
                   :mcp_enabled, :mcp_transport, :mcp_port,
                   :authorization_mode, :max_profiles, :extension_cors_enabled,
-                  :track_ajax, :ajax_skip_paths
+                  :track_ajax, :ajax_skip_paths,
+                  :track_http, :slow_http_threshold, :http_skip_hosts
 
     attr_reader :authorize_block
 
@@ -30,6 +31,9 @@ module Profiler
       @extension_cors_enabled = true
       @track_ajax = true
       @ajax_skip_paths = [/^\/_profiler/]
+      @track_http = true
+      @slow_http_threshold = 500 # milliseconds
+      @http_skip_hosts = []
     end
 
     def authorize_with(&block)
