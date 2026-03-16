@@ -23,7 +23,7 @@ A comprehensive Rails profiler similar, featuring a web debug toolbar, profiling
 Add this line to your application's Gemfile:
 
 ```ruby
-gem 'profiler', path: '/path/to/profiler' # Or from RubyGems once published
+gem 'profiler', git: 'git@git.duplessy.eu:sebastien/rails-profiler-gem.git'
 ```
 
 And then execute:
