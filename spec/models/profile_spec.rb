@@ -144,7 +144,8 @@ RSpec.describe Profiler::Models::Profile do
       hash = profile.to_h
       expect(hash).to include(:token, :path, :method, :status, :duration,
                               :started_at, :finished_at, :params, :headers,
-                              :collectors_data, :tabs, :parent_token, :is_ajax)
+                              :collectors_data, :tabs, :parent_token, :is_ajax,
+                              :profile_type)
     end
 
     it "serializes started_at as iso8601 string" do
@@ -213,6 +214,43 @@ RSpec.describe Profiler::Models::Profile do
                        params: { "secret" => "x" }, env: {})
       profile = described_class.new(request)
       expect(profile.params).not_to have_key("secret")
+    end
+  end
+
+  describe "#profile_type" do
+    it "defaults to 'http' for a request profile" do
+      profile = described_class.new(mock_request)
+      expect(profile.profile_type).to eq("http")
+    end
+
+    it "defaults to 'http' when created without a request" do
+      expect(described_class.new.profile_type).to eq("http")
+    end
+
+    it "can be set to 'job'" do
+      profile = described_class.new
+      profile.profile_type = "job"
+      expect(profile.profile_type).to eq("job")
+    end
+
+    it "is included in to_h" do
+      profile = described_class.new
+      profile.profile_type = "job"
+      expect(profile.to_h[:profile_type]).to eq("job")
+    end
+
+    it "round-trips through from_json" do
+      profile = described_class.new
+      profile.profile_type = "job"
+      profile.finish(200)
+      restored = described_class.from_json(profile.to_json)
+      expect(restored.profile_type).to eq("job")
+    end
+
+    it "falls back to 'http' when absent from JSON (backward compat)" do
+      json = { token: SecureRandom.hex(16), path: "/", method: "GET" }.to_json
+      profile = described_class.from_json(json)
+      expect(profile.profile_type).to eq("http")
     end
   end
 

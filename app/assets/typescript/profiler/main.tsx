@@ -1,6 +1,7 @@
 import { render } from 'preact'
 import { ProfileList } from './components/ProfileList'
 import { ProfileDashboard } from './components/dashboard/ProfileDashboard'
+import { JobProfileDashboard } from './components/dashboard/JobProfileDashboard'
 import { initTimeline } from './timeline'
 import { formatSQL } from './sql-formatter'
 import { themeManager, createThemeToggle } from './theme'
@@ -18,7 +19,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const profile = JSON.parse(dataEl.textContent!)
       const tab = new URLSearchParams(location.search).get('tab') || 'request'
       const embedded = showEl.dataset.embedded === 'true'
-      render(<ProfileDashboard profile={profile} initialTab={tab as any} embedded={embedded} />, showEl)
+      if (profile.profile_type === 'job') {
+        render(<JobProfileDashboard profile={profile} initialTab={tab} embedded={embedded} />, showEl)
+      } else {
+        render(<ProfileDashboard profile={profile} initialTab={tab as any} embedded={embedded} />, showEl)
+      }
     }
   }
 

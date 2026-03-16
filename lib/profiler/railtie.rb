@@ -48,6 +48,26 @@ module Profiler
       end
     end
 
+    initializer "profiler.setup_job_instrumentation" do
+      next unless Profiler.configuration.enabled && Profiler.configuration.track_jobs
+
+      require_relative "job_profiler"
+
+      if defined?(Sidekiq)
+        require_relative "instrumentation/sidekiq_middleware"
+        Sidekiq.configure_server do |config|
+          config.server_middleware do |chain|
+            chain.add Profiler::Instrumentation::SidekiqMiddleware
+          end
+        end
+      end
+
+      if defined?(ActiveJob::Base)
+        require_relative "instrumentation/active_job_instrumentation"
+        ActiveJob::Base.include Profiler::Instrumentation::ActiveJobInstrumentation
+      end
+    end
+
     rake_tasks do
       load "profiler/tasks/profiler.rake"
     end

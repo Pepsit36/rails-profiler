@@ -20,6 +20,8 @@ require "profiler/middleware/toolbar_injector"
 require "profiler/middleware/cors_middleware"
 require "profiler/middleware/profiler_middleware"
 require "profiler/mcp/tools/analyze_queries"
+require "profiler/collectors/job_collector"
+require "profiler/job_profiler"
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
@@ -56,8 +58,27 @@ def build_profile(attrs = {})
       collectors_data: attrs[:collectors_data] || {},
       tabs: attrs[:tabs] || [],
       parent_token: attrs[:parent_token],
-      is_ajax: attrs[:is_ajax] || false
+      is_ajax: attrs[:is_ajax] || false,
+      profile_type: attrs[:profile_type] || "http"
     }
   )
   profile
+end
+
+def build_job_profile(attrs = {})
+  build_profile(attrs.merge(
+    method: "JOB",
+    status: attrs[:status] || 200,
+    profile_type: "job",
+    collectors_data: attrs[:collectors_data] || {
+      "job" => {
+        "job_class" => attrs[:job_class] || "TestJob",
+        "job_id" => attrs[:job_id] || SecureRandom.hex(8),
+        "queue" => attrs[:queue] || "default",
+        "arguments" => attrs[:arguments] || [],
+        "executions" => attrs[:executions] || 0,
+        "status" => attrs[:job_status] || "completed"
+      }
+    }
+  ))
 end

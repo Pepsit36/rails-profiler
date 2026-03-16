@@ -8,7 +8,8 @@ module Profiler
                   :mcp_enabled, :mcp_transport, :mcp_port,
                   :authorization_mode, :max_profiles, :extension_cors_enabled,
                   :track_ajax, :ajax_skip_paths,
-                  :track_http, :slow_http_threshold, :http_skip_hosts
+                  :track_http, :slow_http_threshold, :http_skip_hosts,
+                  :track_jobs
 
     attr_reader :authorize_block
 
@@ -34,6 +35,7 @@ module Profiler
       @track_http = true
       @slow_http_threshold = 500 # milliseconds
       @http_skip_hosts = []
+      @track_jobs = true
     end
 
     def authorize_with(&block)

@@ -9,7 +9,7 @@ module Profiler
       attr_accessor :token, :path, :method, :status, :duration, :memory,
                     :started_at, :finished_at, :params, :headers,
                     :response_headers, :collectors_data, :collectors_metadata,
-                    :parent_token, :is_ajax
+                    :parent_token, :is_ajax, :profile_type
 
       def initialize(request = nil)
         @token = SecureRandom.hex(16)
@@ -18,6 +18,7 @@ module Profiler
         @collectors_metadata = []
         @parent_token = nil
         @is_ajax = false
+        @profile_type = "http"
 
         if request
           @path = request.path
@@ -58,6 +59,7 @@ module Profiler
 
       def to_h
         {
+          profile_type: @profile_type,
           token: @token,
           path: @path,
           method: @method,
@@ -100,6 +102,7 @@ module Profiler
         profile.response_headers = data[:response_headers]
         profile.parent_token = data[:parent_token]
         profile.is_ajax = data[:is_ajax] || false
+        profile.profile_type = data[:profile_type] || "http"
 
         # Convert collectors_data keys to strings recursively for consistency
         profile.collectors_data = (data[:collectors_data] || {}).transform_keys(&:to_s).transform_values do |value|

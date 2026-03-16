@@ -6,6 +6,7 @@ export interface Profile {
   duration: number;
   memory?: number;
   started_at: string;
+  profile_type?: 'http' | 'job';
   params?: Record<string, any>;
   headers?: Record<string, any>;
   response_headers?: Record<string, any>;
@@ -18,6 +19,7 @@ export interface Profile {
     view?: ViewData;
     ajax?: AjaxData;
     http?: HttpData;
+    job?: JobData;
     [key: string]: any;  // Allow custom collector data
   };
   tabs?: TabConfig[];  // Tab configurations from collectors
@@ -152,5 +154,15 @@ export interface HttpRequest {
   response_body?: string;
   response_size: number;
   backtrace: string[];
+  error?: string;
+}
+
+export interface JobData {
+  job_class: string;
+  job_id: string;
+  queue: string;
+  arguments: any[];
+  executions: number;
+  status: 'running' | 'completed' | 'failed';
   error?: string;
 }
