@@ -42,7 +42,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency "mcp"
 
   # Development dependencies
-  spec.add_development_dependency "rspec-rails", "~> 6.0"
   spec.add_development_dependency "webmock", "~> 3.18"
   spec.add_development_dependency "rake", "~> 13.0"
 end
