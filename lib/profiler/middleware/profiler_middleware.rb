@@ -99,8 +99,13 @@ module Profiler
       end
 
       def current_memory
-        if defined?(GC.stat)
-          GC.stat(:total_allocated_objects) * 40 # Rough estimate
+        return 0 unless defined?(GC.stat)
+
+        stats = GC.stat
+        if stats.key?(:total_allocated_size)
+          stats[:total_allocated_size]
+        elsif stats.key?(:total_allocated_objects)
+          stats[:total_allocated_objects] * 40
         else
           0
         end

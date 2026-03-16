@@ -86,29 +86,28 @@ module Profiler
       end
 
       def self.from_hash(data)
-        profile = allocate
-        profile.instance_variable_set(:@token, data[:token])
-        profile.instance_variable_set(:@path, data[:path])
-        profile.instance_variable_set(:@method, data[:method])
-        profile.instance_variable_set(:@status, data[:status])
-        profile.instance_variable_set(:@duration, data[:duration])
-        profile.instance_variable_set(:@memory, data[:memory])
-        profile.instance_variable_set(:@started_at, data[:started_at] ? Time.parse(data[:started_at]) : nil)
-        profile.instance_variable_set(:@finished_at, data[:finished_at] ? Time.parse(data[:finished_at]) : nil)
-        profile.instance_variable_set(:@params, data[:params])
-        profile.instance_variable_set(:@headers, data[:headers])
-        profile.instance_variable_set(:@response_headers, data[:response_headers])
-        profile.instance_variable_set(:@parent_token, data[:parent_token])
-        profile.instance_variable_set(:@is_ajax, data[:is_ajax] || false)
+        profile = new
+        profile.token = data[:token]
+        profile.path = data[:path]
+        profile.method = data[:method]
+        profile.status = data[:status]
+        profile.duration = data[:duration]
+        profile.memory = data[:memory]
+        profile.started_at = data[:started_at] ? Time.parse(data[:started_at]) : nil
+        profile.finished_at = data[:finished_at] ? Time.parse(data[:finished_at]) : nil
+        profile.params = data[:params]
+        profile.headers = data[:headers]
+        profile.response_headers = data[:response_headers]
+        profile.parent_token = data[:parent_token]
+        profile.is_ajax = data[:is_ajax] || false
 
         # Convert collectors_data keys to strings recursively for consistency
-        collectors_data = (data[:collectors_data] || {}).transform_keys(&:to_s).transform_values do |value|
+        profile.collectors_data = (data[:collectors_data] || {}).transform_keys(&:to_s).transform_values do |value|
           deep_stringify_keys(value)
         end
-        profile.instance_variable_set(:@collectors_data, collectors_data)
 
         # Restore tabs metadata
-        profile.instance_variable_set(:@collectors_metadata, data[:tabs] || [])
+        profile.collectors_metadata = data[:tabs] || []
 
         profile
       end
