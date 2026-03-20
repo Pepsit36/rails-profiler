@@ -22,7 +22,7 @@ module Profiler
       def tab_config
         {
           key: "http",
-          label: "HTTP",
+          label: "Outbound HTTP",
           icon: icon,
           priority: priority,
           enabled: true,

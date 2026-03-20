@@ -56,7 +56,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
             <a href="#" class={tabClass('ajax')} onClick={handleTabClick('ajax')}>AJAX</a>
           )}
           {hasHttp && (
-            <a href="#" class={tabClass('http')} onClick={handleTabClick('http')}>HTTP</a>
+            <a href="#" class={tabClass('http')} onClick={handleTabClick('http')}>Outbound HTTP</a>
           )}
           <a href="#" class={tabClass('timeline')} onClick={handleTabClick('timeline')}>Timeline</a>
           <a href="#" class={tabClass('views')} onClick={handleTabClick('views')}>Views</a>

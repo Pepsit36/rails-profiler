@@ -24,6 +24,7 @@ Profiler::Engine.routes.draw do
   namespace :api do
     resources :profiles, only: [:index, :show]
     resources :jobs, only: [:index, :show]
+    resources :outbound_http, only: [:index]
     get "toolbar/:token", to: "toolbar#show"
     post "ajax/link", to: "ajax#link"
   end

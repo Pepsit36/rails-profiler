@@ -65,6 +65,7 @@ module Profiler
         require_relative "tools/get_profile_ajax"
         require_relative "tools/get_profile_dumps"
         require_relative "tools/get_profile_http"
+        require_relative "tools/query_jobs"
 
         [
           define_tool(
@@ -75,6 +76,7 @@ module Profiler
                 path: { type: "string", description: "Filter by request path (partial match)" },
                 method: { type: "string", description: "Filter by HTTP method (GET, POST, etc.)" },
                 min_duration: { type: "number", description: "Minimum duration in milliseconds" },
+                profile_type: { type: "string", description: "Filter by type: 'http' or 'job'" },
                 limit: { type: "number", description: "Maximum number of results" }
               }
             },
@@ -134,6 +136,18 @@ module Profiler
               required: ["token"]
             },
             handler: Tools::GetProfileHttp
+          ),
+          define_tool(
+            name: "query_jobs",
+            description: "Search and filter background job profiles by queue, status, etc.",
+            input_schema: {
+              properties: {
+                queue: { type: "string", description: "Filter by queue name" },
+                status: { type: "string", description: "Filter by status (completed, failed)" },
+                limit: { type: "number", description: "Maximum number of results" }
+              }
+            },
+            handler: Tools::QueryJobs
           )
         ]
       end
@@ -149,11 +163,13 @@ module Profiler
         require_relative "resources/recent_requests"
         require_relative "resources/slow_queries"
         require_relative "resources/n1_patterns"
+        require_relative "resources/recent_jobs"
 
         handlers = {
           "profiler://recent" => Resources::RecentRequests,
           "profiler://slow-queries" => Resources::SlowQueries,
-          "profiler://n1-patterns" => Resources::N1Patterns
+          "profiler://n1-patterns" => Resources::N1Patterns,
+          "profiler://recent-jobs" => Resources::RecentJobs
         }
 
         resources = [
@@ -173,6 +189,12 @@ module Profiler
             uri: "profiler://n1-patterns",
             name: "N+1 Query Patterns",
             description: "Cross-profile N+1 query pattern detection across the last 100 profiles",
+            mime_type: "application/json"
+          ),
+          ::MCP::Resource.new(
+            uri: "profiler://recent-jobs",
+            name: "Recent Jobs",
+            description: "List of recently profiled background jobs",
             mime_type: "application/json"
           )
         ]

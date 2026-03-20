@@ -22,6 +22,10 @@ module Profiler
             profiles = profiles.select { |p| p.duration && p.duration >= min_dur }
           end
 
+          if params["profile_type"]
+            profiles = profiles.select { |p| p.profile_type == params["profile_type"] }
+          end
+
           # Format as markdown table
           text = format_profiles_table(profiles)
 
@@ -43,14 +47,15 @@ module Profiler
           lines = []
           lines << "# Profiled Requests\n"
           lines << "Found #{profiles.size} profiles:\n"
-          lines << "| Time | Method | Path | Duration | Queries | Status | Token |"
-          lines << "|------|--------|------|----------|---------|--------|-------|"
+          lines << "| Time | Type | Method | Path | Duration | Queries | Status | Token |"
+          lines << "|------|------|--------|------|----------|---------|--------|-------|"
 
           profiles.each do |profile|
             db_data = profile.collector_data("database")
             query_count = db_data ? db_data["total_queries"] : 0
+            type = profile.profile_type || "http"
 
-            lines << "| #{profile.started_at.strftime('%H:%M:%S')} | #{profile.method} | #{profile.path} | #{profile.duration.round(2)}ms | #{query_count} | #{profile.status} | #{profile.token} |"
+            lines << "| #{profile.started_at.strftime('%H:%M:%S')} | #{type} | #{profile.method} | #{profile.path} | #{profile.duration.round(2)}ms | #{query_count} | #{profile.status} | #{profile.token} |"
           end
 
           lines.join("\n")

@@ -57,7 +57,7 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
           <a href="#" class={tabClass('database')} onClick={handleTabClick('database')}>Database</a>
           <a href="#" class={tabClass('cache')} onClick={handleTabClick('cache')}>Cache</a>
           {hasHttp && (
-            <a href="#" class={tabClass('http')} onClick={handleTabClick('http')}>HTTP</a>
+            <a href="#" class={tabClass('http')} onClick={handleTabClick('http')}>Outbound HTTP</a>
           )}
         </div>
 

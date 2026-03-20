@@ -46,6 +46,22 @@ module Profiler
           lines << "**Memory:** #{(profile.memory / 1024.0 / 1024.0).round(2)} MB" if profile.memory
           lines << "**Time:** #{profile.started_at}\n"
 
+          # Job section
+          job_data = profile.collector_data("job")
+          if job_data && job_data["job_class"]
+            lines << "## Job"
+            lines << "- Class: #{job_data['job_class']}"
+            lines << "- Job ID: #{job_data['job_id']}"
+            lines << "- Queue: #{job_data['queue']}"
+            lines << "- Executions: #{job_data['executions']}"
+            lines << "- Status: #{job_data['status']}"
+            lines << "- Error: #{job_data['error']}" if job_data['error']
+            if job_data['arguments'] && !job_data['arguments'].empty?
+              lines << "- Arguments: #{job_data['arguments'].map(&:to_s).join(', ')}"
+            end
+            lines << ""
+          end
+
           # Request section
           req_data = profile.collector_data("request")
           if req_data

@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'preact/hooks'
-import { Profile } from '../dashboard/types'
+import { Profile, HttpRequest } from '../dashboard/types'
+import { HttpRequestDetail } from './dashboard/tabs/HttpTab'
 
 const BASE = '/_profiler'
+
+interface OutboundRequest extends HttpRequest {
+  profile_token: string
+  profile_started_at: string
+}
 
 function statusBadge(status: number): string {
   if (status >= 200 && status < 300) return 'badge-success'
@@ -27,14 +33,18 @@ function formatMemory(bytes?: number): string {
 }
 
 export function ProfileList() {
-  const [section, setSection] = useState<'http' | 'jobs'>('http')
+  const [section, setSection] = useState<'http' | 'jobs' | 'outbound'>('http')
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [jobs, setJobs] = useState<Profile[]>([])
+  const [outboundRequests, setOutboundRequests] = useState<OutboundRequest[]>([])
   const [loadingHttp, setLoadingHttp] = useState(true)
   const [loadingJobs, setLoadingJobs] = useState(false)
+  const [loadingOutbound, setLoadingOutbound] = useState(false)
   const [jobsLoaded, setJobsLoaded] = useState(false)
+  const [outboundLoaded, setOutboundLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [jobsError, setJobsError] = useState<string | null>(null)
+  const [outboundError, setOutboundError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`${BASE}/api/profiles`)
@@ -66,12 +76,30 @@ export function ProfileList() {
       })
   }
 
-  const handleSectionChange = (s: 'http' | 'jobs') => {
-    setSection(s)
-    if (s === 'jobs') loadJobs()
+  const loadOutbound = () => {
+    if (outboundLoaded) return
+    setLoadingOutbound(true)
+    fetch(`${BASE}/api/outbound_http`)
+      .then(res => res.json())
+      .then(data => {
+        setOutboundRequests(data)
+        setLoadingOutbound(false)
+        setOutboundLoaded(true)
+      })
+      .catch(() => {
+        setOutboundError('Failed to load outbound HTTP requests')
+        setLoadingOutbound(false)
+        setOutboundLoaded(true)
+      })
   }
 
-  const tabClass = (s: 'http' | 'jobs') => `tab${section === s ? ' active' : ''}`
+  const handleSectionChange = (s: 'http' | 'jobs' | 'outbound') => {
+    setSection(s)
+    if (s === 'jobs') loadJobs()
+    if (s === 'outbound') loadOutbound()
+  }
+
+  const tabClass = (s: 'http' | 'jobs' | 'outbound') => `tab${section === s ? ' active' : ''}`
 
   return (
     <div class="container">
@@ -84,6 +112,7 @@ export function ProfileList() {
         <div class="tabs">
           <a href="#" class={tabClass('http')} onClick={e => { e.preventDefault(); handleSectionChange('http') }}>HTTP Requests</a>
           <a href="#" class={tabClass('jobs')} onClick={e => { e.preventDefault(); handleSectionChange('jobs') }}>Background Jobs</a>
+          <a href="#" class={tabClass('outbound')} onClick={e => { e.preventDefault(); handleSectionChange('outbound') }}>Outbound HTTP</a>
         </div>
 
         <div class="profiler-p-4 tab-content active">
@@ -168,6 +197,33 @@ export function ProfileList() {
                   })}
                 </tbody>
               </table>
+            )
+          )}
+
+          {section === 'outbound' && (
+            loadingOutbound ? (
+              <div class="profiler-empty"><div class="profiler-empty__title">Loading...</div></div>
+            ) : outboundError ? (
+              <div class="profiler-empty"><div class="profiler-empty__title">{outboundError}</div></div>
+            ) : outboundRequests.length === 0 ? (
+              <div class="profiler-empty">
+                <div class="profiler-empty__title">No outbound HTTP requests found</div>
+                <p class="profiler-empty__description">Make requests to external services to see outbound HTTP data</p>
+              </div>
+            ) : (
+              <>
+                <p class="profiler-text--xs profiler-text--muted profiler-mb-3">
+                  {outboundRequests.length} outbound request{outboundRequests.length !== 1 ? 's' : ''} across all profiles. Click a request to expand headers and body.
+                </p>
+                {outboundRequests.map((req, i) => (
+                  <div key={i} style="margin-bottom:4px">
+                    <div class="profiler-text--xs profiler-text--muted" style="margin-bottom:2px">
+                      {formatTime(req.profile_started_at)} · Profile: <a href={`${BASE}/profiles/${req.profile_token}`}>{req.profile_token.substring(0, 8)}…</a>
+                    </div>
+                    <HttpRequestDetail req={req} index={i} threshold={500} />
+                  </div>
+                ))}
+              </>
             )
           )}
         </div>

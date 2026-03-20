@@ -5,7 +5,8 @@
     "build": "npm run build:js:main && npm run build:js:toolbar && npm run build:css",
     "build:js:main": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020",
     "build:js:toolbar": "esbuild app/assets/typescript/profiler/toolbar-bundle.tsx --bundle --outfile=app/assets/builds/profiler-toolbar.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020",
-    "build:css": "sass app/assets/stylesheets/profiler/main.scss app/assets/builds/profiler.css --no-source-map"
+    "build:css": "sass app/assets/stylesheets/profiler/main.scss app/assets/builds/profiler.css --no-source-map",
+    "watch": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --watch"
   },
   "dependencies": {
     "preact": "^10.0.0"

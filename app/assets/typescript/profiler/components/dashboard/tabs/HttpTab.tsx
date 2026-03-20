@@ -63,7 +63,7 @@ function BodyPreview({ body, label }: { body: string | undefined, label: string 
   )
 }
 
-function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest, index: number, threshold: number }) {
+export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest, index: number, threshold: number }) {
   const [open, setOpen] = useState(false)
   const isError = req.status >= 400 || req.status === 0
   const isSlow = req.duration >= threshold
