@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "net/http"
+require "base64"
 
 module Profiler
   module Instrumentation
@@ -26,16 +27,24 @@ module Profiler
 
           duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round(2)
           resp_body = response.body.to_s
+          resp_content_type = response["content-type"].to_s
+          req_content_type = req["content-type"].to_s
+
+          processed_req = req_body.empty? ? { body: nil, encoding: "text" } : NetHttpInstrumentation.process_body(req_body, req_content_type)
+          processed_resp = NetHttpInstrumentation.process_body(resp_body, resp_content_type)
+
           collector.record_request(
             url: url,
             method: req.method,
             status: response.code.to_i,
             duration: duration,
             request_headers: req_headers,
-            request_body: req_body.empty? ? nil : NetHttpInstrumentation.truncate_body(req_body),
+            request_body: processed_req[:body],
+            request_body_encoding: processed_req[:encoding],
             request_size: req_body.bytesize,
             response_headers: response.to_hash.transform_values { |v| v.join(", ") },
-            response_body: NetHttpInstrumentation.truncate_body(resp_body),
+            response_body: processed_resp[:body],
+            response_body_encoding: processed_resp[:encoding],
             response_size: resp_body.bytesize,
             backtrace: NetHttpInstrumentation.extract_backtrace
           )
@@ -50,9 +59,11 @@ module Profiler
               duration: duration,
               request_headers: defined?(req_headers) ? req_headers : {},
               request_body: nil,
+              request_body_encoding: "text",
               request_size: 0,
               response_headers: {},
               response_body: nil,
+              response_body_encoding: "text",
               response_size: 0,
               backtrace: NetHttpInstrumentation.extract_backtrace,
               error: e.message
@@ -74,6 +85,12 @@ module Profiler
 
       SKIP_HOSTS = %w[127.0.0.1 localhost ::1].freeze
 
+      TEXT_BODY_LIMIT   = 512 * 1024 # 512 KB
+      BINARY_BODY_LIMIT = 256 * 1024 # 256 KB (before base64)
+
+      TEXT_CONTENT_TYPES   = /\A(text\/|application\/(json|xml|xhtml|javascript|x-www-form-urlencoded)|image\/svg)/i
+      BINARY_CONTENT_TYPES = /\A(image\/|application\/pdf|application\/octet-stream|application\/zip|audio\/|video\/)/i
+
       def self.install!
         return if @installed
         Net::HTTP.prepend(RequestPatch)
@@ -85,14 +102,18 @@ module Profiler
           Profiler.configuration.http_skip_hosts.any? { |p| host.match?(p) }
       end
 
-      BODY_TRUNCATE_LIMIT = 4096 # bytes
+      def self.process_body(body, content_type)
+        return { body: nil, encoding: "text" } if body.nil? || body.empty?
 
-      def self.truncate_body(body)
-        return nil if body.nil? || body.empty?
-        if body.bytesize > BODY_TRUNCATE_LIMIT
-          body.byteslice(0, BODY_TRUNCATE_LIMIT) + "\n… [truncated, #{body.bytesize} bytes total]"
+        mime = content_type.split(";").first.to_s.strip
+
+        if mime.match?(BINARY_CONTENT_TYPES)
+          truncated = body.byteslice(0, BINARY_BODY_LIMIT) || ""
+          { body: Base64.strict_encode64(truncated.b), encoding: "base64" }
         else
-          body
+          # Text (including unknown content types)
+          text = body.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")
+          { body: text.byteslice(0, TEXT_BODY_LIMIT), encoding: "text" }
         end
       end
 

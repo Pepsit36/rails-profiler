@@ -149,9 +149,11 @@ export interface HttpRequest {
   duration: number;
   request_headers: Record<string, string>;
   request_body?: string;
+  request_body_encoding?: 'text' | 'base64';
   request_size: number;
   response_headers: Record<string, string>;
   response_body?: string;
+  response_body_encoding?: 'text' | 'base64';
   response_size: number;
   backtrace: string[];
   error?: string;

@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks'
+import { useState, useEffect } from 'preact/hooks'
 import { HttpData, HttpRequest } from '../../../dashboard/types'
 
 interface Props {
@@ -40,23 +40,166 @@ function HeadersTable({ headers }: { headers: Record<string, string> }) {
   )
 }
 
-function BodyPreview({ body, label }: { body: string | undefined, label: string }) {
+type BodyCategory = 'json' | 'xml' | 'csv' | 'html' | 'text' | 'image' | 'pdf' | 'svg' | 'binary'
+
+function detectContentType(headers: Record<string, string>): BodyCategory {
+  const ct = Object.entries(headers).find(([k]) => k.toLowerCase() === 'content-type')?.[1] || ''
+  const mime = ct.split(';')[0].trim().toLowerCase()
+  if (mime.includes('json')) return 'json'
+  if (mime === 'image/svg+xml') return 'svg'
+  if (mime.startsWith('image/')) return 'image'
+  if (mime === 'application/pdf') return 'pdf'
+  if (mime.includes('xml')) return 'xml'
+  if (mime === 'text/csv' || mime === 'application/csv') return 'csv'
+  if (mime === 'text/html') return 'html'
+  if (mime.startsWith('application/') && !mime.includes('json') && !mime.includes('xml') && !mime.includes('javascript')) return 'binary'
+  return 'text'
+}
+
+function formatXml(raw: string): string {
+  try {
+    let indent = 0
+    return raw
+      .replace(/>\s*</g, '><')
+      .replace(/(<\/?[^>]+>)/g, (tag) => {
+        if (tag.startsWith('</')) {
+          indent = Math.max(0, indent - 1)
+          return '\n' + '  '.repeat(indent) + tag
+        }
+        if (tag.endsWith('/>') || /<\?/.test(tag)) {
+          return '\n' + '  '.repeat(indent) + tag
+        }
+        const out = '\n' + '  '.repeat(indent) + tag
+        indent++
+        return out
+      })
+      .trim()
+  } catch {
+    return raw
+  }
+}
+
+function parseCsv(raw: string): string[][] {
+  return raw.split('\n').filter(Boolean).map(line => {
+    const cols: string[] = []
+    let cur = ''
+    let inQ = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (ch === '"') { inQ = !inQ }
+      else if (ch === ',' && !inQ) { cols.push(cur); cur = '' }
+      else { cur += ch }
+    }
+    cols.push(cur)
+    return cols
+  })
+}
+
+function formatTextBody(body: string, category: BodyCategory): string | null {
+  if (category === 'json') {
+    try { return JSON.stringify(JSON.parse(body), null, 2) } catch { return body }
+  }
+  if (category === 'xml') return formatXml(body)
+  return body
+}
+
+const PREVIEW_LIMIT = 500
+const CSV_ROW_LIMIT = 10
+
+function SmartBodyPreview({ body, encoding, headers }: {
+  body: string | undefined,
+  encoding: 'text' | 'base64' | undefined,
+  headers: Record<string, string>
+}) {
   const [expanded, setExpanded] = useState(false)
+  const [objectUrl, setObjectUrl] = useState<string | null>(null)
+
+  const category = detectContentType(headers)
+
+  useEffect(() => {
+    if (encoding !== 'base64' || !body) return
+    const mime = Object.entries(headers).find(([k]) => k.toLowerCase() === 'content-type')?.[1]?.split(';')[0].trim() || 'application/octet-stream'
+    const raw = atob(body)
+    const bytes = new Uint8Array(raw.length)
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime }))
+    setObjectUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [body, encoding, headers])
+
   if (!body) return <span class="profiler-text--muted profiler-text--xs">empty</span>
 
-  const preview = expanded ? body : body.slice(0, 300)
-  const truncated = body.length > 300 && !expanded
+  if (encoding === 'base64') {
+    const mime = Object.entries(headers).find(([k]) => k.toLowerCase() === 'content-type')?.[1]?.split(';')[0].trim() || 'application/octet-stream'
+    const filename = mime.replace('/', '_').replace(/[^a-z0-9_]/gi, '') + '_download'
+
+    return (
+      <div class="profiler-body-binary">
+        {objectUrl && (category === 'image' || category === 'svg') && (
+          <img src={objectUrl} alt="response preview" style="max-width:100%;max-height:300px;display:block;margin-bottom:8px;border-radius:4px;border:1px solid var(--profiler-border)" />
+        )}
+        {objectUrl && category === 'pdf' && (
+          <iframe src={objectUrl} class="profiler-body-preview-frame" title="PDF preview" />
+        )}
+        {objectUrl && (
+          <a href={objectUrl} download={filename} class="profiler-body-download-btn profiler-text--xs">
+            Download {mime}
+          </a>
+        )}
+        {!objectUrl && <span class="profiler-text--muted profiler-text--xs">Loading preview…</span>}
+      </div>
+    )
+  }
+
+  // Text path (encoding === 'text' or undefined for backwards compat)
+  if (category === 'csv') {
+    const rows = parseCsv(body)
+    const header = rows[0] || []
+    const dataRows = rows.slice(1)
+    const visible = expanded ? dataRows : dataRows.slice(0, CSV_ROW_LIMIT)
+    const hasMore = dataRows.length > CSV_ROW_LIMIT
+
+    return (
+      <div>
+        <div style="overflow-x:auto">
+          <table class="profiler-body-csv">
+            <thead>
+              <tr>{header.map((h, i) => <th key={i}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {visible.map((row, i) => (
+                <tr key={i}>{row.map((cell, j) => <td key={j}>{cell}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {hasMore && (
+          <button
+            class="profiler-link profiler-text--xs"
+            onClick={() => setExpanded(e => !e)}
+            style="margin-top:4px;background:none;border:none;cursor:pointer;color:var(--profiler-accent);padding:0"
+          >
+            {expanded ? 'Show less' : `Show all (${dataRows.length} rows)`}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const formatted = formatTextBody(body, category) ?? body
+  const preview = expanded ? formatted : formatted.slice(0, PREVIEW_LIMIT)
+  const truncated = formatted.length > PREVIEW_LIMIT && !expanded
 
   return (
     <div>
       <pre class="profiler-code profiler-text--xs" style="white-space:pre-wrap;word-break:break-all;margin:0">{preview}{truncated ? '…' : ''}</pre>
-      {body.length > 300 && (
+      {formatted.length > PREVIEW_LIMIT && (
         <button
           class="profiler-link profiler-text--xs"
           onClick={() => setExpanded(e => !e)}
           style="margin-top:4px;background:none;border:none;cursor:pointer;color:var(--profiler-accent);padding:0"
         >
-          {expanded ? 'Show less' : `Show all (${body.length} chars)`}
+          {expanded ? 'Show less' : `Show all (${formatted.length} chars)`}
         </button>
       )}
     </div>
@@ -118,7 +261,7 @@ export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest,
             {req.request_body && (
               <>
                 <div class="profiler-text--xs profiler-text--muted" style="margin-top:10px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Body</div>
-                <BodyPreview body={req.request_body} label="request" />
+                <SmartBodyPreview body={req.request_body} encoding={req.request_body_encoding} headers={req.request_headers || {}} />
               </>
             )}
           </div>
@@ -133,7 +276,7 @@ export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest,
             {req.response_body && (
               <>
                 <div class="profiler-text--xs profiler-text--muted" style="margin-top:10px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Body</div>
-                <BodyPreview body={req.response_body} label="response" />
+                <SmartBodyPreview body={req.response_body} encoding={req.response_body_encoding} headers={req.response_headers || {}} />
               </>
             )}
           </div>
