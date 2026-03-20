@@ -27,6 +27,7 @@ Gem::Specification.new do |spec|
     else
       Dir.glob("**/*", File::FNM_DOTMATCH).reject do |f|
         File.directory?(f) || (File.expand_path(f) == __FILE__) ||
+          f.end_with?(".gem") ||
           f.start_with?(*%w[bin/ test/ spec/ features/ test_app/ .git .github appveyor Gemfile])
       end
     end
