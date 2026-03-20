@@ -32,19 +32,18 @@ module Profiler
     end
 
     initializer "profiler.load_collectors" do
-      require_relative "collectors/http_collector"
-
-      # Load default collectors
-      Profiler.configure do |config|
-        config.collectors = [
-          Profiler::Collectors::RequestCollector,
-          Profiler::Collectors::DumpCollector,
-          Profiler::Collectors::DatabaseCollector,
-          Profiler::Collectors::PerformanceCollector,
-          Profiler::Collectors::ViewCollector,
-          Profiler::Collectors::CacheCollector,
-          Profiler::Collectors::HttpCollector
-        ]
+      if Profiler.configuration.collectors.empty?
+        Profiler.configure do |config|
+          config.collectors = [
+            Profiler::Collectors::RequestCollector,
+            Profiler::Collectors::DumpCollector,
+            Profiler::Collectors::DatabaseCollector,
+            Profiler::Collectors::PerformanceCollector,
+            Profiler::Collectors::ViewCollector,
+            Profiler::Collectors::CacheCollector,
+            Profiler::Collectors::HttpCollector
+          ]
+        end
       end
     end
 

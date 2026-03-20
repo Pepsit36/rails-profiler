@@ -11,5 +11,19 @@ module Profiler
       expires_in 1.hour, public: true
       render plain: js, content_type: "application/javascript"
     end
+
+    def main_js
+      path = Profiler::Engine.root.join("app", "assets", "builds", "profiler.js")
+      js = File.read(path)
+      expires_in 1.hour, public: true
+      render plain: js, content_type: "application/javascript"
+    end
+
+    def main_css
+      path = Profiler::Engine.root.join("app", "assets", "builds", "profiler.css")
+      css = File.read(path)
+      expires_in 1.hour, public: true
+      render plain: css, content_type: "text/css"
+    end
   end
 end

@@ -18,6 +18,8 @@ Profiler::Engine.routes.draw do
   end
 
   get "assets/profiler-toolbar.js", to: "assets#toolbar_js"
+  get "assets/profiler.js", to: "assets#main_js"
+  get "assets/profiler.css", to: "assets#main_css"
 
   namespace :api do
     resources :profiles, only: [:index, :show]
