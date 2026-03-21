@@ -41,7 +41,8 @@ module Profiler
             Profiler::Collectors::PerformanceCollector,
             Profiler::Collectors::ViewCollector,
             Profiler::Collectors::CacheCollector,
-            Profiler::Collectors::HttpCollector
+            Profiler::Collectors::HttpCollector,
+            Profiler::Collectors::FlameGraphCollector
           ]
         end
       end

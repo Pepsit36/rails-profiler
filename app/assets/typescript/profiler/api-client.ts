@@ -76,6 +76,17 @@ export class ProfilerAPI {
     return response.json();
   }
 
+  async getFlameGraphData(token: string): Promise<any> {
+    const url = `${this.baseURL}/profiles/${token}/flamegraph`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch flamegraph data: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
   async getDatabaseData(token: string): Promise<any> {
     const url = `${this.baseURL}/profiles/${token}/database`;
     const response = await fetch(url);

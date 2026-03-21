@@ -3,14 +3,15 @@
 module Profiler
   module Models
     class TimelineEvent
-      attr_reader :name, :started_at, :finished_at, :duration, :payload, :children
+      attr_reader :name, :started_at, :finished_at, :duration, :payload, :children, :category
 
-      def initialize(name:, started_at:, finished_at:, payload: {})
+      def initialize(name:, started_at:, finished_at:, payload: {}, category: nil)
         @name = name
         @started_at = started_at
         @finished_at = finished_at
         @duration = ((finished_at - started_at) * 1000).round(2) # milliseconds
         @payload = payload
+        @category = category
         @children = []
       end
 
@@ -19,7 +20,7 @@ module Profiler
       end
 
       def to_h
-        {
+        h = {
           name: @name,
           started_at: @started_at,
           finished_at: @finished_at,
@@ -27,6 +28,8 @@ module Profiler
           payload: @payload,
           children: @children.map(&:to_h)
         }
+        h[:category] = @category if @category
+        h
       end
 
       def to_json(*args)

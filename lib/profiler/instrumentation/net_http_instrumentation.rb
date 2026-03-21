@@ -33,6 +33,8 @@ module Profiler
           processed_req = req_body.empty? ? { body: nil, encoding: "text" } : NetHttpInstrumentation.process_body(req_body, req_content_type)
           processed_resp = NetHttpInstrumentation.process_body(resp_body, resp_content_type)
 
+          t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
           collector.record_request(
             url: url,
             method: req.method,
@@ -48,6 +50,10 @@ module Profiler
             response_size: resp_body.bytesize,
             backtrace: NetHttpInstrumentation.extract_backtrace
           )
+
+          fg = Thread.current[:profiler_flamegraph_collector]
+          fg&.record_http_event(started_at: t0, finished_at: t1, url: url, method: req.method, status: response.code.to_i)
+
           response
         rescue => e
           if defined?(t0) && t0

@@ -62,6 +62,7 @@ require_relative "profiler/collectors/view_collector"
 require_relative "profiler/collectors/cache_collector"
 require_relative "profiler/collectors/dump_collector"
 require_relative "profiler/collectors/http_collector"
+require_relative "profiler/collectors/flamegraph_collector"
 
 require_relative "profiler/railtie" if defined?(Rails::Railtie)
 require_relative "profiler/engine" if defined?(Rails::Engine)

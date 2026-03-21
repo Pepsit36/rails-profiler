@@ -53,6 +53,11 @@ module Profiler
       render json: @profile.collector_data("performance")
     end
 
+    def flamegraph
+      @profile = Profiler.storage.load(params[:id])
+      render json: @profile.collector_data("flamegraph")
+    end
+
     private
 
     def recalculate_ajax_data(profile)

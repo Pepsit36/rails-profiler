@@ -3,7 +3,7 @@ import { Profile } from '../../dashboard/types'
 import { RequestTab } from './tabs/RequestTab'
 import { DatabaseTab } from './tabs/DatabaseTab'
 import { DumpsTab } from './tabs/DumpsTab'
-import { TimelineTab } from './tabs/TimelineTab'
+import { FlameGraphTab } from './tabs/FlameGraphTab'
 import { ViewsTab } from './tabs/ViewsTab'
 import { AjaxTab } from './tabs/AjaxTab'
 import { CacheTab } from './tabs/CacheTab'
@@ -69,7 +69,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {activeTab === 'database' && <DatabaseTab dbData={cd['database'] as any} />}
           {activeTab === 'ajax' && <AjaxTab ajaxData={cd['ajax'] as any} />}
           {activeTab === 'http' && <HttpTab httpData={cd['http'] as any} />}
-          {activeTab === 'timeline' && <TimelineTab perfData={cd['performance'] as any} />}
+          {activeTab === 'timeline' && <FlameGraphTab flamegraphData={cd['flamegraph'] as any} perfData={cd['performance'] as any} />}
           {activeTab === 'views' && <ViewsTab viewData={cd['view'] as any} />}
           {activeTab === 'cache' && <CacheTab cacheData={cd['cache'] as any} />}
         </div>

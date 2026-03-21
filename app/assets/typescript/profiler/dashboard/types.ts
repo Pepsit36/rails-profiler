@@ -20,6 +20,7 @@ export interface Profile {
     ajax?: AjaxData;
     http?: HttpData;
     job?: JobData;
+    flamegraph?: FlameGraphData;
     [key: string]: any;  // Allow custom collector data
   };
   tabs?: TabConfig[];  // Tab configurations from collectors
@@ -167,4 +168,22 @@ export interface JobData {
   executions: number;
   status: 'running' | 'completed' | 'failed';
   error?: string;
+}
+
+export type FlameGraphCategory = 'controller' | 'view' | 'partial' | 'sql' | 'cache' | 'http'
+
+export interface FlameGraphNode {
+  name: string
+  started_at: number
+  finished_at: number
+  duration: number
+  category: FlameGraphCategory
+  payload?: Record<string, any>
+  children: FlameGraphNode[]
+}
+
+export interface FlameGraphData {
+  total_events: number
+  total_duration: number
+  root_events: FlameGraphNode[]
 }

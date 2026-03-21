@@ -14,6 +14,7 @@ Profiler::Engine.routes.draw do
       get :views
       get :cache
       get :performance
+      get :flamegraph
     end
   end
 
