@@ -18,7 +18,7 @@ module Profiler
       @storage = :memory
       @storage_options = {}
       @collectors = []
-      @skip_paths = [/_profiler/, /\.js$/, /\.css$/, /\.png$/, /\.jpg$/, /\.gif$/, /\.svg$/]
+      @skip_paths = [/_profiler/, /\.js$/, /\.css$/, /\.png$/, /\.jpg$/, /\.gif$/, /\.svg$/, /\.well-known/, /favicon\.ico/]
       @slow_query_threshold = 100 # milliseconds
       @max_queries_warning = 50
       @track_memory = true
