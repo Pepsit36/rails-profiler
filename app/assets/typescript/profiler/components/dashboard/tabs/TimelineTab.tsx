@@ -23,7 +23,7 @@ export function TimelineTab({ perfData }: Props) {
         <div key={index} class="profiler-query-card">
           <div class="profiler-query-card__header">
             <strong>{event.name}</strong>
-            <span class="badge badge-info">{event.duration.toFixed(2)} ms</span>
+            <span class={event.duration >= 500 ? 'badge-error' : event.duration >= 100 ? 'badge-warning' : 'badge-success'}>{event.duration.toFixed(2)} ms</span>
           </div>
           {event.payload && Object.keys(event.payload).length > 0 && (
             <pre class="profiler-text--xs profiler-text--muted profiler-mt-2">

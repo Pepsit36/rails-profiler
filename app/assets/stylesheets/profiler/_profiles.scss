@@ -86,6 +86,38 @@
   &::-webkit-scrollbar {
     display: none;
   }
+
+}
+
+.btn-refresh {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--profiler-text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: var(--profiler-radius-sm);
+  transition: color var(--profiler-transition-base), background var(--profiler-transition-base);
+  margin-bottom: -1px;
+
+  &:hover:not(:disabled) {
+    color: var(--profiler-accent);
+    background: var(--profiler-accent-bg);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+
+  &--spinning {
+    animation: profiler-spin 0.7s linear infinite;
+  }
+}
+
+@keyframes profiler-spin {
+  to { transform: rotate(360deg); }
 }
 
 .tab {
@@ -228,3 +260,51 @@
   border-bottom: 1px solid var(--profiler-border-accent);
   font-family: var(--profiler-font-mono);
 }
+
+// ============================================================================
+// ACTION BAR — filters + actions row
+// ============================================================================
+
+.profiler-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--profiler-space-2);
+  flex-wrap: wrap;
+}
+
+.profiler-filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--profiler-space-2);
+  flex-wrap: wrap;
+}
+
+.profiler-filter-count {
+  font-size: var(--profiler-text-xs);
+  color: var(--profiler-text-muted);
+  font-family: var(--profiler-font-mono);
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.profiler-filter-input,
+.profiler-filter-select {
+  height: 28px;
+  padding: 0 var(--profiler-space-2);
+  background: var(--profiler-bg-lighter);
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-sm);
+  color: var(--profiler-text);
+  font-family: var(--profiler-font-mono);
+  font-size: var(--profiler-text-xs);
+  transition: border-color var(--profiler-transition-base);
+
+  &:focus {
+    outline: none;
+    border-color: var(--profiler-accent);
+  }
+}
+
+.profiler-filter-input { width: 160px; }
+.profiler-filter-select { cursor: pointer; }

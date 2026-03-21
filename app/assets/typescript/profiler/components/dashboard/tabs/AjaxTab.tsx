@@ -41,7 +41,7 @@ export function AjaxTab({ ajaxData }: Props) {
           <h3 class="profiler-text--sm profiler-text--muted profiler-text--uppercase profiler-mb-3">By Method</h3>
           {Object.entries(ajaxData.by_method).map(([method, count]) => (
             <div key={method} class="profiler-kv-row">
-              <span class={`badge badge-${methodBadge(method)}`}>{method}</span>
+              <span class={`badge-${methodBadge(method)}`}>{method}</span>
               <strong>{count}</strong>
             </div>
           ))}
@@ -50,7 +50,7 @@ export function AjaxTab({ ajaxData }: Props) {
           <h3 class="profiler-text--sm profiler-text--muted profiler-text--uppercase profiler-mb-3">By Status</h3>
           {Object.entries(ajaxData.by_status).map(([status, count]) => (
             <div key={status} class="profiler-kv-row">
-              <span class={`badge badge-${status.startsWith('2') ? 'success' : (status.startsWith('4') || status.startsWith('5')) ? 'error' : 'warning'}`}>
+              <span class={`badge-${status.startsWith('2') ? 'success' : (status.startsWith('4') || status.startsWith('5')) ? 'error' : 'warning'}`}>
                 {status}
               </span>
               <strong>{count}</strong>
@@ -64,12 +64,12 @@ export function AjaxTab({ ajaxData }: Props) {
         <div key={index} class={`profiler-ajax-card profiler-ajax-card--${req.status >= 200 && req.status < 300 ? 'success' : 'error'}`}>
           <div class="profiler-ajax-card__row">
             <div class="profiler-flex profiler-flex--gap-3">
-              <span class={`profiler-ajax-card__method badge badge-${methodBadge(req.method)}`}>{req.method}</span>
+              <span class={`profiler-ajax-card__method badge-${methodBadge(req.method)}`}>{req.method}</span>
               <strong class="profiler-ajax-card__path">{req.path}</strong>
             </div>
             <div class="profiler-flex profiler-flex--gap-2">
-              <span class={`badge badge-${statusBadge(req.status)}`}>{req.status}</span>
-              <span class="badge badge-info">{req.duration.toFixed(2)} ms</span>
+              <span class={`badge-${statusBadge(req.status)}`}>{req.status}</span>
+              <span class={req.duration >= 500 ? 'badge-error' : req.duration >= 100 ? 'badge-warning' : 'badge-success'}>{req.duration.toFixed(2)} ms</span>
             </div>
           </div>
           <div class="profiler-ajax-card__row">

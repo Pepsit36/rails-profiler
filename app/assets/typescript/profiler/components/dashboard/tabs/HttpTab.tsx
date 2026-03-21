@@ -222,12 +222,12 @@ export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest,
       >
         <div class="profiler-flex profiler-flex--gap-3">
           <span style="font-size:11px;color:var(--profiler-muted)">{open ? '▾' : '▸'}</span>
-          <span class={`profiler-ajax-card__method badge badge-${methodBadge(req.method)}`}>{req.method}</span>
+          <span class={`profiler-ajax-card__method badge-${methodBadge(req.method)}`}>{req.method}</span>
           <strong class="profiler-ajax-card__path" style="word-break:break-all">{req.url}</strong>
         </div>
         <div class="profiler-flex profiler-flex--gap-2" style="flex-shrink:0">
-          <span class={`badge badge-${statusBadge(req.status)}`}>{req.status === 0 ? 'ERR' : req.status}</span>
-          <span class={`badge badge-${isSlow ? 'error' : 'info'}`}>{req.duration.toFixed(2)} ms</span>
+          <span class={`badge-${statusBadge(req.status)}`}>{req.status === 0 ? 'ERR' : req.status}</span>
+          <span class={req.duration >= 500 ? 'badge-error' : req.duration >= 100 ? 'badge-warning' : 'badge-success'}>{req.duration.toFixed(2)} ms</span>
         </div>
       </div>
 
@@ -334,7 +334,7 @@ export function HttpTab({ httpData }: Props) {
           <h3 class="profiler-text--sm profiler-text--muted profiler-text--uppercase profiler-mb-3">By Status</h3>
           {Object.entries(httpData.by_status).map(([status, count]) => (
             <div key={status} class="profiler-kv-row">
-              <span class={`badge badge-${status.startsWith('2') ? 'success' : (status.startsWith('4') || status.startsWith('5') || status === 'error') ? 'error' : 'warning'}`}>
+              <span class={`badge-${status.startsWith('2') ? 'success' : (status.startsWith('4') || status.startsWith('5') || status === 'error') ? 'error' : 'warning'}`}>
                 {status}
               </span>
               <strong>{count}</strong>

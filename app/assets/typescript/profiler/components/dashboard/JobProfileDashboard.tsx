@@ -36,12 +36,12 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
   return (
     <div class="container">
       <div class="header">
-        <h1>⚙️ Job Profile</h1>
+        <h1><a href="/_profiler?section=jobs"><span class="h1-emoji">⚙️</span> Job Profile</a></h1>
         <p>{profile.path}</p>
         <div class="profiler-flex profiler-flex--gap-4 profiler-mt-2">
           <span>Duration: <strong>{profile.duration.toFixed(2)} ms</strong></span>
           <span>Status: <strong>
-            <span class={`badge badge-${isFailed ? 'error' : 'success'}`}>
+            <span class={`badge-${isFailed ? 'error' : 'success'}`}>
               {isFailed ? 'Failed' : 'Completed'}
             </span>
           </strong></span>

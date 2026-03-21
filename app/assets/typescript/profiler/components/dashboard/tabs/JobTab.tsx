@@ -41,7 +41,7 @@ export function JobTab({ jobData }: Props) {
           </div>
           <div class="profiler-kv-row">
             <span class="profiler-text--sm">Status</span>
-            <span class={`badge badge-${isSuccess ? 'success' : 'error'}`}>
+            <span class={`badge-${isSuccess ? 'success' : 'error'}`}>
               {isSuccess ? '✓ Completed' : '✗ Failed'}
             </span>
           </div>

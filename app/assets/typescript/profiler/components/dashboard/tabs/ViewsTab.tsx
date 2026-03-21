@@ -28,7 +28,7 @@ export function ViewsTab({ viewData }: Props) {
             <div key={i} class="profiler-query-card profiler-query-card--success">
               <div class="profiler-query-card__header">
                 <span>{view.identifier}</span>
-                <span class="badge badge-success">{view.duration.toFixed(2)} ms</span>
+                <span class="badge-success">{view.duration.toFixed(2)} ms</span>
               </div>
             </div>
           ))}
@@ -41,7 +41,7 @@ export function ViewsTab({ viewData }: Props) {
             <div key={i} class="profiler-query-card profiler-query-card--success">
               <div class="profiler-query-card__header">
                 <span>{partial.identifier}</span>
-                <span class="badge badge-success">{partial.duration.toFixed(2)} ms</span>
+                <span class="badge-success">{partial.duration.toFixed(2)} ms</span>
               </div>
             </div>
           ))}
