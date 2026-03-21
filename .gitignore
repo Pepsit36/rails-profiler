@@ -38,3 +38,5 @@ Gemfile.lock
 
 # Built assets (compiled TypeScript and SCSS)
 app/assets/builds/
+
+node_modules
