@@ -23,6 +23,19 @@ module Profiler
         render json: profile.to_h
       end
 
+      def destroy
+        profile = Profiler.storage.load(params[:id])
+        return render json: { error: "Profile not found" }, status: :not_found unless profile
+
+        Profiler.storage.delete(params[:id])
+        head :no_content
+      end
+
+      def clear
+        Profiler.storage.clear(type: "http")
+        head :no_content
+      end
+
       private
 
       def recalculate_ajax_data(profile)

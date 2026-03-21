@@ -42,6 +42,9 @@ Gem::Specification.new do |spec|
   spec.add_dependency "concurrent-ruby", "~> 1.2"
   spec.add_dependency "mcp"
 
+  # Optional: SQLite storage backend (add to your app's Gemfile if using storage: :sqlite)
+  # spec.add_dependency "sqlite3", ">= 1.4"
+
   # Development dependencies
   spec.add_development_dependency "webmock", "~> 3.18"
   spec.add_development_dependency "rake", "~> 13.0"

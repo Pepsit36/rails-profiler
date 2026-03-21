@@ -1,0 +1,266 @@
+# frozen_string_literal: true
+
+require "json"
+require "fileutils"
+require_relative "base_store"
+require_relative "blob_store"
+require_relative "../models/profile"
+
+module Profiler
+  module Storage
+    class SqliteStore < BaseStore
+      def initialize(options = {})
+        require "sqlite3"
+
+        db_path = options[:database] || default_db_path
+        blob_path = options[:blob_path] || default_blob_path
+
+        FileUtils.mkdir_p(File.dirname(db_path))
+
+        @db = SQLite3::Database.new(db_path.to_s)
+        @db.results_as_hash = true
+
+        @blob_store = BlobStore.new(blob_path.to_s)
+
+        migrate!
+      end
+
+      def save(token, profile)
+        data = profile.to_h
+
+        collectors_meta = {}
+        (data[:collectors_data] || {}).each do |collector_name, collector_data|
+          next unless collector_data.is_a?(Hash)
+
+          if collector_name.to_s == "http"
+            requests = collector_data["requests"]
+            if requests
+              stripped = save_http_response_bodies(token, requests)
+              collectors_meta[collector_name] = collector_data.merge("requests" => stripped)
+            else
+              collectors_meta[collector_name] = collector_data
+            end
+          else
+            collectors_meta[collector_name] = collector_data
+          end
+        end
+
+        @db.execute(
+          <<~SQL,
+            INSERT OR REPLACE INTO profiler_profiles (
+              token, profile_type, path, method, status, duration, memory,
+              started_at, finished_at, parent_token, is_ajax,
+              tabs, params, headers, response_headers, collectors_meta
+            ) VALUES (
+              :token, :profile_type, :path, :method, :status, :duration, :memory,
+              :started_at, :finished_at, :parent_token, :is_ajax,
+              :tabs, :params, :headers, :response_headers, :collectors_meta
+            )
+          SQL
+          token:            token,
+          profile_type:     data[:profile_type] || "http",
+          path:             data[:path],
+          method:           data[:method],
+          status:           data[:status],
+          duration:         data[:duration],
+          memory:           data[:memory],
+          started_at:       data[:started_at],
+          finished_at:      data[:finished_at],
+          parent_token:     data[:parent_token],
+          is_ajax:          data[:is_ajax] ? 1 : 0,
+          tabs:             JSON.generate(data[:tabs] || []),
+          params:           JSON.generate(data[:params] || {}),
+          headers:          JSON.generate(data[:headers] || {}),
+          response_headers: JSON.generate(data[:response_headers] || {}),
+          collectors_meta:  JSON.generate(collectors_meta)
+        )
+
+        token
+      end
+
+      def load(token)
+        row = @db.get_first_row(
+          "SELECT * FROM profiler_profiles WHERE token = :token", token: token
+        )
+        return nil unless row
+
+        row_to_profile(row)
+      rescue => e
+        warn "SqliteStore: failed to load profile #{token}: #{e.message}"
+        nil
+      end
+
+      def list(limit: 50, offset: 0)
+        rows = @db.execute(
+          "SELECT * FROM profiler_profiles ORDER BY started_at DESC LIMIT :limit OFFSET :offset",
+          limit: limit, offset: offset
+        )
+        rows.map { |row| row_to_profile(row, load_blobs: false) }.compact
+      end
+
+      def find_by_parent(parent_token)
+        rows = @db.execute(
+          "SELECT * FROM profiler_profiles WHERE parent_token = :parent_token ORDER BY started_at ASC",
+          parent_token: parent_token
+        )
+        rows.map { |row| row_to_profile(row) }.compact
+      end
+
+      def delete(token)
+        @db.execute("DELETE FROM profiler_profiles WHERE token = :token", token: token)
+        @blob_store.delete(token)
+      end
+
+      def clear(type: nil)
+        if type.nil?
+          tokens = @db.execute("SELECT token FROM profiler_profiles").map { |r| r["token"] }
+          @db.execute("DELETE FROM profiler_profiles")
+        else
+          tokens = @db.execute(
+            "SELECT token FROM profiler_profiles WHERE profile_type = :type", type: type.to_s
+          ).map { |r| r["token"] }
+          @db.execute("DELETE FROM profiler_profiles WHERE profile_type = :type", type: type.to_s)
+        end
+        tokens.each { |token| @blob_store.delete(token) }
+      end
+
+      def cleanup(older_than: 24 * 60 * 60)
+        cutoff = (Time.now - older_than).utc.iso8601
+        tokens = @db.execute(
+          "SELECT token FROM profiler_profiles WHERE started_at < :cutoff", cutoff: cutoff
+        ).map { |r| r["token"] }
+        @db.execute("DELETE FROM profiler_profiles WHERE started_at < :cutoff", cutoff: cutoff)
+        tokens.each { |token| @blob_store.delete(token) }
+      end
+
+      private
+
+      def save_http_response_bodies(token, requests)
+        bodies = requests.map do |req|
+          { "response_body" => req["response_body"], "response_body_encoding" => req["response_body_encoding"] }
+        end
+
+        return requests unless bodies.any? { |b| !b["response_body"].nil? }
+
+        @blob_store.write(token, "http_response_bodies", bodies)
+
+        requests.map do |req|
+          req.reject { |k, _| %w[response_body response_body_encoding].include?(k) }
+        end
+      end
+
+      def load_http_response_bodies(token, requests)
+        return requests if requests.nil? || requests.empty?
+
+        bodies = @blob_store.read(token, "http_response_bodies")
+        return requests if bodies.nil? || bodies.empty?
+
+        requests.each_with_index.map do |req, i|
+          entry = bodies[i]
+          next req unless entry
+
+          body     = entry["response_body"]
+          encoding = entry["response_body_encoding"]
+          merged   = req.dup
+          merged["response_body"]          = body     unless body.nil?
+          merged["response_body_encoding"] = encoding unless encoding.nil?
+          merged
+        end
+      end
+
+      def migrate!
+        @db.execute_batch(<<~SQL)
+          CREATE TABLE IF NOT EXISTS profiler_profiles (
+            token              TEXT PRIMARY KEY,
+            profile_type       TEXT NOT NULL DEFAULT 'http',
+            path               TEXT,
+            method             TEXT,
+            status             INTEGER,
+            duration           REAL,
+            memory             INTEGER,
+            started_at         TEXT,
+            finished_at        TEXT,
+            parent_token       TEXT,
+            is_ajax            INTEGER NOT NULL DEFAULT 0,
+            tabs               TEXT,
+            params             TEXT,
+            headers            TEXT,
+            response_headers   TEXT,
+            collectors_meta    TEXT,
+            created_at         TEXT NOT NULL DEFAULT (datetime('now', 'utc'))
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_profiler_started_at
+            ON profiler_profiles(started_at DESC);
+
+          CREATE INDEX IF NOT EXISTS idx_profiler_parent_token
+            ON profiler_profiles(parent_token);
+
+          CREATE INDEX IF NOT EXISTS idx_profiler_profile_type
+            ON profiler_profiles(profile_type);
+        SQL
+      end
+
+      def row_to_profile(row, load_blobs: true)
+        collectors_meta = parse_json(row["collectors_meta"], {})
+
+        collectors_data = collectors_meta.transform_keys(&:to_s).transform_values do |v|
+          Models::Profile.deep_stringify_keys(v)
+        end
+
+        if load_blobs && collectors_data.key?("http")
+          requests = collectors_data["http"]["requests"]
+          if requests
+            collectors_data["http"]["requests"] = load_http_response_bodies(row["token"], requests)
+          end
+        end
+
+        Models::Profile.from_hash(
+          token:            row["token"],
+          profile_type:     row["profile_type"],
+          path:             row["path"],
+          method:           row["method"],
+          status:           row["status"],
+          duration:         row["duration"],
+          memory:           row["memory"],
+          started_at:       row["started_at"],
+          finished_at:      row["finished_at"],
+          parent_token:     row["parent_token"],
+          is_ajax:          row["is_ajax"] == 1,
+          tabs:             parse_json(row["tabs"], []),
+          params:           parse_json(row["params"], {}),
+          headers:          parse_json(row["headers"], {}),
+          response_headers: parse_json(row["response_headers"], {}),
+          collectors_data:  collectors_data
+        )
+      rescue => e
+        warn "SqliteStore: failed to deserialize profile #{row["token"]}: #{e.message}"
+        nil
+      end
+
+      def parse_json(value, default)
+        return default if value.nil? || value.empty?
+
+        JSON.parse(value)
+      rescue JSON::ParserError
+        default
+      end
+
+      def default_db_path
+        if defined?(Rails)
+          Rails.root.join("tmp", "profiler", "profiler.db")
+        else
+          File.expand_path("tmp/profiler/profiler.db", Dir.pwd)
+        end
+      end
+
+      def default_blob_path
+        if defined?(Rails)
+          Rails.root.join("tmp", "profiler", "blobs")
+        else
+          File.expand_path("tmp/profiler/blobs", Dir.pwd)
+        end
+      end
+    end
+  end
+end

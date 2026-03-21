@@ -36,7 +36,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
   return (
     <div class="container">
       <div class="header">
-        <h1>📊 Profile Details</h1>
+        <h1><a href="/_profiler?section=http"><span class="h1-emoji">📊</span> Profile Details</a></h1>
         <p>{profile.method} {profile.path}</p>
         <div class="profiler-flex profiler-flex--gap-4 profiler-mt-2">
           <span>Duration: <strong>{profile.duration.toFixed(2)} ms</strong></span>

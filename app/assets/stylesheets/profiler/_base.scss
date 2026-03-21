@@ -63,6 +63,23 @@ body {
     -webkit-text-fill-color: transparent;
     background-clip: text;
 
+    .h1-emoji {
+      -webkit-text-fill-color: initial;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+      background: inherit;
+      -webkit-background-clip: inherit;
+      -webkit-text-fill-color: inherit;
+      background-clip: inherit;
+
+      &:hover {
+        opacity: 0.75;
+      }
+    }
+
     @media (max-width: 768px) {
       font-size: var(--profiler-text-2xl);
     }
@@ -294,6 +311,56 @@ table {
   &.btn-sm {
     padding: var(--profiler-space-1) var(--profiler-space-3);
     font-size: var(--profiler-text-sm);
+  }
+
+  &.btn-danger {
+    background: transparent;
+    color: var(--profiler-error);
+    border-color: var(--profiler-error);
+
+    &:hover:not(:disabled) {
+      background: var(--profiler-error);
+      color: #fff;
+    }
+  }
+}
+
+.token-copy {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--profiler-font-mono);
+  font-size: var(--profiler-text-xs);
+  color: var(--profiler-text-muted);
+  padding: 2px 4px;
+  border-radius: var(--profiler-radius-sm);
+  transition: color var(--profiler-transition-base), background var(--profiler-transition-base);
+
+  &:hover {
+    color: var(--profiler-accent);
+    background: var(--profiler-accent-bg);
+  }
+}
+
+.btn-row-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--profiler-text-muted);
+  font-size: var(--profiler-text-base);
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--profiler-radius-sm);
+  transition: color var(--profiler-transition-base), background var(--profiler-transition-base);
+  opacity: 0;
+
+  tr:hover & {
+    opacity: 1;
+  }
+
+  &:hover {
+    color: var(--profiler-error);
+    background: var(--profiler-error-bg);
   }
 }
 

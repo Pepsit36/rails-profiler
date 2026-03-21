@@ -22,8 +22,12 @@ Profiler::Engine.routes.draw do
   get "assets/profiler.css", to: "assets#main_css"
 
   namespace :api do
-    resources :profiles, only: [:index, :show]
-    resources :jobs, only: [:index, :show]
+    resources :profiles, only: [:index, :show, :destroy] do
+      collection { delete :clear }
+    end
+    resources :jobs, only: [:index, :show, :destroy] do
+      collection { delete :clear }
+    end
     resources :outbound_http, only: [:index]
     get "toolbar/:token", to: "toolbar#show"
     post "ajax/link", to: "ajax#link"

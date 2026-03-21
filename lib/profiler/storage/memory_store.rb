@@ -49,6 +49,20 @@ module Profiler
                 .sort_by { |profile| profile.started_at }
       end
 
+      def delete(token)
+        @profiles.delete(token)
+      end
+
+      def clear(type: nil)
+        if type.nil?
+          @profiles.clear
+        else
+          @profiles.delete_if do |_token, data|
+            deserialize_profile(data).profile_type == type.to_s
+          end
+        end
+      end
+
       private
 
       def cleanup_if_needed

@@ -58,6 +58,27 @@ module Profiler
               .sort_by { |profile| profile.started_at }
       end
 
+      def delete(token)
+        @redis.del(profile_key(token))
+        @redis.zrem(list_key, token)
+      end
+
+      def clear(type: nil)
+        tokens = @redis.zrange(list_key, 0, -1)
+        tokens.each do |token|
+          if type.nil?
+            @redis.del(profile_key(token))
+            @redis.zrem(list_key, token)
+          else
+            profile = load(token)
+            if profile&.profile_type == type.to_s
+              @redis.del(profile_key(token))
+              @redis.zrem(list_key, token)
+            end
+          end
+        end
+      end
+
       private
 
       def build_redis_client(options)

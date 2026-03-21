@@ -59,6 +59,24 @@ module Profiler
           .sort_by { |profile| profile.started_at }
       end
 
+      def delete(token)
+        file_path = profile_file_path(token)
+        File.delete(file_path) if File.exist?(file_path)
+      end
+
+      def clear(type: nil)
+        if type.nil?
+          profile_files.each { |f| File.delete(f) rescue nil }
+        else
+          profile_files.each do |f|
+            profile = load(File.basename(f, ".json"))
+            File.delete(f) if profile&.profile_type == type.to_s
+          rescue
+            nil
+          end
+        end
+      end
+
       private
 
       def default_path

@@ -21,6 +21,19 @@ module Profiler
 
         render json: profile.to_h
       end
+
+      def destroy
+        profile = Profiler.storage.load(params[:id])
+        return render json: { error: "Job profile not found" }, status: :not_found unless profile&.profile_type == "job"
+
+        Profiler.storage.delete(params[:id])
+        head :no_content
+      end
+
+      def clear
+        Profiler.storage.clear(type: "job")
+        head :no_content
+      end
     end
   end
 end

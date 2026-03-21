@@ -28,6 +28,14 @@ module Profiler
       def find_by_parent(parent_token)
         raise NotImplementedError, "#{self.class} must implement #find_by_parent"
       end
+
+      def delete(token)
+        raise NotImplementedError, "#{self.class} must implement #delete"
+      end
+
+      def clear(type: nil)
+        raise NotImplementedError, "#{self.class} must implement #clear"
+      end
     end
   end
 end

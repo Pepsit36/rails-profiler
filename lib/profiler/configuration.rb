@@ -70,6 +70,9 @@ module Profiler
       when :redis
         require_relative "storage/redis_store"
         Storage::RedisStore.new(@storage_options)
+      when :sqlite
+        require_relative "storage/sqlite_store"
+        Storage::SqliteStore.new(@storage_options)
       else
         raise Error, "Unknown storage backend: #{@storage}"
       end
