@@ -66,9 +66,13 @@ module Profiler
               end
               if req["request_body"] && !req["request_body"].empty?
                 lines << "- **Request Body:**"
-                lines << "  ```"
-                lines << "  #{req['request_body'].lines.first(5).join('  ')}"
-                lines << "  ```"
+                if req["request_body_encoding"] == "base64"
+                  lines << "  *(binary content, base64 encoded — #{req['request_body'].bytesize} chars)*"
+                else
+                  lines << "  ```"
+                  lines << "  #{req['request_body'].lines.first(5).join('  ')}"
+                  lines << "  ```"
+                end
               end
               if req["response_headers"] && !req["response_headers"].empty?
                 lines << "- **Response Headers:**"
@@ -76,9 +80,13 @@ module Profiler
               end
               if req["response_body"] && !req["response_body"].empty?
                 lines << "- **Response Body:**"
-                lines << "  ```"
-                lines << "  #{req['response_body'].lines.first(10).join('  ')}"
-                lines << "  ```"
+                if req["response_body_encoding"] == "base64"
+                  lines << "  *(binary content, base64 encoded — #{req['response_body'].bytesize} chars)*"
+                else
+                  lines << "  ```"
+                  lines << "  #{req['response_body'].lines.first(10).join('  ')}"
+                  lines << "  ```"
+                end
               end
               if req["backtrace"] && !req["backtrace"].empty?
                 lines << "- **Called from:**"

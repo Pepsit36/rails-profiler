@@ -2,6 +2,8 @@
 
 require "net/http"
 require "base64"
+require "zlib"
+require "stringio"
 
 module Profiler
   module Instrumentation
@@ -26,7 +28,9 @@ module Profiler
           response = super
 
           duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round(2)
-          resp_body = response.body.to_s
+          resp_body_raw = response.body.to_s
+          resp_content_encoding = response["content-encoding"].to_s.strip.downcase
+          resp_body = NetHttpInstrumentation.decompress_body(resp_body_raw, resp_content_encoding)
           resp_content_type = response["content-type"].to_s
           req_content_type = req["content-type"].to_s
 
@@ -47,7 +51,7 @@ module Profiler
             response_headers: response.to_hash.transform_values { |v| v.join(", ") },
             response_body: processed_resp[:body],
             response_body_encoding: processed_resp[:encoding],
-            response_size: resp_body.bytesize,
+            response_size: resp_body_raw.bytesize,
             backtrace: NetHttpInstrumentation.extract_backtrace
           )
 
@@ -106,6 +110,21 @@ module Profiler
       def self.skip_host?(host)
         SKIP_HOSTS.include?(host) ||
           Profiler.configuration.http_skip_hosts.any? { |p| host.match?(p) }
+      end
+
+      def self.decompress_body(body, content_encoding)
+        return body if content_encoding.empty? || body.nil? || body.empty?
+
+        case content_encoding
+        when "gzip", "x-gzip"
+          Zlib::GzipReader.new(StringIO.new(body)).read
+        when "deflate"
+          Zlib::Inflate.inflate(body)
+        else
+          body
+        end
+      rescue StandardError
+        body
       end
 
       def self.process_body(body, content_type)
