@@ -16,51 +16,50 @@ build:
 
 canary:
   stage: publish
-  image: node:20
+  image: ruby:3.3
   needs: [build]
   rules:
-    - if: $CI_COMMIT_BRANCH =~ /^feature\//
+    - if: $CI_COMMIT_BRANCH =~ /^(feature|fix|breaking)\//
   script:
-    - apt-get update -qq && apt-get install -y ruby ruby-dev
-    - gem install bundler
     - CURRENT_VERSION=$(ruby -e "require_relative 'lib/profiler/version'; puts Profiler::VERSION")
     - CANARY_VERSION="${CURRENT_VERSION}.pre.${CI_COMMIT_SHORT_SHA}"
     - sed -i "s/VERSION = .*/VERSION = \"${CANARY_VERSION}\"/" lib/profiler/version.rb
     - gem build profiler.gemspec
-    - gem push *.gem --host $GEM_HOST
+    - 'mkdir -p ~/.gem && printf -- "---\n:gitlab: ${CI_JOB_TOKEN}\n" > ~/.gem/credentials && chmod 0600 ~/.gem/credentials'
+    - gem push *.gem --key gitlab --host "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/rubygems" --verbose
 
 release:
   stage: publish
-  image: node:20
+  image: ruby:3.3
   needs: [build]
   rules:
     - if: $CI_COMMIT_BRANCH == "master"
   script:
-    - apt-get update -qq && apt-get install -y ruby ruby-dev jq
-    - gem install bundler
+    - apt-get update -qq && apt-get install -y curl jq
     - |
-      LABELS=$(curl -s --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+      SOURCE_BRANCH=$(curl -s --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
         "$CI_API_V4_URL/projects/$CI_PROJECT_ID/repository/commits/$CI_COMMIT_SHA/merge_requests" \
-        | jq -r '.[0].labels[]' 2>/dev/null || echo "")
+        | jq -r '.[0].source_branch // ""')
     - CURRENT_VERSION=$(ruby -e "require_relative 'lib/profiler/version'; puts Profiler::VERSION")
     - MAJOR=$(echo "$CURRENT_VERSION" | cut -d. -f1)
     - MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f2)
     - PATCH=$(echo "$CURRENT_VERSION" | cut -d. -f3)
     - |
-      if echo "$LABELS" | grep -q "^major$"; then
+      if echo "$SOURCE_BRANCH" | grep -q "^breaking/"; then
         NEW_VERSION="$((MAJOR + 1)).0.0"
-      elif echo "$LABELS" | grep -q "^minor$"; then
+      elif echo "$SOURCE_BRANCH" | grep -q "^feature/"; then
         NEW_VERSION="${MAJOR}.$((MINOR + 1)).0"
       else
         NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
       fi
     - sed -i "s/VERSION = .*/VERSION = \"${NEW_VERSION}\"/" lib/profiler/version.rb
     - gem build profiler.gemspec
-    - gem push *.gem --host $GEM_HOST
+    - 'mkdir -p ~/.gem && printf -- "---\n:gitlab: ${CI_JOB_TOKEN}\n" > ~/.gem/credentials && chmod 0600 ~/.gem/credentials'
+    - gem push *.gem --key gitlab --host "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/rubygems" --verbose
     - git config user.email "ci@gitlab"
     - git config user.name "GitLab CI"
     - git remote set-url origin "https://ci:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
     - git add lib/profiler/version.rb
-    - git commit -m "chore(release): v${NEW_VERSION}"
+    - 'git commit -m "chore(release): v${NEW_VERSION}"'
     - git tag "v${NEW_VERSION}"
     - git push origin HEAD:master --tags
