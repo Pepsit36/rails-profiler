@@ -2,9 +2,9 @@
   "name": "rails-profiler-gem",
   "private": true,
   "scripts": {
-    "build": "npm run build:js:main && npm run build:js:toolbar && npm run build:css",
-    "build:js:main": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020",
-    "build:js:toolbar": "esbuild app/assets/typescript/profiler/toolbar-bundle.tsx --bundle --outfile=app/assets/builds/profiler-toolbar.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020",
+    "build": "yarn build:js && yarn build:toolbar && yarn build:css",
+    "build:js": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020",
+    "build:toolbar": "esbuild app/assets/typescript/profiler/toolbar-bundle.tsx --bundle --outfile=app/assets/builds/profiler-toolbar.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020",
     "build:css": "sass app/assets/stylesheets/profiler/main.scss app/assets/builds/profiler.css --no-source-map",
     "watch": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --watch"
   },
@@ -12,8 +12,8 @@
     "preact": "^10.0.0"
   },
   "devDependencies": {
-    "esbuild": "^0.20.0",
-    "sass": "^1.70.0",
+    "esbuild": "^0.25.0",
+    "sass": "^1.85.0",
     "typescript": "^5.0.0"
   }
 }
