@@ -5,33 +5,20 @@ require_relative "lib/profiler/version"
 Gem::Specification.new do |spec|
   spec.name = "profiler"
   spec.version = Profiler::VERSION
-  spec.authors = ["Rails Profiler Team"]
-  spec.email = ["profiler@example.com"]
+  spec.authors = ["Sébastien Duplessy"]
+  spec.email = ["sebastien@duplessy.eu"]
 
-  spec.summary = "Rails profile"
+  spec.summary = "Rails profiler with web toolbar and profiling UI"
   spec.description = "A comprehensive Rails profiler with web debug toolbar, profiling UI, SQL analysis, performance timeline, and MCP server integration"
-  spec.homepage = "https://github.com/example/profiler"
+  spec.homepage = "https://git.duplessy.eu/sebastien/rails-profiler-gem"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = spec.homepage
-  spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/main/CHANGELOG.md"
 
-  spec.files = Dir.chdir(__dir__) do
-    if Dir.exist?(".git")
-      `git ls-files -z`.split("\x0").reject do |f|
-        (File.expand_path(f) == __FILE__) ||
-          f.start_with?(*%w[bin/ test/ spec/ features/ test_app/ .git .github appveyor Gemfile])
-      end
-    else
-      Dir.glob("**/*", File::FNM_DOTMATCH).reject do |f|
-        File.directory?(f) || (File.expand_path(f) == __FILE__) ||
-          f.end_with?(".gem") ||
-          f.start_with?(*%w[bin/ test/ spec/ features/ test_app/ .git .github appveyor Gemfile])
-      end
-    end
-  end
+  spec.files = Dir.glob("{lib,config,exe}/**/*", base: __dir__).select { |f| File.file?(File.join(__dir__, f)) } +
+               Dir.glob("app/{assets/builds,controllers,helpers,views,mailers}/**/*", base: __dir__).select { |f| File.file?(File.join(__dir__, f)) }
   spec.bindir = "exe"
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
