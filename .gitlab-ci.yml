@@ -60,6 +60,6 @@ release:
     - git config user.name "GitLab CI"
     - git remote set-url origin "https://ci:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
     - git add lib/profiler/version.rb
-    - 'git commit -m "chore(release): v${NEW_VERSION}"'
-    - git tag "v${NEW_VERSION}"
+    - 'git commit -m "chore(release): v${NEW_VERSION} [skip ci]"'
+    - git tag -f "v${NEW_VERSION}"
     - git push origin HEAD:master --tags
