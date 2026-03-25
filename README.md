@@ -20,13 +20,15 @@ A comprehensive Rails profiler similar, featuring a web debug toolbar, profiling
 
 ## Installation
 
-Add this line to your application's Gemfile:
+Add the GitLab Package Registry source to your `Gemfile`:
 
 ```ruby
-gem 'profiler', git: 'git@git.duplessy.eu:sebastien/rails-profiler-gem.git'
+source "https://git.duplessy.eu/api/v4/projects/sebastien%2Frails-profiler-gem/packages/rubygems" do
+  gem "profiler"
+end
 ```
 
-And then execute:
+Then run:
 
 ```bash
 bundle install
