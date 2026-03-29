@@ -1,12 +1,12 @@
 // Main stylesheet for Profiler - Performance Dashboard Luxe
 
-@import 'variables';
-@import 'base';
-@import 'components';
-@import 'toolbar';
-@import 'profiles';
-@import 'timeline';
-@import 'flamegraph';
-@import 'syntax';
-@import 'dashboard';
-@import 'ajax';
+@use 'variables';
+@use 'base';
+@use 'components';
+@use 'toolbar';
+@use 'profiles';
+@use 'timeline';
+@use 'flamegraph';
+@use 'syntax';
+@use 'dashboard';
+@use 'ajax';
