@@ -66,6 +66,7 @@ module Profiler
         require_relative "tools/get_profile_dumps"
         require_relative "tools/get_profile_http"
         require_relative "tools/query_jobs"
+        require_relative "tools/clear_profiles"
 
         [
           define_tool(
@@ -148,6 +149,16 @@ module Profiler
               }
             },
             handler: Tools::QueryJobs
+          ),
+          define_tool(
+            name: "clear_profiles",
+            description: "Clear profiler history. Omit type to clear everything, or pass 'http'/'job' to clear only requests or jobs.",
+            input_schema: {
+              properties: {
+                type: { type: "string", description: "Optional: 'http' to clear only requests, 'job' to clear only jobs" }
+              }
+            },
+            handler: Tools::ClearProfiles
           )
         ]
       end

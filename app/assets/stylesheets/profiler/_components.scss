@@ -415,6 +415,25 @@
 .profiler-clearfix::after { content: ""; display: table; clear: both; }
 
 // ============================================================================
+// CODE BLOCK
+// ============================================================================
+
+.profiler-code {
+  background: var(--profiler-bg-light);
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-md);
+  font-family: var(--profiler-font-mono);
+  font-size: var(--profiler-text-xs);
+  color: var(--profiler-text);
+  padding: var(--profiler-space-3);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  line-height: 1.6;
+}
+
+// ============================================================================
 // BODY PREVIEW — smart content display
 // ============================================================================
 

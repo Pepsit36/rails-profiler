@@ -34,6 +34,10 @@ module Profiler
           params: @profile.params,
           headers: @profile.headers,
           response_headers: @profile.response_headers,
+          request_body: @profile.request_body,
+          request_body_encoding: @profile.request_body_encoding,
+          response_body: @profile.response_body,
+          response_body_encoding: @profile.response_body_encoding,
           started_at: @profile.started_at&.iso8601,
           finished_at: @profile.finished_at&.iso8601
         }

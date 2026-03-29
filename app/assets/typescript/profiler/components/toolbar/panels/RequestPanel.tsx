@@ -15,6 +15,8 @@ function statusClass(status: number): string {
 export function RequestPanel({ profile, requestData }: Props) {
   const cls = statusClass(profile.status)
   const headers = requestData.headers as Record<string, string> | undefined
+  const responseBody = requestData.response_body as string | undefined
+  const responseBodyEncoding = requestData.response_body_encoding as string | undefined
 
   return (
     <>
@@ -87,6 +89,22 @@ export function RequestPanel({ profile, requestData }: Props) {
             </div>
           ))
         }
+        {responseBody && responseBodyEncoding !== 'base64' && (
+          <>
+            <div class="profiler-section__header profiler-mt-3">Response Body</div>
+            <pre style="margin:0;padding:6px 0;font-size:10px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--pf-text,#eef2f7);max-height:120px;overflow:hidden;">
+              {responseBody.substring(0, 300)}{responseBody.length > 300 ? '…' : ''}
+            </pre>
+          </>
+        )}
+        {responseBody && responseBodyEncoding === 'base64' && (
+          <>
+            <div class="profiler-section__header profiler-mt-3">Response Body</div>
+            <div class="profiler-toolbar-panel-row">
+              <span class="profiler-text--xs profiler-text--mono">[binary]</span>
+            </div>
+          </>
+        )}
       </div>
     </>
   )

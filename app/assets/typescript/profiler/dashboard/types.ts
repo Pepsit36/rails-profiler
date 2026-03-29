@@ -10,6 +10,10 @@ export interface Profile {
   params?: Record<string, any>;
   headers?: Record<string, any>;
   response_headers?: Record<string, any>;
+  request_body?: string;
+  request_body_encoding?: 'text' | 'base64';
+  response_body?: string;
+  response_body_encoding?: 'text' | 'base64';
   collectors_data?: {
     database?: DatabaseData;
     cache?: CacheData;
@@ -89,6 +93,10 @@ export interface RequestData {
   headers: Record<string, any>;
   params: Record<string, any>;
   response_headers?: Record<string, any>;
+  request_body?: string;
+  request_body_encoding?: 'text' | 'base64';
+  response_body?: string;
+  response_body_encoding?: 'text' | 'base64';
 }
 
 export interface PerformanceData {
