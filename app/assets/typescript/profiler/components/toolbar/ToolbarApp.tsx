@@ -1,4 +1,4 @@
-import { Profile, DatabaseData, AjaxData, PerformanceData, ViewData, CacheData, DumpData, HttpData } from '../../dashboard/types'
+import { Profile, DatabaseData, AjaxData, PerformanceData, ViewData, CacheData, DumpData, HttpData, LogData, ExceptionData } from '../../dashboard/types'
 import { ToolbarItem } from './ToolbarItem'
 import { RequestPanel } from './panels/RequestPanel'
 import { DatabasePanel } from './panels/DatabasePanel'
@@ -8,6 +8,8 @@ import { ViewsPanel } from './panels/ViewsPanel'
 import { CachePanel } from './panels/CachePanel'
 import { DumpsPanel } from './panels/DumpsPanel'
 import { HttpPanel } from './panels/HttpPanel'
+import { LogsPanel } from './panels/LogsPanel'
+import { ExceptionPanel } from './panels/ExceptionPanel'
 
 interface Props {
   profile: Profile
@@ -46,6 +48,8 @@ export function ToolbarApp({ profile, token }: Props) {
   const cacheData = cd['cache'] as CacheData | undefined
   const dumpData = cd['dump'] as DumpData | undefined
   const httpData = cd['http'] as HttpData | undefined
+  const logData = cd['logs'] as LogData | undefined
+  const exceptionData = cd['exception'] as ExceptionData | undefined
 
   const reqClass = statusClass(profile.status)
   const durClass = durationClass(profile.duration)
@@ -186,6 +190,32 @@ export function ToolbarApp({ profile, token }: Props) {
         >
           <span class="profiler-text--muted profiler-text--xs">DUMP</span>
           <span class="profiler-text--warning">{dumpData.count}</span>
+        </ToolbarItem>
+      )}
+
+      {logData && logData.count > 0 && (
+        <ToolbarItem
+          href={`/_profiler/profiles/${token}?tab=logs`}
+          className={logData.errors > 0 ? 'profiler-text--error' : logData.warnings > 0 ? 'profiler-text--warning' : 'profiler-text--muted'}
+          panelLarge
+          panel={<LogsPanel logData={logData} />}
+        >
+          <span class="profiler-text--muted profiler-text--xs">LOG</span>
+          <span class={logData.errors > 0 ? 'profiler-text--error' : logData.warnings > 0 ? 'profiler-text--warning' : ''}>
+            {logData.errors > 0 ? logData.errors : logData.warnings > 0 ? logData.warnings : logData.count}
+          </span>
+        </ToolbarItem>
+      )}
+
+      {exceptionData && exceptionData.exception_class && (
+        <ToolbarItem
+          href={`/_profiler/profiles/${token}?tab=exception`}
+          className="profiler-text--error"
+          panelLarge
+          panel={<ExceptionPanel exceptionData={exceptionData} />}
+        >
+          <span class="profiler-text--error profiler-text--xs">💥</span>
+          <span class="profiler-text--error profiler-text--xs">{exceptionData.exception_class.split('::').pop()}</span>
         </ToolbarItem>
       )}
 

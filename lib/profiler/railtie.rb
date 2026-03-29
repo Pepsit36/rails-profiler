@@ -35,6 +35,7 @@ module Profiler
       if Profiler.configuration.collectors.empty?
         Profiler.configure do |config|
           config.collectors = [
+            Profiler::Collectors::ExceptionCollector,
             Profiler::Collectors::RequestCollector,
             Profiler::Collectors::DumpCollector,
             Profiler::Collectors::DatabaseCollector,
@@ -42,7 +43,8 @@ module Profiler
             Profiler::Collectors::ViewCollector,
             Profiler::Collectors::CacheCollector,
             Profiler::Collectors::HttpCollector,
-            Profiler::Collectors::FlameGraphCollector
+            Profiler::Collectors::FlameGraphCollector,
+            Profiler::Collectors::LogCollector
           ]
         end
       end

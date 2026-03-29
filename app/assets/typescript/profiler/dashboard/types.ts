@@ -25,6 +25,8 @@ export interface Profile {
     http?: HttpData;
     job?: JobData;
     flamegraph?: FlameGraphData;
+    logs?: LogData;
+    exception?: ExceptionData;
     [key: string]: any;  // Allow custom collector data
   };
   tabs?: TabConfig[];  // Tab configurations from collectors
@@ -176,6 +178,30 @@ export interface JobData {
   executions: number;
   status: 'running' | 'completed' | 'failed';
   error?: string;
+}
+
+export interface LogData {
+  count: number;
+  errors: number;
+  warnings: number;
+  logs: LogEntry[];
+}
+
+export interface LogEntry {
+  level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL' | 'UNKNOWN';
+  message: string;
+  timestamp: string;
+}
+
+export interface ExceptionData {
+  exception_class: string;
+  message: string;
+  backtrace: BacktraceFrame[];
+}
+
+export interface BacktraceFrame {
+  location: string;
+  app_frame: boolean;
 }
 
 export type FlameGraphCategory = 'controller' | 'view' | 'partial' | 'sql' | 'cache' | 'http'
