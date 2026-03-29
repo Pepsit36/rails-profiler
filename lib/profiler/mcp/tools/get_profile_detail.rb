@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "shellwords"
+require "cgi"
+
 module Profiler
   module MCP
     module Tools
@@ -79,7 +82,51 @@ module Profiler
               headers.each { |k, v| lines << "- **#{k}**: #{v}" }
               lines << ""
             end
+
+            req_body = req_data["request_body"]
+            if req_body && !req_body.empty?
+              enc = req_data["request_body_encoding"]
+              lines << "## Request Body"
+              if enc == "base64"
+                lines << "_[binary, base64-encoded]_"
+              else
+                lines << "```"
+                lines << req_body
+                lines << "```"
+              end
+              lines << ""
+            end
           end
+
+          # Response Headers section
+          if profile.response_headers&.any?
+            lines << "## Response Headers"
+            profile.response_headers.each { |k, v| lines << "- **#{k}**: #{v}" }
+            lines << ""
+          end
+
+          # Response Body section
+          resp_body = profile.response_body
+          if resp_body && !resp_body.empty?
+            enc = profile.response_body_encoding
+            lines << "## Response Body"
+            if enc == "base64"
+              lines << "_[binary, base64-encoded]_"
+            else
+              lines << "```"
+              lines << resp_body
+              lines << "```"
+            end
+            lines << ""
+          end
+
+          # Curl command
+          req_data_for_curl = profile.collector_data("request")
+          lines << "## Curl Command"
+          lines << "```bash"
+          lines << generate_curl(profile, req_data_for_curl)
+          lines << "```"
+          lines << ""
 
           # Database section
           db_data = profile.collector_data("database")
@@ -238,6 +285,40 @@ module Profiler
           end
 
           lines.join("\n")
+        end
+
+        def self.generate_curl(profile, req_data)
+          headers  = req_data&.dig("headers")  || {}
+          params   = req_data&.dig("params")   || {}
+          req_body = req_data&.dig("request_body")
+
+          parts = ["curl -X #{profile.method}"]
+
+          headers.reject { |k, _| k == "User-Agent" }.each do |k, v|
+            parts << "  -H #{Shellwords.shellescape("#{k}: #{v}")}"
+          end
+
+          if %w[POST PUT PATCH].include?(profile.method)
+            if req_body && !req_body.empty?
+              parts << "  -d #{Shellwords.shellescape(req_body)}"
+            elsif !params.empty?
+              ct = headers["Content-Type"].to_s
+              if ct.include?("application/json")
+                parts << "  -d #{Shellwords.shellescape(params.to_json)}"
+              else
+                params.each { |k, v| parts << "  --data-urlencode #{Shellwords.shellescape("#{k}=#{v}")}" }
+              end
+            end
+          end
+
+          url = "http://localhost:3000#{profile.path}"
+          if profile.method == "GET" && !params.empty?
+            qs = params.map { |k, v| "#{CGI.escape(k.to_s)}=#{CGI.escape(v.to_s)}" }.join("&")
+            url += "?#{qs}"
+          end
+
+          parts << "  #{Shellwords.shellescape(url)}"
+          parts.join(" \\\n")
         end
       end
     end

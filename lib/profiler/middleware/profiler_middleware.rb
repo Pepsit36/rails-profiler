@@ -15,6 +15,9 @@ module Profiler
 
         profile = Models::Profile.new(build_request(env))
 
+        # Capture request body before app processes it
+        req_body_raw = read_rack_input(env)
+
         # Store profile in env for collectors
         env["profiler.profile"] = profile
 
@@ -34,8 +37,20 @@ module Profiler
           profile.memory = memory_after - memory_before
         end
 
+        # Collect and buffer response body (avoids double-reading by ToolbarInjector)
+        body_content = collect_body(body)
+        body = [body_content]
+
         # Finish profile
         profile.finish(status, headers)
+
+        # Store request and response bodies
+        profile.set_bodies(
+          request_body: req_body_raw,
+          response_body: body_content,
+          req_content_type: env["CONTENT_TYPE"].to_s,
+          resp_content_type: (headers["content-type"] || headers["Content-Type"]).to_s
+        )
 
         # Collect data from all collectors
         collectors.each do |collector|
@@ -96,6 +111,27 @@ module Profiler
       def html_response?(headers)
         content_type = headers["Content-Type"]
         content_type && content_type.include?("text/html")
+      end
+
+      def read_rack_input(env)
+        input = env["rack.input"]
+        return "" unless input
+
+        input.rewind
+        content = input.read
+        input.rewind
+        content
+      rescue
+        ""
+      end
+
+      def collect_body(body)
+        parts = []
+        body.each { |part| parts << part }
+        body.close if body.respond_to?(:close)
+        parts.join
+      rescue
+        ""
       end
 
       def current_memory

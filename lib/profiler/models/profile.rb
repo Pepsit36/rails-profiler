@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "base64"
 require "securerandom"
 require "json"
 
@@ -9,7 +10,9 @@ module Profiler
       attr_accessor :token, :path, :method, :status, :duration, :memory,
                     :started_at, :finished_at, :params, :headers,
                     :response_headers, :collectors_data, :collectors_metadata,
-                    :parent_token, :is_ajax, :profile_type
+                    :parent_token, :is_ajax, :profile_type,
+                    :request_body, :request_body_encoding,
+                    :response_body, :response_body_encoding
 
       def initialize(request = nil)
         @token = SecureRandom.hex(16)
@@ -26,6 +29,18 @@ module Profiler
           @params = sanitize_params(request.params)
           @headers = extract_headers(request.env)
         end
+      end
+
+      TEXT_BODY_LIMIT   = 512 * 1024
+      BINARY_BODY_LIMIT = 256 * 1024
+
+      def set_bodies(request_body:, response_body:, req_content_type:, resp_content_type:)
+        req  = process_body(request_body, req_content_type)
+        resp = process_body(response_body, resp_content_type)
+        @request_body          = req[:body]
+        @request_body_encoding = req[:encoding]
+        @response_body         = resp[:body]
+        @response_body_encoding = resp[:encoding]
       end
 
       def finish(status, response_headers = {})
@@ -71,6 +86,10 @@ module Profiler
           params: @params,
           headers: @headers,
           response_headers: @response_headers,
+          request_body: @request_body,
+          request_body_encoding: @request_body_encoding,
+          response_body: @response_body,
+          response_body_encoding: @response_body_encoding,
           collectors_data: @collectors_data,
           tabs: @collectors_metadata,
           parent_token: @parent_token,
@@ -100,6 +119,10 @@ module Profiler
         profile.params = data[:params]
         profile.headers = data[:headers]
         profile.response_headers = data[:response_headers]
+        profile.request_body = data[:request_body]
+        profile.request_body_encoding = data[:request_body_encoding] || "text"
+        profile.response_body = data[:response_body]
+        profile.response_body_encoding = data[:response_body_encoding] || "text"
         profile.parent_token = data[:parent_token]
         profile.is_ajax = data[:is_ajax] || false
         profile.profile_type = data[:profile_type] || "http"
@@ -128,6 +151,22 @@ module Profiler
 
       private
 
+      def process_body(raw, content_type)
+        return { body: nil, encoding: "text" } if raw.nil? || raw.empty?
+
+        if binary_content_type?(content_type)
+          truncated = raw.b[0, BINARY_BODY_LIMIT]
+          { body: Base64.strict_encode64(truncated), encoding: "base64" }
+        else
+          text = raw.encode("UTF-8", invalid: :replace, undef: :replace)[0, TEXT_BODY_LIMIT]
+          { body: text, encoding: "text" }
+        end
+      end
+
+      def binary_content_type?(ct)
+        ct.to_s.match?(%r{image/(?!svg)|application/(?:pdf|octet-stream|zip)|audio/|video/})
+      end
+
       def sanitize_params(params)
         return {} unless params
 
@@ -137,7 +176,6 @@ module Profiler
       def extract_headers(env)
         env.select { |k, _| k.start_with?("HTTP_") }
            .transform_keys { |k| k.sub(/^HTTP_/, "").split("_").map(&:capitalize).join("-") }
-           .slice(*%w[Accept Content-Type User-Agent Referer])
       end
     end
   end

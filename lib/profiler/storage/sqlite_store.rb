@@ -215,23 +215,29 @@ module Profiler
           end
         end
 
+        req_collector = collectors_data["request"] || {}
+
         Models::Profile.from_hash(
-          token:            row["token"],
-          profile_type:     row["profile_type"],
-          path:             row["path"],
-          method:           row["method"],
-          status:           row["status"],
-          duration:         row["duration"],
-          memory:           row["memory"],
-          started_at:       row["started_at"],
-          finished_at:      row["finished_at"],
-          parent_token:     row["parent_token"],
-          is_ajax:          row["is_ajax"] == 1,
-          tabs:             parse_json(row["tabs"], []),
-          params:           parse_json(row["params"], {}),
-          headers:          parse_json(row["headers"], {}),
-          response_headers: parse_json(row["response_headers"], {}),
-          collectors_data:  collectors_data
+          token:                  row["token"],
+          profile_type:           row["profile_type"],
+          path:                   row["path"],
+          method:                 row["method"],
+          status:                 row["status"],
+          duration:               row["duration"],
+          memory:                 row["memory"],
+          started_at:             row["started_at"],
+          finished_at:            row["finished_at"],
+          parent_token:           row["parent_token"],
+          is_ajax:                row["is_ajax"] == 1,
+          tabs:                   parse_json(row["tabs"], []),
+          params:                 parse_json(row["params"], {}),
+          headers:                parse_json(row["headers"], {}),
+          response_headers:       parse_json(row["response_headers"], {}),
+          request_body:           req_collector["request_body"],
+          request_body_encoding:  req_collector["request_body_encoding"],
+          response_body:          req_collector["response_body"],
+          response_body_encoding: req_collector["response_body_encoding"],
+          collectors_data:        collectors_data
         )
       rescue => e
         warn "SqliteStore: failed to deserialize profile #{row["token"]}: #{e.message}"
