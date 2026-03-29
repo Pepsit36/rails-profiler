@@ -73,6 +73,7 @@ release:
         echo "Error: tag v${VERSION} already exists. Version was not bumped before merge."
         exit 1
       fi
+    - '[[ -n "$RUBYGEMS_API_KEY" ]] || (echo "Error: RUBYGEMS_API_KEY is not set" && exit 1)'
     - gem build profiler.gemspec
     - 'mkdir -p ~/.gem && printf -- "---\n:gitlab: ${CI_JOB_TOKEN}\n:rubygems_api_key: ${RUBYGEMS_API_KEY}\n" > ~/.gem/credentials && chmod 0600 ~/.gem/credentials'
     - gem push *.gem --key gitlab --host "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/rubygems" --verbose
