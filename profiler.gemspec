@@ -3,7 +3,7 @@
 require_relative "lib/profiler/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "profiler"
+  spec.name = "rails-profiler"
   spec.version = Profiler::VERSION
   spec.authors = ["Sébastien Duplessy"]
   spec.email = ["sebastien@duplessy.eu"]

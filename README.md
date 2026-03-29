@@ -20,12 +20,10 @@ A comprehensive Rails profiler similar, featuring a web debug toolbar, profiling
 
 ## Installation
 
-Add the GitLab Package Registry source to your `Gemfile`:
+Add to your `Gemfile`:
 
 ```ruby
-source "https://git.duplessy.eu/api/v4/projects/sebastien%2Frails-profiler-gem/packages/rubygems" do
-  gem "profiler"
-end
+gem "rails-profiler"
 ```
 
 Then run:
@@ -33,6 +31,14 @@ Then run:
 ```bash
 bundle install
 ```
+
+> The gem is published on [RubyGems.org](https://rubygems.org/gems/rails-profiler). Pre-release (canary) versions are available via the [GitLab Package Registry](https://git.duplessy.eu/sebastien/rails-profiler-gem/-/packages):
+>
+> ```ruby
+> source "https://git.duplessy.eu/api/v4/projects/sebastien%2Frails-profiler-gem/packages/rubygems" do
+>   gem "rails-profiler", "~> 0.1.0.pre"
+> end
+> ```
 
 Mount the engine in your `config/routes.rb`:
 
@@ -392,7 +398,7 @@ bundle exec rspec spec/collectors/database_collector_spec.rb
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub.
+Bug reports and pull requests are welcome on [GitLab](https://git.duplessy.eu/sebastien/rails-profiler-gem).
 
 ## License
 
