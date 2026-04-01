@@ -17,6 +17,10 @@ export function RequestPanel({ profile, requestData }: Props) {
   const headers = requestData.headers as Record<string, string> | undefined
   const responseBody = requestData.response_body as string | undefined
   const responseBodyEncoding = requestData.response_body_encoding as string | undefined
+  const controllerAction = requestData.controller_action as string | undefined
+  const routeName = requestData.route_name as string | undefined
+  const routePattern = requestData.route_pattern as string | undefined
+  const routeParams = requestData.route_params as Record<string, string> | undefined
 
   return (
     <>
@@ -38,6 +42,32 @@ export function RequestPanel({ profile, requestData }: Props) {
           <span>Status</span>
           <strong class={cls}>{profile.status}</strong>
         </div>
+        {controllerAction && (
+          <div class="profiler-toolbar-panel-row">
+            <span>Controller#Action</span>
+            <strong class="profiler-text--xs profiler-text--mono">{controllerAction}</strong>
+          </div>
+        )}
+        {routeName && (
+          <div class="profiler-toolbar-panel-row">
+            <span>Route Name</span>
+            <strong class="profiler-text--xs profiler-text--mono">{routeName}</strong>
+          </div>
+        )}
+        {routePattern && (
+          <div class="profiler-toolbar-panel-row">
+            <span>Route Pattern</span>
+            <strong class="profiler-text--xs profiler-text--mono">{routePattern}</strong>
+          </div>
+        )}
+        {routeParams && Object.keys(routeParams).length > 0 && (
+          <div class="profiler-toolbar-panel-row">
+            <span>Route Params</span>
+            <strong class="profiler-text--xs profiler-text--mono">
+              {Object.entries(routeParams).map(([k, v]) => `${k}: ${v}`).join(', ')}
+            </strong>
+          </div>
+        )}
         {profile.params && Object.keys(profile.params).length > 0 && (
           <>
             <div class="profiler-section__header profiler-mt-3">Parameters</div>

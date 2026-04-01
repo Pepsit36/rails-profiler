@@ -10,8 +10,9 @@ import { CacheTab } from './tabs/CacheTab'
 import { HttpTab } from './tabs/HttpTab'
 import { LogsTab } from './tabs/LogsTab'
 import { ExceptionTab } from './tabs/ExceptionTab'
+import { RoutesTab } from './tabs/RoutesTab'
 
-type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception'
+type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception' | 'routes'
 
 interface Props {
   profile: Profile
@@ -25,6 +26,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
   const hasHttp = (cd['http'] as any)?.total_requests > 0
   const hasException = !!(cd['exception'] as any)?.exception_class
   const hasLogs = ((cd['logs'] as any)?.count ?? 0) > 0
+  const hasRoutes = ((cd['routes'] as any)?.total ?? 0) > 0
 
   const [activeTab, setActiveTab] = useState<TabKey>(hasException ? 'exception' : initialTab)
 
@@ -72,6 +74,9 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {hasLogs && (
             <a href="#" class={tabClass('logs')} onClick={handleTabClick('logs')}>Logs</a>
           )}
+          {hasRoutes && (
+            <a href="#" class={tabClass('routes')} onClick={handleTabClick('routes')}>Routes</a>
+          )}
         </div>
 
         <div class="profiler-p-4 tab-content active">
@@ -85,6 +90,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {activeTab === 'views' && <ViewsTab viewData={cd['view'] as any} />}
           {activeTab === 'cache' && <CacheTab cacheData={cd['cache'] as any} />}
           {activeTab === 'logs' && <LogsTab logData={cd['logs'] as any} />}
+          {activeTab === 'routes' && <RoutesTab routesData={cd['routes'] as any} />}
         </div>
       </div>
 

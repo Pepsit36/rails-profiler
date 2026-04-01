@@ -16,7 +16,9 @@ module Profiler
               duration: profile.duration&.round(2),
               memory: profile.memory ? (profile.memory / 1024.0 / 1024.0).round(2) : nil,
               timestamp: profile.started_at&.iso8601,
-              query_count: profile.collector_data("database")&.dig("total_queries") || 0
+              query_count: profile.collector_data("database")&.dig("total_queries") || 0,
+              matched_route: profile.collector_data("routes")&.dig("matched", "pattern"),
+              controller_action: profile.collector_data("request")&.dig("controller_action")
             }
           end
 

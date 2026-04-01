@@ -1,4 +1,4 @@
-import { Profile, DatabaseData, AjaxData, PerformanceData, ViewData, CacheData, DumpData, HttpData, LogData, ExceptionData } from '../../dashboard/types'
+import { Profile, DatabaseData, AjaxData, PerformanceData, ViewData, CacheData, DumpData, HttpData, LogData, ExceptionData, RoutesData } from '../../dashboard/types'
 import { ToolbarItem } from './ToolbarItem'
 import { RequestPanel } from './panels/RequestPanel'
 import { DatabasePanel } from './panels/DatabasePanel'
@@ -10,6 +10,7 @@ import { DumpsPanel } from './panels/DumpsPanel'
 import { HttpPanel } from './panels/HttpPanel'
 import { LogsPanel } from './panels/LogsPanel'
 import { ExceptionPanel } from './panels/ExceptionPanel'
+import { RoutesPanel } from './panels/RoutesPanel'
 
 interface Props {
   profile: Profile
@@ -50,6 +51,7 @@ export function ToolbarApp({ profile, token }: Props) {
   const httpData = cd['http'] as HttpData | undefined
   const logData = cd['logs'] as LogData | undefined
   const exceptionData = cd['exception'] as ExceptionData | undefined
+  const routesData = cd['routes'] as RoutesData | undefined
 
   const reqClass = statusClass(profile.status)
   const durClass = durationClass(profile.duration)
@@ -216,6 +218,19 @@ export function ToolbarApp({ profile, token }: Props) {
         >
           <span class="profiler-text--error profiler-text--xs">💥</span>
           <span class="profiler-text--error profiler-text--xs">{exceptionData.exception_class.split('::').pop()}</span>
+        </ToolbarItem>
+      )}
+
+      {routesData && routesData.total > 0 && (
+        <ToolbarItem
+          href={`/_profiler/profiles/${token}?tab=routes`}
+          panelLarge
+          panel={<RoutesPanel routesData={routesData} />}
+        >
+          <span class="profiler-text--muted profiler-text--xs">ROUTE</span>
+          <span class="profiler-text--xs profiler-text--mono">
+            {routesData.matched?.pattern ?? '—'}
+          </span>
         </ToolbarItem>
       )}
 
