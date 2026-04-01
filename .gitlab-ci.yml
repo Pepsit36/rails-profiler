@@ -45,6 +45,10 @@ bump-version:
       git add lib/profiler/version.rb
       git commit -m "chore(release): bump version to v${NEW_VERSION}"
       git push origin "HEAD:${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+      echo ""
+      echo "Version bumped to v${NEW_VERSION}. A new pipeline has been triggered."
+      echo "Please wait for it to pass before merging."
+      exit 1
 
 canary:
   stage: publish
