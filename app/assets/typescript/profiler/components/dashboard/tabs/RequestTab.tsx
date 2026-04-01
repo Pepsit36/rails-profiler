@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks'
-import { Profile } from '../../../dashboard/types'
+import { Profile, RequestData } from '../../../dashboard/types'
 
 interface Props {
   profile: Profile
@@ -62,6 +62,7 @@ function buildCurl(profile: Profile): string {
 export function RequestTab({ profile }: Props) {
   const [copied, setCopied] = useState(false)
   const curl = buildCurl(profile)
+  const routeData = (profile.collectors_data?.request ?? {}) as RequestData
 
   function copyToClipboard() {
     navigator.clipboard.writeText(curl).then(() => {
@@ -90,6 +91,32 @@ export function RequestTab({ profile }: Props) {
           <th class="profiler-text--sm">Duration</th>
           <td>{profile.duration.toFixed(2)} ms</td>
         </tr>
+        {routeData.controller_action && (
+          <tr>
+            <th class="profiler-text--sm">Controller#Action</th>
+            <td class="profiler-text--mono profiler-text--xs">{routeData.controller_action}</td>
+          </tr>
+        )}
+        {routeData.route_name && (
+          <tr>
+            <th class="profiler-text--sm">Route Name</th>
+            <td class="profiler-text--mono profiler-text--xs">{routeData.route_name}</td>
+          </tr>
+        )}
+        {routeData.route_pattern && (
+          <tr>
+            <th class="profiler-text--sm">Route Pattern</th>
+            <td class="profiler-text--mono profiler-text--xs">{routeData.route_pattern}</td>
+          </tr>
+        )}
+        {routeData.route_params && Object.keys(routeData.route_params).length > 0 && (
+          <tr>
+            <th class="profiler-text--sm">Route Params</th>
+            <td class="profiler-text--mono profiler-text--xs">
+              {Object.entries(routeData.route_params).map(([k, v]) => `${k}: ${v}`).join(', ')}
+            </td>
+          </tr>
+        )}
       </table>
 
       {profile.headers && Object.keys(profile.headers).length > 0 && (

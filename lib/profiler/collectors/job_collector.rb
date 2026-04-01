@@ -39,7 +39,7 @@ module Profiler
       end
 
       def has_data?
-        @job_data.any?
+        @job_data.key?(:job_class)
       end
 
       def toolbar_summary
