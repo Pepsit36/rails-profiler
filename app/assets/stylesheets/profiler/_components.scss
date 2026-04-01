@@ -500,3 +500,56 @@
     color: #fff;
   }
 }
+
+// ============================================================================
+// FLEX TABLE — responsive table using flexbox, columns shrink instead of overflow
+// ============================================================================
+
+.profiler-flex-table {
+  display: flex;
+  flex-direction: column;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: var(--profiler-space-3);
+    padding: var(--profiler-space-2) var(--profiler-space-3);
+    background: var(--profiler-bg-light);
+    border-bottom: 1px solid var(--profiler-border-strong);
+    font-weight: 600;
+    font-size: var(--profiler-text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--profiler-text-muted);
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: var(--profiler-space-3);
+    padding: var(--profiler-space-3);
+    border-bottom: 1px solid var(--profiler-border);
+    color: var(--profiler-text);
+
+    &--matched {
+      background: var(--profiler-success-bg);
+      border-left: 2px solid var(--profiler-success);
+    }
+  }
+
+  &__cell {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &--fixed {
+      flex: 0 0 auto;
+    }
+
+    &--muted {
+      color: var(--profiler-text-muted);
+    }
+  }
+}

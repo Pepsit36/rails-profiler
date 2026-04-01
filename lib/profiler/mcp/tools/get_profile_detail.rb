@@ -266,6 +266,23 @@ module Profiler
             end
           end
 
+          # Routes section
+          routes_data = profile.collector_data("routes")
+          if routes_data && routes_data["total"].to_i > 0
+            lines << "## Routes"
+            lines << "- Total routes: #{routes_data['total']}"
+
+            matched = routes_data["matched"]
+            if matched
+              lines << "- **Matched:** `#{matched['verb']} #{matched['pattern']}`"
+              lines << "  - Route name: #{matched['name']}_path" if matched["name"]
+              lines << "  - Controller#Action: #{matched['controller_action']}" if matched["controller_action"]
+            else
+              lines << "- No route matched"
+            end
+            lines << ""
+          end
+
           # Dumps section
           dump_data = profile.collector_data("dump")
           if dump_data && dump_data["count"].to_i > 0

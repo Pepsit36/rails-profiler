@@ -27,6 +27,7 @@ export interface Profile {
     flamegraph?: FlameGraphData;
     logs?: LogData;
     exception?: ExceptionData;
+    routes?: RoutesData;
     [key: string]: any;  // Allow custom collector data
   };
   tabs?: TabConfig[];  // Tab configurations from collectors
@@ -99,6 +100,10 @@ export interface RequestData {
   request_body_encoding?: 'text' | 'base64';
   response_body?: string;
   response_body_encoding?: 'text' | 'base64';
+  route_name?: string;
+  route_pattern?: string;
+  route_params?: Record<string, any>;
+  controller_action?: string;
 }
 
 export interface PerformanceData {
@@ -202,6 +207,20 @@ export interface ExceptionData {
 export interface BacktraceFrame {
   location: string;
   app_frame: boolean;
+}
+
+export interface RouteEntry {
+  name?: string;
+  pattern: string;
+  verb: string;
+  controller_action?: string;
+  matched: boolean;
+}
+
+export interface RoutesData {
+  total: number;
+  matched?: RouteEntry;
+  routes: RouteEntry[];
 }
 
 export type FlameGraphCategory = 'controller' | 'view' | 'partial' | 'sql' | 'cache' | 'http'

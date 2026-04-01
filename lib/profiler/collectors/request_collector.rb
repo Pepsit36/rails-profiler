@@ -42,6 +42,7 @@ module Profiler
           finished_at: @profile.finished_at&.iso8601
         }
 
+        data.merge!(collect_route_info)
         store_data(data)
       end
 
@@ -63,6 +64,39 @@ module Profiler
       end
 
       private
+
+      def collect_route_info
+        return {} unless defined?(Rails) && Rails.respond_to?(:application) && Rails.application
+
+        path   = @profile.path
+        method = @profile.method
+
+        recognized = Rails.application.routes.recognize_path(path, method: method)
+
+        controller = recognized[:controller]
+        action     = recognized[:action]
+
+        controller_action = if controller && action
+          "#{controller.split('/').map { |s| ActiveSupport::Inflector.camelize(s) }.join('::')}Controller##{action}"
+        end
+
+        route_params = recognized.except(:controller, :action, :format)
+
+        route_name, matched_route = Rails.application.routes.named_routes.find do |_name, route|
+          route.defaults[:controller] == controller &&
+            route.defaults[:action]    == action &&
+            route.path.match(path)
+        end
+
+        {
+          route_name:        route_name ? "#{route_name}_path" : nil,
+          route_pattern:     matched_route&.path&.spec&.to_s&.sub(/\(\.:format\)$/, ""),
+          route_params:      route_params,
+          controller_action: controller_action
+        }
+      rescue StandardError
+        {}
+      end
 
       def format_memory(bytes)
         return "0 B" unless bytes
