@@ -38,6 +38,75 @@ RSpec.describe Profiler::Collectors::RequestCollector do
     end
   end
 
+  describe "#collect route info" do
+    context "when Rails routes recognize the path" do
+      let(:profile) do
+        build_profile(path: "/users/42", method: "GET", status: 200)
+      end
+
+      before do
+        route_double = double("route")
+        path_double = double("path")
+        spec_double = double("spec", to_s: "/users/:id(.:format)")
+
+        allow(route_double).to receive(:defaults).and_return({ controller: "users", action: "show" })
+        allow(route_double).to receive(:path).and_return(path_double)
+        allow(path_double).to receive(:match).with("/users/42").and_return(true)
+        allow(path_double).to receive(:spec).and_return(spec_double)
+
+        named_routes = { "user" => route_double }
+        routes_double = double("routes")
+        allow(routes_double).to receive(:recognize_path)
+          .with("/users/42", method: "GET")
+          .and_return({ controller: "users", action: "show", id: "42" })
+        allow(routes_double).to receive(:named_routes).and_return(named_routes)
+
+        rails_app = double("rails_app")
+        allow(rails_app).to receive(:routes).and_return(routes_double)
+        stub_const("Rails", double("Rails", application: rails_app, respond_to?: true))
+
+        collector.collect
+      end
+
+      it "stores controller_action" do
+        expect(collector.panel_content[:controller_action]).to eq("UsersController#show")
+      end
+
+      it "stores route_params without controller/action" do
+        expect(collector.panel_content[:route_params]).to eq({ id: "42" })
+      end
+
+      it "stores route_name with _path suffix" do
+        expect(collector.panel_content[:route_name]).to eq("user_path")
+      end
+
+      it "stores route_pattern without format suffix" do
+        expect(collector.panel_content[:route_pattern]).to eq("/users/:id")
+      end
+    end
+
+    context "when route recognition fails" do
+      before do
+        routes_double = double("routes")
+        allow(routes_double).to receive(:recognize_path).and_raise(StandardError.new("no route"))
+
+        rails_app = double("rails_app")
+        allow(rails_app).to receive(:routes).and_return(routes_double)
+        stub_const("Rails", double("Rails", application: rails_app, respond_to?: true))
+
+        collector.collect
+      end
+
+      it "does not store route_name" do
+        expect(collector.panel_content[:route_name]).to be_nil
+      end
+
+      it "does not store controller_action" do
+        expect(collector.panel_content[:controller_action]).to be_nil
+      end
+    end
+  end
+
   describe "#toolbar_summary" do
     it "returns green color for 2xx status" do
       profile.instance_variable_set(:@status, 200)
