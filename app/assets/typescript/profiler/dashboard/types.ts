@@ -28,6 +28,7 @@ export interface Profile {
     logs?: LogData;
     exception?: ExceptionData;
     routes?: RoutesData;
+    i18n?: I18nData;
     [key: string]: any;  // Allow custom collector data
   };
   tabs?: TabConfig[];  // Tab configurations from collectors
@@ -221,6 +222,20 @@ export interface RoutesData {
   total: number;
   matched?: RouteEntry;
   routes: RouteEntry[];
+}
+
+export interface I18nData {
+  locale: string;
+  total: number;
+  missing_count: number;
+  lookups: I18nLookup[];
+}
+
+export interface I18nLookup {
+  key: string;
+  locale: string;
+  value: string;
+  missing: boolean;
 }
 
 export type FlameGraphCategory = 'controller' | 'view' | 'partial' | 'sql' | 'cache' | 'http'
