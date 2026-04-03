@@ -1,4 +1,4 @@
-import { Profile, DatabaseData, AjaxData, PerformanceData, ViewData, CacheData, DumpData, HttpData, LogData, ExceptionData, RoutesData } from '../../dashboard/types'
+import { Profile, DatabaseData, AjaxData, PerformanceData, ViewData, CacheData, DumpData, HttpData, LogData, ExceptionData, RoutesData, I18nData } from '../../dashboard/types'
 import { ToolbarItem } from './ToolbarItem'
 import { RequestPanel } from './panels/RequestPanel'
 import { DatabasePanel } from './panels/DatabasePanel'
@@ -11,6 +11,7 @@ import { HttpPanel } from './panels/HttpPanel'
 import { LogsPanel } from './panels/LogsPanel'
 import { ExceptionPanel } from './panels/ExceptionPanel'
 import { RoutesPanel } from './panels/RoutesPanel'
+import { I18nPanel } from './panels/I18nPanel'
 
 interface Props {
   profile: Profile
@@ -52,6 +53,7 @@ export function ToolbarApp({ profile, token }: Props) {
   const logData = cd['logs'] as LogData | undefined
   const exceptionData = cd['exception'] as ExceptionData | undefined
   const routesData = cd['routes'] as RoutesData | undefined
+  const i18nData = cd['i18n'] as I18nData | undefined
 
   const reqClass = statusClass(profile.status)
   const durClass = durationClass(profile.duration)
@@ -231,6 +233,20 @@ export function ToolbarApp({ profile, token }: Props) {
           <span class="profiler-text--xs profiler-text--mono">
             {routesData.matched?.pattern ?? '—'}
           </span>
+        </ToolbarItem>
+      )}
+
+      {i18nData && i18nData.total > 0 && (
+        <ToolbarItem
+          href={`/_profiler/profiles/${token}?tab=i18n`}
+          className={i18nData.missing_count > 0 ? 'profiler-text--error' : 'profiler-text--muted'}
+          panel={<I18nPanel i18nData={i18nData} />}
+        >
+          <span class="profiler-text--muted profiler-text--xs">I18N</span>
+          <span class="profiler-text--xs profiler-text--mono">{i18nData.locale}</span>
+          {i18nData.missing_count > 0 && (
+            <span class="profiler-text--error profiler-text--xs">⚠ {i18nData.missing_count}</span>
+          )}
         </ToolbarItem>
       )}
 
