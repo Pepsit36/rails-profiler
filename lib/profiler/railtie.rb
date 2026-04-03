@@ -45,7 +45,8 @@ module Profiler
             Profiler::Collectors::HttpCollector,
             Profiler::Collectors::FlameGraphCollector,
             Profiler::Collectors::LogCollector,
-            Profiler::Collectors::RoutesCollector
+            Profiler::Collectors::RoutesCollector,
+            Profiler::Collectors::I18nCollector
           ]
         end
       end
