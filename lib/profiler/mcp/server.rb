@@ -59,6 +59,9 @@ module Profiler
       private
 
       def build_tools
+        require_relative "file_cache"
+        require_relative "path_extractor"
+        require_relative "body_formatter"
         require_relative "tools/query_profiles"
         require_relative "tools/get_profile_detail"
         require_relative "tools/analyze_queries"
@@ -78,7 +81,9 @@ module Profiler
                 method: { type: "string", description: "Filter by HTTP method (GET, POST, etc.)" },
                 min_duration: { type: "number", description: "Minimum duration in milliseconds" },
                 profile_type: { type: "string", description: "Filter by type: 'http' or 'job'" },
-                limit: { type: "number", description: "Maximum number of results" }
+                limit: { type: "number", description: "Maximum number of results (default 20)" },
+                fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, type, method, path, duration, queries, status, token. Omit for all." },
+                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen. Returns profiles older than this." }
               }
             },
             handler: Tools::QueryProfiles
@@ -88,7 +93,12 @@ module Profiler
             description: "Get detailed profile data by token. Use 'latest' as token to get the most recent profile.",
             input_schema: {
               properties: {
-                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" }
+                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
+                sections: { type: "array", items: { type: "string" }, description: "Sections to include. Valid values: overview, exception, job, request, response, curl, database, performance, views, cache, ajax, http, routes, dumps. Omit for all." },
+                save_bodies: { type: "boolean", description: "Save request/response bodies to temp files and return paths instead of inlining content." },
+                max_body_size: { type: "number", description: "Truncate inlined body content at N characters. Ignored when save_bodies is true." },
+                json_path: { type: "string", description: "JSONPath expression to extract from response body (e.g. '$.data.items[0]'). Only applied when save_bodies is true." },
+                xml_path: { type: "string", description: "XPath expression to extract from response body (e.g. '//items/item[1]/name'). Only applied when save_bodies is true." }
               },
               required: ["token"]
             },
@@ -99,7 +109,8 @@ module Profiler
             description: "Analyze SQL queries for N+1 problems, duplicates, and slow queries. Use 'latest' as token to analyze the most recent profile.",
             input_schema: {
               properties: {
-                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" }
+                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
+                summary_only: { type: "boolean", description: "Return only the summary statistics section, skipping slow query and N+1 details." }
               },
               required: ["token"]
             },
@@ -133,7 +144,11 @@ module Profiler
             input_schema: {
               properties: {
                 token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
-                domain: { type: "string", description: "Filter outbound requests by domain (partial match on host)" }
+                domain: { type: "string", description: "Filter outbound requests by domain (partial match on host)" },
+                save_bodies: { type: "boolean", description: "Save request/response bodies to temp files and return paths instead of inlining content." },
+                max_body_size: { type: "number", description: "Truncate inlined body content at N characters. Ignored when save_bodies is true." },
+                json_path: { type: "string", description: "JSONPath expression to extract from response bodies (e.g. '$.data.items[0]'). Only applied when save_bodies is true." },
+                xml_path: { type: "string", description: "XPath expression to extract from response bodies (e.g. '//items/item[1]/name'). Only applied when save_bodies is true." }
               },
               required: ["token"]
             },
@@ -146,7 +161,9 @@ module Profiler
               properties: {
                 queue: { type: "string", description: "Filter by queue name" },
                 status: { type: "string", description: "Filter by status (completed, failed)" },
-                limit: { type: "number", description: "Maximum number of results" }
+                limit: { type: "number", description: "Maximum number of results (default 20)" },
+                fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, job_class, queue, status, duration, token. Omit for all." },
+                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen. Returns jobs older than this." }
               }
             },
             handler: Tools::QueryJobs
