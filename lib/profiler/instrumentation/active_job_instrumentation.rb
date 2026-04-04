@@ -12,7 +12,7 @@ module Profiler
             job_id: job.job_id,
             queue: job.queue_name,
             arguments: job.arguments,
-            executions: job.executions,
+            executions: job.executions - 1,
             &block
           )
         end
