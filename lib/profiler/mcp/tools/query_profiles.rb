@@ -55,7 +55,7 @@ module Profiler
             query_count = db_data ? db_data["total_queries"] : 0
             type = profile.profile_type || "http"
 
-            lines << "| #{profile.started_at.strftime('%H:%M:%S')} | #{type} | #{profile.method} | #{profile.path} | #{profile.duration.round(2)}ms | #{query_count} | #{profile.status} | #{profile.token} |"
+            lines << "| #{profile.started_at.strftime('%Y-%m-%d %H:%M:%S')} | #{type} | #{profile.method} | #{profile.path} | #{profile.duration.round(2)}ms | #{query_count} | #{profile.status} | #{profile.token} |"
           end
 
           lines.join("\n")

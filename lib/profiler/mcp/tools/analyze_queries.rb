@@ -15,7 +15,11 @@ module Profiler
             ]
           end
 
-          profile = Profiler.storage.load(token)
+          profile = if token == "latest"
+            Profiler.storage.list(limit: 1).first
+          else
+            Profiler.storage.load(token)
+          end
           unless profile
             return [
               {

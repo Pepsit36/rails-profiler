@@ -85,10 +85,10 @@ module Profiler
           ),
           define_tool(
             name: "get_profile",
-            description: "Get detailed profile data by token",
+            description: "Get detailed profile data by token. Use 'latest' as token to get the most recent profile.",
             input_schema: {
               properties: {
-                token: { type: "string", description: "Profile token (required)" }
+                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" }
               },
               required: ["token"]
             },
@@ -96,10 +96,10 @@ module Profiler
           ),
           define_tool(
             name: "analyze_queries",
-            description: "Analyze SQL queries for N+1 problems, duplicates, and slow queries",
+            description: "Analyze SQL queries for N+1 problems, duplicates, and slow queries. Use 'latest' as token to analyze the most recent profile.",
             input_schema: {
               properties: {
-                token: { type: "string", description: "Profile token (required)" }
+                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" }
               },
               required: ["token"]
             },
@@ -107,10 +107,10 @@ module Profiler
           ),
           define_tool(
             name: "get_profile_ajax",
-            description: "Get detailed AJAX sub-request breakdown for a profile",
+            description: "Get detailed AJAX sub-request breakdown for a profile. Use 'latest' as token to get the most recent profile.",
             input_schema: {
               properties: {
-                token: { type: "string", description: "Profile token (required)" }
+                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" }
               },
               required: ["token"]
             },
@@ -118,10 +118,10 @@ module Profiler
           ),
           define_tool(
             name: "get_profile_dumps",
-            description: "Get variable dumps captured during a profile",
+            description: "Get variable dumps captured during a profile. Use 'latest' as token to get the most recent profile.",
             input_schema: {
               properties: {
-                token: { type: "string", description: "Profile token (required)" }
+                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" }
               },
               required: ["token"]
             },
@@ -129,10 +129,11 @@ module Profiler
           ),
           define_tool(
             name: "get_profile_http",
-            description: "Get outbound HTTP request breakdown for a profile (external API calls made during the request)",
+            description: "Get outbound HTTP request breakdown for a profile (external API calls made during the request). Use 'latest' as token to get the most recent profile.",
             input_schema: {
               properties: {
-                token: { type: "string", description: "Profile token (required)" }
+                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
+                domain: { type: "string", description: "Filter outbound requests by domain (partial match on host)" }
               },
               required: ["token"]
             },

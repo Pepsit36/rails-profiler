@@ -173,9 +173,17 @@ module Profiler
         params.to_h.except("password", "password_confirmation", "token", "secret")
       end
 
+      ALLOWED_HEADERS = %w[
+        Accept Accept-Charset Accept-Encoding Accept-Language
+        Authorization Cache-Control Connection Content-Length Content-Type
+        Cookie Host If-Modified-Since If-None-Match Origin
+        Referer User-Agent
+      ].freeze
+
       def extract_headers(env)
         env.select { |k, _| k.start_with?("HTTP_") }
            .transform_keys { |k| k.sub(/^HTTP_/, "").split("_").map(&:capitalize).join("-") }
+           .select { |k, _| ALLOWED_HEADERS.include?(k) }
       end
     end
   end
