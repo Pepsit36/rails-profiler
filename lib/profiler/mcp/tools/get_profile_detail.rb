@@ -18,7 +18,11 @@ module Profiler
             ]
           end
 
-          profile = Profiler.storage.load(token)
+          profile = if token == "latest"
+            Profiler.storage.list(limit: 1).first
+          else
+            Profiler.storage.load(token)
+          end
           unless profile
             return [
               {
@@ -48,6 +52,24 @@ module Profiler
           lines << "**Duration:** #{profile.duration.round(2)} ms"
           lines << "**Memory:** #{(profile.memory / 1024.0 / 1024.0).round(2)} MB" if profile.memory
           lines << "**Time:** #{profile.started_at}\n"
+
+          # Exception section
+          exception_data = profile.collector_data("exception")
+          if exception_data && exception_data["exception_class"]
+            lines << "## Exception"
+            lines << "**Class:** #{exception_data['exception_class']}"
+            lines << "**Message:** #{exception_data['message']}\n"
+
+            backtrace = exception_data["backtrace"]
+            if backtrace && !backtrace.empty?
+              lines << "### Backtrace"
+              backtrace.first(20).each do |frame|
+                marker = frame["app_frame"] ? "★ " : "  "
+                lines << "#{marker}#{frame['location']}"
+              end
+              lines << ""
+            end
+          end
 
           # Job section
           job_data = profile.collector_data("job")

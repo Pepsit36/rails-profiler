@@ -4,6 +4,7 @@ require "net/http"
 require "base64"
 require "zlib"
 require "stringio"
+require "securerandom"
 
 module Profiler
   module Instrumentation
@@ -22,6 +23,8 @@ module Profiler
           url = build_url(host, port, req.path, use_ssl?)
           req_body = req.body.to_s
           req_headers = req.to_hash.transform_values { |v| v.join(", ") }
+          request_id = SecureRandom.hex(8)
+          started_at = Time.now.iso8601(3)
           t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           Thread.current[:profiler_http_recording] = true
 
@@ -40,6 +43,8 @@ module Profiler
           t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
           collector.record_request(
+            id: request_id,
+            started_at: started_at,
             url: url,
             method: req.method,
             status: response.code.to_i,
@@ -63,6 +68,8 @@ module Profiler
           if defined?(t0) && t0
             duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round(2)
             collector&.record_request(
+              id: defined?(request_id) ? request_id : SecureRandom.hex(8),
+              started_at: defined?(started_at) ? started_at : Time.now.iso8601(3),
               url: url,
               method: req.method,
               status: 0,

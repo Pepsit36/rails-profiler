@@ -49,7 +49,7 @@ module Profiler
             job_class = job_data["job_class"] || profile.path
             queue = job_data["queue"] || "-"
             status = job_data["status"] || "-"
-            lines << "| #{profile.started_at.strftime('%H:%M:%S')} | #{job_class} | #{queue} | #{status} | #{profile.duration.round(2)}ms | #{profile.token} |"
+            lines << "| #{profile.started_at.strftime('%Y-%m-%d %H:%M:%S')} | #{job_class} | #{queue} | #{status} | #{profile.duration.round(2)}ms | #{profile.token} |"
           end
 
           lines.join("\n")
