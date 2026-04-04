@@ -32,7 +32,7 @@ module Profiler
             ]
           end
 
-          text = format_profile_detail(profile)
+          text = format_profile_detail(profile, params)
 
           [
             {
@@ -44,7 +44,29 @@ module Profiler
 
         private
 
-        def self.format_profile_detail(profile)
+        def self.format_profile_detail(profile, params = {})
+          requested = params["sections"]&.map(&:to_s)
+          want = ->(name) { requested.nil? || requested.include?(name) }
+
+          lines = []
+          lines += section_overview(profile)              if want.("overview")
+          lines += section_exception(profile)             if want.("exception")
+          lines += section_job(profile)                   if want.("job")
+          lines += section_request(profile, params)       if want.("request")
+          lines += section_response(profile, params)      if want.("response")
+          lines += section_curl(profile)                  if want.("curl")
+          lines += section_database(profile)              if want.("database")
+          lines += section_performance(profile)           if want.("performance")
+          lines += section_views(profile)                 if want.("views")
+          lines += section_cache(profile)                 if want.("cache")
+          lines += section_ajax(profile)                  if want.("ajax")
+          lines += section_http(profile)                  if want.("http")
+          lines += section_routes(profile)                if want.("routes")
+          lines += section_dumps(profile)                 if want.("dumps")
+          lines.join("\n")
+        end
+
+        def self.section_overview(profile)
           lines = []
           lines << "# Profile Details: #{profile.token}\n"
           lines << "**Request:** #{profile.method} #{profile.path}"
@@ -52,278 +74,316 @@ module Profiler
           lines << "**Duration:** #{profile.duration.round(2)} ms"
           lines << "**Memory:** #{(profile.memory / 1024.0 / 1024.0).round(2)} MB" if profile.memory
           lines << "**Time:** #{profile.started_at}\n"
+          lines
+        end
 
-          # Exception section
+        def self.section_exception(profile)
+          lines = []
           exception_data = profile.collector_data("exception")
-          if exception_data && exception_data["exception_class"]
-            lines << "## Exception"
-            lines << "**Class:** #{exception_data['exception_class']}"
-            lines << "**Message:** #{exception_data['message']}\n"
+          return lines unless exception_data && exception_data["exception_class"]
 
-            backtrace = exception_data["backtrace"]
-            if backtrace && !backtrace.empty?
-              lines << "### Backtrace"
-              backtrace.first(20).each do |frame|
-                marker = frame["app_frame"] ? "★ " : "  "
-                lines << "#{marker}#{frame['location']}"
-              end
-              lines << ""
-            end
-          end
+          lines << "## Exception"
+          lines << "**Class:** #{exception_data['exception_class']}"
+          lines << "**Message:** #{exception_data['message']}\n"
 
-          # Job section
-          job_data = profile.collector_data("job")
-          if job_data && job_data["job_class"]
-            lines << "## Job"
-            lines << "- Class: #{job_data['job_class']}"
-            lines << "- Job ID: #{job_data['job_id']}"
-            lines << "- Queue: #{job_data['queue']}"
-            lines << "- Executions: #{job_data['executions']}"
-            lines << "- Status: #{job_data['status']}"
-            lines << "- Error: #{job_data['error']}" if job_data['error']
-            if job_data['arguments'] && !job_data['arguments'].empty?
-              lines << "- Arguments: #{job_data['arguments'].map(&:to_s).join(', ')}"
+          backtrace = exception_data["backtrace"]
+          if backtrace && !backtrace.empty?
+            lines << "### Backtrace"
+            backtrace.first(20).each do |frame|
+              marker = frame["app_frame"] ? "★ " : "  "
+              lines << "#{marker}#{frame['location']}"
             end
             lines << ""
           end
+          lines
+        end
 
-          # Request section
+        def self.section_job(profile)
+          lines = []
+          job_data = profile.collector_data("job")
+          return lines unless job_data && job_data["job_class"]
+
+          lines << "## Job"
+          lines << "- Class: #{job_data['job_class']}"
+          lines << "- Job ID: #{job_data['job_id']}"
+          lines << "- Queue: #{job_data['queue']}"
+          lines << "- Executions: #{job_data['executions']}"
+          lines << "- Status: #{job_data['status']}"
+          lines << "- Error: #{job_data['error']}" if job_data["error"]
+          if job_data["arguments"] && !job_data["arguments"].empty?
+            lines << "- Arguments: #{job_data['arguments'].map(&:to_s).join(', ')}"
+          end
+          lines << ""
+          lines
+        end
+
+        def self.section_request(profile, params)
+          lines = []
           req_data = profile.collector_data("request")
-          if req_data
-            params = req_data["params"]
-            headers = req_data["headers"]
+          return lines unless req_data
 
-            if params && !params.empty?
-              lines << "## Request Params"
-              params.each { |k, v| lines << "- **#{k}**: #{v}" }
-              lines << ""
-            end
+          request_params = req_data["params"]
+          headers = req_data["headers"]
 
-            if headers && !headers.empty?
-              lines << "## Request Headers"
-              headers.each { |k, v| lines << "- **#{k}**: #{v}" }
-              lines << ""
-            end
-
-            req_body = req_data["request_body"]
-            if req_body && !req_body.empty?
-              enc = req_data["request_body_encoding"]
-              lines << "## Request Body"
-              if enc == "base64"
-                lines << "_[binary, base64-encoded]_"
-              else
-                lines << "```"
-                lines << req_body
-                lines << "```"
-              end
-              lines << ""
-            end
+          if request_params && !request_params.empty?
+            lines << "## Request Params"
+            request_params.each { |k, v| lines << "- **#{k}**: #{v}" }
+            lines << ""
           end
 
-          # Response Headers section
+          if headers && !headers.empty?
+            lines << "## Request Headers"
+            headers.each { |k, v| lines << "- **#{k}**: #{v}" }
+            lines << ""
+          end
+
+          req_body = req_data["request_body"]
+          if req_body && !req_body.empty?
+            lines << "## Request Body"
+            formatted = BodyFormatter.format_body(
+              profile.token,
+              "request_body",
+              req_body,
+              req_data["request_body_encoding"],
+              params
+            )
+            lines << formatted if formatted
+            lines << ""
+          end
+          lines
+        end
+
+        def self.section_response(profile, params)
+          lines = []
+
           if profile.response_headers&.any?
             lines << "## Response Headers"
             profile.response_headers.each { |k, v| lines << "- **#{k}**: #{v}" }
             lines << ""
           end
 
-          # Response Body section
           resp_body = profile.response_body
           if resp_body && !resp_body.empty?
-            enc = profile.response_body_encoding
             lines << "## Response Body"
-            if enc == "base64"
-              lines << "_[binary, base64-encoded]_"
-            else
-              lines << "```"
-              lines << resp_body
-              lines << "```"
-            end
+            formatted = BodyFormatter.format_body(
+              profile.token,
+              "response_body",
+              resp_body,
+              profile.response_body_encoding,
+              params
+            )
+            lines << formatted if formatted
             lines << ""
           end
+          lines
+        end
 
-          # Curl command
-          req_data_for_curl = profile.collector_data("request")
+        def self.section_curl(profile)
+          req_data = profile.collector_data("request")
+          lines = []
           lines << "## Curl Command"
           lines << "```bash"
-          lines << generate_curl(profile, req_data_for_curl)
+          lines << generate_curl(profile, req_data)
           lines << "```"
           lines << ""
+          lines
+        end
 
-          # Database section
+        def self.section_database(profile)
+          lines = []
           db_data = profile.collector_data("database")
-          if db_data && db_data["total_queries"]
-            lines << "## Database"
-            lines << "- Total Queries: #{db_data['total_queries']}"
-            lines << "- Total Duration: #{db_data['total_duration'].round(2)} ms"
-            lines << "- Slow Queries: #{db_data['slow_queries']}"
-            lines << "- Cached Queries: #{db_data['cached_queries']}\n"
+          return lines unless db_data && db_data["total_queries"]
 
-            if db_data["queries"] && !db_data["queries"].empty?
-              lines << "### Query Details"
-              db_data["queries"].each_with_index do |query, index|
-                lines << "\n**Query #{index + 1}** (#{query['duration'].round(2)}ms):"
-                lines << "```sql"
-                lines << query['sql']
-                lines << "```"
-                if query['backtrace'] && !query['backtrace'].empty?
-                  lines << "_Backtrace:_"
-                  query['backtrace'].first(3).each { |frame| lines << "  #{frame}" }
-                end
+          lines << "## Database"
+          lines << "- Total Queries: #{db_data['total_queries']}"
+          lines << "- Total Duration: #{db_data['total_duration'].round(2)} ms"
+          lines << "- Slow Queries: #{db_data['slow_queries']}"
+          lines << "- Cached Queries: #{db_data['cached_queries']}\n"
+
+          if db_data["queries"] && !db_data["queries"].empty?
+            lines << "### Query Details"
+            db_data["queries"].each_with_index do |query, index|
+              lines << "\n**Query #{index + 1}** (#{query['duration'].round(2)}ms):"
+              lines << "```sql"
+              lines << query["sql"]
+              lines << "```"
+              if query["backtrace"] && !query["backtrace"].empty?
+                lines << "_Backtrace:_"
+                query["backtrace"].first(3).each { |frame| lines << "  #{frame}" }
               end
             end
-            lines << ""
           end
+          lines << ""
+          lines
+        end
 
-          # Performance section
+        def self.section_performance(profile)
+          lines = []
           perf_data = profile.collector_data("performance")
-          if perf_data && perf_data["total_events"]
-            lines << "## Performance Timeline"
-            lines << "- Total Events: #{perf_data['total_events']}"
-            lines << "- Total Duration: #{perf_data['total_duration'].round(2)} ms\n"
+          return lines unless perf_data && perf_data["total_events"]
 
-            if perf_data["events"] && !perf_data["events"].empty?
-              lines << "### Events"
-              perf_data["events"].each do |event|
-                lines << "- **#{event['name']}**: #{event['duration'].round(2)} ms"
-              end
+          lines << "## Performance Timeline"
+          lines << "- Total Events: #{perf_data['total_events']}"
+          lines << "- Total Duration: #{perf_data['total_duration'].round(2)} ms\n"
+
+          if perf_data["events"] && !perf_data["events"].empty?
+            lines << "### Events"
+            perf_data["events"].each do |event|
+              lines << "- **#{event['name']}**: #{event['duration'].round(2)} ms"
             end
-            lines << ""
           end
+          lines << ""
+          lines
+        end
 
-          # Views section
+        def self.section_views(profile)
+          lines = []
           view_data = profile.collector_data("view")
-          if view_data && (view_data["total_views"] || view_data["total_partials"])
-            lines << "## View Rendering"
-            lines << "- Templates: #{view_data['total_views']}"
-            lines << "- Partials: #{view_data['total_partials']}"
-            lines << "- Total Duration: #{view_data['total_duration'].round(2)} ms\n"
+          return lines unless view_data && (view_data["total_views"] || view_data["total_partials"])
 
-            if view_data["views"] && !view_data["views"].empty?
-              lines << "### Templates"
-              view_data["views"].each do |view|
-                lines << "- `#{view['identifier']}` — #{view['duration'].round(2)} ms"
-              end
-              lines << ""
-            end
+          lines << "## View Rendering"
+          lines << "- Templates: #{view_data['total_views']}"
+          lines << "- Partials: #{view_data['total_partials']}"
+          lines << "- Total Duration: #{view_data['total_duration'].round(2)} ms\n"
 
-            if view_data["partials"] && !view_data["partials"].empty?
-              lines << "### Partials"
-              view_data["partials"].each do |partial|
-                lines << "- `#{partial['identifier']}` — #{partial['duration'].round(2)} ms"
-              end
-              lines << ""
+          if view_data["views"] && !view_data["views"].empty?
+            lines << "### Templates"
+            view_data["views"].each do |view|
+              lines << "- `#{view['identifier']}` — #{view['duration'].round(2)} ms"
             end
+            lines << ""
           end
 
-          # Cache section
+          if view_data["partials"] && !view_data["partials"].empty?
+            lines << "### Partials"
+            view_data["partials"].each do |partial|
+              lines << "- `#{partial['identifier']}` — #{partial['duration'].round(2)} ms"
+            end
+            lines << ""
+          end
+          lines
+        end
+
+        def self.section_cache(profile)
+          lines = []
           cache_data = profile.collector_data("cache")
-          if cache_data && cache_data["total_reads"]
-            lines << "## Cache"
-            lines << "- Reads: #{cache_data['total_reads']}"
-            lines << "- Writes: #{cache_data['total_writes']}"
-            lines << "- Deletes: #{cache_data['total_deletes']}"
-            lines << "- Hit Rate: #{cache_data['hit_rate']}%\n"
+          return lines unless cache_data && cache_data["total_reads"]
 
-            if cache_data["reads"] && !cache_data["reads"].empty?
-              lines << "### Cache Reads"
-              cache_data["reads"].each do |op|
-                hit_label = op['hit'] ? "HIT" : "MISS"
-                lines << "- [#{hit_label}] `#{op['key']}` — #{op['duration'].round(2)} ms"
-              end
-              lines << ""
-            end
+          lines << "## Cache"
+          lines << "- Reads: #{cache_data['total_reads']}"
+          lines << "- Writes: #{cache_data['total_writes']}"
+          lines << "- Deletes: #{cache_data['total_deletes']}"
+          lines << "- Hit Rate: #{cache_data['hit_rate']}%\n"
 
-            if cache_data["writes"] && !cache_data["writes"].empty?
-              lines << "### Cache Writes"
-              cache_data["writes"].each do |op|
-                lines << "- `#{op['key']}` — #{op['duration'].round(2)} ms"
-              end
-              lines << ""
+          if cache_data["reads"] && !cache_data["reads"].empty?
+            lines << "### Cache Reads"
+            cache_data["reads"].each do |op|
+              hit_label = op["hit"] ? "HIT" : "MISS"
+              lines << "- [#{hit_label}] `#{op['key']}` — #{op['duration'].round(2)} ms"
             end
-
-            if cache_data["deletes"] && !cache_data["deletes"].empty?
-              lines << "### Cache Deletes"
-              cache_data["deletes"].each do |op|
-                lines << "- `#{op['key']}` — #{op['duration'].round(2)} ms"
-              end
-              lines << ""
-            end
+            lines << ""
           end
 
-          # Ajax section
+          if cache_data["writes"] && !cache_data["writes"].empty?
+            lines << "### Cache Writes"
+            cache_data["writes"].each do |op|
+              lines << "- `#{op['key']}` — #{op['duration'].round(2)} ms"
+            end
+            lines << ""
+          end
+
+          if cache_data["deletes"] && !cache_data["deletes"].empty?
+            lines << "### Cache Deletes"
+            cache_data["deletes"].each do |op|
+              lines << "- `#{op['key']}` — #{op['duration'].round(2)} ms"
+            end
+            lines << ""
+          end
+          lines
+        end
+
+        def self.section_ajax(profile)
+          lines = []
           ajax_data = profile.collector_data("ajax")
-          if ajax_data && ajax_data["total_requests"].to_i > 0
-            lines << "## AJAX Requests"
-            lines << "- Total: #{ajax_data['total_requests']}"
-            lines << "- Total Duration: #{ajax_data['total_duration'].round(2)} ms\n"
+          return lines unless ajax_data && ajax_data["total_requests"].to_i > 0
 
-            if ajax_data["requests"] && !ajax_data["requests"].empty?
-              lines << "### Request List"
-              ajax_data["requests"].each do |req|
-                lines << "- **#{req['method']} #{req['path']}** — #{req['status']} — #{req['duration'].round(2)} ms (token: #{req['token']})"
-              end
-              lines << ""
+          lines << "## AJAX Requests"
+          lines << "- Total: #{ajax_data['total_requests']}"
+          lines << "- Total Duration: #{ajax_data['total_duration'].round(2)} ms\n"
+
+          if ajax_data["requests"] && !ajax_data["requests"].empty?
+            lines << "### Request List"
+            ajax_data["requests"].each do |req|
+              lines << "- **#{req['method']} #{req['path']}** — #{req['status']} — #{req['duration'].round(2)} ms (token: #{req['token']})"
             end
+            lines << ""
           end
+          lines
+        end
 
-          # HTTP section
+        def self.section_http(profile)
+          lines = []
           http_data = profile.collector_data("http")
-          if http_data && http_data["total_requests"].to_i > 0
-            threshold = Profiler.configuration.slow_http_threshold
-            lines << "## Outbound HTTP"
-            lines << "- Total: #{http_data['total_requests']}"
-            lines << "- Total Duration: #{http_data['total_duration'].round(2)} ms"
-            lines << "- Slow (>#{threshold}ms): #{http_data['slow_requests']}"
-            lines << "- Errors: #{http_data['error_requests']}\n"
+          return lines unless http_data && http_data["total_requests"].to_i > 0
 
-            if http_data["requests"] && !http_data["requests"].empty?
-              lines << "### Request List"
-              http_data["requests"].each do |req|
-                flag = req["duration"] >= threshold ? " [SLOW]" : ""
-                err = req["status"] >= 400 || req["status"] == 0 ? " [ERROR]" : ""
-                lines << "- **#{req['method']} #{req['url']}** — #{req['status'] == 0 ? 'error' : req['status']} — #{req['duration'].round(2)} ms#{flag}#{err}"
-              end
-              lines << ""
+          threshold = Profiler.configuration.slow_http_threshold
+          lines << "## Outbound HTTP"
+          lines << "- Total: #{http_data['total_requests']}"
+          lines << "- Total Duration: #{http_data['total_duration'].round(2)} ms"
+          lines << "- Slow (>#{threshold}ms): #{http_data['slow_requests']}"
+          lines << "- Errors: #{http_data['error_requests']}\n"
+
+          if http_data["requests"] && !http_data["requests"].empty?
+            lines << "### Request List"
+            http_data["requests"].each do |req|
+              flag = req["duration"] >= threshold ? " [SLOW]" : ""
+              err = req["status"] >= 400 || req["status"] == 0 ? " [ERROR]" : ""
+              lines << "- **#{req['method']} #{req['url']}** — #{req['status'] == 0 ? 'error' : req['status']} — #{req['duration'].round(2)} ms#{flag}#{err}"
             end
+            lines << ""
           end
+          lines
+        end
 
-          # Routes section
+        def self.section_routes(profile)
+          lines = []
           routes_data = profile.collector_data("routes")
-          if routes_data && routes_data["total"].to_i > 0
-            lines << "## Routes"
-            lines << "- Total routes: #{routes_data['total']}"
+          return lines unless routes_data && routes_data["total"].to_i > 0
 
-            matched = routes_data["matched"]
-            if matched
-              lines << "- **Matched:** `#{matched['verb']} #{matched['pattern']}`"
-              lines << "  - Route name: #{matched['name']}_path" if matched["name"]
-              lines << "  - Controller#Action: #{matched['controller_action']}" if matched["controller_action"]
-            else
-              lines << "- No route matched"
-            end
-            lines << ""
+          lines << "## Routes"
+          lines << "- Total routes: #{routes_data['total']}"
+
+          matched = routes_data["matched"]
+          if matched
+            lines << "- **Matched:** `#{matched['verb']} #{matched['pattern']}`"
+            lines << "  - Route name: #{matched['name']}_path" if matched["name"]
+            lines << "  - Controller#Action: #{matched['controller_action']}" if matched["controller_action"]
+          else
+            lines << "- No route matched"
           end
+          lines << ""
+          lines
+        end
 
-          # Dumps section
+        def self.section_dumps(profile)
+          lines = []
           dump_data = profile.collector_data("dump")
-          if dump_data && dump_data["count"].to_i > 0
-            lines << "## Variable Dumps"
-            lines << "- Count: #{dump_data['count']}\n"
+          return lines unless dump_data && dump_data["count"].to_i > 0
 
-            dump_data["dumps"]&.each_with_index do |dump, index|
-              label = dump['label'] || "Dump #{index + 1}"
-              location = [dump['file'], dump['line']].compact.join(':')
-              lines << "### #{label}"
-              lines << "_Source: #{location}_" unless location.empty?
-              lines << "```"
-              lines << (dump['formatted'] || dump['value'].inspect)
-              lines << "```"
-            end
-            lines << ""
+          lines << "## Variable Dumps"
+          lines << "- Count: #{dump_data['count']}\n"
+
+          dump_data["dumps"]&.each_with_index do |dump, index|
+            label = dump["label"] || "Dump #{index + 1}"
+            location = [dump["file"], dump["line"]].compact.join(":")
+            lines << "### #{label}"
+            lines << "_Source: #{location}_" unless location.empty?
+            lines << "```"
+            lines << (dump["formatted"] || dump["value"].inspect)
+            lines << "```"
           end
-
-          lines.join("\n")
+          lines << ""
+          lines
         end
 
         def self.generate_curl(profile, req_data)
