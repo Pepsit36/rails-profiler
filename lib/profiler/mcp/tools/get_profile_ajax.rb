@@ -10,7 +10,11 @@ module Profiler
             return [{ type: "text", text: "Error: token parameter is required" }]
           end
 
-          profile = Profiler.storage.load(token)
+          profile = if token == "latest"
+            Profiler.storage.list(limit: 1).first
+          else
+            Profiler.storage.load(token)
+          end
           unless profile
             return [{ type: "text", text: "Profile not found: #{token}" }]
           end
