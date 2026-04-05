@@ -308,3 +308,73 @@
 
 .profiler-filter-input { width: 160px; }
 .profiler-filter-select { cursor: pointer; }
+
+// ============================================================================
+// QUICK FILTER PRESETS
+// ============================================================================
+
+.profiler-preset-btn {
+  height: 28px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-full);
+  color: var(--profiler-text-muted);
+  font-family: var(--profiler-font-sans);
+  font-size: var(--profiler-text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--profiler-transition-base);
+  white-space: nowrap;
+
+  &:hover {
+    border-color: var(--profiler-accent);
+    color: var(--profiler-accent);
+    background: var(--profiler-accent-bg);
+  }
+
+  &--active {
+    border-color: var(--profiler-accent);
+    background: var(--profiler-accent);
+    color: var(--profiler-text-on-accent, #fff);
+
+    &:hover {
+      opacity: 0.85;
+      color: var(--profiler-text-on-accent, #fff);
+    }
+  }
+}
+
+// ============================================================================
+// SORTABLE COLUMN HEADERS
+// ============================================================================
+
+.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color var(--profiler-transition-base);
+
+  &:hover {
+    color: var(--profiler-text) !important;
+  }
+
+  &--active {
+    color: var(--profiler-text) !important;
+  }
+}
+
+.sort-icon {
+  font-size: 10px;
+  margin-left: 4px;
+  vertical-align: middle;
+
+  &--idle {
+    opacity: 0.35;
+  }
+
+  &--active {
+    color: var(--profiler-accent);
+    opacity: 1;
+  }
+}
