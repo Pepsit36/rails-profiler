@@ -39,7 +39,8 @@ module Profiler
             ]
           end
 
-          text = analyze_and_format(db_data["queries"])
+          summary_only = params["summary_only"] == true || params["summary_only"] == "true"
+          text = analyze_and_format(db_data["queries"], summary_only: summary_only)
 
           [
             {
@@ -51,58 +52,55 @@ module Profiler
 
         private
 
-        def self.analyze_and_format(queries)
+        def self.analyze_and_format(queries, summary_only: false)
           lines = []
           lines << "# SQL Query Analysis\n"
 
-          # Detect slow queries
           slow_threshold = Profiler.configuration.slow_query_threshold
           slow_queries = queries.select { |q| q["duration"] > slow_threshold }
-
-          if slow_queries.any?
-            lines << "## ⚠️ Slow Queries (> #{slow_threshold}ms)"
-            lines << "Found #{slow_queries.size} slow queries:\n"
-
-            slow_queries.first(5).each_with_index do |query, index|
-              lines << "### Query #{index + 1} - #{query['duration'].round(2)}ms"
-              lines << "```sql"
-              lines << query['sql']
-              lines << "```\n"
-            end
-
-            if slow_queries.size > 5
-              lines << "_... and #{slow_queries.size - 5} more slow queries_\n"
-            end
-          else
-            lines << "## ✅ No Slow Queries"
-            lines << "All queries executed in less than #{slow_threshold}ms\n"
-          end
-
-          # Detect duplicate queries (potential N+1)
           query_counts = queries.group_by { |q| normalize_sql(q["sql"]) }
                                .transform_values(&:count)
                                .select { |_, count| count > 1 }
 
-          if query_counts.any?
-            lines << "## ⚠️ Duplicate Queries (Potential N+1)"
-            lines << "Found #{query_counts.size} duplicate query patterns:\n"
+          unless summary_only
+            # Detect slow queries
+            if slow_queries.any?
+              lines << "## ⚠️ Slow Queries (> #{slow_threshold}ms)"
+              lines << "Found #{slow_queries.size} slow queries:\n"
 
-            query_counts.sort_by { |_, count| -count }.first(5).each do |sql, count|
-              lines << "### Executed #{count} times:"
-              lines << "```sql"
-              lines << sql
-              lines << "```\n"
+              slow_queries.first(5).each_with_index do |query, index|
+                lines << "### Query #{index + 1} - #{query['duration'].round(2)}ms"
+                lines << "```sql"
+                lines << query["sql"]
+                lines << "```\n"
+              end
+
+              lines << "_... and #{slow_queries.size - 5} more slow queries_\n" if slow_queries.size > 5
+            else
+              lines << "## ✅ No Slow Queries"
+              lines << "All queries executed in less than #{slow_threshold}ms\n"
             end
 
-            if query_counts.size > 5
-              lines << "_... and #{query_counts.size - 5} more duplicate patterns_\n"
+            # Detect duplicate queries (potential N+1)
+            if query_counts.any?
+              lines << "## ⚠️ Duplicate Queries (Potential N+1)"
+              lines << "Found #{query_counts.size} duplicate query patterns:\n"
+
+              query_counts.sort_by { |_, count| -count }.first(5).each do |sql, count|
+                lines << "### Executed #{count} times:"
+                lines << "```sql"
+                lines << sql
+                lines << "```\n"
+              end
+
+              lines << "_... and #{query_counts.size - 5} more duplicate patterns_\n" if query_counts.size > 5
+            else
+              lines << "## ✅ No Duplicate Queries"
+              lines << "No potential N+1 query problems detected\n"
             end
-          else
-            lines << "## ✅ No Duplicate Queries"
-            lines << "No potential N+1 query problems detected\n"
           end
 
-          # Overall statistics
+          # Summary statistics always included
           lines << "## Summary Statistics"
           lines << "- **Total Queries:** #{queries.size}"
           lines << "- **Total Duration:** #{queries.sum { |q| q['duration'] }.round(2)}ms"
@@ -115,11 +113,10 @@ module Profiler
         end
 
         def self.normalize_sql(sql)
-          # Normalize SQL by removing bind values for comparison
-          sql.gsub(/\$\d+/, '?')
-             .gsub(/\b\d+\b/, '?')
-             .gsub(/'[^']*'/, '?')
-             .gsub(/"[^"]*"/, '?')
+          sql.gsub(/\$\d+/, "?")
+             .gsub(/\b\d+\b/, "?")
+             .gsub(/'[^']*'/, "?")
+             .gsub(/"[^"]*"/, "?")
              .strip
         end
       end
