@@ -14,15 +14,15 @@ module Profiler
             db_data = profile.collector_data("database")
             next unless db_data && db_data["queries"]
 
-            query_counts = db_data["queries"].group_by { |q| normalize_sql(q["sql"]) }
-                                             .transform_values(&:count)
+            query_groups = db_data["queries"].group_by { |q| normalize_sql(q["sql"]) }
 
-            query_counts.each do |normalized_sql, count|
+            query_groups.each do |normalized_sql, queries|
               pattern_map[normalized_sql] << {
                 token: profile.token,
                 path: profile.path,
-                count: count,
-                timestamp: profile.started_at&.iso8601
+                count: queries.size,
+                timestamp: profile.started_at&.iso8601,
+                backtrace: (queries.first["backtrace"] || []).first(3)
               }
             end
           end
@@ -35,7 +35,8 @@ module Profiler
           # Sort by total occurrence count descending
           sorted = n1_patterns.map do |sql, occurrences|
             total = occurrences.sum { |o| o[:count] }
-            { sql: sql, total_occurrences: total, profiles: occurrences }
+            sample_backtrace = occurrences.find { |o| o[:backtrace].any? }&.dig(:backtrace) || []
+            { sql: sql, total_occurrences: total, backtrace: sample_backtrace, profiles: occurrences }
           end.sort_by { |p| -p[:total_occurrences] }.first(20)
 
           {
