@@ -9,6 +9,9 @@ interface OutboundRequest extends HttpRequest {
   profile_started_at: string
 }
 
+type SortCol = 'duration' | 'memory' | 'status' | 'queries' | null
+type SortDir = 'asc' | 'desc'
+
 function methodClass(method: string): string {
   const map: Record<string, string> = { GET: 'badge-info', POST: 'badge-success', PUT: 'badge-warning', PATCH: 'badge-warning', DELETE: 'badge-error' }
   return map[method] || 'badge-default'
@@ -37,11 +40,32 @@ function formatMemory(bytes?: number): string {
   return (bytes / 1024 / 1024).toFixed(2) + ' MB'
 }
 
+const PRESETS = [
+  { key: 'slow', label: 'Slow' },
+  { key: 'many_queries', label: 'Many queries' },
+  { key: 'errors', label: 'Errors' },
+  { key: 'has_exception', label: 'Has exception' },
+] as const
+
+type PresetKey = typeof PRESETS[number]['key'] | ''
+
 export function ProfileList() {
+  const params = new URLSearchParams(window.location.search)
+
   const initialSection = (): 'http' | 'jobs' | 'outbound' => {
-    const s = new URLSearchParams(window.location.search).get('section')
+    const s = params.get('section')
     return (s === 'http' || s === 'jobs' || s === 'outbound') ? s : 'http'
   }
+
+  const initialSort = (): { col: SortCol; dir: SortDir } => {
+    const col = params.get('sort') as SortCol
+    const dir = params.get('dir') as SortDir
+    return {
+      col: (col === 'duration' || col === 'memory' || col === 'status' || col === 'queries') ? col : null,
+      dir: dir === 'desc' ? 'desc' : 'asc'
+    }
+  }
+
   const [section, setSection] = useState<'http' | 'jobs' | 'outbound'>(initialSection)
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [jobs, setJobs] = useState<Profile[]>([])
@@ -61,6 +85,12 @@ export function ProfileList() {
   const [httpMethod, setHttpMethod] = useState('')
   const [httpStatus, setHttpStatus] = useState('')
   const [httpDuration, setHttpDuration] = useState('')
+  const [httpPreset, setHttpPreset] = useState<PresetKey>(() => {
+    const p = params.get('preset') as PresetKey
+    return PRESETS.some(pr => pr.key === p) ? p : ''
+  })
+  const [httpSort, setHttpSort] = useState<{ col: SortCol; dir: SortDir }>(initialSort)
+
   // Jobs filters
   const [jobSearch, setJobSearch] = useState('')
   const [jobStatus, setJobStatus] = useState('')
@@ -87,6 +117,36 @@ export function ProfileList() {
     if (section === 'jobs') loadJobs()
     if (section === 'outbound') loadOutbound()
   }, [])
+
+  // Sync sort + preset to URL
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (httpSort.col) {
+      url.searchParams.set('sort', httpSort.col)
+      url.searchParams.set('dir', httpSort.dir)
+    } else {
+      url.searchParams.delete('sort')
+      url.searchParams.delete('dir')
+    }
+    if (httpPreset) {
+      url.searchParams.set('preset', httpPreset)
+    } else {
+      url.searchParams.delete('preset')
+    }
+    history.replaceState(null, '', url.toString())
+  }, [httpSort, httpPreset])
+
+  const toggleHttpSort = (col: NonNullable<SortCol>) => {
+    setHttpSort(prev =>
+      prev.col === col
+        ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { col, dir: 'asc' }
+    )
+  }
+
+  const togglePreset = (key: typeof PRESETS[number]['key']) => {
+    setHttpPreset(prev => prev === key ? '' : key)
+  }
 
   const loadJobs = () => {
     if (jobsLoaded) return
@@ -131,6 +191,7 @@ export function ProfileList() {
     if (s === 'outbound') loadOutbound()
     // Reset all filters
     setHttpSearch(''); setHttpMethod(''); setHttpStatus(''); setHttpDuration('')
+    setHttpPreset(''); setHttpSort({ col: null, dir: 'asc' })
     setJobSearch(''); setJobStatus(''); setJobDuration('')
     setOutboundSearch(''); setOutboundMethod(''); setOutboundStatus('')
   }
@@ -201,8 +262,27 @@ export function ProfileList() {
     if (httpDuration) {
       if (httpDuration === 'lt100' ? p.duration >= 100 : p.duration < parseInt(httpDuration)) return false
     }
+    // Quick filter presets
+    if (httpPreset === 'slow' && p.duration < 500) return false
+    if (httpPreset === 'many_queries' && (p.collectors_data?.database?.total_queries ?? 0) <= 20) return false
+    if (httpPreset === 'errors' && p.status < 500) return false
+    if (httpPreset === 'has_exception' && !p.collectors_data?.exception) return false
     return true
   })
+
+  const sortedProfiles = httpSort.col
+    ? [...filteredProfiles].sort((a, b) => {
+        let av: number, bv: number
+        switch (httpSort.col) {
+          case 'duration': av = a.duration; bv = b.duration; break
+          case 'memory': av = a.memory ?? 0; bv = b.memory ?? 0; break
+          case 'status': av = a.status; bv = b.status; break
+          case 'queries': av = a.collectors_data?.database?.total_queries ?? 0; bv = b.collectors_data?.database?.total_queries ?? 0; break
+          default: return 0
+        }
+        return httpSort.dir === 'asc' ? av - bv : bv - av
+      })
+    : filteredProfiles
 
   const filteredJobs = jobs.filter(p => {
     if (jobSearch && !p.path.toLowerCase().includes(jobSearch.toLowerCase())) return false
@@ -228,9 +308,14 @@ export function ProfileList() {
     return true
   })
 
-  const httpFiltersActive = !!(httpSearch || httpMethod || httpStatus || httpDuration)
+  const httpFiltersActive = !!(httpSearch || httpMethod || httpStatus || httpDuration || httpPreset)
   const jobFiltersActive = !!(jobSearch || jobStatus || jobDuration)
   const outboundFiltersActive = !!(outboundSearch || outboundMethod || outboundStatus)
+
+  const sortIcon = (col: NonNullable<SortCol>) => {
+    if (httpSort.col !== col) return <span class="sort-icon sort-icon--idle">⇅</span>
+    return <span class="sort-icon sort-icon--active">{httpSort.dir === 'asc' ? '▲' : '▼'}</span>
+  }
 
   return (
     <div class="container">
@@ -259,6 +344,19 @@ export function ProfileList() {
               </div>
             ) : (
               <>
+                <div class="profiler-action-bar profiler-mb-2">
+                  <div class="profiler-filter-group">
+                    {PRESETS.map(preset => (
+                      <button
+                        key={preset.key}
+                        class={`profiler-preset-btn${httpPreset === preset.key ? ' profiler-preset-btn--active' : ''}`}
+                        onClick={() => togglePreset(preset.key)}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div class="profiler-action-bar profiler-mb-3">
                   <div class="profiler-filter-group">
                     <input
@@ -309,20 +407,30 @@ export function ProfileList() {
                         <th>Time</th>
                         <th>Method</th>
                         <th>Path</th>
-                        <th>Duration</th>
-                        <th>Memory</th>
-                        <th>Status</th>
+                        <th class={`sortable${httpSort.col === 'duration' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('duration')}>
+                          Duration {sortIcon('duration')}
+                        </th>
+                        <th class={`sortable${httpSort.col === 'queries' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('queries')}>
+                          Queries {sortIcon('queries')}
+                        </th>
+                        <th class={`sortable${httpSort.col === 'memory' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('memory')}>
+                          Memory {sortIcon('memory')}
+                        </th>
+                        <th class={`sortable${httpSort.col === 'status' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('status')}>
+                          Status {sortIcon('status')}
+                        </th>
                         <th>Token</th>
                         <th></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredProfiles.map(p => (
+                      {sortedProfiles.map(p => (
                         <tr key={p.token}>
                           <td>{formatTime(p.started_at)}</td>
                           <td><span class={methodClass(p.method)}>{p.method}</span></td>
                           <td><a href={`${BASE}/profiles/${p.token}`}>{p.path}</a></td>
                           <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
+                          <td>{p.collectors_data?.database?.total_queries ?? '—'}</td>
                           <td>{formatMemory(p.memory)}</td>
                           <td><span class={statusClass(p.status)}>{p.status}</span></td>
                           <td class="profiler-text--xs profiler-text--mono profiler-text--muted">

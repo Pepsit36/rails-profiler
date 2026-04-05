@@ -31,6 +31,7 @@ export interface FlameGraphCallbacks {
   onHover: (frame: FlatFrame | null, x: number, y: number) => void
   onClick: (frame: FlatFrame) => void
   onZoomChange: (ancestors: FlameGraphNode[]) => void
+  onSearchResults?: (matchCount: number, totalCount: number) => void
 }
 
 export class FlameGraphRenderer {
@@ -49,6 +50,7 @@ export class FlameGraphRenderer {
   private dpr = 1
   private hoveredFrame: FlatFrame | null = null
   private zoomStack: FlameGraphNode[] = []
+  private searchQuery = ''
   private isPanning = false
   private panStartX = 0
   private panStartViewport: Viewport = { start: 0, end: 0 }
@@ -316,6 +318,11 @@ export class FlameGraphRenderer {
     }
   }
 
+  setSearchQuery(query: string) {
+    this.searchQuery = query
+    this.render()
+  }
+
   render() {
     const ctx = this.ctx
     const w = this.canvas.width / this.dpr
@@ -329,6 +336,18 @@ export class FlameGraphRenderer {
     const textColor = style.getPropertyValue('--profiler-text').trim() || '#eef2f7'
     const textMuted = style.getPropertyValue('--profiler-text-muted').trim() || '#5e7080'
 
+    const searchLower = this.searchQuery.toLowerCase()
+    const hasSearch = searchLower.length > 0
+
+    // Compute search match counts before rendering
+    if (hasSearch && this.callbacks.onSearchResults) {
+      let matchCount = 0
+      for (const f of this.frames) {
+        if (f.node.name.toLowerCase().includes(searchLower)) matchCount++
+      }
+      this.callbacks.onSearchResults(matchCount, this.frames.length)
+    }
+
     for (const frame of this.frames) {
       const x = ((frame.absStart - this.viewport.start) / vpRange) * w
       const fw = ((frame.absEnd - frame.absStart) / vpRange) * w
@@ -339,10 +358,11 @@ export class FlameGraphRenderer {
 
       const color = CATEGORY_COLORS[frame.node.category as FlameGraphCategory] || '#a78bfa'
       const isHovered = frame === this.hoveredFrame
+      const isMatch = !hasSearch || frame.node.name.toLowerCase().includes(searchLower)
 
       // Draw frame rect
       ctx.fillStyle = isHovered ? this.lightenColor(color, 0.2) : color
-      ctx.globalAlpha = isHovered ? 1 : 0.85
+      ctx.globalAlpha = hasSearch && !isMatch ? 0.2 : (isHovered ? 1 : 0.85)
       this.roundRect(ctx, x, y, fw, FRAME_HEIGHT, 3)
       ctx.fill()
       ctx.globalAlpha = 1
@@ -353,10 +373,17 @@ export class FlameGraphRenderer {
         ctx.lineWidth = 1.5
         this.roundRect(ctx, x, y, fw, FRAME_HEIGHT, 3)
         ctx.stroke()
+      } else if (hasSearch && isMatch) {
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 1
+        ctx.globalAlpha = 0.5
+        this.roundRect(ctx, x, y, fw, FRAME_HEIGHT, 3)
+        ctx.stroke()
+        ctx.globalAlpha = 1
       }
 
       // Draw text if wide enough
-      if (fw > MIN_TEXT_WIDTH) {
+      if (fw > MIN_TEXT_WIDTH && isMatch) {
         ctx.fillStyle = this.getTextColor(color)
         ctx.font = '11px "JetBrains Mono", monospace'
         ctx.textBaseline = 'middle'
