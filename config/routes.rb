@@ -32,5 +32,6 @@ Profiler::Engine.routes.draw do
     resources :outbound_http, only: [:index]
     get "toolbar/:token", to: "toolbar#show"
     post "ajax/link", to: "ajax#link"
+    post "explain", to: "explain#create"
   end
 end
