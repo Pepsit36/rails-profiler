@@ -230,6 +230,262 @@
 }
 
 // ============================================================================
+// QUERY CARD VARIANTS — N+1
+// ============================================================================
+
+.profiler-query-card--n1 {
+  border-left: 3px solid var(--profiler-warning);
+  background: var(--profiler-warning-bg);
+}
+
+// ============================================================================
+// N+1 GROUP — collapsible grouped section for repeated query patterns
+// ============================================================================
+
+.profiler-n1-group {
+  border: 1px solid var(--profiler-warning);
+  border-radius: var(--profiler-radius-md);
+  overflow: hidden;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: var(--profiler-space-3);
+    padding: var(--profiler-space-2) var(--profiler-space-3);
+    background: var(--profiler-warning-bg);
+    cursor: pointer;
+    user-select: none;
+
+    &:hover { filter: brightness(0.97); }
+  }
+
+  &__count {
+    font-size: var(--profiler-text-xs);
+    font-weight: 700;
+    font-family: var(--profiler-font-mono);
+    color: var(--profiler-warning);
+    white-space: nowrap;
+  }
+
+  &__pattern {
+    flex: 1;
+    font-size: var(--profiler-text-xs);
+    font-family: var(--profiler-font-mono);
+    color: var(--profiler-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__toggle {
+    font-size: var(--profiler-text-xs);
+    color: var(--profiler-text-muted);
+    white-space: nowrap;
+  }
+}
+
+.profiler-n1-backtrace {
+  background: var(--profiler-bg-lighter);
+  border-top: 1px solid var(--profiler-border);
+  padding: var(--profiler-space-2) var(--profiler-space-3);
+
+  &__frame {
+    font-size: var(--profiler-text-xs);
+    font-family: var(--profiler-font-mono);
+    color: var(--profiler-text-muted);
+    line-height: 1.8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+// ============================================================================
+// ALERT BANNER — tab-level warning/info messages
+// ============================================================================
+
+.profiler-alert-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--profiler-space-3);
+  padding: var(--profiler-space-3) var(--profiler-space-4);
+  border-radius: var(--profiler-radius-md);
+  border: 1px solid;
+  font-size: var(--profiler-text-sm);
+
+  &--warning {
+    background: var(--profiler-warning-bg);
+    border-color: var(--profiler-warning);
+    color: var(--profiler-text);
+  }
+
+  &--error {
+    background: var(--profiler-error-bg);
+    border-color: var(--profiler-error);
+  }
+
+  &__icon {
+    flex-shrink: 0;
+    font-size: var(--profiler-text-base);
+  }
+}
+
+// ============================================================================
+// BADGE — small inline labels
+// ============================================================================
+
+.profiler-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--profiler-radius-sm);
+  font-size: var(--profiler-text-xs);
+  font-weight: 600;
+  font-family: var(--profiler-font-mono);
+  line-height: 1.6;
+
+  &--warning {
+    background: var(--profiler-warning-bg);
+    color: var(--profiler-warning);
+    border: 1px solid rgba(251, 146, 60, 0.3);
+  }
+
+  &--error {
+    background: var(--profiler-error-bg);
+    color: var(--profiler-error);
+  }
+}
+
+// ============================================================================
+// BUTTON VARIANTS
+// ============================================================================
+
+.profiler-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--profiler-space-1);
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-sm);
+  background: var(--profiler-bg-elevated);
+  color: var(--profiler-text-muted);
+  font-size: var(--profiler-text-sm);
+  font-family: var(--profiler-font-mono);
+  cursor: pointer;
+  transition: all var(--profiler-transition-base);
+
+  &:hover {
+    border-color: var(--profiler-accent);
+    color: var(--profiler-accent);
+  }
+
+  &--sm {
+    padding: 1px 8px;
+    font-size: var(--profiler-text-xs);
+  }
+}
+
+// ============================================================================
+// MODAL — generic overlay modal
+// ============================================================================
+
+.profiler-modal__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--profiler-space-4);
+}
+
+.profiler-modal {
+  background: var(--profiler-bg-elevated);
+  border: 1px solid var(--profiler-border);
+  border-radius: var(--profiler-radius-lg, var(--profiler-radius-md));
+  box-shadow: var(--profiler-shadow-lg, var(--profiler-shadow-sm));
+  width: 100%;
+  max-width: 760px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: var(--profiler-space-3);
+    padding: var(--profiler-space-3) var(--profiler-space-4);
+    border-bottom: 1px solid var(--profiler-border);
+    background: var(--profiler-bg-light);
+    flex-shrink: 0;
+  }
+
+  &__title {
+    font-weight: 600;
+    font-family: var(--profiler-font-mono);
+    font-size: var(--profiler-text-sm);
+    flex: 1;
+  }
+
+  &__close {
+    background: none;
+    border: none;
+    color: var(--profiler-text-muted);
+    font-size: var(--profiler-text-lg);
+    cursor: pointer;
+    padding: 0 var(--profiler-space-1);
+    line-height: 1;
+
+    &:hover { color: var(--profiler-text); }
+  }
+
+  &__body {
+    padding: var(--profiler-space-4);
+    overflow-y: auto;
+    flex: 1;
+  }
+}
+
+// ============================================================================
+// EXPLAIN RESULT — plan tree rendering
+// ============================================================================
+
+.profiler-explain-result {
+  font-family: var(--profiler-font-mono);
+  font-size: var(--profiler-text-xs);
+  color: var(--profiler-text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.profiler-explain-node {
+  padding: var(--profiler-space-1) var(--profiler-space-2);
+  margin-bottom: 2px;
+  border-radius: var(--profiler-radius-sm);
+  font-family: var(--profiler-font-mono);
+  font-size: var(--profiler-text-xs);
+
+  &--expensive {
+    background: var(--profiler-error-bg);
+    border-left: 2px solid var(--profiler-error);
+  }
+
+  &__type {
+    font-weight: 600;
+    color: var(--profiler-accent);
+  }
+
+  &__stats {
+    display: flex;
+    gap: var(--profiler-space-3);
+    margin-top: 1px;
+    flex-wrap: wrap;
+  }
+}
+
+// ============================================================================
 // DUMP CARD — variable dumps
 // ============================================================================
 

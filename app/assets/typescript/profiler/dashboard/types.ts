@@ -59,7 +59,10 @@ export interface DatabaseQuery {
   duration: number;
   slow: boolean;
   cached: boolean;
+  transaction?: boolean;
   name?: string;
+  binds?: any[];
+  backtrace?: string[];
 }
 
 export interface CacheData {

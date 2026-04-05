@@ -65,6 +65,7 @@ module Profiler
         require_relative "tools/query_profiles"
         require_relative "tools/get_profile_detail"
         require_relative "tools/analyze_queries"
+        require_relative "tools/explain_query"
         require_relative "tools/get_profile_ajax"
         require_relative "tools/get_profile_dumps"
         require_relative "tools/get_profile_http"
@@ -115,6 +116,18 @@ module Profiler
               required: ["token"]
             },
             handler: Tools::AnalyzeQueries
+          ),
+          define_tool(
+            name: "explain_query",
+            description: "Run EXPLAIN ANALYZE on a specific query from a profile. Returns the query execution plan with cost and row estimates. Only available in development/test environments.",
+            input_schema: {
+              properties: {
+                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
+                query_index: { type: "integer", description: "Zero-based index of the query within the profile's database queries list (required)" }
+              },
+              required: ["token", "query_index"]
+            },
+            handler: Tools::ExplainQuery
           ),
           define_tool(
             name: "get_profile_ajax",

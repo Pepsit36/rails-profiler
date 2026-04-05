@@ -59,8 +59,8 @@ module Profiler
           slow_threshold = Profiler.configuration.slow_query_threshold
           slow_queries = queries.select { |q| q["duration"] > slow_threshold }
           query_counts = queries.group_by { |q| normalize_sql(q["sql"]) }
-                               .transform_values(&:count)
-                               .select { |_, count| count > 1 }
+                               .transform_values { |qs| { count: qs.size, backtrace: qs.first["backtrace"] || [] } }
+                               .select { |_, v| v[:count] >= 3 }
 
           unless summary_only
             # Detect slow queries
@@ -81,22 +81,27 @@ module Profiler
               lines << "All queries executed in less than #{slow_threshold}ms\n"
             end
 
-            # Detect duplicate queries (potential N+1)
+            # Detect duplicate queries (potential N+1, threshold: ≥ 3 occurrences)
             if query_counts.any?
               lines << "## ⚠️ Duplicate Queries (Potential N+1)"
-              lines << "Found #{query_counts.size} duplicate query patterns:\n"
+              lines << "Found #{query_counts.size} query pattern(s) repeated 3+ times:\n"
 
-              query_counts.sort_by { |_, count| -count }.first(5).each do |sql, count|
-                lines << "### Executed #{count} times:"
+              query_counts.sort_by { |_, v| -v[:count] }.first(5).each do |sql, v|
+                lines << "### Executed #{v[:count]} times:"
                 lines << "```sql"
                 lines << sql
-                lines << "```\n"
+                lines << "```"
+                if v[:backtrace].any?
+                  lines << "#### Called from:"
+                  v[:backtrace].first(3).each { |frame| lines << "  #{frame}" }
+                end
+                lines << ""
               end
 
               lines << "_... and #{query_counts.size - 5} more duplicate patterns_\n" if query_counts.size > 5
             else
               lines << "## ✅ No Duplicate Queries"
-              lines << "No potential N+1 query problems detected\n"
+              lines << "No query pattern repeated 3+ times\n"
             end
           end
 
@@ -106,7 +111,7 @@ module Profiler
           lines << "- **Total Duration:** #{queries.sum { |q| q['duration'] }.round(2)}ms"
           lines << "- **Average Duration:** #{(queries.sum { |q| q['duration'] } / queries.size).round(2)}ms"
           lines << "- **Slow Queries:** #{slow_queries.size}"
-          lines << "- **Duplicate Patterns:** #{query_counts.size}"
+          lines << "- **N+1 Patterns (≥3×):** #{query_counts.size}"
           lines << "- **Cached Queries:** #{queries.count { |q| q['cached'] }}"
 
           lines.join("\n")
