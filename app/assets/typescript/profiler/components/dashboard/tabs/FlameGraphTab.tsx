@@ -33,7 +33,11 @@ export function FlameGraphTab({ flamegraphData, perfData }: Props) {
   const rendererRef = useRef<FlameGraphRenderer | null>(null)
   const tooltipRef = useRef<FlameGraphTooltip | null>(null)
   const breadcrumbsRef = useRef<FlameGraphBreadcrumbs | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [isZoomed, setIsZoomed] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [matchCount, setMatchCount] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
 
   const data = flamegraphData
 
@@ -73,6 +77,10 @@ export function FlameGraphTab({ flamegraphData, perfData }: Props) {
       onZoomChange: (ancestors: FlameGraphNode[]) => {
         breadcrumbs.update(ancestors)
         setIsZoomed(ancestors.length > 0)
+      },
+      onSearchResults: (match: number, total: number) => {
+        setMatchCount(match)
+        setTotalCount(total)
       }
     })
     rendererRef.current = renderer
@@ -94,6 +102,27 @@ export function FlameGraphTab({ flamegraphData, perfData }: Props) {
       breadcrumbsRef.current = null
     }
   }, [data])
+
+  // Propagate search query to renderer
+  useEffect(() => {
+    rendererRef.current?.setSearchQuery(searchQuery)
+    if (!searchQuery) {
+      setMatchCount(0)
+      setTotalCount(0)
+    }
+  }, [searchQuery])
+
+  // Ctrl+F / Cmd+F focuses the search input
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown, { capture: true })
+    return () => document.removeEventListener('keydown', onKeyDown, { capture: true })
+  }, [])
 
   // Fallback to old performance cards if no flamegraph data
   if (!data?.root_events?.length) {
@@ -184,6 +213,19 @@ export function FlameGraphTab({ flamegraphData, perfData }: Props) {
             Reset Zoom
           </button>
         )}
+        <div class="profiler-flamegraph__search">
+          <input
+            ref={searchInputRef}
+            type="text"
+            class="profiler-flamegraph__search-input"
+            placeholder="Search events… (Ctrl+F)"
+            value={searchQuery}
+            onInput={e => setSearchQuery((e.target as HTMLInputElement).value)}
+          />
+          {searchQuery && (
+            <span class="profiler-flamegraph__match-count">{matchCount} / {totalCount}</span>
+          )}
+        </div>
         <span class="profiler-flamegraph__hint">Click to zoom, scroll to zoom in/out, drag to pan</span>
       </div>
 

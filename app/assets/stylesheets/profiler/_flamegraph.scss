@@ -120,6 +120,37 @@
     font-family: $font-sans;
   }
 
+  &__search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__search-input {
+    height: 28px;
+    padding: 0 8px;
+    background: var(--profiler-bg-lighter);
+    border: 1px solid var(--profiler-border);
+    border-radius: var(--profiler-radius-sm);
+    color: var(--profiler-text);
+    font-family: $font-mono;
+    font-size: var(--profiler-text-xs);
+    width: 200px;
+    transition: border-color $transition-base;
+
+    &:focus {
+      outline: none;
+      border-color: var(--profiler-accent);
+    }
+  }
+
+  &__match-count {
+    font-size: var(--profiler-text-xs);
+    font-family: $font-mono;
+    color: var(--profiler-text-muted);
+    white-space: nowrap;
+  }
+
   // Canvas container
   &__canvas-container {
     position: relative;
