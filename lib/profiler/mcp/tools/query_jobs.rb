@@ -4,9 +4,12 @@ module Profiler
   module MCP
     module Tools
       class QueryJobs
+        ALL_FIELDS = %w[time job_class queue status duration token].freeze
+
         def self.call(params)
           limit = params["limit"]&.to_i || 20
-          profiles = Profiler.storage.list(limit: [limit * 5, 200].min)
+          fetch_size = [limit * 5, 500].min
+          profiles = Profiler.storage.list(limit: fetch_size)
 
           jobs = profiles.select { |p| p.profile_type == "job" }
 
@@ -24,32 +27,52 @@ module Profiler
             end
           end
 
+          if params["cursor"]
+            cutoff = Time.parse(params["cursor"]) rescue nil
+            jobs = jobs.select { |p| p.started_at < cutoff } if cutoff
+          end
+
           jobs = jobs.first(limit)
+          fields = params["fields"]&.map(&:to_s)
 
-          text = format_jobs_table(jobs)
-
-          [{ type: "text", text: text }]
+          [{ type: "text", text: format_jobs_table(jobs, fields, limit) }]
         end
 
         private
 
-        def self.format_jobs_table(jobs)
-          if jobs.empty?
-            return "No job profiles found matching the criteria."
-          end
+        def self.format_jobs_table(jobs, fields, limit)
+          return "No job profiles found matching the criteria." if jobs.empty?
+
+          fields ||= ALL_FIELDS
+          fields = fields & ALL_FIELDS
 
           lines = []
           lines << "# Background Job Profiles\n"
           lines << "Found #{jobs.size} jobs:\n"
-          lines << "| Time | Job Class | Queue | Status | Duration | Token |"
-          lines << "|------|-----------|-------|--------|----------|-------|"
+
+          header = fields.map { |f| f.split("_").map(&:capitalize).join(" ") }.join(" | ")
+          separator = fields.map { |_| "------" }.join("|")
+          lines << "| #{header} |"
+          lines << "|#{separator}|"
 
           jobs.each do |profile|
             job_data = profile.collector_data("job") || {}
-            job_class = job_data["job_class"] || profile.path
-            queue = job_data["queue"] || "-"
-            status = job_data["status"] || "-"
-            lines << "| #{profile.started_at.strftime('%Y-%m-%d %H:%M:%S')} | #{job_class} | #{queue} | #{status} | #{profile.duration.round(2)}ms | #{profile.token} |"
+            row = fields.map do |f|
+              case f
+              when "time"      then profile.started_at.strftime("%H:%M:%S")
+              when "job_class" then job_data["job_class"] || profile.path
+              when "queue"     then job_data["queue"] || "-"
+              when "status"    then job_data["status"] || "-"
+              when "duration"  then "#{profile.duration.round(2)}ms"
+              when "token"     then profile.token.to_s
+              end
+            end
+            lines << "| #{row.join(' | ')} |"
+          end
+
+          if jobs.size == limit
+            lines << ""
+            lines << "*Next cursor: #{jobs.last.started_at.iso8601}*"
           end
 
           lines.join("\n")

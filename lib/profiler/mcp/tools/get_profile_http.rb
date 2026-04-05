@@ -28,12 +28,12 @@ module Profiler
           end
 
           domain_filter = params["domain"]
-          [{ type: "text", text: format_http(profile, http_data, domain_filter) }]
+          [{ type: "text", text: format_http(profile, http_data, domain_filter, params) }]
         end
 
         private
 
-        def self.format_http(profile, http_data, domain_filter)
+        def self.format_http(profile, http_data, domain_filter, params)
           threshold = Profiler.configuration.slow_http_threshold
           requests = http_data["requests"] || []
 
@@ -85,34 +85,41 @@ module Profiler
               lines << "- **Request Size:** #{req['request_size']} bytes"
               lines << "- **Response Size:** #{req['response_size']} bytes"
               lines << "- **Error:** #{req['error']}" if req["error"]
+
               if req["request_headers"] && !req["request_headers"].empty?
                 lines << "- **Request Headers:**"
                 req["request_headers"].each { |k, v| lines << "  - `#{k}`: #{v}" }
               end
+
               if req["request_body"] && !req["request_body"].empty?
                 lines << "- **Request Body:**"
-                if req["request_body_encoding"] == "base64"
-                  lines << "  *(binary content, base64 encoded — #{req['request_body'].bytesize} chars)*"
-                else
-                  lines << "  ```"
-                  lines << "  #{req['request_body'].lines.first(5).join('  ')}"
-                  lines << "  ```"
-                end
+                formatted = BodyFormatter.format_body(
+                  profile.token,
+                  "http_#{i}_request_body",
+                  req["request_body"],
+                  req["request_body_encoding"],
+                  params
+                )
+                lines << formatted if formatted
               end
+
               if req["response_headers"] && !req["response_headers"].empty?
                 lines << "- **Response Headers:**"
                 req["response_headers"].each { |k, v| lines << "  - `#{k}`: #{v}" }
               end
+
               if req["response_body"] && !req["response_body"].empty?
                 lines << "- **Response Body:**"
-                if req["response_body_encoding"] == "base64"
-                  lines << "  *(binary content, base64 encoded — #{req['response_body'].bytesize} chars)*"
-                else
-                  lines << "  ```"
-                  lines << "  #{req['response_body'].lines.first(10).join('  ')}"
-                  lines << "  ```"
-                end
+                formatted = BodyFormatter.format_body(
+                  profile.token,
+                  "http_#{i}_response_body",
+                  req["response_body"],
+                  req["response_body_encoding"],
+                  params
+                )
+                lines << formatted if formatted
               end
+
               if req["backtrace"] && !req["backtrace"].empty?
                 lines << "- **Called from:**"
                 req["backtrace"].first(3).each { |frame| lines << "  - #{frame}" }
