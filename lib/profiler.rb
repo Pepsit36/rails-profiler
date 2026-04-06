@@ -25,6 +25,28 @@ module Profiler
       configuration.enabled
     end
 
+    # Instrument an arbitrary code block and record it in the FlameGraph.
+    # Usage: Profiler.measure("payment.stripe_charge", metadata: { amount: 1000 }) { Stripe::Charge.create(...) }
+    def measure(label, metadata: {}, &block)
+      return yield unless enabled?
+
+      collector = Thread.current[:profiler_flamegraph_collector]
+      return yield unless collector
+
+      started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      result = yield
+      finished_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      collector.record_custom_event(
+        label: label,
+        started_at: started_at,
+        finished_at: finished_at,
+        metadata: metadata
+      )
+
+      result
+    end
+
     # Dump a variable to the profiler
     # Usage: Profiler.dump(variable, "optional label")
     def dump(value, label = nil)

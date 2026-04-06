@@ -7,7 +7,8 @@ const CATEGORY_LABELS: Record<FlameGraphCategory, string> = {
   partial: 'Partial',
   sql: 'SQL',
   cache: 'Cache',
-  http: 'HTTP'
+  http: 'HTTP',
+  custom: 'Custom'
 }
 
 const CATEGORY_COLORS: Record<FlameGraphCategory, string> = {
@@ -16,7 +17,8 @@ const CATEGORY_COLORS: Record<FlameGraphCategory, string> = {
   partial: '#f59e0b',
   sql: '#fb923c',
   cache: '#a78bfa',
-  http: '#f87171'
+  http: '#f87171',
+  custom: '#e879f9'
 }
 
 export class FlameGraphTooltip {
@@ -79,6 +81,11 @@ export class FlameGraphTooltip {
         payloadText = `Key: ${node.payload.key}`
       } else if (category === 'http' && node.payload.url) {
         payloadText = node.payload.url
+      } else if (category === 'custom' && Object.keys(node.payload).length > 0) {
+        const entries = Object.entries(node.payload)
+          .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+          .join('\n')
+        payloadText = entries.length > 200 ? entries.slice(0, 200) + '...' : entries
       }
       if (payloadText) {
         const payloadDiv = document.createElement('div')
