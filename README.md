@@ -1,17 +1,21 @@
 # Rails Profiler
 
-A comprehensive Rails profiler similar, featuring a web debug toolbar, profiling interface, SQL analysis, performance timeline, and MCP server integration for AI assistants.
+A comprehensive Rails profiler featuring a web debug toolbar, full profiling dashboard, SQL analysis, flame graph timeline, and an MCP server for AI-assisted debugging.
 
 ## Features
 
-- **Web Debug Toolbar** - Bottom-of-page toolbar showing real-time metrics
-- **Profiler Web UI** - Complete interface to explore past requests with detailed metrics
-- **Database Query Profiling** - Capture and analyze SQL queries with execution time and backtrace
-- **Performance Timeline** - Temporal visualization of events via ActiveSupport::Notifications
-- **View Rendering Metrics** - Track template and partial rendering
-- **Cache Operations** - Monitor cache hits, misses, and operations
-- **Extensible Collectors** - Easy addition of custom profiling tabs
-- **MCP Server** - Expose profiler data to AI assistants via Model Context Protocol
+- **Web Debug Toolbar** — bottom-of-page bar showing real-time metrics on every HTML page
+- **Profiler Dashboard** — full interface to inspect past requests with detailed per-tab analysis
+- **Database Profiling** — SQL queries, execution time, N+1 detection, EXPLAIN ANALYZE
+- **Flame Graph** — hierarchical timeline of all instrumented events (controller, view, SQL, cache, HTTP, custom)
+- **View Rendering** — template and partial rendering times
+- **Cache Monitoring** — hit/miss rates, reads, writes, deletes
+- **Outbound HTTP Tracking** — external API calls via Net::HTTP
+- **Log Capture** — Rails logger output per request with level filtering
+- **I18n Tracking** — translation lookups and missing key detection
+- **Background Jobs** — Sidekiq and ActiveJob profiling
+- **MCP Server** — exposes profiling data to AI assistants (Claude Desktop, Claude Code)
+- **Extensible Collectors** — add custom profiling tabs with a simple API
 
 ## Requirements
 
@@ -40,310 +44,169 @@ bundle install
 > end
 > ```
 
-Mount the engine in your `config/routes.rb`:
+Mount the engine in `config/routes.rb`:
 
 ```ruby
 Rails.application.routes.draw do
-  # ... your routes ...
-
   mount Profiler::Engine, at: '/_profiler' if Rails.env.development?
 end
 ```
 
 ## Configuration
 
-Create an initializer `config/initializers/profiler.rb`:
+Create `config/initializers/profiler.rb`:
 
 ```ruby
 Profiler.configure do |config|
-  # Enable/disable profiler
+  # Master toggle — defaults to true in development and test
   config.enabled = Rails.env.development?
 
-  # Storage backend (:memory, :file, :redis)
+  # Storage backend: :memory (default), :file, :redis, :sqlite
   config.storage = :file
   config.storage_options = {
     path: Rails.root.join('tmp', 'profiler'),
     max_size: 100.megabytes
   }
 
-  # Collectors to use
-  config.collectors = [
-    Profiler::Collectors::RequestCollector,
-    Profiler::Collectors::DatabaseCollector,
-    Profiler::Collectors::PerformanceCollector,
-    Profiler::Collectors::ViewCollector,
-    Profiler::Collectors::CacheCollector
-  ]
-
-  # Skip profiling for certain paths
-  config.skip_paths = [/_profiler/, /\.js$/, /\.css$/]
+  # Paths to skip (regex array)
+  config.skip_paths = [%r{^/_profiler}, /\.well-known/, /favicon\.ico/]
 
   # Database query thresholds
-  config.slow_query_threshold = 100 # milliseconds
+  config.slow_query_threshold = 100  # ms
   config.max_queries_warning = 50
 
   # Memory tracking
   config.track_memory = true
   config.memory_warning_threshold = 100.megabytes
 
-  # MCP Server
+  # Body compression (text bodies larger than threshold are stored gzip+base64)
+  config.compress_bodies = true
+  config.compress_body_threshold = 10.kilobytes
+
+  # Outbound HTTP tracking
+  config.track_http = true
+  config.slow_http_threshold = 500  # ms
+  config.http_skip_hosts = []
+
+  # AJAX tracking
+  config.track_ajax = true
+
+  # Background job tracking
+  config.track_jobs = true
+
+  # CORS — restrict to specific origins (default: ['*'])
+  config.cors_allowed_origins = ['http://localhost:3001', 'https://myapp.dev']
+
+  # MCP server for AI assistant integration
   config.mcp_enabled = true
-  config.mcp_transport = :stdio
+  config.mcp_transport = :stdio  # or :http
 
   # Authorization
-  config.authorization_mode = :allow_all # or :allow_authorized
+  config.authorization_mode = :allow_all  # or :allow_authorized
   config.authorize_with do |request|
-    # Custom authorization logic
     request.session[:admin] == true
   end
 end
 ```
 
+### Default collectors
+
+All collectors are enabled by default. To restrict to a specific set:
+
+```ruby
+config.collectors = [
+  Profiler::Collectors::RequestCollector,
+  Profiler::Collectors::DatabaseCollector,
+  Profiler::Collectors::FlameGraphCollector,
+  Profiler::Collectors::ViewCollector,
+  Profiler::Collectors::CacheCollector,
+  Profiler::Collectors::LogCollector,
+]
+```
+
 ## Usage
 
-### Web Interface
+### Toolbar and Dashboard
 
 Once installed, the profiler automatically:
 
-1. **Adds a toolbar** at the bottom of every HTML page showing request metrics
-2. **Stores profile data** for each request
-3. **Provides a web UI** at `http://localhost:3000/_profiler` to browse all profiles
+1. **Injects a toolbar** at the bottom of every HTML page showing request metrics
+2. **Stores a profile** for each request
+3. **Provides a web dashboard** at `/_profiler`
 
-Click the toolbar or navigate to `/_profiler` to see:
-- List of recent requests
-- Detailed profile view with tabs for:
-  - Request information
-  - Dumped variables
-  - Database queries
-  - Performance timeline
-  - View rendering
-  - Cache operations
+See the **[UI Guide](docs/ui.md)** for a full walkthrough of the toolbar, profile list, and all dashboard tabs (Request, Dump, Database, Timeline, Views, Cache, Logs, I18n, Routes, Exception).
 
-### Dumping Variables
+### Dumping variables
 
-You can dump variables anywhere in your code to inspect them in the profiler:
+Inspect any value in the **Dump** tab:
 
 ```ruby
-# Basic usage
+# Basic dump — shows value, file, and line number
 Profiler.dump(@user)
 
 # With a label
 Profiler.dump(@posts, "Posts for current page")
 
-# Dump multiple variables
+# Chainable — returns the original value
+user = Profiler.dump(User.find(params[:id]), "Current user")
+
+# Dump anything
 Profiler.dump(params)
 Profiler.dump(session[:user_id], "Current user ID")
-Profiler.dump({ request: request.path, method: request.method })
 ```
 
-Dumped variables appear in:
-- The profiler toolbar (showing count)
-- A dedicated "Dump" tab in the profile details
-- Each dump shows:
-  - The formatted value
-  - Optional label
-  - File and line number where it was called
-  - Timestamp
+### Custom instrumentation
 
-### Rake Tasks
+Add custom events to the flame graph:
 
-```bash
-# List recent profiles
-rake profiler:list
-
-# Show specific profile details
-rake profiler:show TOKEN=abc123...
-
-# Clean up old profiles
-rake profiler:cleanup OLDER_THAN=86400 # seconds
-
-# Start MCP server
-rake profiler:mcp
+```ruby
+result = Profiler.measure("payment.stripe_charge", metadata: { amount: 1000 }) do
+  Stripe::Charge.create(amount: 1000, currency: 'usd')
+end
 ```
 
-### MCP Server Integration
+Custom events appear as pink blocks in the **Timeline** tab, nested at the correct position in the call hierarchy.
 
-The profiler includes an MCP (Model Context Protocol) server that allows AI assistants like Claude to query profiling data.
+### MCP Server (AI assistant integration)
 
-#### Starting the MCP Server
+Connect Claude (or any MCP-compatible AI assistant) to your profiler data:
 
 ```bash
 bundle exec rake profiler:mcp
 ```
 
-#### Claude Desktop Configuration
+See the **[MCP Guide](docs/mcp.md)** for Claude Desktop and Claude Code setup, all available tools (`query_profiles`, `analyze_queries`, `explain_query`, `get_profile`, etc.), and example prompts.
 
-Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "rails-profiler": {
-      "command": "bundle",
-      "args": ["exec", "rake", "profiler:mcp"],
-      "cwd": "/path/to/your/rails/app",
-      "env": {
-        "RAILS_ENV": "development"
-      }
-    }
-  }
-}
-```
-
-#### Available MCP Tools
-
-- **query_profiles** - Search and filter profiled requests
-  ```
-  path: Filter by request path
-  method: Filter by HTTP method
-  min_duration: Minimum duration in ms
-  limit: Max results (default: 20)
-  ```
-
-- **get_profile** - Get detailed profile data by token
-  ```
-  token: Profile token (required)
-  ```
-
-- **analyze_queries** - Analyze SQL queries for N+1, duplicates, slow queries
-  ```
-  token: Profile token (required)
-  ```
-
-#### Available MCP Resources
-
-- **profiler://recent** - List of recently profiled requests
-- **profiler://slow-queries** - List of slow database queries across all profiles
-
-## Creating Custom Collectors
-
-Extend the profiler with custom data collectors:
-
-```ruby
-class MyCustomCollector < Profiler::Collectors::BaseCollector
-  def name
-    'my_custom'
-  end
-
-  def icon
-    '🔧'
-  end
-
-  def priority
-    100 # Lower = earlier in list
-  end
-
-  def subscribe
-    # Subscribe to ActiveSupport::Notifications
-    ActiveSupport::Notifications.monotonic_subscribe('my.event') do |name, started, finished, id, payload|
-      @events ||= []
-      @events << { name: name, duration: (finished - started) * 1000 }
-    end
-  end
-
-  def collect
-    # Collect data at end of request
-    store_data({
-      event_count: @events&.size || 0,
-      events: @events || []
-    })
-  end
-
-  def toolbar_summary
-    # Summary for toolbar
-    {
-      text: "#{@events&.size || 0} custom events",
-      color: "blue"
-    }
-  end
-
-  def panel_content
-    # Full panel content for UI
-    @data
-  end
-end
-
-# Register the collector
-Profiler.configure do |config|
-  config.collectors << MyCustomCollector
-end
-```
-
-### Custom Collector Views
-
-Create custom templates at:
-
-```
-app/views/profiler/collectors/my_custom/
-├── _toolbar.html.erb    # Toolbar partial
-└── _panel.html.erb      # Full panel content
-```
-
-## Development
-
-### Local Development Setup
-
-The project has two separate bundles:
-
-1. **Gem bundle** (root directory) - For gem development and testing
-2. **Test app bundle** (`test_app/`) - For testing the gem in a real Rails app
+### Rake tasks
 
 ```bash
-# Install gem dependencies
-bundle install
+# List recent profiles
+rake profiler:list
 
-# Install test app dependencies (separate bundle)
-cd test_app
-bundle install
-cd ..
-```
+# Show a specific profile
+rake profiler:show TOKEN=abc123...
 
-The test app has its own `.bundle/config` to ensure dependencies are installed in `test_app/vendor/bundle`, keeping it isolated from the gem's bundle.
+# Clean up old profiles
+rake profiler:cleanup OLDER_THAN=86400  # seconds
 
-### Running the Test App
-
-```bash
-cd test_app
-bundle exec rails server
-```
-
-Then visit `http://localhost:3000` to see the profiler in action.
-
-### Development with Docker
-
-The gem includes Docker support for development:
-
-```bash
-# Build containers
-make build
-
-# Start services
-make up
-
-# Open shell
-make shell
-
-# Run tests
-make test
-
-# Start test Rails app
-make test-app
+# Start MCP server
+rake profiler:mcp
 ```
 
 ## Storage Backends
 
-### Memory Store (Development)
+### Memory (default)
 
-Fast, in-memory storage. Data is lost on restart.
+Fast, no persistence. Data lost on restart. Good for CI/test.
 
 ```ruby
 config.storage = :memory
 config.storage_options = { max_profiles: 100 }
 ```
 
-### File Store (Production)
+### File (recommended for development)
 
-Persistent file-based storage in `tmp/profiler/`.
+Persistent, stored in `tmp/profiler/`. Survives restarts.
 
 ```ruby
 config.storage = :file
@@ -353,9 +216,9 @@ config.storage_options = {
 }
 ```
 
-### Redis Store (Distributed)
+### Redis (recommended for multi-server)
 
-Redis-based storage for multi-server deployments.
+Shared across servers, TTL-based expiry.
 
 ```ruby
 config.storage = :redis
@@ -366,34 +229,70 @@ config.storage_options = {
 }
 ```
 
-## Performance Impact
+### SQLite
 
-The profiler is designed for minimal overhead:
+Single-server persistence, no external dependency.
 
-- Only active when enabled (defaults to development only)
-- Async storage writes
-- Lazy loading of panel content
+```ruby
+config.storage = :sqlite
+config.storage_options = {
+  path: Rails.root.join('db', 'profiler.db')
+}
+```
+
+## Creating Custom Collectors
+
+```ruby
+class MyCollector < Profiler::Collectors::BaseCollector
+  def icon = '🔧'
+  def priority = 100  # lower = earlier in tab list
+
+  def subscribe
+    ActiveSupport::Notifications.monotonic_subscribe('my.event') do |name, started, finished, id, payload|
+      @events ||= []
+      @events << { name: name, duration: (finished - started) * 1000 }
+    end
+  end
+
+  def collect
+    store_data({ event_count: @events&.size || 0, events: @events || [] })
+  end
+
+  def toolbar_summary
+    { text: "#{@events&.size || 0} events", color: "blue" }
+  end
+end
+
+Profiler.configure do |config|
+  config.collectors << MyCollector
+end
+```
+
+## Performance
+
+- Only active when enabled (development/test by default)
+- Expected overhead: < 5ms per request
+- Text bodies > 10 KB compressed automatically (gzip+base64)
 - Automatic cleanup of old profiles
-- Configurable skip paths for static assets
-
-Expected overhead: < 5ms per request in development mode.
 
 ## Security
 
 - Disabled by default in production
-- Configurable authorization
-- Sensitive parameter sanitization (passwords, tokens, secrets)
-- Token-based profile access
-- XSS protection in UI
+- Configurable authorization (`authorization_mode: :allow_authorized`)
+- Sensitive parameters sanitized automatically (password, token, secret)
+- CORS origins configurable (`cors_allowed_origins`)
 
-## Testing
+## Development
 
 ```bash
-# Run all tests
+# Run tests
 bundle exec rspec
 
-# Run specific test
-bundle exec rspec spec/collectors/database_collector_spec.rb
+# Start the test app
+cd test_app && bundle exec rails server
+
+# Docker
+make build && make test-app
 ```
 
 ## Contributing
@@ -402,4 +301,4 @@ Bug reports and pull requests are welcome on [GitLab](https://git.duplessy.eu/se
 
 ## License
 
-The gem is available as open source under the terms of the [MIT License](MIT-LICENSE).
+MIT License. See [MIT-LICENSE](MIT-LICENSE).
