@@ -5,9 +5,10 @@ module Profiler
     class ToolbarInjector
       CLOSING_BODY_TAG = "</body>"
 
-      def initialize(body, token)
+      def initialize(body, token, nonce = nil)
         @body = body
         @token = token
+        @nonce = nonce
       end
 
       def inject
@@ -26,10 +27,10 @@ module Profiler
         return "" unless Profiler.configuration.track_ajax
 
         <<~HTML
-          <script>
+          <script#{nonce_attr}>
             window.__PROFILER_PARENT_TOKEN__ = '#{@token}';
           </script>
-          <script>
+          <script#{nonce_attr}>
             #{ajax_interceptor_code}
           </script>
         HTML
@@ -62,9 +63,13 @@ module Profiler
         <<~HTML
           #{ajax_interceptor_script}
           <div id="profiler-toolbar" data-token="#{@token}"></div>
-          <script src="/_profiler/assets/profiler-toolbar.js" defer></script>
+          <script src="/_profiler/assets/profiler-toolbar.js" defer#{nonce_attr}></script>
           <style>#{toolbar_styles}</style>
         HTML
+      end
+
+      def nonce_attr
+        @nonce ? " nonce=\"#{@nonce}\"" : ""
       end
 
       # Thermal design system — self-contained CSS for the injected toolbar.
