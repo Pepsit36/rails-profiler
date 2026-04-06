@@ -6,8 +6,17 @@ module Profiler
       skip_before_action :verify_authenticity_token
 
       def index
-        profiles = Profiler.storage.list(limit: params[:limit] || 50, offset: params[:offset] || 0)
-        render json: profiles.map(&:to_h)
+        limit  = (params[:limit]  || 50).to_i
+        offset = (params[:offset] || 0).to_i
+        all    = Profiler.storage.list(limit: 1000, offset: 0)
+        http   = all.reject { |p| p.profile_type == "job" }
+        page   = http.drop(offset).first(limit + 1)
+        render json: {
+          profiles: page.first(limit).map(&:to_h),
+          limit:    limit,
+          offset:   offset,
+          has_more: page.size > limit
+        }
       end
 
       def show

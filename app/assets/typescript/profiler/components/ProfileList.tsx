@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'preact/hooks'
-import { Profile, HttpRequest } from '../dashboard/types'
+import { Profile, ProfilesResponse, HttpRequest } from '../dashboard/types'
 import { HttpRequestDetail } from './dashboard/tabs/HttpTab'
 
 const BASE = '/_profiler'
@@ -68,7 +68,13 @@ export function ProfileList() {
 
   const [section, setSection] = useState<'http' | 'jobs' | 'outbound'>(initialSection)
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [httpOffset, setHttpOffset] = useState(0)
+  const [httpHasMore, setHttpHasMore] = useState(false)
+  const [httpLoadingMore, setHttpLoadingMore] = useState(false)
   const [jobs, setJobs] = useState<Profile[]>([])
+  const [jobOffset, setJobOffset] = useState(0)
+  const [jobHasMore, setJobHasMore] = useState(false)
+  const [jobLoadingMore, setJobLoadingMore] = useState(false)
   const [outboundRequests, setOutboundRequests] = useState<OutboundRequest[]>([])
   const [loadingHttp, setLoadingHttp] = useState(true)
   const [loadingJobs, setLoadingJobs] = useState(false)
@@ -101,10 +107,12 @@ export function ProfileList() {
   const [outboundStatus, setOutboundStatus] = useState('')
 
   useEffect(() => {
-    fetch(`${BASE}/api/profiles`)
+    fetch(`${BASE}/api/profiles?limit=50&offset=0`)
       .then(res => res.json())
-      .then(data => {
-        setProfiles(data.filter((p: Profile) => p.profile_type !== 'job'))
+      .then((data: ProfilesResponse) => {
+        setProfiles(data.profiles)
+        setHttpOffset(data.profiles.length)
+        setHttpHasMore(data.has_more)
         setLoadingHttp(false)
       })
       .catch(() => {
@@ -148,13 +156,28 @@ export function ProfileList() {
     setHttpPreset(prev => prev === key ? '' : key)
   }
 
+  const loadMoreHttp = () => {
+    setHttpLoadingMore(true)
+    fetch(`${BASE}/api/profiles?limit=50&offset=${httpOffset}`)
+      .then(res => res.json())
+      .then((data: ProfilesResponse) => {
+        setProfiles(prev => [...prev, ...data.profiles])
+        setHttpOffset(prev => prev + data.profiles.length)
+        setHttpHasMore(data.has_more)
+        setHttpLoadingMore(false)
+      })
+      .catch(() => setHttpLoadingMore(false))
+  }
+
   const loadJobs = () => {
     if (jobsLoaded) return
     setLoadingJobs(true)
-    fetch(`${BASE}/api/jobs`)
+    fetch(`${BASE}/api/jobs?limit=50&offset=0`)
       .then(res => res.json())
-      .then(data => {
-        setJobs(data)
+      .then((data: ProfilesResponse) => {
+        setJobs(data.profiles)
+        setJobOffset(data.profiles.length)
+        setJobHasMore(data.has_more)
         setLoadingJobs(false)
         setJobsLoaded(true)
       })
@@ -163,6 +186,19 @@ export function ProfileList() {
         setLoadingJobs(false)
         setJobsLoaded(true)
       })
+  }
+
+  const loadMoreJobs = () => {
+    setJobLoadingMore(true)
+    fetch(`${BASE}/api/jobs?limit=50&offset=${jobOffset}`)
+      .then(res => res.json())
+      .then((data: ProfilesResponse) => {
+        setJobs(prev => [...prev, ...data.profiles])
+        setJobOffset(prev => prev + data.profiles.length)
+        setJobHasMore(data.has_more)
+        setJobLoadingMore(false)
+      })
+      .catch(() => setJobLoadingMore(false))
   }
 
   const loadOutbound = () => {
@@ -230,15 +266,25 @@ export function ProfileList() {
   const refresh = () => {
     if (section === 'http') {
       setLoadingHttp(true)
-      fetch(`${BASE}/api/profiles`)
+      fetch(`${BASE}/api/profiles?limit=50&offset=0`)
         .then(res => res.json())
-        .then(data => { setProfiles(data.filter((p: Profile) => p.profile_type !== 'job')); setLoadingHttp(false) })
+        .then((data: ProfilesResponse) => {
+          setProfiles(data.profiles)
+          setHttpOffset(data.profiles.length)
+          setHttpHasMore(data.has_more)
+          setLoadingHttp(false)
+        })
         .catch(() => { setError('Failed to load profiles'); setLoadingHttp(false) })
     } else if (section === 'jobs') {
       setLoadingJobs(true)
-      fetch(`${BASE}/api/jobs`)
+      fetch(`${BASE}/api/jobs?limit=50&offset=0`)
         .then(res => res.json())
-        .then(data => { setJobs(data); setLoadingJobs(false) })
+        .then((data: ProfilesResponse) => {
+          setJobs(data.profiles)
+          setJobOffset(data.profiles.length)
+          setJobHasMore(data.has_more)
+          setLoadingJobs(false)
+        })
         .catch(() => { setJobsError('Failed to load job profiles'); setLoadingJobs(false) })
     } else {
       setLoadingOutbound(true)
@@ -444,6 +490,13 @@ export function ProfileList() {
                     </tbody>
                   </table>
                 )}
+                {httpHasMore && !httpFiltersActive && (
+                  <div class="profiler-load-more">
+                    <button class="btn btn-secondary" onClick={loadMoreHttp} disabled={httpLoadingMore}>
+                      {httpLoadingMore ? 'Loading…' : 'Load more'}
+                    </button>
+                  </div>
+                )}
               </>
             )
           )}
@@ -530,6 +583,13 @@ export function ProfileList() {
                       })}
                     </tbody>
                   </table>
+                )}
+                {jobHasMore && !jobFiltersActive && (
+                  <div class="profiler-load-more">
+                    <button class="btn btn-secondary" onClick={loadMoreJobs} disabled={jobLoadingMore}>
+                      {jobLoadingMore ? 'Loading…' : 'Load more'}
+                    </button>
+                  </div>
                 )}
               </>
             )
