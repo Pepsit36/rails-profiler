@@ -325,6 +325,12 @@ table {
   }
 }
 
+.profiler-load-more {
+  display: flex;
+  justify-content: center;
+  padding: var(--profiler-space-4) 0 var(--profiler-space-2);
+}
+
 .token-copy {
   background: none;
   border: none;
