@@ -109,6 +109,17 @@ module Profiler
         end
       end
 
+      # Called by Profiler.measure to record custom instrumentation events
+      def record_custom_event(label:, started_at:, finished_at:, metadata: {})
+        @events << Models::TimelineEvent.new(
+          name: label,
+          started_at: started_at,
+          finished_at: finished_at,
+          category: "custom",
+          payload: metadata
+        )
+      end
+
       # Called by NetHttpInstrumentation to record outbound HTTP events
       def record_http_event(started_at:, finished_at:, url:, method:, status:)
         @events << Models::TimelineEvent.new(

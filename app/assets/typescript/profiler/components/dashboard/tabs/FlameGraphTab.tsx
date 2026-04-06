@@ -10,7 +10,8 @@ const CATEGORY_COLORS: Record<FlameGraphCategory, string> = {
   partial: '#f59e0b',
   sql: '#fb923c',
   cache: '#a78bfa',
-  http: '#f87171'
+  http: '#f87171',
+  custom: '#e879f9'
 }
 
 const CATEGORY_LABELS: Record<FlameGraphCategory, string> = {
@@ -19,7 +20,8 @@ const CATEGORY_LABELS: Record<FlameGraphCategory, string> = {
   partial: 'Partial',
   sql: 'SQL',
   cache: 'Cache',
-  http: 'HTTP'
+  http: 'HTTP',
+  custom: 'Custom'
 }
 
 interface Props {

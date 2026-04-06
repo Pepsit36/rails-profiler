@@ -6,7 +6,8 @@ const CATEGORY_COLORS: Record<FlameGraphCategory, string> = {
   partial: '#f59e0b',
   sql: '#fb923c',
   cache: '#a78bfa',
-  http: '#f87171'
+  http: '#f87171',
+  custom: '#e879f9'
 }
 
 const FRAME_HEIGHT = 24

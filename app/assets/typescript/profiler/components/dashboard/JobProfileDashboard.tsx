@@ -63,7 +63,7 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
 
         <div class="profiler-p-4 tab-content active">
           {activeTab === 'job' && <JobTab jobData={cd['job'] as any} />}
-          {activeTab === 'database' && <DatabaseTab dbData={cd['database'] as any} />}
+          {activeTab === 'database' && <DatabaseTab dbData={cd['database'] as any} token={profile.token} />}
           {activeTab === 'cache' && <CacheTab cacheData={cd['cache'] as any} />}
           {activeTab === 'http' && <HttpTab httpData={cd['http'] as any} />}
         </div>
