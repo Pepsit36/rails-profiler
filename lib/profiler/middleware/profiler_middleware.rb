@@ -70,7 +70,8 @@ module Profiler
 
         # Inject toolbar if HTML response
         if html_response?(headers)
-          body = ToolbarInjector.new(body, profile.token).inject
+          nonce = env['action_dispatch.content_security_policy_nonce']
+          body = ToolbarInjector.new(body, profile.token, nonce).inject
         end
 
         [status, headers, body]

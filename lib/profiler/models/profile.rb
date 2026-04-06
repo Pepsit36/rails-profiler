@@ -3,6 +3,7 @@
 require "base64"
 require "securerandom"
 require "json"
+require "zlib"
 
 module Profiler
   module Models
@@ -159,8 +160,17 @@ module Profiler
           { body: Base64.strict_encode64(truncated), encoding: "base64" }
         else
           text = raw.encode("UTF-8", invalid: :replace, undef: :replace)[0, TEXT_BODY_LIMIT]
-          { body: text, encoding: "text" }
+          if compress_body?(text)
+            { body: Base64.strict_encode64(Zlib::Deflate.deflate(text)), encoding: "gzip+base64" }
+          else
+            { body: text, encoding: "text" }
+          end
         end
+      end
+
+      def compress_body?(text)
+        Profiler.configuration.compress_bodies &&
+          text.bytesize > Profiler.configuration.compress_body_threshold
       end
 
       def binary_content_type?(ct)
