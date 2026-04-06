@@ -88,6 +88,38 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
       collector.collect
     end
 
+    it "captures partial rendering" do
+      collector.subscribe
+
+      ActiveSupport::Notifications.instrument("render_partial.action_view",
+        identifier: "/app/views/users/_card.html.erb") {}
+
+      events = collector.instance_variable_get(:@events)
+      expect(events.size).to eq(1)
+      expect(events.first.category).to eq("partial")
+      expect(events.first.name).to include("users/_card.html.erb")
+
+      collector.collect
+    end
+
+    it "captures controller, view and partial events together" do
+      collector.subscribe
+
+      ActiveSupport::Notifications.instrument("process_action.action_controller",
+        controller: "PostsController", action: "index",
+        format: :html, method: "GET", path: "/posts", status: 200) {}
+      ActiveSupport::Notifications.instrument("render_template.action_view",
+        identifier: "/app/views/posts/index.html.erb", layout: "application") {}
+      ActiveSupport::Notifications.instrument("render_partial.action_view",
+        identifier: "/app/views/posts/_post.html.erb") {}
+
+      events = collector.instance_variable_get(:@events)
+      categories = events.map(&:category)
+      expect(categories).to contain_exactly("controller", "view", "partial")
+
+      collector.collect
+    end
+
     it "skips schema and transaction SQL" do
       collector.subscribe
 
