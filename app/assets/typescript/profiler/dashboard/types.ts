@@ -241,6 +241,13 @@ export interface I18nLookup {
   missing: boolean;
 }
 
+export interface ProfilesResponse {
+  profiles: Profile[]
+  limit: number
+  offset: number
+  has_more: boolean
+}
+
 export type FlameGraphCategory = 'controller' | 'view' | 'partial' | 'sql' | 'cache' | 'http' | 'custom'
 
 export interface FlameGraphNode {
