@@ -39,7 +39,6 @@ module Profiler
             Profiler::Collectors::RequestCollector,
             Profiler::Collectors::DumpCollector,
             Profiler::Collectors::DatabaseCollector,
-            Profiler::Collectors::PerformanceCollector,
             Profiler::Collectors::ViewCollector,
             Profiler::Collectors::CacheCollector,
             Profiler::Collectors::HttpCollector,
