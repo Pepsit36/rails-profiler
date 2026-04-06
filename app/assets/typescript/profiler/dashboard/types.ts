@@ -241,7 +241,7 @@ export interface I18nLookup {
   missing: boolean;
 }
 
-export type FlameGraphCategory = 'controller' | 'view' | 'partial' | 'sql' | 'cache' | 'http'
+export type FlameGraphCategory = 'controller' | 'view' | 'partial' | 'sql' | 'cache' | 'http' | 'custom'
 
 export interface FlameGraphNode {
   name: string

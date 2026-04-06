@@ -122,6 +122,54 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
     end
   end
 
+  describe "#record_custom_event" do
+    it "adds a custom event with the given label" do
+      collector.record_custom_event(
+        label: "payment.stripe_charge",
+        started_at: 100.0,
+        finished_at: 100.05,
+        metadata: { amount: 1000 }
+      )
+
+      events = collector.instance_variable_get(:@events)
+      expect(events.size).to eq(1)
+      expect(events.first.category).to eq("custom")
+      expect(events.first.name).to eq("payment.stripe_charge")
+      expect(events.first.payload).to eq({ amount: 1000 })
+    end
+
+    it "adds a custom event with empty metadata by default" do
+      collector.record_custom_event(
+        label: "pdf.render",
+        started_at: 100.0,
+        finished_at: 100.02
+      )
+
+      events = collector.instance_variable_get(:@events)
+      expect(events.first.payload).to eq({})
+    end
+
+    it "nests correctly inside parent events in the hierarchy" do
+      events = collector.instance_variable_get(:@events)
+      events << make_event(name: "Controller#show", started_at: 100.0, finished_at: 100.1, category: "controller")
+      collector.record_custom_event(
+        label: "report.generate",
+        started_at: 100.02,
+        finished_at: 100.08,
+        metadata: { rows: 500 }
+      )
+
+      collector.collect
+      data = collector.panel_content
+
+      root = data[:root_events].first
+      expect(root[:children].size).to eq(1)
+      custom = root[:children].first
+      expect(custom[:category]).to eq("custom")
+      expect(custom[:name]).to eq("report.generate")
+    end
+  end
+
   describe "#collect" do
     it "clears thread-local collector reference" do
       collector.subscribe
