@@ -8,7 +8,8 @@ const CATEGORY_LABELS: Record<FlameGraphCategory, string> = {
   sql: 'SQL',
   cache: 'Cache',
   http: 'HTTP',
-  custom: 'Custom'
+  custom: 'Custom',
+  method: 'Method',
 }
 
 const CATEGORY_COLORS: Record<FlameGraphCategory, string> = {
@@ -18,7 +19,14 @@ const CATEGORY_COLORS: Record<FlameGraphCategory, string> = {
   sql: '#fb923c',
   cache: '#a78bfa',
   http: '#f87171',
-  custom: '#e879f9'
+  custom: '#e879f9',
+  method: '#94a3b8',
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
 export class FlameGraphTooltip {
@@ -72,8 +80,43 @@ export class FlameGraphTooltip {
       return span
     })
 
-    // Payload details
-    if (node.payload) {
+    // Method-specific rows (function profiling)
+    if (category === 'method' && node.payload) {
+      if (node.payload.memory_bytes != null) {
+        this.addRow('Memory', () => {
+          const span = document.createElement('span')
+          span.className = 'value'
+          span.textContent = formatBytes(node.payload!.memory_bytes)
+          return span
+        })
+      }
+      if (node.payload.allocated_objects != null) {
+        this.addRow('Objects', () => {
+          const span = document.createElement('span')
+          span.className = 'value'
+          span.textContent = `${node.payload!.allocated_objects.toLocaleString()} obj`
+          return span
+        })
+      }
+      if (node.payload.recursive) {
+        this.addRow('Recursive', () => {
+          const span = document.createElement('span')
+          span.className = 'value'
+          span.style.color = 'var(--profiler-warning)'
+          span.textContent = '↺ yes'
+          return span
+        })
+      }
+      if (node.payload.file) {
+        const payloadDiv = document.createElement('div')
+        payloadDiv.className = 'tooltip-payload'
+        payloadDiv.textContent = `${node.payload.file}:${node.payload.line}`
+        this.el.appendChild(payloadDiv)
+      }
+    }
+
+    // Payload details for other categories
+    if (node.payload && category !== 'method') {
       let payloadText: string | null = null
       if (category === 'sql' && node.payload.sql) {
         payloadText = node.payload.sql.length > 200 ? node.payload.sql.slice(0, 200) + '...' : node.payload.sql

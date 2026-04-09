@@ -91,7 +91,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {activeTab === 'database' && <DatabaseTab dbData={cd['database'] as any} token={profile.token} />}
           {activeTab === 'ajax' && <AjaxTab ajaxData={cd['ajax'] as any} />}
           {activeTab === 'http' && <HttpTab httpData={cd['http'] as any} />}
-          {activeTab === 'timeline' && <FlameGraphTab flamegraphData={cd['flamegraph'] as any} perfData={cd['performance'] as any} />}
+          {activeTab === 'timeline' && <FlameGraphTab flamegraphData={cd['flamegraph'] as any} perfData={cd['performance'] as any} functionProfileData={cd['function_profile'] as any} />}
           {activeTab === 'views' && <ViewsTab viewData={cd['view'] as any} />}
           {activeTab === 'cache' && <CacheTab cacheData={cd['cache'] as any} />}
           {activeTab === 'logs' && <LogsTab logData={cd['logs'] as any} />}
