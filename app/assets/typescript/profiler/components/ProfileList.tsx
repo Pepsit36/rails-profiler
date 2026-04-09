@@ -358,6 +358,16 @@ export function ProfileList() {
       })
     : filteredProfiles
 
+  const filteredJobs = jobs.filter(p => {
+    if (jobSearch && !p.path.toLowerCase().includes(jobSearch.toLowerCase())) return false
+    if (jobStatus === 'failed' && p.status !== 500) return false
+    if (jobStatus === 'completed' && p.status === 500) return false
+    if (jobDuration) {
+      if (jobDuration === 'lt100' ? p.duration >= 100 : p.duration < parseInt(jobDuration)) return false
+    }
+    return true
+  })
+
   const sortedJobs = jobSort.col
     ? [...filteredJobs].sort((a, b) => {
         if (jobSort.col === 'date') {
@@ -373,16 +383,6 @@ export function ProfileList() {
         return jobSort.dir === 'asc' ? av - bv : bv - av
       })
     : filteredJobs
-
-  const filteredJobs = jobs.filter(p => {
-    if (jobSearch && !p.path.toLowerCase().includes(jobSearch.toLowerCase())) return false
-    if (jobStatus === 'failed' && p.status !== 500) return false
-    if (jobStatus === 'completed' && p.status === 500) return false
-    if (jobDuration) {
-      if (jobDuration === 'lt100' ? p.duration >= 100 : p.duration < parseInt(jobDuration)) return false
-    }
-    return true
-  })
 
   const filteredOutbound = outboundRequests.filter(req => {
     if (outboundSearch && !req.url.toLowerCase().includes(outboundSearch.toLowerCase())) return false
