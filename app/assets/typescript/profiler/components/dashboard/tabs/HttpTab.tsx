@@ -117,15 +117,32 @@ function categoryMime(category: BodyCategory): string {
   return map[category] || 'text/plain'
 }
 
-function categoryExt(category: BodyCategory): string {
-  const map: Partial<Record<BodyCategory, string>> = {
-    json: '.json',
-    xml: '.xml',
-    csv: '.csv',
-    html: '.html',
-    svg: '.svg',
+function mimeToExt(mime: string): string {
+  const m = mime.split(';')[0].trim().toLowerCase()
+  const map: Record<string, string> = {
+    'application/json': '.json',
+    'application/ld+json': '.jsonld',
+    'application/xml': '.xml',
+    'text/xml': '.xml',
+    'text/csv': '.csv',
+    'application/csv': '.csv',
+    'text/html': '.html',
+    'text/plain': '.txt',
+    'text/css': '.css',
+    'application/javascript': '.js',
+    'text/javascript': '.js',
+    'image/svg+xml': '.svg',
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+    'image/avif': '.avif',
+    'application/pdf': '.pdf',
+    'application/zip': '.zip',
+    'application/gzip': '.gz',
+    'application/octet-stream': '.bin',
   }
-  return map[category] || '.txt'
+  return map[m] || '.bin'
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -143,7 +160,7 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function DownloadTextButton({ text, mime, ext }: { text: string, mime: string, ext: string }) {
+function DownloadTextButton({ text, mime }: { text: string, mime: string }) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     const objectUrl = URL.createObjectURL(new Blob([text], { type: mime }))
@@ -153,7 +170,7 @@ function DownloadTextButton({ text, mime, ext }: { text: string, mime: string, e
 
   if (!url) return null
   return (
-    <a href={url} download={`body${ext}`} class="profiler-body-download-btn profiler-text--xs">
+    <a href={url} download={`body${mimeToExt(mime)}`} class="profiler-body-download-btn profiler-text--xs">
       Download
     </a>
   )
@@ -184,7 +201,7 @@ export function SmartBodyPreview({ body, encoding, headers }: {
 
   if (encoding === 'base64') {
     const mime = Object.entries(headers).find(([k]) => k.toLowerCase() === 'content-type')?.[1]?.split(';')[0].trim() || 'application/octet-stream'
-    const filename = mime.replace('/', '_').replace(/[^a-z0-9_]/gi, '') + '_download'
+    const filename = `body${mimeToExt(mime)}`
 
     return (
       <div class="profiler-body-binary">
@@ -208,6 +225,8 @@ export function SmartBodyPreview({ body, encoding, headers }: {
   }
 
   // Text path (encoding === 'text' or undefined for backwards compat)
+  const actualMime = Object.entries(headers).find(([k]) => k.toLowerCase() === 'content-type')?.[1]?.split(';')[0].trim() || categoryMime(category)
+
   if (category === 'csv') {
     const rows = parseCsv(body)
     const header = rows[0] || []
@@ -219,7 +238,7 @@ export function SmartBodyPreview({ body, encoding, headers }: {
       <div>
         <div style="display:flex;gap:8px;margin-bottom:6px">
           <CopyButton text={body} />
-          <DownloadTextButton text={body} mime={categoryMime(category)} ext={categoryExt(category)} />
+          <DownloadTextButton text={body} mime={actualMime} />
         </div>
         <div style="overflow-x:auto">
           <table class="profiler-body-csv">
@@ -254,7 +273,7 @@ export function SmartBodyPreview({ body, encoding, headers }: {
     <div>
       <div style="display:flex;gap:8px;margin-bottom:6px">
         <CopyButton text={formatted} />
-        <DownloadTextButton text={formatted} mime={categoryMime(category)} ext={categoryExt(category)} />
+        <DownloadTextButton text={formatted} mime={actualMime} />
       </div>
       <pre class="profiler-code profiler-text--xs" style="white-space:pre-wrap;word-break:break-all;margin:0">{preview}{truncated ? '…' : ''}</pre>
       {formatted.length > PREVIEW_LIMIT && (
