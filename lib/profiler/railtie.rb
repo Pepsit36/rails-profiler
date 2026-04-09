@@ -62,6 +62,11 @@ module Profiler
             chain.add Profiler::Instrumentation::SidekiqMiddleware
           end
         end
+        Sidekiq.configure_client do |config|
+          config.client_middleware do |chain|
+            chain.add Profiler::Instrumentation::SidekiqClientMiddleware
+          end
+        end
       end
 
       if defined?(ActiveJob::Base)

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../models/profile"
+require_relative "../current_context"
 require_relative "toolbar_injector"
 
 module Profiler
@@ -14,6 +15,7 @@ module Profiler
         return @app.call(env) unless should_profile?(env)
 
         profile = Models::Profile.new(build_request(env))
+        Profiler::CurrentContext.token = profile.token
 
         # Capture request body before app processes it
         req_body_raw = read_rack_input(env)
@@ -64,6 +66,7 @@ module Profiler
 
         # Store profile
         Profiler.storage.save(profile.token, profile)
+        Profiler::CurrentContext.clear
 
         # Add profiler token header
         headers["X-Profiler-Token"] = profile.token

@@ -26,7 +26,10 @@ module Profiler
           return render json: { error: "Job profile not found" }, status: :not_found
         end
 
-        render json: profile.to_h
+        render json: profile.to_h.merge(
+          child_jobs: build_child_jobs(profile),
+          parent_profile: build_parent_summary(profile)
+        )
       end
 
       def destroy

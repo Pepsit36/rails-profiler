@@ -4,7 +4,7 @@ module Profiler
   module MCP
     module Tools
       class QueryJobs
-        ALL_FIELDS = %w[time job_class queue status duration token].freeze
+        ALL_FIELDS = %w[time job_class queue status duration token parent_token].freeze
 
         def self.call(params)
           limit = params["limit"]&.to_i || 20
@@ -59,12 +59,13 @@ module Profiler
             job_data = profile.collector_data("job") || {}
             row = fields.map do |f|
               case f
-              when "time"      then profile.started_at.strftime("%H:%M:%S")
-              when "job_class" then job_data["job_class"] || profile.path
-              when "queue"     then job_data["queue"] || "-"
-              when "status"    then job_data["status"] || "-"
-              when "duration"  then "#{profile.duration.round(2)}ms"
-              when "token"     then profile.token.to_s
+              when "time"         then profile.started_at.strftime("%H:%M:%S")
+              when "job_class"    then job_data["job_class"] || profile.path
+              when "queue"        then job_data["queue"] || "-"
+              when "status"       then job_data["status"] || "-"
+              when "duration"     then "#{profile.duration.round(2)}ms"
+              when "token"        then profile.token.to_s
+              when "parent_token" then profile.parent_token || "-"
               end
             end
             lines << "| #{row.join(' | ')} |"

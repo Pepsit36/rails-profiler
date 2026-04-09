@@ -23,6 +23,11 @@ module Profiler
       # Recalculate AJAX collector data (since AJAX requests happen after page load)
       recalculate_ajax_data(@profile)
 
+      @profile_data = @profile.to_h.merge(
+        child_jobs: build_child_jobs(@profile),
+        parent_profile: build_parent_summary(@profile)
+      )
+
       @embedded = params[:embed] == "true"
 
       render layout: @embedded ? "profiler/embedded" : "profiler/application"
