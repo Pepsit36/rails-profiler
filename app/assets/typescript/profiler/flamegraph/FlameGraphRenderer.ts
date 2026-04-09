@@ -7,7 +7,8 @@ const CATEGORY_COLORS: Record<FlameGraphCategory, string> = {
   sql: '#fb923c',
   cache: '#a78bfa',
   http: '#f87171',
-  custom: '#e879f9'
+  custom: '#e879f9',
+  method: '#94a3b8'
 }
 
 const FRAME_HEIGHT = 24
@@ -52,6 +53,7 @@ export class FlameGraphRenderer {
   private hoveredFrame: FlatFrame | null = null
   private zoomStack: FlameGraphNode[] = []
   private searchQuery = ''
+  private highlightName = ''
   private isPanning = false
   private panStartX = 0
   private panStartViewport: Viewport = { start: 0, end: 0 }
@@ -324,6 +326,11 @@ export class FlameGraphRenderer {
     this.render()
   }
 
+  setHighlightName(name: string) {
+    this.highlightName = name
+    this.render()
+  }
+
   render() {
     const ctx = this.ctx
     const w = this.canvas.width / this.dpr
@@ -359,11 +366,12 @@ export class FlameGraphRenderer {
 
       const color = CATEGORY_COLORS[frame.node.category as FlameGraphCategory] || '#a78bfa'
       const isHovered = frame === this.hoveredFrame
+      const isHighlighted = !!this.highlightName && frame.node.name === this.highlightName
       const isMatch = !hasSearch || frame.node.name.toLowerCase().includes(searchLower)
 
       // Draw frame rect
-      ctx.fillStyle = isHovered ? this.lightenColor(color, 0.2) : color
-      ctx.globalAlpha = hasSearch && !isMatch ? 0.2 : (isHovered ? 1 : 0.85)
+      ctx.fillStyle = (isHovered || isHighlighted) ? this.lightenColor(color, 0.2) : color
+      ctx.globalAlpha = hasSearch && !isMatch ? 0.2 : ((isHovered || isHighlighted) ? 1 : 0.85)
       this.roundRect(ctx, x, y, fw, FRAME_HEIGHT, 3)
       ctx.fill()
       ctx.globalAlpha = 1
@@ -372,6 +380,11 @@ export class FlameGraphRenderer {
       if (isHovered) {
         ctx.strokeStyle = '#ffffff'
         ctx.lineWidth = 1.5
+        this.roundRect(ctx, x, y, fw, FRAME_HEIGHT, 3)
+        ctx.stroke()
+      } else if (isHighlighted) {
+        ctx.strokeStyle = '#fbbf24'
+        ctx.lineWidth = 2
         this.roundRect(ctx, x, y, fw, FRAME_HEIGHT, 3)
         ctx.stroke()
       } else if (hasSearch && isMatch) {

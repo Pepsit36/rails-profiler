@@ -8,6 +8,8 @@ module Profiler
 
   class << self
     attr_writer :configuration
+    attr_accessor :function_profiling_enabled
+    attr_accessor :function_profiling_max_frames
 
     def configuration
       @configuration ||= Configuration.new
@@ -72,6 +74,9 @@ module Profiler
       value
     end
   end
+
+  self.function_profiling_enabled = false
+  self.function_profiling_max_frames = 2000
 end
 
 # Require core components
@@ -84,6 +89,7 @@ require_relative "profiler/collectors/cache_collector"
 require_relative "profiler/collectors/dump_collector"
 require_relative "profiler/collectors/http_collector"
 require_relative "profiler/collectors/flamegraph_collector"
+require_relative "profiler/collectors/function_profiler_collector"
 require_relative "profiler/collectors/log_collector"
 require_relative "profiler/collectors/exception_collector"
 require_relative "profiler/collectors/routes_collector"

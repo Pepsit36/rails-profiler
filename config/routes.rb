@@ -33,5 +33,6 @@ Profiler::Engine.routes.draw do
     get "toolbar/:token", to: "toolbar#show"
     post "ajax/link", to: "ajax#link"
     post "explain", to: "explain#create"
+    resource :function_profiling, only: [:show, :update], controller: "function_profiling"
   end
 end
