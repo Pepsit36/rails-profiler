@@ -1,25 +1,9 @@
 import { useState } from 'preact/hooks'
 import { Profile, RequestData } from '../../../dashboard/types'
+import { SmartBodyPreview } from './HttpTab'
 
 interface Props {
   profile: Profile
-}
-
-function tryFormatJson(text: string): string {
-  try {
-    return JSON.stringify(JSON.parse(text), null, 2)
-  } catch {
-    return text
-  }
-}
-
-function BodyBlock({ body, encoding }: { body?: string; encoding?: string }) {
-  if (!body) return null
-  if (encoding === 'base64') {
-    return <p class="profiler-text--muted profiler-text--sm">[binary content, base64-encoded]</p>
-  }
-  const formatted = tryFormatJson(body)
-  return <pre class="profiler-code profiler-text--xs">{formatted}</pre>
 }
 
 function buildCurl(profile: Profile): string {
@@ -143,7 +127,11 @@ export function RequestTab({ profile }: Props) {
       {profile.request_body && (
         <>
           <h2 class="profiler-section__header profiler-mt-6">Request Body</h2>
-          <BodyBlock body={profile.request_body} encoding={profile.request_body_encoding} />
+          <SmartBodyPreview
+            body={profile.request_body}
+            encoding={profile.request_body_encoding}
+            headers={profile.headers as Record<string, string> ?? {}}
+          />
         </>
       )}
 
@@ -164,7 +152,11 @@ export function RequestTab({ profile }: Props) {
       {profile.response_body && (
         <>
           <h2 class="profiler-section__header profiler-mt-6">Response Body</h2>
-          <BodyBlock body={profile.response_body} encoding={profile.response_body_encoding} />
+          <SmartBodyPreview
+            body={profile.response_body}
+            encoding={profile.response_body_encoding}
+            headers={profile.response_headers as Record<string, string> ?? {}}
+          />
         </>
       )}
 

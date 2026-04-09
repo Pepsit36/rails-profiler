@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks'
+import { useState, useEffect } from 'preact/hooks'
 import { DatabaseData, DatabaseQuery } from '../../../dashboard/types'
 
 interface Props {
@@ -83,6 +83,13 @@ function renderPlanNode(node: any, depth: number = 0): any {
 }
 
 function ExplainModal({ state, onClose }: { state: ExplainState; onClose: () => void }) {
+  useEffect(() => {
+    if (!state.open) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [state.open])
+
   if (!state.open) return null
 
   const renderResult = () => {
@@ -200,12 +207,24 @@ export function DatabaseTab({ dbData, token }: Props) {
       {n1Groups.length > 0 && (
         <div class="profiler-alert-banner profiler-alert-banner--warning profiler-mb-4">
           <span class="profiler-alert-banner__icon">⚠️</span>
-          <div>
+          <div style="flex:1">
             <strong>Potential N+1 detected</strong> — {n1Groups.length} pattern{n1Groups.length > 1 ? 's' : ''} repeated {n1Groups.reduce((sum, g) => sum + g.indices.length, 0)} times total
             <div class="profiler-text--xs profiler-text--muted profiler-mt-1">
               Queries causing N+1 are highlighted below. Expand each group to see the call stack.
             </div>
           </div>
+          {n1Groups.length > 1 && (
+            <button
+              class="profiler-btn profiler-btn--sm"
+              style="flex-shrink:0;align-self:flex-start"
+              onClick={() => {
+                const allOpen = n1Groups.every(g => openBacktraces.has(g.pattern))
+                setOpenBacktraces(allOpen ? new Set() : new Set(n1Groups.map(g => g.pattern)))
+              }}
+            >
+              {n1Groups.every(g => openBacktraces.has(g.pattern)) ? 'Collapse all' : 'Expand all'}
+            </button>
+          )}
         </div>
       )}
 

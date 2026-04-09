@@ -37,6 +37,7 @@ function levelBadgeStyle(level: string): string {
 
 export function LogsTab({ logData }: Props) {
   const [filter, setFilter] = useState<LevelFilter>('ALL')
+  const [search, setSearch] = useState('')
 
   if (!logData?.logs?.length) {
     return (
@@ -51,7 +52,11 @@ export function LogsTab({ logData }: Props) {
   }
 
   const levels: LevelFilter[] = ['ALL', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL']
-  const filtered = filter === 'ALL' ? logData.logs : logData.logs.filter((l: LogEntry) => l.level === filter)
+  const filtered = logData.logs.filter((l: LogEntry) => {
+    if (filter !== 'ALL' && l.level !== filter) return false
+    if (search && !l.message.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
 
   return (
     <>
@@ -66,20 +71,30 @@ export function LogsTab({ logData }: Props) {
         )}
       </div>
 
-      <div class="profiler-flex profiler-flex--gap-2 profiler-mb-4">
-        {levels.map(level => (
-          <button
-            key={level}
-            onClick={() => setFilter(level)}
-            class={`btn btn-sm ${filter === level ? 'btn-primary' : 'btn-secondary'}`}
-          >
-            {level}
-          </button>
-        ))}
+      <div class="profiler-action-bar profiler-mb-4">
+        <div class="profiler-flex profiler-flex--gap-2">
+          {levels.map(level => (
+            <button
+              key={level}
+              onClick={() => setFilter(level)}
+              class={`btn btn-sm ${filter === level ? 'btn-primary' : 'btn-secondary'}`}
+            >
+              {level}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          class="profiler-filter-input"
+          placeholder="Search messages…"
+          value={search}
+          onInput={e => setSearch((e.target as HTMLInputElement).value)}
+          style="width:200px"
+        />
       </div>
 
       {filtered.length === 0 ? (
-        <div class="profiler-text--muted profiler-text--sm">No {filter} messages.</div>
+        <div class="profiler-text--muted profiler-text--sm">No messages match{search ? ` "${search}"` : ''}.</div>
       ) : (
         filtered.map((entry: LogEntry, index: number) => (
           <div key={index} class="profiler-query-card profiler-mb-2">

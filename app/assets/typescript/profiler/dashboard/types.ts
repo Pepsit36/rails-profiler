@@ -168,6 +168,7 @@ export interface HttpRequest {
   method: string;
   status: number;
   duration: number;
+  started_at?: string;
   request_headers: Record<string, string>;
   request_body?: string;
   request_body_encoding?: 'text' | 'base64';
