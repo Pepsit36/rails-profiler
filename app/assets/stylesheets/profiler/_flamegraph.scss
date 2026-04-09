@@ -283,3 +283,361 @@
     }
   }
 }
+
+// ============================================================================
+// FUNCTION PROFILING — call-tree section inside the FlameGraph tab
+// ============================================================================
+
+.profiler-fn-profiling {
+  margin-top: 32px;
+  border-top: 1px solid var(--profiler-border);
+  padding-top: 24px;
+  animation: fadeIn 300ms ease;
+
+  // ── Header ──────────────────────────────────────────────────────────────────
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  &__title {
+    font-size: var(--profiler-text-xs);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--profiler-text-muted);
+    font-family: $font-sans;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    &::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #94a3b8;
+      flex-shrink: 0;
+    }
+
+    &--active::before {
+      background: var(--profiler-accent);
+      box-shadow: 0 0 6px var(--profiler-accent-glow);
+    }
+  }
+
+  // ── Controls row (toggle + max frames) ─────────────────────────────────────
+  &__controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  &__max-frames-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--profiler-text-xs);
+    color: var(--profiler-text-muted);
+    font-family: $font-sans;
+    cursor: default;
+  }
+
+  &__max-frames-input {
+    width: 70px;
+    height: 26px;
+    padding: 0 8px;
+    background: var(--profiler-bg-lighter);
+    border: 1px solid var(--profiler-border);
+    border-radius: var(--profiler-radius-sm);
+    color: var(--profiler-text);
+    font-family: $font-mono;
+    font-size: var(--profiler-text-xs);
+    text-align: center;
+    transition: border-color $transition-base;
+    appearance: textfield; // hide spinners on most browsers
+
+    &::-webkit-inner-spin-button,
+    &::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+    &:focus {
+      outline: none;
+      border-color: var(--profiler-accent);
+      box-shadow: 0 0 0 2px var(--profiler-accent-glow);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  }
+
+  &__updating {
+    font-size: var(--profiler-text-xs);
+    color: var(--profiler-text-muted);
+    font-family: $font-mono;
+    animation: pulse 1s ease-in-out infinite;
+  }
+
+  &__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 14px;
+    border-radius: var(--profiler-radius-full);
+    border: 1px solid var(--profiler-border-strong);
+    background: var(--profiler-bg-lighter);
+    color: var(--profiler-text-muted);
+    font-size: var(--profiler-text-xs);
+    font-weight: 600;
+    font-family: $font-sans;
+    cursor: pointer;
+    transition: all $transition-base;
+    white-space: nowrap;
+
+    &::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--profiler-text-subtle);
+      flex-shrink: 0;
+      transition: background $transition-base, box-shadow $transition-base;
+    }
+
+    &:hover {
+      border-color: var(--profiler-border-strong);
+      color: var(--profiler-text);
+      background: var(--profiler-bg-elevated);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    &--active {
+      border-color: var(--profiler-border-accent);
+      background: var(--profiler-accent-bg);
+      color: var(--profiler-accent);
+
+      &::before {
+        background: var(--profiler-accent);
+        box-shadow: 0 0 6px var(--profiler-accent-glow);
+      }
+
+      &:hover {
+        background: rgba(245, 158, 11, 0.15);
+      }
+    }
+  }
+
+  // ── Hint text ────────────────────────────────────────────────────────────────
+  &__hint {
+    margin: 12px 0 0;
+    padding: 10px 14px;
+    background: var(--profiler-bg-lighter);
+    border: 1px solid var(--profiler-border);
+    border-radius: var(--profiler-radius-md);
+    font-size: var(--profiler-text-xs);
+    color: var(--profiler-text-muted);
+    font-family: $font-sans;
+    line-height: 1.6;
+  }
+
+  // ── Flamegraph canvas wrapper ────────────────────────────────────────────────
+  &__flamegraph {
+    margin: 16px 0;
+
+    .profiler-flamegraph__controls {
+      margin-bottom: 6px;
+    }
+  }
+
+  // ── Sort buttons ─────────────────────────────────────────────────────────────
+  &__sort {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 16px 0 8px;
+    padding: 3px;
+    background: var(--profiler-bg-lighter);
+    border: 1px solid var(--profiler-border);
+    border-radius: var(--profiler-radius-md);
+    width: fit-content;
+  }
+
+  &__sort-btn {
+    padding: 4px 12px;
+    border: none;
+    border-radius: var(--profiler-radius-sm);
+    background: transparent;
+    color: var(--profiler-text-muted);
+    font-size: var(--profiler-text-xs);
+    font-weight: 500;
+    font-family: $font-sans;
+    cursor: pointer;
+    transition: all $transition-fast;
+    white-space: nowrap;
+
+    &:hover {
+      color: var(--profiler-text);
+      background: var(--profiler-bg-elevated);
+    }
+
+    &--active {
+      background: var(--profiler-accent);
+      color: var(--profiler-text-on-accent);
+      font-weight: 600;
+      box-shadow: var(--profiler-shadow-sm);
+
+      &:hover {
+        background: var(--profiler-accent-hover);
+        color: var(--profiler-text-on-accent);
+      }
+    }
+  }
+
+  // ── Table ────────────────────────────────────────────────────────────────────
+  &__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--profiler-text-xs);
+    font-family: $font-sans;
+    margin-top: 8px;
+
+    thead tr {
+      border-bottom: 1px solid var(--profiler-border-strong);
+    }
+
+    th {
+      padding: 8px 10px;
+      text-align: left;
+      font-size: var(--profiler-text-xs);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--profiler-text-subtle);
+
+      &.profiler-text--right { text-align: right; }
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--profiler-border);
+      transition: background $transition-fast;
+
+      &:hover {
+        background: var(--profiler-bg-lighter);
+      }
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      &.profiler-fn-profiling__row--highlighted {
+        background: rgba(251, 191, 36, 0.08);
+        outline: 1px solid rgba(251, 191, 36, 0.35);
+        outline-offset: -1px;
+      }
+    }
+
+    td {
+      padding: 7px 10px;
+      vertical-align: middle;
+      line-height: 1.4;
+
+      &.profiler-text--right { text-align: right; }
+      &.profiler-text--muted  { color: var(--profiler-text-muted); }
+    }
+  }
+
+  &__name {
+    font-family: $font-mono;
+    font-size: var(--profiler-text-xs);
+    font-weight: 500;
+    color: var(--profiler-text);
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__recursive {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    background: var(--profiler-warning-bg);
+    color: var(--profiler-warning);
+    font-size: 9px;
+    font-weight: 700;
+    margin-right: 5px;
+    vertical-align: middle;
+    flex-shrink: 0;
+    cursor: help;
+  }
+
+  &__filter-active {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 12px 0 0;
+    padding: 8px 14px;
+    background: var(--profiler-accent-bg);
+    border: 1px solid var(--profiler-border-accent);
+    border-radius: var(--profiler-radius-md);
+    font-size: var(--profiler-text-xs);
+    color: var(--profiler-accent);
+    font-family: $font-sans;
+
+    strong { font-family: $font-mono; font-weight: 600; }
+  }
+
+  &__filter-clear {
+    padding: 2px 8px;
+    border: 1px solid var(--profiler-border-accent);
+    border-radius: var(--profiler-radius-sm);
+    background: transparent;
+    color: var(--profiler-accent);
+    font-size: var(--profiler-text-xs);
+    font-family: $font-sans;
+    cursor: pointer;
+    transition: all $transition-fast;
+    white-space: nowrap;
+
+    &:hover {
+      background: var(--profiler-accent);
+      color: var(--profiler-text-on-accent);
+    }
+  }
+
+  &__cap-warning {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0 0;
+    padding: 10px 14px;
+    background: var(--profiler-warning-bg);
+    border: 1px solid rgba(251, 146, 60, 0.3);
+    border-radius: var(--profiler-radius-md);
+    font-size: var(--profiler-text-xs);
+    color: var(--profiler-warning);
+    font-family: $font-sans;
+    font-weight: 500;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}

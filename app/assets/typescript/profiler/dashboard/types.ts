@@ -25,6 +25,7 @@ export interface Profile {
     http?: HttpData;
     job?: JobData;
     flamegraph?: FlameGraphData;
+    function_profile?: FunctionProfileData;
     logs?: LogData;
     exception?: ExceptionData;
     routes?: RoutesData;
@@ -248,7 +249,7 @@ export interface ProfilesResponse {
   has_more: boolean
 }
 
-export type FlameGraphCategory = 'controller' | 'view' | 'partial' | 'sql' | 'cache' | 'http' | 'custom'
+export type FlameGraphCategory = 'controller' | 'view' | 'partial' | 'sql' | 'cache' | 'http' | 'custom' | 'method'
 
 export interface FlameGraphNode {
   name: string
@@ -264,4 +265,29 @@ export interface FlameGraphData {
   total_events: number
   total_duration: number
   root_events: FlameGraphNode[]
+}
+
+export interface FunctionStat {
+  name: string
+  file: string
+  line: number
+  calls: number
+  recursive_calls: number
+  total_duration: number
+  self_duration: number
+  allocated_objects: number
+  memory_bytes: number
+  self_memory_bytes: number
+}
+
+export interface FunctionProfileData {
+  enabled: boolean
+  max_frames?: number
+  frame_cap_reached?: boolean
+  total_calls?: number
+  total_duration?: number
+  total_allocated_objects?: number
+  total_memory_bytes?: number
+  functions?: FunctionStat[]
+  root_calls?: FlameGraphNode[]
 }
