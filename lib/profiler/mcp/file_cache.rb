@@ -5,12 +5,14 @@ require "fileutils"
 module Profiler
   module MCP
     class FileCache
-      BASE_DIR = "/tmp/rails-profiler"
+      def self.base_dir
+        Profiler.configuration.tmp_path.to_s
+      end
 
       def self.save(token, name, content)
         cleanup if rand < 0.05
 
-        dir = File.join(BASE_DIR, token)
+        dir = File.join(base_dir, token)
         FileUtils.mkdir_p(dir)
         path = File.join(dir, name)
         File.write(path, content)
@@ -20,9 +22,10 @@ module Profiler
       end
 
       def self.cleanup(max_age: 3600)
-        return unless Dir.exist?(BASE_DIR)
+        bd = base_dir
+        return unless Dir.exist?(bd)
 
-        Dir.glob(File.join(BASE_DIR, "*")).each do |dir|
+        Dir.glob(File.join(bd, "*")).each do |dir|
           FileUtils.rm_rf(dir) if File.directory?(dir) && (Time.now - File.mtime(dir)) > max_age
         end
       end

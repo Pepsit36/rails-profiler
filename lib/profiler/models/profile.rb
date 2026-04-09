@@ -74,6 +74,9 @@ module Profiler
       end
 
       def to_h
+        req_body,  req_enc  = decode_body(@request_body,  @request_body_encoding)
+        resp_body, resp_enc = decode_body(@response_body, @response_body_encoding)
+
         {
           profile_type: @profile_type,
           token: @token,
@@ -87,10 +90,10 @@ module Profiler
           params: @params,
           headers: @headers,
           response_headers: @response_headers,
-          request_body: @request_body,
-          request_body_encoding: @request_body_encoding,
-          response_body: @response_body,
-          response_body_encoding: @response_body_encoding,
+          request_body: req_body,
+          request_body_encoding: req_enc,
+          response_body: resp_body,
+          response_body_encoding: resp_enc,
           collectors_data: @collectors_data,
           tabs: @collectors_metadata,
           parent_token: @parent_token,
@@ -171,6 +174,16 @@ module Profiler
       def compress_body?(text)
         Profiler.configuration.compress_bodies &&
           text.bytesize > Profiler.configuration.compress_body_threshold
+      end
+
+      def decode_body(body, encoding)
+        return [body, encoding] unless encoding == "gzip+base64"
+        return [body, encoding] if body.nil? || body.empty?
+
+        decoded = Zlib::Inflate.inflate(Base64.strict_decode64(body))
+        [decoded, "text"]
+      rescue Zlib::Error, ArgumentError
+        [body, encoding]
       end
 
       def binary_content_type?(ct)
