@@ -80,11 +80,7 @@ module Profiler
       private
 
       def default_path
-        if defined?(Rails)
-          Rails.root.join("tmp", "profiler")
-        else
-          File.expand_path("tmp/profiler", Dir.pwd)
-        end
+        Profiler.configuration.tmp_path
       end
 
       def ensure_directory_exists
