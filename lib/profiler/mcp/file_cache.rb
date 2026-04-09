@@ -6,11 +6,7 @@ module Profiler
   module MCP
     class FileCache
       def self.base_dir
-        if defined?(Rails) && Rails.respond_to?(:root) && Rails.root
-          Rails.root.join("tmp", "rails-profiler").to_s
-        else
-          File.join(Dir.pwd, "tmp", "rails-profiler")
-        end
+        Profiler.configuration.tmp_path.to_s
       end
 
       def self.save(token, name, content)

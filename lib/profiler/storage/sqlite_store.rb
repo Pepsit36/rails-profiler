@@ -253,19 +253,11 @@ module Profiler
       end
 
       def default_db_path
-        if defined?(Rails)
-          Rails.root.join("tmp", "profiler", "profiler.db")
-        else
-          File.expand_path("tmp/profiler/profiler.db", Dir.pwd)
-        end
+        File.join(Profiler.configuration.tmp_path.to_s, "profiler.db")
       end
 
       def default_blob_path
-        if defined?(Rails)
-          Rails.root.join("tmp", "profiler", "blobs")
-        else
-          File.expand_path("tmp/profiler/blobs", Dir.pwd)
-        end
+        File.join(Profiler.configuration.tmp_path.to_s, "blobs")
       end
     end
   end

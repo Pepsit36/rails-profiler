@@ -11,9 +11,7 @@ module Profiler
       Profiler.configure do |config|
         config.enabled = Rails.env.development? || Rails.env.test?
         config.storage = Rails.env.development? ? :file : :memory
-        config.storage_options = {
-          path: Rails.root.join("tmp", "profiler")
-        }
+        config.tmp_path = Rails.root.join("tmp", "rails-profiler")
       end
     end
 

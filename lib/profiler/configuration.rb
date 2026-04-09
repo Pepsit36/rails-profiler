@@ -13,6 +13,8 @@ module Profiler
                   :track_jobs,
                   :compress_bodies, :compress_body_threshold
 
+    attr_writer :tmp_path
+
     attr_reader :authorize_block
 
     def initialize
@@ -41,6 +43,11 @@ module Profiler
       @track_jobs = true
       @compress_bodies = true
       @compress_body_threshold = 10 * 1024 # 10 KB
+      @tmp_path = nil
+    end
+
+    def tmp_path
+      @tmp_path || default_tmp_path
     end
 
     def authorize_with(&block)
@@ -63,6 +70,14 @@ module Profiler
     end
 
     private
+
+    def default_tmp_path
+      if defined?(Rails) && Rails.respond_to?(:root) && Rails.root
+        Rails.root.join("tmp", "rails-profiler")
+      else
+        File.expand_path("tmp/rails-profiler", Dir.pwd)
+      end
+    end
 
     def build_storage_backend
       case @storage
