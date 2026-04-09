@@ -106,6 +106,59 @@ function formatTextBody(body: string, category: BodyCategory): string | null {
 const PREVIEW_LIMIT = 500
 const CSV_ROW_LIMIT = 10
 
+function categoryMime(category: BodyCategory): string {
+  const map: Partial<Record<BodyCategory, string>> = {
+    json: 'application/json',
+    xml: 'application/xml',
+    csv: 'text/csv',
+    html: 'text/html',
+    svg: 'image/svg+xml',
+  }
+  return map[category] || 'text/plain'
+}
+
+function categoryExt(category: BodyCategory): string {
+  const map: Partial<Record<BodyCategory, string>> = {
+    json: '.json',
+    xml: '.xml',
+    csv: '.csv',
+    html: '.html',
+    svg: '.svg',
+  }
+  return map[category] || '.txt'
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  function copy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+  return (
+    <button onClick={copy} class="profiler-body-download-btn profiler-text--xs" style="cursor:pointer">
+      {copied ? 'Copied!' : 'Copy'}
+    </button>
+  )
+}
+
+function DownloadTextButton({ text, mime, ext }: { text: string, mime: string, ext: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(new Blob([text], { type: mime }))
+    setUrl(objectUrl)
+    return () => URL.revokeObjectURL(objectUrl)
+  }, [text, mime])
+
+  if (!url) return null
+  return (
+    <a href={url} download={`body${ext}`} class="profiler-body-download-btn profiler-text--xs">
+      Download
+    </a>
+  )
+}
+
 function SmartBodyPreview({ body, encoding, headers }: {
   body: string | undefined,
   encoding: 'text' | 'base64' | undefined,
@@ -141,11 +194,14 @@ function SmartBodyPreview({ body, encoding, headers }: {
         {objectUrl && category === 'pdf' && (
           <iframe src={objectUrl} class="profiler-body-preview-frame" title="PDF preview" />
         )}
-        {objectUrl && (
-          <a href={objectUrl} download={filename} class="profiler-body-download-btn profiler-text--xs">
-            Download {mime}
-          </a>
-        )}
+        <div style="display:flex;gap:8px;margin-top:4px">
+          {objectUrl && (
+            <a href={objectUrl} download={filename} class="profiler-body-download-btn profiler-text--xs">
+              Download {mime}
+            </a>
+          )}
+          <CopyButton text={body} />
+        </div>
         {!objectUrl && <span class="profiler-text--muted profiler-text--xs">Loading preview…</span>}
       </div>
     )
@@ -161,6 +217,10 @@ function SmartBodyPreview({ body, encoding, headers }: {
 
     return (
       <div>
+        <div style="display:flex;gap:8px;margin-bottom:6px">
+          <CopyButton text={body} />
+          <DownloadTextButton text={body} mime={categoryMime(category)} ext={categoryExt(category)} />
+        </div>
         <div style="overflow-x:auto">
           <table class="profiler-body-csv">
             <thead>
@@ -192,6 +252,10 @@ function SmartBodyPreview({ body, encoding, headers }: {
 
   return (
     <div>
+      <div style="display:flex;gap:8px;margin-bottom:6px">
+        <CopyButton text={formatted} />
+        <DownloadTextButton text={formatted} mime={categoryMime(category)} ext={categoryExt(category)} />
+      </div>
       <pre class="profiler-code profiler-text--xs" style="white-space:pre-wrap;word-break:break-all;margin:0">{preview}{truncated ? '…' : ''}</pre>
       {formatted.length > PREVIEW_LIMIT && (
         <button
@@ -206,11 +270,115 @@ function SmartBodyPreview({ body, encoding, headers }: {
   )
 }
 
+function waterfallBarColor(status: number, duration: number): string {
+  if (status === 0 || status >= 500) return 'var(--profiler-error, #ef4444)'
+  if (status >= 400) return 'var(--profiler-warning, #f59e0b)'
+  if (duration >= 500) return 'var(--profiler-warning, #f59e0b)'
+  return 'var(--profiler-success, #22c55e)'
+}
+
+function WaterfallView({ requests }: { requests: HttpRequest[] }) {
+  const timed = requests
+    .filter(r => r.started_at)
+    .map(r => ({ ...r, startMs: new Date(r.started_at!).getTime() }))
+
+  if (!timed.length) {
+    return <div class="profiler-text--muted profiler-text--sm">No timing data available (started_at missing).</div>
+  }
+
+  const minStart = Math.min(...timed.map(r => r.startMs))
+  const maxEnd = Math.max(...timed.map(r => r.startMs + r.duration))
+  const totalSpan = maxEnd - minStart || 1
+
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => ({
+    pct: f * 100,
+    label: `${Math.round(f * totalSpan)}ms`
+  }))
+
+  return (
+    <div>
+      {/* Time axis */}
+      <div style="display:flex;position:relative;margin-left:200px;margin-bottom:4px;height:16px">
+        {ticks.map(t => (
+          <div key={t.pct} style={`position:absolute;left:${t.pct}%;font-size:10px;color:var(--profiler-text-muted);transform:translateX(-50%)`}>
+            {t.label}
+          </div>
+        ))}
+      </div>
+      {/* Track background grid lines */}
+      <div style="position:relative">
+        {ticks.map(t => (
+          <div key={t.pct} style={`position:absolute;left:calc(200px + ${t.pct}% * (100% - 200px) / 100);top:0;bottom:0;width:1px;background:var(--profiler-border);opacity:0.5;pointer-events:none`} />
+        ))}
+        {timed.map((req, i) => {
+          const left = ((req.startMs - minStart) / totalSpan) * 100
+          const width = Math.max((req.duration / totalSpan) * 100, 0.5)
+          const path = req.url.replace(/^https?:\/\/[^/]+/, '') || req.url
+          const color = waterfallBarColor(req.status, req.duration)
+          return (
+            <div key={i} style="display:flex;align-items:center;gap:0;margin-bottom:3px;height:22px">
+              <div
+                title={req.url}
+                style="width:200px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--profiler-text-muted);padding-right:8px;text-align:right"
+              >
+                <span style={`font-size:10px;font-weight:600;margin-right:4px;color:${color}`}>{req.method}</span>
+                {path}
+              </div>
+              <div style="flex:1;position:relative;height:14px;background:var(--profiler-bg-lighter);border-radius:2px">
+                <div
+                  style={`position:absolute;left:${left}%;width:${width}%;min-width:2px;height:100%;background:${color};border-radius:2px;opacity:0.85`}
+                  title={`${req.duration.toFixed(2)}ms · ${req.status || 'ERR'}`}
+                />
+              </div>
+              <div style="width:52px;text-align:right;font-size:11px;color:var(--profiler-text-muted);padding-left:6px;flex-shrink:0">
+                {req.duration.toFixed(0)}ms
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div class="profiler-text--xs profiler-text--muted" style="margin-top:8px">
+        Total span: {totalSpan.toFixed(0)}ms · {timed.length} request{timed.length !== 1 ? 's' : ''}
+      </div>
+    </div>
+  )
+}
+
+function buildCurl(req: HttpRequest): string {
+  const parts = [`curl -X ${req.method}`]
+  const headers = req.request_headers || {}
+  for (const [k, v] of Object.entries(headers)) {
+    parts.push(`  -H ${JSON.stringify(`${k}: ${v}`)}`)
+  }
+  if (req.request_body && req.request_body_encoding !== 'base64') {
+    parts.push(`  -d ${JSON.stringify(req.request_body)}`)
+  }
+  parts.push(`  ${JSON.stringify(req.url)}`)
+  return parts.join(' \\\n')
+}
+
 export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest, index: number, threshold: number }) {
   const [open, setOpen] = useState(false)
+  const [copiedUrl, setCopiedUrl] = useState(false)
+  const [copiedCurl, setCopiedCurl] = useState(false)
   const isError = req.status >= 400 || req.status === 0
   const isSlow = req.duration >= threshold
   const cardCls = isError ? 'profiler-ajax-card--error' : isSlow ? 'profiler-ajax-card--warning' : 'profiler-ajax-card--success'
+
+  function copyUrl(e: MouseEvent) {
+    e.stopPropagation()
+    navigator.clipboard.writeText(req.url).then(() => {
+      setCopiedUrl(true)
+      setTimeout(() => setCopiedUrl(false), 2000)
+    })
+  }
+
+  function copyCurl() {
+    navigator.clipboard.writeText(buildCurl(req)).then(() => {
+      setCopiedCurl(true)
+      setTimeout(() => setCopiedCurl(false), 2000)
+    })
+  }
 
   return (
     <div class={`profiler-ajax-card ${cardCls}`} style="margin-bottom:8px">
@@ -220,10 +388,18 @@ export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest,
         style="cursor:pointer;user-select:none"
         onClick={() => setOpen(o => !o)}
       >
-        <div class="profiler-flex profiler-flex--gap-3">
+        <div class="profiler-flex profiler-flex--gap-3" style="min-width:0;flex:1">
           <span style="font-size:11px;color:var(--profiler-muted)">{open ? '▾' : '▸'}</span>
           <span class={`profiler-ajax-card__method badge-${methodBadge(req.method)}`}>{req.method}</span>
           <strong class="profiler-ajax-card__path" style="word-break:break-all">{req.url}</strong>
+          <button
+            onClick={copyUrl}
+            class="profiler-body-download-btn profiler-text--xs"
+            style="flex-shrink:0;cursor:pointer"
+            title="Copy URL"
+          >
+            {copiedUrl ? 'Copied!' : 'Copy URL'}
+          </button>
         </div>
         <div class="profiler-flex profiler-flex--gap-2" style="flex-shrink:0">
           <span class={`badge-${statusBadge(req.status)}`}>{req.status === 0 ? 'ERR' : req.status}</span>
@@ -250,6 +426,13 @@ export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest,
       {/* Expanded detail */}
       {open && (
         <div style="padding:12px 4px 4px;border-top:1px solid rgba(0,0,0,0.08);margin-top:8px">
+
+          {/* cURL export */}
+          <div style="margin-bottom:12px">
+            <button onClick={copyCurl} class="profiler-body-download-btn profiler-text--xs" style="cursor:pointer">
+              {copiedCurl ? 'Copied!' : 'Copy as cURL'}
+            </button>
+          </div>
 
           {/* Request */}
           <div style="margin-bottom:16px">
@@ -297,6 +480,8 @@ export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest,
 }
 
 export function HttpTab({ httpData }: Props) {
+  const [showWaterfall, setShowWaterfall] = useState(false)
+
   if (!httpData?.requests?.length) {
     return (
       <div class="profiler-empty">
@@ -343,11 +528,29 @@ export function HttpTab({ httpData }: Props) {
         </div>
       </div>
 
-      <h3 class="profiler-text--lg profiler-mb-3">Requests</h3>
-      <p class="profiler-text--xs profiler-text--muted profiler-mb-3">Click a request to expand headers and body.</p>
-      {httpData.requests.map((req, index) => (
-        <HttpRequestDetail key={index} req={req} index={index} threshold={threshold} />
-      ))}
+      <div class="profiler-flex profiler-mb-3" style="align-items:center;justify-content:space-between">
+        <h3 class="profiler-text--lg" style="margin:0">Requests</h3>
+        <div style="display:flex;gap:4px">
+          <button
+            class={`profiler-preset-btn${!showWaterfall ? ' profiler-preset-btn--active' : ''}`}
+            onClick={() => setShowWaterfall(false)}
+          >List</button>
+          <button
+            class={`profiler-preset-btn${showWaterfall ? ' profiler-preset-btn--active' : ''}`}
+            onClick={() => setShowWaterfall(true)}
+          >Waterfall</button>
+        </div>
+      </div>
+      {showWaterfall ? (
+        <WaterfallView requests={httpData.requests} />
+      ) : (
+        <>
+          <p class="profiler-text--xs profiler-text--muted profiler-mb-3">Click a request to expand headers and body.</p>
+          {httpData.requests.map((req, index) => (
+            <HttpRequestDetail key={index} req={req} index={index} threshold={threshold} />
+          ))}
+        </>
+      )}
     </>
   )
 }
