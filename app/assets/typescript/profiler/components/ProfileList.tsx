@@ -4,12 +4,27 @@ import { HttpRequestDetail } from './dashboard/tabs/HttpTab'
 
 const BASE = '/_profiler'
 
+function TableSkeleton({ cols, rows = 6 }: { cols: Array<'xs' | 'sm' | 'md' | 'lg' | 'flex'>, rows?: number }) {
+  return (
+    <div>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} class="profiler-skeleton__row">
+          {cols.map((size, j) => (
+            <div key={j} class={`profiler-skeleton__cell profiler-skeleton__cell--${size}`} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 interface OutboundRequest extends HttpRequest {
   profile_token: string
   profile_started_at: string
 }
 
-type SortCol = 'duration' | 'memory' | 'status' | 'queries' | null
+type SortCol = 'date' | 'duration' | 'memory' | 'status' | 'queries' | null
+type JobSortCol = 'date' | 'duration' | 'status' | null
 type SortDir = 'asc' | 'desc'
 
 function methodClass(method: string): string {
@@ -61,7 +76,7 @@ export function ProfileList() {
     const col = params.get('sort') as SortCol
     const dir = params.get('dir') as SortDir
     return {
-      col: (col === 'duration' || col === 'memory' || col === 'status' || col === 'queries') ? col : null,
+      col: (col === 'date' || col === 'duration' || col === 'memory' || col === 'status' || col === 'queries') ? col : null,
       dir: dir === 'desc' ? 'desc' : 'asc'
     }
   }
@@ -96,6 +111,7 @@ export function ProfileList() {
     return PRESETS.some(pr => pr.key === p) ? p : ''
   })
   const [httpSort, setHttpSort] = useState<{ col: SortCol; dir: SortDir }>(initialSort)
+  const [jobSort, setJobSort] = useState<{ col: JobSortCol; dir: SortDir }>({ col: null, dir: 'asc' })
 
   // Jobs filters
   const [jobSearch, setJobSearch] = useState('')
@@ -146,6 +162,14 @@ export function ProfileList() {
 
   const toggleHttpSort = (col: NonNullable<SortCol>) => {
     setHttpSort(prev =>
+      prev.col === col
+        ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { col, dir: 'asc' }
+    )
+  }
+
+  const toggleJobSort = (col: NonNullable<JobSortCol>) => {
+    setJobSort(prev =>
       prev.col === col
         ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
         : { col, dir: 'asc' }
@@ -228,7 +252,7 @@ export function ProfileList() {
     // Reset all filters
     setHttpSearch(''); setHttpMethod(''); setHttpStatus(''); setHttpDuration('')
     setHttpPreset(''); setHttpSort({ col: null, dir: 'asc' })
-    setJobSearch(''); setJobStatus(''); setJobDuration('')
+    setJobSearch(''); setJobStatus(''); setJobDuration(''); setJobSort({ col: null, dir: 'asc' })
     setOutboundSearch(''); setOutboundMethod(''); setOutboundStatus('')
   }
 
@@ -318,6 +342,10 @@ export function ProfileList() {
 
   const sortedProfiles = httpSort.col
     ? [...filteredProfiles].sort((a, b) => {
+        if (httpSort.col === 'date') {
+          const diff = new Date(a.started_at).getTime() - new Date(b.started_at).getTime()
+          return httpSort.dir === 'asc' ? diff : -diff
+        }
         let av: number, bv: number
         switch (httpSort.col) {
           case 'duration': av = a.duration; bv = b.duration; break
@@ -329,6 +357,22 @@ export function ProfileList() {
         return httpSort.dir === 'asc' ? av - bv : bv - av
       })
     : filteredProfiles
+
+  const sortedJobs = jobSort.col
+    ? [...filteredJobs].sort((a, b) => {
+        if (jobSort.col === 'date') {
+          const diff = new Date(a.started_at).getTime() - new Date(b.started_at).getTime()
+          return jobSort.dir === 'asc' ? diff : -diff
+        }
+        let av: number, bv: number
+        switch (jobSort.col) {
+          case 'duration': av = a.duration; bv = b.duration; break
+          case 'status': av = a.status; bv = b.status; break
+          default: return 0
+        }
+        return jobSort.dir === 'asc' ? av - bv : bv - av
+      })
+    : filteredJobs
 
   const filteredJobs = jobs.filter(p => {
     if (jobSearch && !p.path.toLowerCase().includes(jobSearch.toLowerCase())) return false
@@ -358,9 +402,9 @@ export function ProfileList() {
   const jobFiltersActive = !!(jobSearch || jobStatus || jobDuration)
   const outboundFiltersActive = !!(outboundSearch || outboundMethod || outboundStatus)
 
-  const sortIcon = (col: NonNullable<SortCol>) => {
-    if (httpSort.col !== col) return <span class="sort-icon sort-icon--idle">⇅</span>
-    return <span class="sort-icon sort-icon--active">{httpSort.dir === 'asc' ? '▲' : '▼'}</span>
+  const sortIcon = (activeCol: string | null, dir: SortDir, col: string) => {
+    if (activeCol !== col) return <span class="sort-icon sort-icon--idle">⇅</span>
+    return <span class="sort-icon sort-icon--active">{dir === 'asc' ? '▲' : '▼'}</span>
   }
 
   return (
@@ -380,7 +424,7 @@ export function ProfileList() {
         <div class="profiler-p-4 tab-content active">
           {section === 'http' && (
             loadingHttp ? (
-              <div class="profiler-empty"><div class="profiler-empty__title">Loading...</div></div>
+              <TableSkeleton cols={['sm', 'xs', 'flex', 'sm', 'sm', 'sm', 'xs', 'sm']} />
             ) : error ? (
               <div class="profiler-empty"><div class="profiler-empty__title">{error}</div></div>
             ) : profiles.length === 0 ? (
@@ -450,20 +494,22 @@ export function ProfileList() {
                   <table>
                     <thead>
                       <tr>
-                        <th>Time</th>
+                        <th class={`sortable${httpSort.col === 'date' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('date')}>
+                          Time {sortIcon(httpSort.col, httpSort.dir, 'date')}
+                        </th>
                         <th>Method</th>
                         <th>Path</th>
                         <th class={`sortable${httpSort.col === 'duration' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('duration')}>
-                          Duration {sortIcon('duration')}
+                          Duration {sortIcon(httpSort.col, httpSort.dir, 'duration')}
                         </th>
                         <th class={`sortable${httpSort.col === 'queries' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('queries')}>
-                          Queries {sortIcon('queries')}
+                          Queries {sortIcon(httpSort.col, httpSort.dir, 'queries')}
                         </th>
                         <th class={`sortable${httpSort.col === 'memory' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('memory')}>
-                          Memory {sortIcon('memory')}
+                          Memory {sortIcon(httpSort.col, httpSort.dir, 'memory')}
                         </th>
                         <th class={`sortable${httpSort.col === 'status' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('status')}>
-                          Status {sortIcon('status')}
+                          Status {sortIcon(httpSort.col, httpSort.dir, 'status')}
                         </th>
                         <th>Token</th>
                         <th></th>
@@ -503,7 +549,7 @@ export function ProfileList() {
 
           {section === 'jobs' && (
             loadingJobs ? (
-              <div class="profiler-empty"><div class="profiler-empty__title">Loading...</div></div>
+              <TableSkeleton cols={['sm', 'flex', 'md', 'sm', 'xs', 'xs', 'sm']} />
             ) : jobsError ? (
               <div class="profiler-empty"><div class="profiler-empty__title">{jobsError}</div></div>
             ) : jobs.length === 0 ? (
@@ -550,18 +596,24 @@ export function ProfileList() {
                   <table>
                     <thead>
                       <tr>
-                        <th>Time</th>
+                        <th class={`sortable${jobSort.col === 'date' ? ' sortable--active' : ''}`} onClick={() => toggleJobSort('date')}>
+                          Time {sortIcon(jobSort.col, jobSort.dir, 'date')}
+                        </th>
                         <th>Job Class</th>
                         <th>Queue</th>
-                        <th>Duration</th>
-                        <th>Status</th>
+                        <th class={`sortable${jobSort.col === 'duration' ? ' sortable--active' : ''}`} onClick={() => toggleJobSort('duration')}>
+                          Duration {sortIcon(jobSort.col, jobSort.dir, 'duration')}
+                        </th>
+                        <th class={`sortable${jobSort.col === 'status' ? ' sortable--active' : ''}`} onClick={() => toggleJobSort('status')}>
+                          Status {sortIcon(jobSort.col, jobSort.dir, 'status')}
+                        </th>
                         <th>Executions</th>
                         <th>Token</th>
                         <th></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredJobs.map(p => {
+                      {sortedJobs.map(p => {
                         const jobData = p.collectors_data?.job as any
                         const isFailed = p.status === 500
                         return (
@@ -597,7 +649,7 @@ export function ProfileList() {
 
           {section === 'outbound' && (
             loadingOutbound ? (
-              <div class="profiler-empty"><div class="profiler-empty__title">Loading...</div></div>
+              <TableSkeleton cols={['sm', 'xs', 'flex', 'sm', 'xs']} rows={4} />
             ) : outboundError ? (
               <div class="profiler-empty"><div class="profiler-empty__title">{outboundError}</div></div>
             ) : outboundRequests.length === 0 ? (

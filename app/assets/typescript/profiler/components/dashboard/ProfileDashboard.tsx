@@ -53,6 +53,9 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {profile.memory && (
             <span>Memory: <strong>{(profile.memory / 1024 / 1024).toFixed(2)} MB</strong></span>
           )}
+          <span style="color:var(--profiler-text-muted)">
+            {new Date(profile.started_at).toLocaleString('en', { hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </span>
         </div>
       </div>
 
