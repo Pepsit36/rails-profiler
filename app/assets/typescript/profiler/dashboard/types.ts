@@ -1,3 +1,24 @@
+export interface ChildJobSummary {
+  token: string;
+  job_class: string;
+  job_id?: string;
+  queue?: string;
+  status: string;
+  duration: number;
+  started_at: string;
+}
+
+export interface ParentProfileSummary {
+  token: string;
+  profile_type: 'http' | 'job';
+  path: string;
+  method?: string;
+  http_status?: number;
+  status?: string;
+  duration: number;
+  started_at: string;
+}
+
 export interface Profile {
   token: string;
   method: string;
@@ -7,6 +28,9 @@ export interface Profile {
   memory?: number;
   started_at: string;
   profile_type?: 'http' | 'job';
+  parent_token?: string;
+  child_jobs?: ChildJobSummary[];
+  parent_profile?: ParentProfileSummary;
   params?: Record<string, any>;
   headers?: Record<string, any>;
   response_headers?: Record<string, any>;
