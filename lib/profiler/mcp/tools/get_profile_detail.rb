@@ -63,17 +63,21 @@ module Profiler
           lines += section_http(profile)                  if want.("http")
           lines += section_routes(profile)                if want.("routes")
           lines += section_dumps(profile)                 if want.("dumps")
+          lines += section_related_jobs(profile)          if want.("related_jobs")
           lines.join("\n")
         end
 
         def self.section_overview(profile)
           lines = []
           lines << "# Profile Details: #{profile.token}\n"
+          lines << "**Type:** #{profile.profile_type == 'job' ? 'Job' : 'HTTP Request'}"
           lines << "**Request:** #{profile.method} #{profile.path}"
           lines << "**Status:** #{profile.status}"
           lines << "**Duration:** #{profile.duration.round(2)} ms"
           lines << "**Memory:** #{(profile.memory / 1024.0 / 1024.0).round(2)} MB" if profile.memory
-          lines << "**Time:** #{profile.started_at}\n"
+          lines << "**Time:** #{profile.started_at}"
+          lines << "**Parent Token:** #{profile.parent_token}" if profile.parent_token
+          lines << ""
           lines
         end
 
@@ -381,6 +385,48 @@ module Profiler
             lines << "```"
             lines << (dump["formatted"] || dump["value"].inspect)
             lines << "```"
+          end
+          lines << ""
+          lines
+        end
+
+        def self.section_related_jobs(profile)
+          lines = []
+
+          # Parent info
+          if profile.parent_token
+            parent = Profiler.storage.load(profile.parent_token)
+            if parent
+              lines << "## Triggered By"
+              if parent.profile_type == "job"
+                job_data = parent.collector_data("job") || {}
+                lines << "- **Type:** Job"
+                lines << "- **Class:** #{job_data['job_class'] || parent.path}"
+                lines << "- **Status:** #{job_data['status']}"
+                lines << "- **Duration:** #{parent.duration.round(2)} ms"
+                lines << "- **Token:** #{parent.token}"
+              else
+                lines << "- **Type:** HTTP Request"
+                lines << "- **Request:** #{parent.method} #{parent.path}"
+                lines << "- **Status:** #{parent.status}"
+                lines << "- **Duration:** #{parent.duration.round(2)} ms"
+                lines << "- **Token:** #{parent.token}"
+              end
+              lines << ""
+            end
+          end
+
+          # Child jobs
+          child_jobs = Profiler.storage.find_by_parent(profile.token).select { |p| p.profile_type == "job" }
+          return lines if child_jobs.empty?
+
+          lines << "## Child Jobs (#{child_jobs.size})"
+          lines << ""
+          lines << "| Job Class | Status | Duration | Token |"
+          lines << "|-----------|--------|----------|-------|"
+          child_jobs.each do |job|
+            job_data = job.collector_data("job") || {}
+            lines << "| #{job_data['job_class'] || job.path} | #{job_data['status'] || '-'} | #{job.duration.round(2)} ms | #{job.token} |"
           end
           lines << ""
           lines

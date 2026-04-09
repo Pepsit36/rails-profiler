@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "models/profile"
+require_relative "current_context"
 require_relative "collectors/job_collector"
 require_relative "collectors/database_collector"
 require_relative "collectors/cache_collector"
@@ -14,7 +15,7 @@ module Profiler
       Collectors::HttpCollector
     ].freeze
 
-    def self.profile(job_class:, job_id:, queue:, arguments:, executions:, &block)
+    def self.profile(job_class:, job_id:, queue:, arguments:, executions:, parent_token: nil, &block)
       return block.call unless Profiler.enabled? && Profiler.configuration.track_jobs
 
       new(
@@ -22,16 +23,18 @@ module Profiler
         job_id: job_id,
         queue: queue,
         arguments: arguments,
-        executions: executions
+        executions: executions,
+        parent_token: parent_token
       ).run(&block)
     end
 
-    def initialize(job_class:, job_id:, queue:, arguments:, executions:)
+    def initialize(job_class:, job_id:, queue:, arguments:, executions:, parent_token: nil)
       @job_class = job_class
       @job_id = job_id
       @queue = queue
       @arguments = arguments
       @executions = executions
+      @parent_token = parent_token
     end
 
     def run(&block)
@@ -39,6 +42,7 @@ module Profiler
       profile.profile_type = "job"
       profile.path = @job_class
       profile.method = "JOB"
+      profile.parent_token = @parent_token if @parent_token
 
       job_collector = Collectors::JobCollector.new(profile, {
         job_class: @job_class,
@@ -56,6 +60,8 @@ module Profiler
       job_status = "completed"
       error_message = nil
 
+      previous_token = Profiler::CurrentContext.token
+      Profiler::CurrentContext.token = profile.token
       begin
         result = block.call
         result
@@ -64,6 +70,7 @@ module Profiler
         error_message = "#{e.class}: #{e.message}"
         raise
       ensure
+        Profiler::CurrentContext.token = previous_token
         if Profiler.configuration.track_memory
           profile.memory = current_memory - memory_before
         end
