@@ -159,7 +159,7 @@ function DownloadTextButton({ text, mime, ext }: { text: string, mime: string, e
   )
 }
 
-function SmartBodyPreview({ body, encoding, headers }: {
+export function SmartBodyPreview({ body, encoding, headers }: {
   body: string | undefined,
   encoding: 'text' | 'base64' | undefined,
   headers: Record<string, string>
