@@ -480,8 +480,6 @@ export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest,
 }
 
 export function HttpTab({ httpData }: Props) {
-  const [showWaterfall, setShowWaterfall] = useState(false)
-
   if (!httpData?.requests?.length) {
     return (
       <div class="profiler-empty">
@@ -528,29 +526,14 @@ export function HttpTab({ httpData }: Props) {
         </div>
       </div>
 
-      <div class="profiler-flex profiler-mb-3" style="align-items:center;justify-content:space-between">
-        <h3 class="profiler-text--lg" style="margin:0">Requests</h3>
-        <div style="display:flex;gap:4px">
-          <button
-            class={`profiler-preset-btn${!showWaterfall ? ' profiler-preset-btn--active' : ''}`}
-            onClick={() => setShowWaterfall(false)}
-          >List</button>
-          <button
-            class={`profiler-preset-btn${showWaterfall ? ' profiler-preset-btn--active' : ''}`}
-            onClick={() => setShowWaterfall(true)}
-          >Waterfall</button>
-        </div>
+      <h3 class="profiler-text--lg profiler-mb-3">Requests</h3>
+      <WaterfallView requests={httpData.requests} />
+      <div style="margin-top:16px">
+        <p class="profiler-text--xs profiler-text--muted profiler-mb-3">Click a request to expand headers and body.</p>
+        {httpData.requests.map((req, index) => (
+          <HttpRequestDetail key={index} req={req} index={index} threshold={threshold} />
+        ))}
       </div>
-      {showWaterfall ? (
-        <WaterfallView requests={httpData.requests} />
-      ) : (
-        <>
-          <p class="profiler-text--xs profiler-text--muted profiler-mb-3">Click a request to expand headers and body.</p>
-          {httpData.requests.map((req, index) => (
-            <HttpRequestDetail key={index} req={req} index={index} threshold={threshold} />
-          ))}
-        </>
-      )}
     </>
   )
 }
