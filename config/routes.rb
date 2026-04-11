@@ -34,5 +34,6 @@ Profiler::Engine.routes.draw do
     post "ajax/link", to: "ajax#link"
     post "explain", to: "explain#create"
     resource :function_profiling, only: [:show, :update], controller: "function_profiling"
+    resource :env_vars, only: [:show, :update], controller: "env_vars"
   end
 end

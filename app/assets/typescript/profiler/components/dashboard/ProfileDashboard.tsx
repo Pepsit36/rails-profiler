@@ -13,8 +13,9 @@ import { ExceptionTab } from './tabs/ExceptionTab'
 import { RoutesTab } from './tabs/RoutesTab'
 import { I18nTab } from './tabs/I18nTab'
 import { JobsTab } from './tabs/JobsTab'
+import { EnvTab } from './tabs/EnvTab'
 
-type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception' | 'routes' | 'i18n' | 'jobs'
+type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception' | 'routes' | 'i18n' | 'jobs' | 'env'
 
 interface Props {
   profile: Profile
@@ -90,6 +91,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {hasJobs && (
             <a href="#" class={tabClass('jobs')} onClick={handleTabClick('jobs')}>Jobs ({profile.child_jobs!.length})</a>
           )}
+          <a href="#" class={tabClass('env')} onClick={handleTabClick('env')}>Env</a>
         </div>
 
         <div class="profiler-p-4 tab-content active">
@@ -106,6 +108,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {activeTab === 'routes' && <RoutesTab routesData={cd['routes'] as any} />}
           {activeTab === 'i18n' && <I18nTab i18nData={cd['i18n'] as any} />}
           {activeTab === 'jobs' && <JobsTab jobs={profile.child_jobs!} />}
+          {activeTab === 'env' && <EnvTab envData={cd['env'] as any} />}
         </div>
       </div>
 

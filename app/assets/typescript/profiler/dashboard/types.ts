@@ -54,6 +54,7 @@ export interface Profile {
     exception?: ExceptionData;
     routes?: RoutesData;
     i18n?: I18nData;
+    env?: EnvData;
     [key: string]: any;  // Allow custom collector data
   };
   tabs?: TabConfig[];  // Tab configurations from collectors
@@ -265,6 +266,11 @@ export interface I18nLookup {
   locale: string;
   value: string;
   missing: boolean;
+}
+
+export interface EnvData {
+  variables: Record<string, string>;
+  total: number;
 }
 
 export interface ProfilesResponse {
