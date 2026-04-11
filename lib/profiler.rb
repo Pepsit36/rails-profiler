@@ -94,6 +94,7 @@ require_relative "profiler/collectors/log_collector"
 require_relative "profiler/collectors/exception_collector"
 require_relative "profiler/collectors/routes_collector"
 require_relative "profiler/collectors/i18n_collector"
+require_relative "profiler/collectors/env_collector"
 
 require_relative "profiler/railtie" if defined?(Rails::Railtie)
 require_relative "profiler/engine" if defined?(Rails::Engine)
