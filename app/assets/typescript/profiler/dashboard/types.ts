@@ -313,6 +313,12 @@ export interface FunctionStat {
 
 export interface FunctionProfileData {
   enabled: boolean
+  mode?: 'full' | 'lite' | 'minimal'
+  clock?: 'wall' | 'cpu' | 'object'
+  elapsed_wall_ms?: number
+  elapsed_cpu_ms?: number
+  gc_samples?: number
+  gc_overhead_pct?: number
   max_frames?: number
   frame_cap_reached?: boolean
   total_calls?: number
