@@ -7,8 +7,10 @@ module Profiler
 
       def show
         render json: {
-          enabled: Profiler.function_profiling_enabled,
-          max_frames: Profiler.function_profiling_max_frames
+          enabled:    Profiler.function_profiling_enabled,
+          max_frames: Profiler.function_profiling_max_frames,
+          mode:       Profiler.function_profiling_mode,
+          clock:      Profiler.function_profiling_clock
         }
       end
 
@@ -22,9 +24,19 @@ module Profiler
           Profiler.function_profiling_max_frames = max.positive? ? max : Profiler.function_profiling_max_frames
         end
 
+        if params.key?(:mode) && %w[full lite].include?(params[:mode])
+          Profiler.function_profiling_mode = params[:mode]
+        end
+
+        if params.key?(:clock) && %w[wall cpu object].include?(params[:clock])
+          Profiler.function_profiling_clock = params[:clock]
+        end
+
         render json: {
-          enabled: Profiler.function_profiling_enabled,
-          max_frames: Profiler.function_profiling_max_frames
+          enabled:    Profiler.function_profiling_enabled,
+          max_frames: Profiler.function_profiling_max_frames,
+          mode:       Profiler.function_profiling_mode,
+          clock:      Profiler.function_profiling_clock
         }
       end
     end
