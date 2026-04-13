@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'preact/hooks'
-import { Profile, ProfilesResponse, HttpRequest } from '../dashboard/types'
+import { Profile, ProfilesResponse, HttpRequest, EnvData } from '../dashboard/types'
 import { HttpRequestDetail } from './dashboard/tabs/HttpTab'
+import { EnvTab } from './dashboard/tabs/EnvTab'
 
 const BASE = '/_profiler'
 
@@ -67,9 +68,9 @@ type PresetKey = typeof PRESETS[number]['key'] | ''
 export function ProfileList() {
   const params = new URLSearchParams(window.location.search)
 
-  const initialSection = (): 'http' | 'jobs' | 'outbound' => {
+  const initialSection = (): 'http' | 'jobs' | 'outbound' | 'env' => {
     const s = params.get('section')
-    return (s === 'http' || s === 'jobs' || s === 'outbound') ? s : 'http'
+    return (s === 'http' || s === 'jobs' || s === 'outbound' || s === 'env') ? s : 'http'
   }
 
   const initialSort = (): { col: SortCol; dir: SortDir } => {
@@ -81,7 +82,7 @@ export function ProfileList() {
     }
   }
 
-  const [section, setSection] = useState<'http' | 'jobs' | 'outbound'>(initialSection)
+  const [section, setSection] = useState<'http' | 'jobs' | 'outbound' | 'env'>(initialSection)
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [httpOffset, setHttpOffset] = useState(0)
   const [httpHasMore, setHttpHasMore] = useState(false)
@@ -99,6 +100,10 @@ export function ProfileList() {
   const [error, setError] = useState<string | null>(null)
   const [jobsError, setJobsError] = useState<string | null>(null)
   const [outboundError, setOutboundError] = useState<string | null>(null)
+  const [envData, setEnvData] = useState<EnvData | undefined>(undefined)
+  const [loadingEnv, setLoadingEnv] = useState(false)
+  const [envLoaded, setEnvLoaded] = useState(false)
+  const [envError, setEnvError] = useState<string | null>(null)
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
 
   // HTTP filters
@@ -140,6 +145,7 @@ export function ProfileList() {
   useEffect(() => {
     if (section === 'jobs') loadJobs()
     if (section === 'outbound') loadOutbound()
+    if (section === 'env') loadEnv()
   }, [])
 
   // Sync sort + preset to URL
@@ -242,13 +248,31 @@ export function ProfileList() {
       })
   }
 
-  const handleSectionChange = (s: 'http' | 'jobs' | 'outbound') => {
+  const loadEnv = () => {
+    if (envLoaded) return
+    setLoadingEnv(true)
+    fetch(`${BASE}/api/env_vars`)
+      .then(res => res.json())
+      .then((data: EnvData) => {
+        setEnvData(data)
+        setLoadingEnv(false)
+        setEnvLoaded(true)
+      })
+      .catch(() => {
+        setEnvError('Failed to load environment variables')
+        setLoadingEnv(false)
+        setEnvLoaded(true)
+      })
+  }
+
+  const handleSectionChange = (s: 'http' | 'jobs' | 'outbound' | 'env') => {
     setSection(s)
     const url = new URL(window.location.href)
     url.searchParams.set('section', s)
     history.pushState(null, '', url.toString())
     if (s === 'jobs') loadJobs()
     if (s === 'outbound') loadOutbound()
+    if (s === 'env') loadEnv()
     // Reset all filters
     setHttpSearch(''); setHttpMethod(''); setHttpStatus(''); setHttpDuration('')
     setHttpPreset(''); setHttpSort({ col: null, dir: 'asc' })
@@ -310,16 +334,22 @@ export function ProfileList() {
           setLoadingJobs(false)
         })
         .catch(() => { setJobsError('Failed to load job profiles'); setLoadingJobs(false) })
-    } else {
+    } else if (section === 'outbound') {
       setLoadingOutbound(true)
       fetch(`${BASE}/api/outbound_http`)
         .then(res => res.json())
         .then(data => { setOutboundRequests(data); setLoadingOutbound(false) })
         .catch(() => { setOutboundError('Failed to load outbound HTTP requests'); setLoadingOutbound(false) })
+    } else {
+      setLoadingEnv(true)
+      fetch(`${BASE}/api/env_vars`)
+        .then(res => res.json())
+        .then((data: EnvData) => { setEnvData(data); setLoadingEnv(false) })
+        .catch(() => { setEnvError('Failed to load environment variables'); setLoadingEnv(false) })
     }
   }
 
-  const tabClass = (s: 'http' | 'jobs' | 'outbound') => `tab${section === s ? ' active' : ''}`
+  const tabClass = (s: 'http' | 'jobs' | 'outbound' | 'env') => `tab${section === s ? ' active' : ''}`
 
   // Computed filtered arrays
   const filteredProfiles = profiles.filter(p => {
@@ -418,7 +448,9 @@ export function ProfileList() {
         <div class="tabs">
           <a href="#" class={tabClass('http')} onClick={e => { e.preventDefault(); handleSectionChange('http') }}>HTTP Requests</a>
           <a href="#" class={tabClass('jobs')} onClick={e => { e.preventDefault(); handleSectionChange('jobs') }}>Background Jobs</a>
+          <div style="flex: 1" />
           <a href="#" class={tabClass('outbound')} onClick={e => { e.preventDefault(); handleSectionChange('outbound') }}>Outbound HTTP</a>
+          <a href="#" class={tabClass('env')} onClick={e => { e.preventDefault(); handleSectionChange('env') }}>Env</a>
         </div>
 
         <div class="profiler-p-4 tab-content active">
@@ -710,6 +742,15 @@ export function ProfileList() {
                   ))
                 )}
               </>
+            )
+          )}
+          {section === 'env' && (
+            loadingEnv ? (
+              <TableSkeleton cols={['sm', 'flex', 'sm', 'sm']} rows={8} />
+            ) : envError ? (
+              <div class="profiler-empty"><div class="profiler-empty__title">{envError}</div></div>
+            ) : (
+              <EnvTab envData={envData} />
             )
           )}
         </div>

@@ -17,7 +17,7 @@ module Profiler
         # Recalculate AJAX collector data (since AJAX requests happen after page load)
         recalculate_ajax_data(profile)
 
-        render json: { profile: profile.to_h }
+        render json: { profile: profile.to_h.merge(child_jobs: build_child_jobs(profile)) }
       end
 
       private
