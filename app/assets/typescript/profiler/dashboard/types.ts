@@ -313,7 +313,7 @@ export interface FunctionStat {
 
 export interface FunctionProfileData {
   enabled: boolean
-  mode?: 'full' | 'lite' | 'minimal'
+  mode?: 'full' | 'lite'
   clock?: 'wall' | 'cpu' | 'object'
   elapsed_wall_ms?: number
   elapsed_cpu_ms?: number

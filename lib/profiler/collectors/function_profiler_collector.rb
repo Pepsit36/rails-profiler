@@ -81,7 +81,8 @@ module Profiler
         Thread.current[:fn_profiler_clock] = nil
 
         if mode == "lite" && defined?(StackProf)
-          result   = StackProf.stop
+          StackProf.stop
+          result   = StackProf.results
           wall_ms  = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - (Thread.current[:fn_profiler_wall_start] || 0)) * 1000
           cpu_ms   = (Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID) - (Thread.current[:fn_profiler_cpu_start] || 0)) * 1000
           Thread.current[:fn_profiler_wall_start] = nil
@@ -115,12 +116,19 @@ module Profiler
         frames_meta   = result[:frames] || {}
         raw           = result[:raw]    || []
         total_samples = [result[:samples] || 0, 1].max
-        elapsed_ms    = clock == "object" ? total_samples.to_f : (result[:elapsed] || 0) / 1000.0
+        elapsed_ms    = case clock
+                        when "object" then total_samples.to_f
+                        when "cpu"    then cpu_ms
+                        else               wall_ms
+                        end
         app_root      = app_root_path
 
         # Partition frames: app frames vs GC frame
+        # Exclude Ruby meta-frames (<main>, <class:Foo>, #<Class:0x...> generated templates) — noise
         gc_frame_ids  = frames_meta.each_with_object(Set.new) { |(id, f), s| s << id if f[:name] == GC_FRAME_NAME }
-        app_frame_ids = frames_meta.each_with_object(Set.new) { |(id, f), s| s << id if f[:file]&.start_with?(app_root) }
+        app_frame_ids = frames_meta.each_with_object(Set.new) do |(id, f), s|
+          s << id if f[:file]&.start_with?(app_root) && !f[:name].to_s.match?(/\A[<#]/)
+        end
 
         gc_samples, gc_overhead_pct = count_gc_samples(raw, gc_frame_ids, total_samples)
 
@@ -128,6 +136,7 @@ module Profiler
 
         functions = frames_meta.filter_map do |id, frame|
           next unless app_frame_ids.include?(id)
+          next if frame[:name].to_s.match?(/\A[<#]/)
           total_dur = (frame[:total_samples].to_f / total_samples) * elapsed_ms
           self_dur  = (frame[:samples].to_f      / total_samples) * elapsed_ms
           {
@@ -188,8 +197,8 @@ module Profiler
 
       # Parse stackprof raw samples and build a call tree filtered to app/ frames.
       #
-      # Raw format: [depth, frame[0]=innermost, ..., frame[depth-1]=outermost, count, ...]
-      # We reverse each stack so outermost (root) comes first when building the tree.
+      # Raw format: [depth, frame[0]=outermost(caller), ..., frame[depth-1]=innermost(callee), count, ...]
+      # frames are already outermost-first, so no reversal needed.
       def build_sampling_tree(raw, frames_meta, app_frame_ids, total_samples, elapsed_ms)
         tree = {}
 
@@ -201,7 +210,7 @@ module Profiler
           count = raw[i + depth + 1]
           i += depth + 2
 
-          app_stack = stack.select { |id| app_frame_ids.include?(id) }.reverse
+          app_stack = stack.select { |id| app_frame_ids.include?(id) }
           next if app_stack.empty?
 
           current = tree
@@ -246,17 +255,16 @@ module Profiler
         nodes
       end
 
-      # ── TracePoint (full / minimal modes) ─────────────────────────────────────
+      # ── TracePoint (full mode) ────────────────────────────────────────────────
 
       def subscribe_tracepoint(mode)
-        require "objspace" if mode == "full"
-
         app_root   = app_root_path
         max_frames = Profiler.function_profiling_max_frames
 
         Thread.current[:fn_profiler_stack] = []
         Thread.current[:fn_profiler_roots] = []
         Thread.current[:fn_profiler_count] = 0
+        Thread.current[:fn_profiler_depth] = Hash.new(0)
 
         @trace = TracePoint.new(:call, :return) do |tp|
           next unless tp.path&.start_with?(app_root)
@@ -269,16 +277,17 @@ module Profiler
             count = (Thread.current[:fn_profiler_count] += 1)
             next if count > max_frames
 
-            fn_name = "#{tp.defined_class}##{tp.method_id}"
-            is_recursive = stack.any? { |f| f.name == fn_name }
+            fn_name      = "#{tp.defined_class}##{tp.method_id}"
+            depth_map    = Thread.current[:fn_profiler_depth]
+            is_recursive = (depth_map[fn_name] += 1) > 1
 
             stack.push(CallFrame.new(
               fn_name,
               relative_path(tp.path),
               tp.lineno,
               Process.clock_gettime(Process::CLOCK_MONOTONIC),
-              mode == "minimal" ? 0 : GC.stat[:total_allocated_objects],
-              mode == "full"    ? ObjectSpace.memsize_of_all : 0,
+              GC.stat[:total_allocated_objects],
+              GC.stat[:oldmalloc_increase_bytes],
               is_recursive,
               []
             ))
@@ -286,9 +295,10 @@ module Profiler
             frame = stack.pop
             next unless frame
 
+            Thread.current[:fn_profiler_depth][frame.name] -= 1
             finished_at  = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-            allocated    = mode == "minimal" ? 0 : GC.stat[:total_allocated_objects] - frame.alloc_before
-            memory_bytes = mode == "full"    ? [ObjectSpace.memsize_of_all - frame.memsize_before, 0].max : 0
+            allocated    = GC.stat[:total_allocated_objects] - frame.alloc_before
+            memory_bytes = [GC.stat[:oldmalloc_increase_bytes] - frame.memsize_before, 0].max
             node = build_node(frame, finished_at, allocated, memory_bytes)
 
             if stack.empty?
@@ -315,8 +325,8 @@ module Profiler
           finished_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           until stack.empty?
             frame        = stack.pop
-            allocated    = mode == "minimal" ? 0 : GC.stat[:total_allocated_objects] - frame.alloc_before
-            memory_bytes = mode == "full"    ? [ObjectSpace.memsize_of_all - frame.memsize_before, 0].max : 0
+            allocated    = GC.stat[:total_allocated_objects] - frame.alloc_before
+            memory_bytes = [GC.stat[:oldmalloc_increase_bytes] - frame.memsize_before, 0].max
             node = build_node(frame, finished_at, allocated, memory_bytes)
             if stack.empty?
               roots << node
@@ -329,6 +339,7 @@ module Profiler
         Thread.current[:fn_profiler_stack] = nil
         Thread.current[:fn_profiler_roots] = nil
         Thread.current[:fn_profiler_count] = nil
+        Thread.current[:fn_profiler_depth] = nil
 
         stats = {}
         aggregate(roots, stats)
