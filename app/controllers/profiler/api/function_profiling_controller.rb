@@ -24,7 +24,7 @@ module Profiler
           Profiler.function_profiling_max_frames = max.positive? ? max : Profiler.function_profiling_max_frames
         end
 
-        if params.key?(:mode) && %w[full lite minimal].include?(params[:mode])
+        if params.key?(:mode) && %w[full lite].include?(params[:mode])
           Profiler.function_profiling_mode = params[:mode]
         end
 

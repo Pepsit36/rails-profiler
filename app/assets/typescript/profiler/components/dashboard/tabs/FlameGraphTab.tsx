@@ -57,7 +57,7 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
   const [fnSortDir, setFnSortDir] = useState<SortDir>('desc')
   const [fnEnabled, setFnEnabled] = useState<boolean>(functionProfileData?.enabled ?? false)
   const [fnMaxFrames, setFnMaxFrames] = useState<number>(functionProfileData?.max_frames ?? 2000)
-  const [fnMode, setFnMode] = useState<'full' | 'lite' | 'minimal'>(functionProfileData?.mode ?? 'full')
+  const [fnMode, setFnMode] = useState<'full' | 'lite'>(functionProfileData?.mode === 'lite' ? 'lite' : 'full')
   const [fnClock, setFnClock] = useState<'wall' | 'cpu' | 'object'>(functionProfileData?.clock ?? 'wall')
   const [fnToggling, setFnToggling] = useState(false)
   const [fnMaxFramesUpdating, setFnMaxFramesUpdating] = useState(false)
@@ -93,7 +93,8 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
     }
   }
 
-  const updateMode = async (value: 'full' | 'lite' | 'minimal') => {
+  const updateMode = async (value: 'full' | 'lite') => {
+    setFnMode(value)
     setFnModeUpdating(true)
     try {
       const json = await patchFunctionProfiling({ mode: value })
@@ -253,10 +254,16 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
           toggling={fnToggling}
           maxFrames={fnMaxFrames}
           maxFramesUpdating={fnMaxFramesUpdating}
+          mode={fnMode}
+          modeUpdating={fnModeUpdating}
+          clock={fnClock}
+          clockUpdating={fnClockUpdating}
           sortKey={fnSortKey}
           sortDir={fnSortDir}
           onToggle={toggleFunctionProfiling}
           onMaxFramesChange={updateMaxFrames}
+          onModeChange={updateMode}
+          onClockChange={updateClock}
           onSortChange={(key, dir) => { setFnSortKey(key); setFnSortDir(dir) }}
         />
       </div>
@@ -350,10 +357,16 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
         toggling={fnToggling}
         maxFrames={fnMaxFrames}
         maxFramesUpdating={fnMaxFramesUpdating}
+        mode={fnMode}
+        modeUpdating={fnModeUpdating}
+        clock={fnClock}
+        clockUpdating={fnClockUpdating}
         sortKey={fnSortKey}
         sortDir={fnSortDir}
         onToggle={toggleFunctionProfiling}
         onMaxFramesChange={updateMaxFrames}
+        onModeChange={updateMode}
+        onClockChange={updateClock}
         onSortChange={(key, dir) => { setFnSortKey(key); setFnSortDir(dir) }}
       />
     </div>
@@ -366,7 +379,7 @@ interface FunctionProfilingSectionProps {
   toggling: boolean
   maxFrames: number
   maxFramesUpdating: boolean
-  mode: 'full' | 'lite' | 'minimal'
+  mode: 'full' | 'lite'
   modeUpdating: boolean
   clock: 'wall' | 'cpu' | 'object'
   clockUpdating: boolean
@@ -374,7 +387,7 @@ interface FunctionProfilingSectionProps {
   sortDir: SortDir
   onToggle: () => void
   onMaxFramesChange: (value: number) => void
-  onModeChange: (value: 'full' | 'lite' | 'minimal') => void
+  onModeChange: (value: 'full' | 'lite') => void
   onClockChange: (value: 'wall' | 'cpu' | 'object') => void
   onSortChange: (key: SortKey, dir: SortDir) => void
 }
@@ -405,9 +418,9 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
   const dataClock = data?.clock ?? 'wall'
   const isSampling = dataMode === 'lite'
   const isObjectClock = dataClock === 'object'
-  const showAllocated = dataMode !== 'minimal' && !isSampling
+  const showAllocated = !isSampling
   const showMemory = dataMode === 'full'
-  const showClock = isSampling  // clock selector only relevant in lite mode
+  const showClock = mode === 'lite'  // show based on current setting, not last profiled data
   const effectiveSortKey: SortKey = (sortKey === 'memory_bytes' && !showMemory) || (sortKey === 'allocated_objects' && !showAllocated)
     ? 'total_duration'
     : sortKey
@@ -465,13 +478,13 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
         </span>
         <div class="profiler-fn-profiling__controls">
           <div class="profiler-fn-profiling__mode-selector">
-            {(['full', 'lite', 'minimal'] as const).map(m => (
+            {(['full', 'lite'] as const).map(m => (
               <button
                 key={m}
                 class={`profiler-fn-profiling__mode-btn${mode === m ? ' profiler-fn-profiling__mode-btn--active' : ''}`}
                 onClick={() => mode !== m && onModeChange(m)}
                 disabled={modeUpdating}
-                title={m === 'full' ? 'Exhaustive TracePoint — timing + allocations + memory bytes' : m === 'lite' ? 'StackProf sampling — very low overhead' : 'Exhaustive TracePoint — timing only'}
+                title={m === 'full' ? 'Exhaustive TracePoint — timing + allocations + memory bytes' : 'StackProf sampling — very low overhead'}
               >
                 {m.charAt(0).toUpperCase() + m.slice(1)}
               </button>
@@ -519,8 +532,7 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
         <p class="profiler-fn-profiling__hint">
           Enable function profiling to see where your app spends time.{' '}
           <strong>Lite</strong>: statistical sampling via stackprof — very low overhead (&lt;1%), enabled by default.{' '}
-          <strong>Full</strong>: exhaustive TracePoint tracing with memory bytes — significant overhead.{' '}
-          <strong>Minimal</strong>: exhaustive tracing, timing only. For development use only.
+          <strong>Full</strong>: exhaustive TracePoint tracing with memory bytes — significant overhead.
         </p>
       )}
 
