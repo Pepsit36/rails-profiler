@@ -44,7 +44,8 @@ module Profiler
             Profiler::Collectors::FunctionProfilerCollector,
             Profiler::Collectors::LogCollector,
             Profiler::Collectors::RoutesCollector,
-            Profiler::Collectors::I18nCollector
+            Profiler::Collectors::I18nCollector,
+            Profiler::Collectors::EnvCollector
           ]
         end
       end
