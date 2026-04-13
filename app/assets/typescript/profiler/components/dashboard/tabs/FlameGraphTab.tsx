@@ -57,10 +57,14 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
   const [fnSortDir, setFnSortDir] = useState<SortDir>('desc')
   const [fnEnabled, setFnEnabled] = useState<boolean>(functionProfileData?.enabled ?? false)
   const [fnMaxFrames, setFnMaxFrames] = useState<number>(functionProfileData?.max_frames ?? 2000)
+  const [fnMode, setFnMode] = useState<'full' | 'lite'>(functionProfileData?.mode === 'lite' ? 'lite' : 'full')
+  const [fnClock, setFnClock] = useState<'wall' | 'cpu' | 'object'>(functionProfileData?.clock ?? 'wall')
   const [fnToggling, setFnToggling] = useState(false)
   const [fnMaxFramesUpdating, setFnMaxFramesUpdating] = useState(false)
+  const [fnModeUpdating, setFnModeUpdating] = useState(false)
+  const [fnClockUpdating, setFnClockUpdating] = useState(false)
 
-  const patchFunctionProfiling = async (patch: { enabled?: boolean; max_frames?: number }) => {
+  const patchFunctionProfiling = async (patch: { enabled?: boolean; max_frames?: number; mode?: string; clock?: string }) => {
     const res = await fetch('/_profiler/api/function_profiling', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -86,6 +90,27 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
       setFnMaxFrames(json.max_frames)
     } finally {
       setFnMaxFramesUpdating(false)
+    }
+  }
+
+  const updateMode = async (value: 'full' | 'lite') => {
+    setFnMode(value)
+    setFnModeUpdating(true)
+    try {
+      const json = await patchFunctionProfiling({ mode: value })
+      setFnMode(json.mode ?? value)
+    } finally {
+      setFnModeUpdating(false)
+    }
+  }
+
+  const updateClock = async (value: 'wall' | 'cpu' | 'object') => {
+    setFnClockUpdating(true)
+    try {
+      const json = await patchFunctionProfiling({ clock: value })
+      setFnClock(json.clock ?? value)
+    } finally {
+      setFnClockUpdating(false)
     }
   }
 
@@ -188,10 +213,16 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
             toggling={fnToggling}
             maxFrames={fnMaxFrames}
             maxFramesUpdating={fnMaxFramesUpdating}
+            mode={fnMode}
+            modeUpdating={fnModeUpdating}
+            clock={fnClock}
+            clockUpdating={fnClockUpdating}
             sortKey={fnSortKey}
             sortDir={fnSortDir}
             onToggle={toggleFunctionProfiling}
             onMaxFramesChange={updateMaxFrames}
+            onModeChange={updateMode}
+            onClockChange={updateClock}
             onSortChange={(key, dir) => { setFnSortKey(key); setFnSortDir(dir) }}
           />
         </div>
@@ -223,10 +254,16 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
           toggling={fnToggling}
           maxFrames={fnMaxFrames}
           maxFramesUpdating={fnMaxFramesUpdating}
+          mode={fnMode}
+          modeUpdating={fnModeUpdating}
+          clock={fnClock}
+          clockUpdating={fnClockUpdating}
           sortKey={fnSortKey}
           sortDir={fnSortDir}
           onToggle={toggleFunctionProfiling}
           onMaxFramesChange={updateMaxFrames}
+          onModeChange={updateMode}
+          onClockChange={updateClock}
           onSortChange={(key, dir) => { setFnSortKey(key); setFnSortDir(dir) }}
         />
       </div>
@@ -320,10 +357,16 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
         toggling={fnToggling}
         maxFrames={fnMaxFrames}
         maxFramesUpdating={fnMaxFramesUpdating}
+        mode={fnMode}
+        modeUpdating={fnModeUpdating}
+        clock={fnClock}
+        clockUpdating={fnClockUpdating}
         sortKey={fnSortKey}
         sortDir={fnSortDir}
         onToggle={toggleFunctionProfiling}
         onMaxFramesChange={updateMaxFrames}
+        onModeChange={updateMode}
+        onClockChange={updateClock}
         onSortChange={(key, dir) => { setFnSortKey(key); setFnSortDir(dir) }}
       />
     </div>
@@ -336,10 +379,16 @@ interface FunctionProfilingSectionProps {
   toggling: boolean
   maxFrames: number
   maxFramesUpdating: boolean
+  mode: 'full' | 'lite'
+  modeUpdating: boolean
+  clock: 'wall' | 'cpu' | 'object'
+  clockUpdating: boolean
   sortKey: SortKey
   sortDir: SortDir
   onToggle: () => void
   onMaxFramesChange: (value: number) => void
+  onModeChange: (value: 'full' | 'lite') => void
+  onClockChange: (value: 'wall' | 'cpu' | 'object') => void
   onSortChange: (key: SortKey, dir: SortDir) => void
 }
 
@@ -358,17 +407,27 @@ function findFirstNodeByName(nodes: FlameGraphNode[], name: string): FlameGraphN
   return null
 }
 
-function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFramesUpdating, sortKey, sortDir, onToggle, onMaxFramesChange, onSortChange }: FunctionProfilingSectionProps) {
+function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFramesUpdating, mode, modeUpdating, clock, clockUpdating, sortKey, sortDir, onToggle, onMaxFramesChange, onModeChange, onClockChange, onSortChange }: FunctionProfilingSectionProps) {
   const [filterNames, setFilterNames] = useState<Set<string> | null>(null)
   const [filterLabel, setFilterLabel] = useState<string | null>(null)
   const [hoveredFnName, setHoveredFnName] = useState<string | null>(null)
   const fnRendererRef = useRef<FlameGraphRenderer | null>(null)
 
   const hasData = enabled && data?.enabled && (data.functions?.length ?? 0) > 0
+  const dataMode = data?.mode ?? 'full'
+  const dataClock = data?.clock ?? 'wall'
+  const isSampling = dataMode === 'lite'
+  const isObjectClock = dataClock === 'object'
+  const showAllocated = !isSampling
+  const showMemory = dataMode === 'full'
+  const showClock = mode === 'lite'  // show based on current setting, not last profiled data
+  const effectiveSortKey: SortKey = (sortKey === 'memory_bytes' && !showMemory) || (sortKey === 'allocated_objects' && !showAllocated)
+    ? 'total_duration'
+    : sortKey
   const rootCalls = hasData ? (data!.root_calls ?? []) : []
   const sortedFunctions: FunctionStat[] = hasData
     ? [...(data!.functions!)].sort((a, b) =>
-        sortDir === 'asc' ? a[sortKey] - b[sortKey] : b[sortKey] - a[sortKey]
+        sortDir === 'asc' ? a[effectiveSortKey] - b[effectiveSortKey] : b[effectiveSortKey] - a[effectiveSortKey]
       )
     : []
   const displayedFunctions = filterNames
@@ -394,7 +453,7 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
   }
 
   const sortIcon = (key: SortKey) => {
-    if (sortKey !== key) return <span class="sort-icon sort-icon--idle">⇅</span>
+    if (effectiveSortKey !== key) return <span class="sort-icon sort-icon--idle">⇅</span>
     return <span class="sort-icon sort-icon--active">{sortDir === 'asc' ? '▲' : '▼'}</span>
   }
 
@@ -418,6 +477,34 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
           Function Profiling
         </span>
         <div class="profiler-fn-profiling__controls">
+          <div class="profiler-fn-profiling__mode-selector">
+            {(['full', 'lite'] as const).map(m => (
+              <button
+                key={m}
+                class={`profiler-fn-profiling__mode-btn${mode === m ? ' profiler-fn-profiling__mode-btn--active' : ''}`}
+                onClick={() => mode !== m && onModeChange(m)}
+                disabled={modeUpdating}
+                title={m === 'full' ? 'Exhaustive TracePoint — timing + allocations + memory bytes' : 'StackProf sampling — very low overhead'}
+              >
+                {m.charAt(0).toUpperCase() + m.slice(1)}
+              </button>
+            ))}
+          </div>
+          {showClock && (
+            <div class="profiler-fn-profiling__mode-selector">
+              {(['wall', 'cpu', 'object'] as const).map(c => (
+                <button
+                  key={c}
+                  class={`profiler-fn-profiling__mode-btn${clock === c ? ' profiler-fn-profiling__mode-btn--active' : ''}`}
+                  onClick={() => clock !== c && onClockChange(c)}
+                  disabled={clockUpdating}
+                  title={c === 'wall' ? 'Wall-clock time (includes I/O waits)' : c === 'cpu' ? 'CPU time only (excludes I/O waits)' : 'Object allocations per function'}
+                >
+                  {c === 'wall' ? 'Wall' : c === 'cpu' ? 'CPU' : 'Alloc'}
+                </button>
+              ))}
+            </div>
+          )}
           <label class="profiler-fn-profiling__max-frames-label">
             Max frames
             <input
@@ -443,7 +530,9 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
 
       {!enabled && (
         <p class="profiler-fn-profiling__hint">
-          Enable function profiling to automatically track execution time and memory allocation for every method call in your app/ directory (using Ruby TracePoint). Warning: significant overhead — for development use only.
+          Enable function profiling to see where your app spends time.{' '}
+          <strong>Lite</strong>: statistical sampling via stackprof — very low overhead (&lt;1%), enabled by default.{' '}
+          <strong>Full</strong>: exhaustive TracePoint tracing with memory bytes — significant overhead.
         </p>
       )}
 
@@ -467,21 +556,57 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
               <span class="stat-value">{data!.functions!.length}</span>
             </div>
             <div class="stat-item">
-              <span class="stat-label">Total Calls</span>
+              <span class="stat-label">{isSampling ? 'Total Samples' : 'Total Calls'}</span>
               <span class="stat-value">{data!.total_calls}</span>
             </div>
-            <div class="stat-item">
-              <span class="stat-label">Total Duration</span>
-              <span class="stat-value">{data!.total_duration?.toFixed(2)} <small>ms</small></span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Allocated</span>
-              <span class="stat-value">{data!.total_allocated_objects?.toLocaleString()} <small>obj</small></span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Memory</span>
-              <span class="stat-value">{formatBytes(data!.total_memory_bytes ?? 0)}</span>
-            </div>
+            {!isObjectClock && (
+              <div class="stat-item">
+                <span class="stat-label">Wall</span>
+                <span class="stat-value">{(data!.elapsed_wall_ms ?? data!.total_duration ?? 0).toFixed(2)} <small>ms</small></span>
+              </div>
+            )}
+            {isSampling && !isObjectClock && data!.elapsed_cpu_ms != null && (
+              <div class="stat-item">
+                <span
+                  class="stat-label"
+                  title="CPU time excludes I/O waits (DB, network, sleep). Low CPU% = I/O-bound."
+                >CPU</span>
+                <span class="stat-value">
+                  {data!.elapsed_cpu_ms.toFixed(2)} <small>ms</small>
+                  {data!.elapsed_wall_ms != null && data!.elapsed_wall_ms > 0 && (
+                    <small class="profiler-fn-profiling__cpu-pct">
+                      {' '}({Math.round(data!.elapsed_cpu_ms / data!.elapsed_wall_ms * 100)}%)
+                    </small>
+                  )}
+                </span>
+              </div>
+            )}
+            {isObjectClock && (
+              <div class="stat-item">
+                <span class="stat-label">Allocations</span>
+                <span class="stat-value">{data!.total_duration?.toLocaleString()} <small>obj</small></span>
+              </div>
+            )}
+            {isSampling && (data!.gc_overhead_pct ?? 0) > 0 && (
+              <div class="stat-item">
+                <span class="stat-label" title={`${data!.gc_samples} samples during GC`}>GC</span>
+                <span class={`stat-value${(data!.gc_overhead_pct ?? 0) >= 20 ? ' profiler-fn-profiling__gc--high' : (data!.gc_overhead_pct ?? 0) >= 5 ? ' profiler-fn-profiling__gc--medium' : ''}`}>
+                  {data!.gc_overhead_pct}%
+                </span>
+              </div>
+            )}
+            {showAllocated && (
+              <div class="stat-item">
+                <span class="stat-label">Allocated</span>
+                <span class="stat-value">{data!.total_allocated_objects?.toLocaleString()} <small>obj</small></span>
+              </div>
+            )}
+            {showMemory && (
+              <div class="stat-item">
+                <span class="stat-label">Memory</span>
+                <span class="stat-value">{formatBytes(data!.total_memory_bytes ?? 0)}</span>
+              </div>
+            )}
           </div>
 
           {rootCalls.length > 0 && (
@@ -505,11 +630,11 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
               <tr>
                 <th>Function</th>
                 <th>File</th>
-                <th class={`profiler-text--right sortable${sortKey === 'calls' ? ' sortable--active' : ''}`} onClick={() => handleColClick('calls')}>Calls {sortIcon('calls')}</th>
-                <th class={`profiler-text--right sortable${sortKey === 'total_duration' ? ' sortable--active' : ''}`} onClick={() => handleColClick('total_duration')}>Total Time {sortIcon('total_duration')}</th>
-                <th class={`profiler-text--right sortable${sortKey === 'self_duration' ? ' sortable--active' : ''}`} onClick={() => handleColClick('self_duration')}>Self Time {sortIcon('self_duration')}</th>
-                <th class={`profiler-text--right sortable${sortKey === 'allocated_objects' ? ' sortable--active' : ''}`} onClick={() => handleColClick('allocated_objects')}>Objects {sortIcon('allocated_objects')}</th>
-                <th class={`profiler-text--right sortable${sortKey === 'memory_bytes' ? ' sortable--active' : ''}`} onClick={() => handleColClick('memory_bytes')}>Memory {sortIcon('memory_bytes')}</th>
+                <th class={`profiler-text--right sortable${effectiveSortKey === 'calls' ? ' sortable--active' : ''}`} onClick={() => handleColClick('calls')}>{isSampling ? 'Samples' : 'Calls'} {sortIcon('calls')}</th>
+                <th class={`profiler-text--right sortable${effectiveSortKey === 'total_duration' ? ' sortable--active' : ''}`} onClick={() => handleColClick('total_duration')}>{isObjectClock ? 'Total Alloc' : 'Total Time'} {sortIcon('total_duration')}</th>
+                <th class={`profiler-text--right sortable${effectiveSortKey === 'self_duration' ? ' sortable--active' : ''}`} onClick={() => handleColClick('self_duration')}>{isObjectClock ? 'Self Alloc' : 'Self Time'} {sortIcon('self_duration')}</th>
+                {showAllocated && <th class={`profiler-text--right sortable${effectiveSortKey === 'allocated_objects' ? ' sortable--active' : ''}`} onClick={() => handleColClick('allocated_objects')}>Objects {sortIcon('allocated_objects')}</th>}
+                {showMemory && <th class={`profiler-text--right sortable${effectiveSortKey === 'memory_bytes' ? ' sortable--active' : ''}`} onClick={() => handleColClick('memory_bytes')}>Memory {sortIcon('memory_bytes')}</th>}
               </tr>
             </thead>
             <tbody>
@@ -543,17 +668,19 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
                   <td class="profiler-text--muted profiler-text--xs" style={{ fontFamily: 'var(--profiler-font-mono)' }}>{fn.file}:{fn.line}</td>
                   <td class="profiler-text--right">{fn.calls}</td>
                   <td class="profiler-text--right">
-                    <span class={fn.total_duration >= 100 ? 'badge-error' : fn.total_duration >= 10 ? 'badge-warning' : 'badge-success'}>
-                      {fn.total_duration.toFixed(2)} ms
-                    </span>
+                    {isObjectClock
+                      ? <span class="profiler-text--muted">{fn.total_duration.toLocaleString()} <small>obj</small></span>
+                      : <span class={fn.total_duration >= 100 ? 'badge-error' : fn.total_duration >= 10 ? 'badge-warning' : 'badge-success'}>{fn.total_duration.toFixed(2)} ms</span>
+                    }
                   </td>
                   <td class="profiler-text--right">
-                    <span class={fn.self_duration >= 50 ? 'badge-error' : fn.self_duration >= 5 ? 'badge-warning' : 'badge-success'}>
-                      {fn.self_duration.toFixed(2)} ms
-                    </span>
+                    {isObjectClock
+                      ? <span class="profiler-text--muted">{fn.self_duration.toLocaleString()} <small>obj</small></span>
+                      : <span class={fn.self_duration >= 50 ? 'badge-error' : fn.self_duration >= 5 ? 'badge-warning' : 'badge-success'}>{fn.self_duration.toFixed(2)} ms</span>
+                    }
                   </td>
-                  <td class="profiler-text--right profiler-text--muted">{fn.allocated_objects.toLocaleString()} <small>obj</small></td>
-                  <td class="profiler-text--right profiler-text--muted">{formatBytes(fn.memory_bytes)}</td>
+                  {showAllocated && <td class="profiler-text--right profiler-text--muted">{fn.allocated_objects.toLocaleString()} <small>obj</small></td>}
+                  {showMemory && <td class="profiler-text--right profiler-text--muted">{formatBytes(fn.memory_bytes)}</td>}
                 </tr>
               ))}
             </tbody>

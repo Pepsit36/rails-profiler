@@ -10,6 +10,8 @@ module Profiler
     attr_writer :configuration
     attr_accessor :function_profiling_enabled
     attr_accessor :function_profiling_max_frames
+    attr_accessor :function_profiling_mode
+    attr_accessor :function_profiling_clock
 
     def configuration
       @configuration ||= Configuration.new
@@ -75,8 +77,10 @@ module Profiler
     end
   end
 
-  self.function_profiling_enabled = false
+  self.function_profiling_enabled = true
   self.function_profiling_max_frames = 2000
+  self.function_profiling_mode = "lite"
+  self.function_profiling_clock = "wall"
 end
 
 # Require core components

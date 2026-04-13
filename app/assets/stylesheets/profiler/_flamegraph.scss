@@ -439,6 +439,56 @@
     }
   }
 
+  // ── Mode selector ────────────────────────────────────────────────────────────
+  &__mode-selector {
+    display: inline-flex;
+    border: 1px solid var(--profiler-border-strong);
+    border-radius: var(--profiler-radius-sm);
+    overflow: hidden;
+  }
+
+  &__mode-btn {
+    height: 28px;
+    padding: 0 12px;
+    background: var(--profiler-bg-lighter);
+    border: none;
+    border-right: 1px solid var(--profiler-border-strong);
+    color: var(--profiler-text-muted);
+    font-size: var(--profiler-text-xs);
+    font-weight: 600;
+    font-family: $font-sans;
+    cursor: pointer;
+    transition: all $transition-base;
+    white-space: nowrap;
+
+    &:last-child { border-right: none; }
+
+    &:hover:not(:disabled):not(&--active) {
+      background: var(--profiler-bg-elevated);
+      color: var(--profiler-text);
+    }
+
+    &--active {
+      background: var(--profiler-accent-bg);
+      color: var(--profiler-accent);
+      cursor: default;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  // ── CPU% and GC stats ────────────────────────────────────────────────────────
+  &__cpu-pct {
+    color: var(--profiler-text-subtle);
+    font-size: 0.85em;
+  }
+
+  &__gc--medium { color: #f59e0b; }
+  &__gc--high   { color: #ef4444; font-weight: 600; }
+
   // ── Hint text ────────────────────────────────────────────────────────────────
   &__hint {
     margin: 12px 0 0;

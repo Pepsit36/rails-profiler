@@ -11,3 +11,5 @@ gem "webmock", "~> 3.18"
 # Optional dependencies
 gem "redis", "~> 5.0", require: false
 gem "rack-test", "~> 2.0", require: false
+
+gem "stackprof", "~> 0.2.28", :require => false
