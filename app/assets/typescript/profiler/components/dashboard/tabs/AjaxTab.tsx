@@ -1,18 +1,8 @@
 import { AjaxData } from '../../../dashboard/types'
+import { methodBadge, statusBadge } from './shared/utils'
 
 interface Props {
   ajaxData: AjaxData | undefined
-}
-
-function methodBadge(method: string): string {
-  const map: Record<string, string> = { GET: 'info', POST: 'success', PUT: 'warning', PATCH: 'warning', DELETE: 'error' }
-  return map[method] || 'default'
-}
-
-function statusBadge(status: number): string {
-  if (status >= 200 && status < 300) return 'success'
-  if (status >= 400) return 'error'
-  return 'warning'
 }
 
 export function AjaxTab({ ajaxData }: Props) {

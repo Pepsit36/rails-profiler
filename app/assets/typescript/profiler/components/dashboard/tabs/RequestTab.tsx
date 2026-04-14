@@ -1,6 +1,5 @@
-import { useState } from 'preact/hooks'
 import { Profile, RequestData } from '../../../dashboard/types'
-import { SmartBodyPreview } from './HttpTab'
+import { HttpCardHeader, HttpReqRespDetail } from './shared/HttpComponents'
 
 interface Props {
   profile: Profile
@@ -44,133 +43,49 @@ function buildCurl(profile: Profile): string {
 }
 
 export function RequestTab({ profile }: Props) {
-  const [copied, setCopied] = useState(false)
-  const curl = buildCurl(profile)
   const routeData = (profile.collectors_data?.request ?? {}) as RequestData
-
-  function copyToClipboard() {
-    navigator.clipboard.writeText(curl).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
+  const hasParams = profile.params && Object.keys(profile.params).length > 0
 
   return (
-    <>
-      <h2 class="profiler-section__header">Request</h2>
-      <table>
-        <tr>
-          <th class="profiler-text--sm" style="width: 200px;">Path</th>
-          <td>{profile.path}</td>
-        </tr>
-        <tr>
-          <th class="profiler-text--sm">Method</th>
-          <td>{profile.method}</td>
-        </tr>
-        <tr>
-          <th class="profiler-text--sm">Status</th>
-          <td>{profile.status}</td>
-        </tr>
-        <tr>
-          <th class="profiler-text--sm">Duration</th>
-          <td>{profile.duration.toFixed(2)} ms</td>
-        </tr>
-        {routeData.controller_action && (
-          <tr>
-            <th class="profiler-text--sm">Controller#Action</th>
-            <td class="profiler-text--mono profiler-text--xs">{routeData.controller_action}</td>
-          </tr>
-        )}
-        {routeData.route_name && (
-          <tr>
-            <th class="profiler-text--sm">Route Name</th>
-            <td class="profiler-text--mono profiler-text--xs">{routeData.route_name}</td>
-          </tr>
-        )}
-        {routeData.route_pattern && (
-          <tr>
-            <th class="profiler-text--sm">Route Pattern</th>
-            <td class="profiler-text--mono profiler-text--xs">{routeData.route_pattern}</td>
-          </tr>
-        )}
-        {routeData.route_params && Object.keys(routeData.route_params).length > 0 && (
-          <tr>
-            <th class="profiler-text--sm">Route Params</th>
-            <td class="profiler-text--mono profiler-text--xs">
-              {Object.entries(routeData.route_params).map(([k, v]) => `${k}: ${v}`).join(', ')}
-            </td>
-          </tr>
-        )}
-      </table>
+    <div class="profiler-ajax-card profiler-ajax-card--success" style="margin-bottom:8px;background:var(--profiler-bg-elevated);transform:translateX(3px);box-shadow:var(--profiler-shadow-sm);transition:none">
 
-      {profile.headers && Object.keys(profile.headers).length > 0 && (
-        <>
-          <h2 class="profiler-section__header profiler-mt-6">Request Headers</h2>
-          <table>
-            {Object.entries(profile.headers).map(([k, v]) => (
-              <tr key={k}>
-                <th class="profiler-text--sm" style="width: 200px;">{k}</th>
-                <td class="profiler-text--mono profiler-text--xs">{String(v)}</td>
-              </tr>
-            ))}
-          </table>
-        </>
+      <HttpCardHeader
+        method={profile.method}
+        url={profile.path}
+        copyUrl={`http://localhost:3000${profile.path}`}
+        status={profile.status}
+        duration={profile.duration}
+        curlCommand={buildCurl(profile)}
+      />
+
+      {(routeData.controller_action || routeData.route_pattern) && (
+        <div class="profiler-ajax-card__row">
+          {routeData.controller_action && (
+            <span class="profiler-text--xs profiler-text--muted" style="margin-right:16px">
+              {routeData.controller_action}
+            </span>
+          )}
+          {routeData.route_pattern && (
+            <span class="profiler-text--xs profiler-text--muted" style="font-family:monospace">
+              {routeData.route_name ? `${routeData.route_name} · ` : ''}{routeData.route_pattern}
+            </span>
+          )}
+        </div>
       )}
 
-      {profile.params && Object.keys(profile.params).length > 0 && (
-        <>
-          <h2 class="profiler-section__header profiler-mt-6">Request Params</h2>
-          <pre class="profiler-code profiler-text--xs">{JSON.stringify(profile.params, null, 2)}</pre>
-        </>
-      )}
-
-      {profile.request_body && (
-        <>
-          <h2 class="profiler-section__header profiler-mt-6">Request Body</h2>
-          <SmartBodyPreview
-            body={profile.request_body}
-            encoding={profile.request_body_encoding}
-            headers={profile.headers as Record<string, string> ?? {}}
-          />
-        </>
-      )}
-
-      {profile.response_headers && Object.keys(profile.response_headers).length > 0 && (
-        <>
-          <h2 class="profiler-section__header profiler-mt-6">Response Headers</h2>
-          <table>
-            {Object.entries(profile.response_headers).map(([k, v]) => (
-              <tr key={k}>
-                <th class="profiler-text--sm" style="width: 200px;">{k}</th>
-                <td class="profiler-text--mono profiler-text--xs">{String(v)}</td>
-              </tr>
-            ))}
-          </table>
-        </>
-      )}
-
-      {profile.response_body && (
-        <>
-          <h2 class="profiler-section__header profiler-mt-6">Response Body</h2>
-          <SmartBodyPreview
-            body={profile.response_body}
-            encoding={profile.response_body_encoding}
-            headers={profile.response_headers as Record<string, string> ?? {}}
-          />
-        </>
-      )}
-
-      <h2 class="profiler-section__header profiler-mt-6">Curl Command</h2>
-      <div style="position: relative;">
-        <button
-          onClick={copyToClipboard}
-          class="profiler-body-download-btn"
-          style="position: absolute; top: 8px; right: 8px; z-index: 1;"
-        >
-          {copied ? 'Copied!' : 'Copy'}
-        </button>
-        <pre class="profiler-code profiler-text--xs" style="padding-right: 80px;">{curl}</pre>
-      </div>
-    </>
+      <HttpReqRespDetail
+        request={{
+          headers: (profile.headers ?? {}) as Record<string, string>,
+          body: profile.request_body,
+          body_encoding: profile.request_body_encoding,
+          params: hasParams ? profile.params as Record<string, unknown> : undefined,
+        }}
+        response={{
+          headers: (profile.response_headers ?? {}) as Record<string, string>,
+          body: profile.response_body,
+          body_encoding: profile.response_body_encoding,
+        }}
+      />
+    </div>
   )
 }
