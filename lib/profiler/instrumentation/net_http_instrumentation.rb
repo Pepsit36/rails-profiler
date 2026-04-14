@@ -22,6 +22,9 @@ module Profiler
 
           url = build_url(host, port, req.path, use_ssl?)
           req_body = req.body.to_s
+          # Fallback: body may be passed as the 2nd argument and only applied
+          # to req inside super via req.set_body_internal(body)
+          req_body = body.to_s if req_body.empty? && body
           req_headers = req.to_hash.transform_values { |v| v.join(", ") }
           request_id = SecureRandom.hex(8)
           started_at = Time.now.iso8601(3)
