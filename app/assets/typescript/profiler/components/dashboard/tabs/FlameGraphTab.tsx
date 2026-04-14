@@ -3,6 +3,7 @@ import type { FlameGraphData, FlameGraphNode, FlameGraphCategory, PerformanceDat
 import { FlameGraphRenderer, FlatFrame } from '../../../flamegraph/FlameGraphRenderer'
 import { FlameGraphTooltip } from '../../../flamegraph/FlameGraphTooltip'
 import { FlameGraphBreadcrumbs } from '../../../flamegraph/FlameGraphBreadcrumbs'
+import { formatBytes } from './shared/utils'
 
 const CATEGORY_COLORS: Record<FlameGraphCategory, string> = {
   controller: '#60a5fa',
@@ -28,13 +29,6 @@ const CATEGORY_LABELS: Record<FlameGraphCategory, string> = {
 
 type SortKey = 'total_duration' | 'self_duration' | 'memory_bytes' | 'allocated_objects' | 'calls'
 type SortDir = 'asc' | 'desc'
-
-function formatBytes(bytes: number): string {
-  if (bytes < 0) return '—'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-}
 
 interface Props {
   flamegraphData: FlameGraphData | undefined
