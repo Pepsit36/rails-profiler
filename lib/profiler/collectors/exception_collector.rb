@@ -38,6 +38,10 @@ module Profiler
         end
       end
 
+      def capture(ex)
+        capture_exception(ex) if ex && @exception_data.nil?
+      end
+
       def collect
         ActiveSupport::Notifications.unsubscribe(@subscriber) if @subscriber
 

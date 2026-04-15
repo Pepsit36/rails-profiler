@@ -108,7 +108,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {activeTab === 'routes' && <RoutesTab routesData={cd['routes'] as any} />}
           {activeTab === 'i18n' && <I18nTab i18nData={cd['i18n'] as any} />}
           {activeTab === 'jobs' && <JobsTab jobs={profile.child_jobs!} />}
-          {activeTab === 'env' && <EnvTab envData={cd['env'] as any} />}
+          {activeTab === 'env' && <EnvTab envData={cd['env'] as any} readOnly />}
         </div>
       </div>
 
