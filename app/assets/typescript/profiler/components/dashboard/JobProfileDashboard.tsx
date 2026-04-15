@@ -5,8 +5,13 @@ import { DatabaseTab } from './tabs/DatabaseTab'
 import { CacheTab } from './tabs/CacheTab'
 import { HttpTab } from './tabs/HttpTab'
 import { JobsTab } from './tabs/JobsTab'
+import { DumpsTab } from './tabs/DumpsTab'
+import { LogsTab } from './tabs/LogsTab'
+import { ExceptionTab } from './tabs/ExceptionTab'
+import { EnvTab } from './tabs/EnvTab'
+import { FlameGraphTab } from './tabs/FlameGraphTab'
 
-type JobTabKey = 'job' | 'database' | 'cache' | 'http' | 'jobs'
+type JobTabKey = 'job' | 'database' | 'cache' | 'http' | 'jobs' | 'dump' | 'logs' | 'exception' | 'env' | 'timeline'
 
 interface Props {
   profile: Profile
@@ -15,13 +20,16 @@ interface Props {
 }
 
 export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
-  const validTabs: JobTabKey[] = ['job', 'database', 'cache', 'http', 'jobs']
-  const defaultTab: JobTabKey = validTabs.includes(initialTab as JobTabKey) ? (initialTab as JobTabKey) : 'job'
-  const [activeTab, setActiveTab] = useState<JobTabKey>(defaultTab)
-
   const cd = profile.collectors_data || {}
   const hasHttp = (cd['http'] as any)?.total_requests > 0
   const hasJobs = (profile.child_jobs?.length ?? 0) > 0
+  const hasDumps = ((cd['dump'] as any)?.count ?? 0) > 0
+  const hasLogs = ((cd['logs'] as any)?.total ?? 0) > 0
+  const hasException = !!(cd['exception'] as any)?.exception_class
+
+  const validTabs: JobTabKey[] = ['job', 'database', 'cache', 'http', 'jobs', 'dump', 'logs', 'exception', 'env', 'timeline']
+  const defaultTab: JobTabKey = validTabs.includes(initialTab as JobTabKey) ? (initialTab as JobTabKey) : 'job'
+  const [activeTab, setActiveTab] = useState<JobTabKey>(hasException ? 'exception' : defaultTab)
   const jobData = cd['job'] as any
   const isFailed = jobData?.status === 'failed'
   const parent = profile.parent_profile
@@ -67,23 +75,39 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
 
       <div class="profiler-panel profiler-mb-6">
         <div class="tabs">
+          {hasException && (
+            <a href="#" class={tabClass('exception')} onClick={handleTabClick('exception')} style="color:var(--profiler-error,#ef4444);">💥 Exception</a>
+          )}
           <a href="#" class={tabClass('job')} onClick={handleTabClick('job')}>Job</a>
           <a href="#" class={tabClass('database')} onClick={handleTabClick('database')}>Database</a>
           <a href="#" class={tabClass('cache')} onClick={handleTabClick('cache')}>Cache</a>
           {hasHttp && (
             <a href="#" class={tabClass('http')} onClick={handleTabClick('http')}>Outbound HTTP</a>
           )}
+          <a href="#" class={tabClass('timeline')} onClick={handleTabClick('timeline')}>Timeline</a>
           {hasJobs && (
             <a href="#" class={tabClass('jobs')} onClick={handleTabClick('jobs')}>Jobs ({profile.child_jobs!.length})</a>
           )}
+          {hasDumps && (
+            <a href="#" class={tabClass('dump')} onClick={handleTabClick('dump')}>Dumps ({(cd['dump'] as any).count})</a>
+          )}
+          {hasLogs && (
+            <a href="#" class={tabClass('logs')} onClick={handleTabClick('logs')}>Logs</a>
+          )}
+          <a href="#" class={tabClass('env')} onClick={handleTabClick('env')}>Env</a>
         </div>
 
         <div class="profiler-p-4 tab-content active">
+          {activeTab === 'exception' && <ExceptionTab exceptionData={cd['exception'] as any} />}
           {activeTab === 'job' && <JobTab jobData={cd['job'] as any} />}
           {activeTab === 'database' && <DatabaseTab dbData={cd['database'] as any} token={profile.token} />}
           {activeTab === 'cache' && <CacheTab cacheData={cd['cache'] as any} />}
           {activeTab === 'http' && <HttpTab httpData={cd['http'] as any} />}
+          {activeTab === 'timeline' && <FlameGraphTab flamegraphData={cd['flamegraph'] as any} perfData={cd['performance'] as any} functionProfileData={cd['function_profile'] as any} />}
           {activeTab === 'jobs' && <JobsTab jobs={profile.child_jobs!} />}
+          {activeTab === 'dump' && <DumpsTab dumpData={cd['dump'] as any} />}
+          {activeTab === 'logs' && <LogsTab logData={cd['logs'] as any} />}
+          {activeTab === 'env' && <EnvTab envData={cd['env'] as any} readOnly />}
         </div>
       </div>
 

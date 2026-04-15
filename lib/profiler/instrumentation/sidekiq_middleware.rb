@@ -11,6 +11,7 @@ module Profiler
 
     class SidekiqMiddleware
       def call(worker, job, queue, &block)
+        Profiler.env_override_store.apply!
         Profiler::JobProfiler.profile(
           job_class: job["class"],
           job_id: job["jid"],

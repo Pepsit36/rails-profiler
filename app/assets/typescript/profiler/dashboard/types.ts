@@ -268,9 +268,15 @@ export interface I18nLookup {
   missing: boolean;
 }
 
+export interface EnvOverride {
+  value: string;
+  original: string | null;
+}
+
 export interface EnvData {
   variables: Record<string, string>;
   total: number;
+  overrides?: Record<string, EnvOverride>;
 }
 
 export interface ProfilesResponse {
