@@ -35,5 +35,7 @@ Profiler::Engine.routes.draw do
     post "explain", to: "explain#create"
     resource :function_profiling, only: [:show, :update], controller: "function_profiling"
     resource :env_vars, only: [:show, :update], controller: "env_vars"
+    delete "env_vars/reset", to: "env_vars#reset_override"
+    delete "env_vars/reset_all", to: "env_vars#reset_all"
   end
 end

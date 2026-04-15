@@ -25,6 +25,10 @@ module Profiler
       @storage ||= configuration.storage_backend
     end
 
+    def env_override_store
+      @env_override_store ||= EnvOverrideStore.new
+    end
+
     def enabled?
       configuration.enabled
     end
@@ -100,5 +104,6 @@ require_relative "profiler/collectors/routes_collector"
 require_relative "profiler/collectors/i18n_collector"
 require_relative "profiler/collectors/env_collector"
 
+require_relative "profiler/env_override_store"
 require_relative "profiler/railtie" if defined?(Rails::Railtie)
 require_relative "profiler/engine" if defined?(Rails::Engine)

@@ -6,13 +6,23 @@ require_relative "collectors/job_collector"
 require_relative "collectors/database_collector"
 require_relative "collectors/cache_collector"
 require_relative "collectors/http_collector"
+require_relative "collectors/dump_collector"
+require_relative "collectors/log_collector"
+require_relative "collectors/exception_collector"
+require_relative "collectors/env_collector"
+require_relative "collectors/flamegraph_collector"
 
 module Profiler
   class JobProfiler
     JOB_COLLECTOR_CLASSES = [
       Collectors::DatabaseCollector,
       Collectors::CacheCollector,
-      Collectors::HttpCollector
+      Collectors::HttpCollector,
+      Collectors::DumpCollector,
+      Collectors::LogCollector,
+      Collectors::ExceptionCollector,
+      Collectors::EnvCollector,
+      Collectors::FlameGraphCollector
     ].freeze
 
     def self.profile(job_class:, job_id:, queue:, arguments:, executions:, parent_token: nil, &block)
@@ -55,6 +65,8 @@ module Profiler
       collectors = [job_collector] + JOB_COLLECTOR_CLASSES.map { |klass| klass.new(profile) }
       collectors.each { |c| c.subscribe if c.respond_to?(:subscribe) }
 
+      exception_collector = collectors.find { |c| c.is_a?(Collectors::ExceptionCollector) }
+
       memory_before = current_memory if Profiler.configuration.track_memory
 
       job_status = "completed"
@@ -68,6 +80,7 @@ module Profiler
       rescue => e
         job_status = "failed"
         error_message = "#{e.class}: #{e.message}"
+        exception_collector&.capture(e)
         raise
       ensure
         Profiler::CurrentContext.token = previous_token

@@ -7,7 +7,8 @@ module Profiler
 
       def show
         variables = ENV.to_h.sort.to_h
-        render json: { variables: variables, total: variables.size }
+        overrides = Profiler.env_override_store.all_overrides
+        render json: { variables: variables, total: variables.size, overrides: overrides }
       end
 
       def update
@@ -22,11 +23,30 @@ module Profiler
 
         if value.nil? || value.to_s.empty?
           ENV.delete(key)
+          Profiler.env_override_store.delete(key)
           render json: { key: key, value: nil, deleted: true }
         else
           ENV[key] = value.to_s
+          Profiler.env_override_store.set(key, value.to_s)
           render json: { key: key, value: ENV[key] }
         end
+      end
+
+      def reset_override
+        key = params[:key].to_s.strip
+
+        if key.blank?
+          render json: { error: "Key cannot be blank" }, status: :unprocessable_entity
+          return
+        end
+
+        Profiler.env_override_store.reset(key)
+        render json: { key: key, value: ENV[key], reset: true }
+      end
+
+      def reset_all
+        Profiler.env_override_store.reset_all
+        render json: { reset: true }
       end
     end
   end
