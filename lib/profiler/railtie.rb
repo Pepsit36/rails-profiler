@@ -6,6 +6,10 @@ module Profiler
   class Railtie < Rails::Railtie
     config.profiler = ActiveSupport::OrderedOptions.new
 
+    initializer "profiler.apply_env_overrides" do
+      Profiler.env_override_store.apply!
+    end
+
     initializer "profiler.set_configs" do |app|
       # Set default configuration for Rails environment
       Profiler.configure do |config|

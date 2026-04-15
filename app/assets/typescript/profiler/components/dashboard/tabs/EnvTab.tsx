@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from 'preact/hooks'
-import { EnvData } from '../../../dashboard/types'
+import { EnvData, EnvOverride } from '../../../dashboard/types'
 
 interface Props {
   envData: EnvData | undefined
+  readOnly?: boolean
 }
 
 interface Flash {
@@ -117,14 +118,31 @@ async function patchEnvVar(key: string, value: string | null): Promise<void> {
   }
 }
 
+async function resetEnvVar(key: string): Promise<{ value: string | null }> {
+  const res = await fetch(`/_profiler/api/env_vars/reset?key=${encodeURIComponent(key)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error ?? `Request failed (${res.status})`)
+  }
+  return res.json()
+}
+
+async function resetAllEnvVars(): Promise<void> {
+  const res = await fetch('/_profiler/api/env_vars/reset_all', { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Request failed (${res.status})`)
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-export function EnvTab({ envData }: Props) {
+export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
   const initial = useMemo(() => ({ ...(envData?.variables ?? {}) }), [])
 
   const [variables, setVariables] = useState<Record<string, string>>(initial)
+  const [overrides, setOverrides] = useState<Record<string, EnvOverride>>(envData?.overrides ?? {})
   const [total, setTotal] = useState(envData?.total ?? 0)
   const [search, setSearch] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -137,7 +155,7 @@ export function EnvTab({ envData }: Props) {
   const [refreshing, setRefreshing] = useState(false)
   const [unmaskedKeys, setUnmaskedKeys] = useState<Set<string>>(loadUnmasked)
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [readOnly, setReadOnly] = useState(false)
+  const [readOnly, setReadOnly] = useState(forceReadOnly)
   const [showImport, setShowImport] = useState(false)
   const [importContent, setImportContent] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
@@ -147,7 +165,7 @@ export function EnvTab({ envData }: Props) {
   }, [editingKey])
 
   useEffect(() => {
-    refresh()
+    if (!forceReadOnly) refresh()
   }, [])
 
   const showFlash = (type: Flash['type'], message: string) => {
@@ -198,6 +216,7 @@ export function EnvTab({ envData }: Props) {
       const data = await res.json()
       setVariables(data.variables)
       setTotal(data.total)
+      setOverrides(data.overrides ?? {})
       showFlash('success', `Refreshed — ${data.total} variables`)
     } catch (e: any) {
       showFlash('error', e.message ?? 'Failed to refresh')
@@ -311,6 +330,42 @@ export function EnvTab({ envData }: Props) {
     if (e.key === 'Escape') cancelEdit()
   }
 
+  // --- Reset overrides ---
+
+  const resetVar = async (key: string) => {
+    setSaving(true)
+    try {
+      const data = await resetEnvVar(key)
+      setOverrides(prev => { const n = { ...prev }; delete n[key]; return n })
+      setVariables(prev => {
+        const n = { ...prev }
+        if (data.value === null) { delete n[key] } else { n[key] = data.value }
+        return n
+      })
+      showFlash('success', `${key} reset to original`)
+    } catch (e: any) {
+      showFlash('error', e.message ?? 'Failed to reset')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const doResetAll = async () => {
+    setSaving(true)
+    try {
+      await resetAllEnvVars()
+      setOverrides({})
+      await refresh()
+      showFlash('success', 'All overrides reset')
+    } catch (e: any) {
+      showFlash('error', e.message ?? 'Failed to reset all')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const overrideCount = Object.keys(overrides).length
+
   // --- Filtered + grouped entries ---
 
   const allEntries = Object.entries(variables)
@@ -368,32 +423,54 @@ export function EnvTab({ envData }: Props) {
       <div class="profiler-flex profiler-mb-4" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
         <h2 class="profiler-section__header" style="margin:0;">Environment Variables</h2>
         <div class="profiler-flex profiler-flex--gap-2">
-          <button onClick={refresh} disabled={refreshing} style={headerBtn}>
-            {refreshing ? '…' : '↺ Refresh'}
-          </button>
-          <button onClick={() => setShowImport(v => !v)} style={`${headerBtn}${showImport ? 'border-color:var(--profiler-accent);color:var(--profiler-accent);' : ''}`}>
-            ⬆ Import
-          </button>
+          {!forceReadOnly && (
+            <>
+              <button onClick={refresh} disabled={refreshing} style={headerBtn}>
+                {refreshing ? '…' : '↺ Refresh'}
+              </button>
+              <button onClick={() => setShowImport(v => !v)} style={`${headerBtn}${showImport ? 'border-color:var(--profiler-accent);color:var(--profiler-accent);' : ''}`}>
+                ⬆ Import
+              </button>
+            </>
+          )}
           <button onClick={exportEnv} style={headerBtn}>
             ⬇ Export
           </button>
           <button onClick={toggleAllMasks} style={headerBtn}>
             {allRevealed ? '🙈 Mask all' : '👁 Reveal all'}
           </button>
-          <button
-            onClick={() => setReadOnly(v => !v)}
-            title={readOnly ? 'Unlock editing' : 'Lock editing'}
-            style={`${headerBtn}${readOnly ? 'border-color:var(--profiler-error,#ef4444);color:var(--profiler-error,#ef4444);' : ''}`}
-          >
-            {readOnly ? '🔒 Locked' : '🔓 Edit'}
-          </button>
+          {!forceReadOnly && overrideCount > 0 && (
+            <button
+              onClick={doResetAll}
+              disabled={saving}
+              title="Remove all Sidekiq overrides and restore original values"
+              style={`${headerBtn}border-color:var(--profiler-warning,#f59e0b);color:var(--profiler-warning,#f59e0b);`}
+            >
+              ↩ Reset all ({overrideCount})
+            </button>
+          )}
+          {!forceReadOnly && (
+            <button
+              onClick={() => setReadOnly(v => !v)}
+              title={readOnly ? 'Unlock editing' : 'Lock editing'}
+              style={`${headerBtn}${readOnly ? 'border-color:var(--profiler-error,#ef4444);color:var(--profiler-error,#ef4444);' : ''}`}
+            >
+              {readOnly ? '🔒 Locked' : '🔓 Edit'}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Warning */}
-      <div style="background:var(--profiler-warning-bg,rgba(245,158,11,0.1));border:1px solid var(--profiler-warning,#f59e0b);border-radius:6px;padding:8px 12px;margin-bottom:16px;font-size:12px;color:var(--profiler-warning,#f59e0b);">
-        ⚠ Changes affect the current process only — for development use.
-      </div>
+      {forceReadOnly ? (
+        <div style="background:var(--profiler-bg-subtle,rgba(0,0,0,0.03));border:1px solid var(--profiler-border);border-radius:6px;padding:8px 12px;margin-bottom:16px;font-size:12px;color:var(--profiler-text-muted);">
+          Snapshot taken at request time — modify env vars in <a href="/_profiler?section=env" style="color:var(--profiler-accent);">/_profiler?section=env</a>.
+        </div>
+      ) : (
+        <div style="background:var(--profiler-warning-bg,rgba(245,158,11,0.1));border:1px solid var(--profiler-warning,#f59e0b);border-radius:6px;padding:8px 12px;margin-bottom:16px;font-size:12px;color:var(--profiler-warning,#f59e0b);">
+          ⚠ Changes affect the current process only — for development use.
+        </div>
+      )}
 
       {/* Flash */}
       {flash && (
@@ -496,7 +573,10 @@ export function EnvTab({ envData }: Props) {
                   const isCopiedKey = copiedId === `__key__${key}`
                   const wasModified = initial[key] !== undefined && initial[key] !== value
                   const wasAdded = initial[key] === undefined
-                  const diffStyle = wasModified
+                  const override = overrides[key]
+                  const diffStyle = override
+                    ? 'border-left:3px solid var(--profiler-accent);'
+                    : wasModified
                     ? 'border-left:3px solid #f59e0b;'
                     : wasAdded
                     ? 'border-left:3px solid var(--profiler-success,#22c55e);'
@@ -554,7 +634,12 @@ export function EnvTab({ envData }: Props) {
                                 {isCopiedVal ? '✓' : '⎘'}
                               </button>
                             </div>
-                            {wasModified && (
+                            {override && (
+                              <div style="font-size:10px;color:var(--profiler-accent);margin-top:2px;font-family:monospace;">
+                                workers ← {override.value === '__profiler_deleted__' ? '(deleted)' : override.value} · original: {override.original ?? '(unset)'}
+                              </div>
+                            )}
+                            {!override && wasModified && (
                               <div style="font-size:10px;color:#f59e0b;margin-top:2px;font-family:monospace;">
                                 was: {initial[key]}
                               </div>
@@ -590,7 +675,12 @@ export function EnvTab({ envData }: Props) {
                                 {isCopiedVal ? '✓' : '⎘'}
                               </button>
                             </div>
-                            {wasModified && (
+                            {override && (
+                              <div style="font-size:10px;color:var(--profiler-accent);margin-top:2px;font-family:monospace;">
+                                workers ← {override.value === '__profiler_deleted__' ? '(deleted)' : unmasked ? override.value : '•'.repeat(Math.min((override.value ?? '').length, 20))} · original: {override.original == null ? '(unset)' : unmasked ? override.original : '•'.repeat(Math.min(override.original.length, 20))}
+                              </div>
+                            )}
+                            {!override && wasModified && (
                               <div style="font-size:10px;color:#f59e0b;margin-top:2px;font-family:monospace;">
                                 was: {unmasked
                                   ? isQuoted(initial[key])
@@ -610,14 +700,17 @@ export function EnvTab({ envData }: Props) {
                               <button onClick={saveEdit} disabled={saving} title="Save" style="background:none;border:none;cursor:pointer;color:var(--profiler-success,#22c55e);font-size:14px;padding:0 4px;">✓</button>
                               <button onClick={cancelEdit} disabled={saving} title="Cancel" style="background:none;border:none;cursor:pointer;color:var(--profiler-text-muted);font-size:14px;padding:0 4px;">✗</button>
                             </>
-                          ) : isBool(value) ? (
-                            <>
-                              <button onClick={() => startEdit(key)} disabled={saving} style="background:none;border:none;cursor:pointer;color:var(--profiler-accent);font-size:11px;padding:0 4px;">Edit</button>
-                              <button onClick={() => deleteVar(key)} disabled={saving} style="background:none;border:none;cursor:pointer;color:var(--profiler-error,#ef4444);font-size:11px;padding:0 4px;">Delete</button>
-                            </>
                           ) : (
                             <>
                               <button onClick={() => startEdit(key)} disabled={saving} style="background:none;border:none;cursor:pointer;color:var(--profiler-accent);font-size:11px;padding:0 4px;">Edit</button>
+                              {override && (
+                                <button
+                                  onClick={() => resetVar(key)}
+                                  disabled={saving}
+                                  title={`Reset to original: ${override.original ?? '(unset)'}`}
+                                  style="background:none;border:none;cursor:pointer;color:var(--profiler-warning,#f59e0b);font-size:11px;padding:0 4px;"
+                                >↩ Reset</button>
+                              )}
                               <button onClick={() => deleteVar(key)} disabled={saving} style="background:none;border:none;cursor:pointer;color:var(--profiler-error,#ef4444);font-size:11px;padding:0 4px;">Delete</button>
                             </>
                           )}
