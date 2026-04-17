@@ -14,6 +14,11 @@ module Profiler
       def call(env)
         return @app.call(env) unless should_profile?(env)
 
+        status = nil
+        headers = nil
+        body = nil
+        collectors = nil
+
         profile = Models::Profile.new(build_request(env))
         Profiler::CurrentContext.token = profile.token
 
@@ -23,14 +28,12 @@ module Profiler
         # Store profile in env for collectors
         env["profiler.profile"] = profile
 
-        # Create and subscribe collectors
         collectors = create_collectors(profile)
         env["profiler.collectors"] = collectors
 
         # Measure memory before
         memory_before = current_memory if Profiler.configuration.track_memory
 
-        # Process request
         status, headers, body = @app.call(env)
 
         # Measure memory after
@@ -39,14 +42,11 @@ module Profiler
           profile.memory = memory_after - memory_before
         end
 
-        # Collect and buffer response body (avoids double-reading by ToolbarInjector)
         body_content = collect_body(body)
         body = [body_content]
 
-        # Finish profile
         profile.finish(status, headers)
 
-        # Store request and response bodies
         profile.set_bodies(
           request_body: req_body_raw,
           response_body: body_content,
@@ -54,7 +54,6 @@ module Profiler
           resp_content_type: (headers["content-type"] || headers["Content-Type"]).to_s
         )
 
-        # Collect data from all collectors
         collectors.each do |collector|
           begin
             collector.collect if collector.respond_to?(:collect)
@@ -64,14 +63,11 @@ module Profiler
           end
         end
 
-        # Store profile
         Profiler.storage.save(profile.token, profile)
         Profiler::CurrentContext.clear
 
-        # Add profiler token header
         headers["X-Profiler-Token"] = profile.token
 
-        # Inject toolbar if HTML response
         if html_response?(headers)
           nonce = env['action_dispatch.content_security_policy_nonce']
           body = ToolbarInjector.new(body, profile.token, nonce).inject
@@ -80,7 +76,9 @@ module Profiler
         [status, headers, body]
       rescue => e
         warn "Profiler error: #{e.message}\n#{e.backtrace.join("\n")}"
-        @app.call(env)
+        collectors&.each { |c| c.unsubscribe if c.respond_to?(:unsubscribe) }
+        Profiler::CurrentContext.clear
+        status ? [status, headers, body || []] : @app.call(env)
       end
 
       private
