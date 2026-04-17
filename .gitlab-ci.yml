@@ -21,7 +21,7 @@ canary:
   variables:
     GIT_DEPTH: "0"
   rules:
-    - if: '$CI_COMMIT_BRANCH =~ /^(feature|fix|breaking)\// && $CI_PIPELINE_SOURCE != "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH =~ /^(feature|bugfix|hotfix|fix|breaking)\// && $CI_PIPELINE_SOURCE != "merge_request_event"'
   script:
     - |
       set -e
@@ -70,8 +70,11 @@ release:
         NEW_VERSION="$((MAJOR + 1)).0.0"
       elif echo "$COMMITS" | grep -qE "^feat(\(.+\))?:"; then
         NEW_VERSION="${MAJOR}.$((MINOR + 1)).0"
-      else
+      elif echo "$COMMITS" | grep -qE "^fix(\(.+\))?:"; then
         NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+      else
+        echo "No releasable commits (chore/docs/style/ci/test), skipping."
+        exit 0
       fi
 
       if git ls-remote --tags origin | grep -q "refs/tags/v${NEW_VERSION}$"; then
