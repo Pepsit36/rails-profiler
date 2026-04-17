@@ -1,6 +1,5 @@
 stages:
   - build
-  - bump
   - publish
 
 build:
@@ -15,75 +14,83 @@ build:
       - app/assets/builds/
     expire_in: 1h
 
-bump-version:
-  stage: bump
-  image: ruby:3.3
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-  script:
-    - |
-      set -e
-      VERSION=$(ruby -e "require_relative 'lib/profiler/version'; puts Profiler::VERSION")
-      if ! git ls-remote --tags origin | grep -q "refs/tags/v${VERSION}$"; then
-        echo "Version already bumped to ${VERSION}, skipping."
-        exit 0
-      fi
-      MAJOR=$(echo "$VERSION" | cut -d. -f1)
-      MINOR=$(echo "$VERSION" | cut -d. -f2)
-      PATCH=$(echo "$VERSION" | cut -d. -f3)
-      if echo "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" | grep -q "^breaking/"; then
-        NEW_VERSION="$((MAJOR + 1)).0.0"
-      elif echo "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" | grep -q "^feature/"; then
-        NEW_VERSION="${MAJOR}.$((MINOR + 1)).0"
-      else
-        NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
-      fi
-      sed -i "s/VERSION = .*/VERSION = \"${NEW_VERSION}\"/" lib/profiler/version.rb
-      git config user.email "ci@gitlab"
-      git config user.name "GitLab CI"
-      git remote set-url origin "https://ci:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-      git add lib/profiler/version.rb
-      git commit -m "chore(release): bump version to v${NEW_VERSION}"
-      git push origin "HEAD:${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
-      echo ""
-      echo "Version bumped to v${NEW_VERSION}. A new pipeline has been triggered."
-      echo "Please wait for it to pass before merging."
-      exit 1
-
 canary:
   stage: publish
   image: ruby:3.3
   needs: [build]
+  variables:
+    GIT_DEPTH: "0"
   rules:
-    - if: '$CI_COMMIT_BRANCH =~ /^(feature|fix|breaking)\// && $CI_PIPELINE_SOURCE != "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH =~ /^(feature|bugfix|hotfix|fix|breaking)\// && $CI_PIPELINE_SOURCE != "merge_request_event"'
   script:
-    - CURRENT_VERSION=$(ruby -e "require_relative 'lib/profiler/version'; puts Profiler::VERSION")
-    - CANARY_VERSION="${CURRENT_VERSION}.pre.${CI_COMMIT_SHORT_SHA}"
-    - sed -i "s/VERSION = .*/VERSION = \"${CANARY_VERSION}\"/" lib/profiler/version.rb
-    - gem build profiler.gemspec
-    - 'mkdir -p ~/.gem && printf -- "---\n:gitlab: ${CI_JOB_TOKEN}\n" > ~/.gem/credentials && chmod 0600 ~/.gem/credentials'
-    - gem push *.gem --key gitlab --host "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/rubygems" --verbose
+    - |
+      set -e
+      LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+      if [ -n "$LAST_TAG" ]; then
+        BASE_VERSION="${LAST_TAG#v}"
+      else
+        BASE_VERSION=$(ruby -e "require_relative 'lib/profiler/version'; puts Profiler::VERSION")
+      fi
+      CANARY_VERSION="${BASE_VERSION}.pre.${CI_COMMIT_SHORT_SHA}"
+      sed -i "s/VERSION = .*/VERSION = \"${CANARY_VERSION}\"/" lib/profiler/version.rb
+      gem build profiler.gemspec
+      mkdir -p ~/.gem && printf -- "---\n:gitlab: ${CI_JOB_TOKEN}\n" > ~/.gem/credentials && chmod 0600 ~/.gem/credentials
+      gem push *.gem --key gitlab --host "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/rubygems" --verbose
 
 release:
   stage: publish
   image: ruby:3.3
   needs: [build]
+  variables:
+    GIT_DEPTH: "0"
   rules:
     - if: '$CI_COMMIT_BRANCH == "master" && $CI_COMMIT_TAG == null'
   script:
-    - VERSION=$(ruby -e "require_relative 'lib/profiler/version'; puts Profiler::VERSION")
     - |
-      if git ls-remote --tags origin | grep -q "refs/tags/v${VERSION}$"; then
-        echo "Error: tag v${VERSION} already exists. Version was not bumped before merge."
-        exit 1
+      set -e
+      LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+      if [ -z "$LAST_TAG" ]; then
+        BASE_VERSION="0.0.0"
+        COMMITS=$(git log --format="%s%n%b")
+      else
+        BASE_VERSION="${LAST_TAG#v}"
+        COMMITS=$(git log "${LAST_TAG}..HEAD" --format="%s%n%b")
       fi
-    - '[[ -n "$RUBYGEMS_API_KEY" ]] || (echo "Error: RUBYGEMS_API_KEY is not set" && exit 1)'
-    - gem build profiler.gemspec
-    - 'mkdir -p ~/.gem && printf -- "---\n:gitlab: ${CI_JOB_TOKEN}\n" > ~/.gem/credentials && chmod 0600 ~/.gem/credentials'
-    - gem push *.gem --key gitlab --host "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/rubygems" --verbose
-    - GEM_HOST_API_KEY="${RUBYGEMS_API_KEY}" gem push *.gem --host https://rubygems.org --verbose
-    - git config user.email "ci@gitlab"
-    - git config user.name "GitLab CI"
-    - git remote set-url origin "https://ci:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-    - git tag "v${VERSION}"
-    - git push origin "v${VERSION}"
+
+      if [ -z "$COMMITS" ]; then
+        echo "No commits since last tag, skipping."
+        exit 0
+      fi
+
+      MAJOR=$(echo "$BASE_VERSION" | cut -d. -f1)
+      MINOR=$(echo "$BASE_VERSION" | cut -d. -f2)
+      PATCH=$(echo "$BASE_VERSION" | cut -d. -f3)
+
+      if echo "$COMMITS" | grep -qE "^BREAKING CHANGE:|^[a-z]+(\(.+\))?!:"; then
+        NEW_VERSION="$((MAJOR + 1)).0.0"
+      elif echo "$COMMITS" | grep -qE "^feat(\(.+\))?:"; then
+        NEW_VERSION="${MAJOR}.$((MINOR + 1)).0"
+      elif echo "$COMMITS" | grep -qE "^fix(\(.+\))?:"; then
+        NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+      else
+        echo "No releasable commits (chore/docs/style/ci/test), skipping."
+        exit 0
+      fi
+
+      if git ls-remote --tags origin | grep -q "refs/tags/v${NEW_VERSION}$"; then
+        echo "Tag v${NEW_VERSION} already exists, skipping."
+        exit 0
+      fi
+
+      [[ -n "$RUBYGEMS_API_KEY" ]] || (echo "Error: RUBYGEMS_API_KEY is not set" && exit 1)
+      sed -i "s/VERSION = .*/VERSION = \"${NEW_VERSION}\"/" lib/profiler/version.rb
+      gem build profiler.gemspec
+      mkdir -p ~/.gem && printf -- "---\n:gitlab: ${CI_JOB_TOKEN}\n" > ~/.gem/credentials && chmod 0600 ~/.gem/credentials
+      gem push *.gem --key gitlab --host "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/rubygems" --verbose
+      GEM_HOST_API_KEY="${RUBYGEMS_API_KEY}" gem push *.gem --host https://rubygems.org --verbose
+      git config user.email "ci@gitlab"
+      git config user.name "GitLab CI"
+      git remote set-url origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      git tag "v${NEW_VERSION}"
+      git push origin "v${NEW_VERSION}"
+      echo "Released v${NEW_VERSION}."
