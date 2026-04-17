@@ -2,7 +2,7 @@
 
 module Profiler
   class Configuration
-    attr_accessor :enabled, :storage, :storage_options, :collectors,
+    attr_accessor :enabled, :storage_options, :collectors,
                   :skip_paths, :slow_query_threshold, :max_queries_warning,
                   :track_memory, :memory_warning_threshold,
                   :mcp_enabled, :mcp_transport, :mcp_port,
@@ -70,6 +70,15 @@ module Profiler
       else
         false
       end
+    end
+
+    def storage
+      @storage
+    end
+
+    def storage=(value)
+      @storage = value
+      @storage_backend = nil
     end
 
     def storage_backend

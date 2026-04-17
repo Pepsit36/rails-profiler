@@ -11,6 +11,15 @@
 // ============================================================================
 :root,
 [data-theme="dark"] {
+  // Terminal / ANSI output — themed so the run output matches the panel
+  --profiler-terminal-bg:   #0a0e15;
+  --profiler-terminal-text: #cdd6e0;
+  --ansi-red:    #f87171;
+  --ansi-green:  #4ade80;
+  --ansi-yellow: #fbbf24;
+  --ansi-blue:   #60a5fa;
+  --ansi-purple: #c084fc;
+  --ansi-cyan:   #67e8f9;
   // Surfaces — deep navy-black with warmth
   --profiler-bg:          #080b10;
   --profiler-bg-light:    #0d1117;
@@ -70,6 +79,16 @@
 // LIGHT THEME — Warm Stone + Dark Amber
 // ============================================================================
 [data-theme="light"] {
+  // Terminal / ANSI output — warm dark background, readable on light UI
+  --profiler-terminal-bg:   #1c1f26;
+  --profiler-terminal-text: #d4dbe3;
+  --ansi-red:    #f87171;
+  --ansi-green:  #4ade80;
+  --ansi-yellow: #fbbf24;
+  --ansi-blue:   #60a5fa;
+  --ansi-purple: #c084fc;
+  --ansi-cyan:   #67e8f9;
+
   // Surfaces — warm stone, not cold white
   --profiler-bg:          #f5f3ef;
   --profiler-bg-light:    #edeae3;
@@ -130,6 +149,15 @@
 // ============================================================================
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
+    --profiler-terminal-bg:   #1c1f26;
+    --profiler-terminal-text: #d4dbe3;
+    --ansi-red:    #f87171;
+    --ansi-green:  #4ade80;
+    --ansi-yellow: #fbbf24;
+    --ansi-blue:   #60a5fa;
+    --ansi-purple: #c084fc;
+    --ansi-cyan:   #67e8f9;
+
     --profiler-bg:          #f5f3ef;
     --profiler-bg-light:    #edeae3;
     --profiler-bg-lighter:  #e3ded5;

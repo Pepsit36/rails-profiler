@@ -19,6 +19,38 @@ export interface ParentProfileSummary {
   started_at: string;
 }
 
+export interface TestData {
+  test_name: string;
+  test_file: string;
+  test_line: number;
+  framework: string;
+  status: 'passed' | 'failed' | 'pending' | 'running';
+  exception_message?: string;
+}
+
+export interface TestRunFile {
+  path: string;
+  name: string;
+}
+
+export interface TestRunTree {
+  directory: string;
+  files: TestRunFile[];
+}
+
+export interface TestRun {
+  id: string;
+  status: 'pending' | 'running' | 'passed' | 'failed' | 'killed' | 'error';
+  pid?: number;
+  started_at?: string;
+  finished_at?: string;
+  output: string;
+  exit_code?: number;
+  files: string[];
+  framework: string;
+  duration?: number;
+}
+
 export interface Profile {
   token: string;
   method: string;
@@ -27,7 +59,7 @@ export interface Profile {
   duration: number;
   memory?: number;
   started_at: string;
-  profile_type?: 'http' | 'job';
+  profile_type?: 'http' | 'job' | 'test';
   gem_version?: string;
   parent_token?: string;
   child_jobs?: ChildJobSummary[];
@@ -57,6 +89,7 @@ export interface Profile {
     i18n?: I18nData;
     env?: EnvData;
     mailer?: MailerData;
+    test?: TestData;
     [key: string]: any;  // Allow custom collector data
   };
   tabs?: TabConfig[];  // Tab configurations from collectors
