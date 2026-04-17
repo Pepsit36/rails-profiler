@@ -19,6 +19,9 @@ module Profiler
 
         @db = SQLite3::Database.new(db_path.to_s)
         @db.results_as_hash = true
+        @db.busy_timeout = 5000
+        @db.execute("PRAGMA journal_mode=WAL")
+        @db.execute("PRAGMA synchronous=NORMAL")
 
         @blob_store = BlobStore.new(blob_path.to_s)
 

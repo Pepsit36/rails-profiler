@@ -106,7 +106,7 @@ function isQuoted(value: string): boolean {
   return true
 }
 
-async function patchEnvVar(key: string, value: string | null): Promise<void> {
+async function patchEnvVar(key: string, value: string | null): Promise<{ key: string; value: string | null; override?: EnvOverride | null }> {
   const res = await fetch('/_profiler/api/env_vars', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -116,6 +116,7 @@ async function patchEnvVar(key: string, value: string | null): Promise<void> {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error ?? `Request failed (${res.status})`)
   }
+  return res.json()
 }
 
 async function resetEnvVar(key: string): Promise<{ value: string | null }> {
@@ -139,7 +140,7 @@ async function resetAllEnvVars(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
-  const initial = useMemo(() => ({ ...(envData?.variables ?? {}) }), [])
+  const [initial, setInitial] = useState<Record<string, string>>(() => ({ ...(envData?.variables ?? {}) }))
 
   const [variables, setVariables] = useState<Record<string, string>>(initial)
   const [overrides, setOverrides] = useState<Record<string, EnvOverride>>(envData?.overrides ?? {})
@@ -218,6 +219,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
       setTotal(data.total)
       setOverrides(data.overrides ?? {})
       showFlash('success', `Refreshed — ${data.total} variables`)
+      return data
     } catch (e: any) {
       showFlash('error', e.message ?? 'Failed to refresh')
     } finally {
@@ -269,11 +271,21 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
 
   const saveEdit = async () => {
     if (!editingKey) return
+    const key = editingKey
+    if (editValue === variables[key]) {
+      setEditingKey(null)
+      return
+    }
     setSaving(true)
     try {
-      await patchEnvVar(editingKey, editValue)
-      setVariables(prev => ({ ...prev, [editingKey]: editValue }))
-      showFlash('success', `${editingKey} updated`)
+      const data = await patchEnvVar(key, editValue)
+      setVariables(prev => ({ ...prev, [key]: editValue }))
+      setOverrides(prev => {
+        const n = { ...prev }
+        if (data.override) { n[key] = data.override } else { delete n[key] }
+        return n
+      })
+      showFlash('success', `${key} updated`)
       setEditingKey(null)
     } catch (e: any) {
       showFlash('error', e.message ?? 'Failed to update')
@@ -285,8 +297,13 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
   const deleteVar = async (key: string) => {
     setSaving(true)
     try {
-      await patchEnvVar(key, null)
+      const data = await patchEnvVar(key, null)
       setVariables(prev => { const n = { ...prev }; delete n[key]; return n })
+      setOverrides(prev => {
+        const n = { ...prev }
+        if (data.override) { n[key] = data.override } else { delete n[key] }
+        return n
+      })
       setUnmaskedKeys(prev => { const n = new Set(prev); n.delete(key); saveUnmasked(n); return n })
       showFlash('success', `${key} deleted`)
     } catch (e: any) {
@@ -300,8 +317,13 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     const next = /^(true|yes)$/i.test(current) ? 'false' : 'true'
     setSaving(true)
     try {
-      await patchEnvVar(key, next)
+      const data = await patchEnvVar(key, next)
       setVariables(prev => ({ ...prev, [key]: next }))
+      setOverrides(prev => {
+        const n = { ...prev }
+        if (data.override) { n[key] = data.override } else { delete n[key] }
+        return n
+      })
     } catch (e: any) {
       showFlash('error', e.message ?? 'Failed to update')
     } finally {
@@ -314,8 +336,13 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     if (!key) return
     setSaving(true)
     try {
-      await patchEnvVar(key, newValue)
+      const data = await patchEnvVar(key, newValue)
       setVariables(prev => ({ ...prev, [key]: newValue }))
+      setOverrides(prev => {
+        const n = { ...prev }
+        if (data.override) { n[key] = data.override } else { delete n[key] }
+        return n
+      })
       setNewKey(''); setNewValue('')
       showFlash('success', `${key} added`)
     } catch (e: any) {
@@ -337,11 +364,13 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     try {
       const data = await resetEnvVar(key)
       setOverrides(prev => { const n = { ...prev }; delete n[key]; return n })
-      setVariables(prev => {
+      const updater = (prev: Record<string, string>) => {
         const n = { ...prev }
         if (data.value === null) { delete n[key] } else { n[key] = data.value }
         return n
-      })
+      }
+      setVariables(updater)
+      setInitial(updater)
       showFlash('success', `${key} reset to original`)
     } catch (e: any) {
       showFlash('error', e.message ?? 'Failed to reset')
@@ -355,7 +384,8 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     try {
       await resetAllEnvVars()
       setOverrides({})
-      await refresh()
+      const data = await refresh()
+      if (data) setInitial(data.variables)
       showFlash('success', 'All overrides reset')
     } catch (e: any) {
       showFlash('error', e.message ?? 'Failed to reset all')
@@ -639,11 +669,6 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
                                 workers ← {override.value === '__profiler_deleted__' ? '(deleted)' : override.value} · original: {override.original ?? '(unset)'}
                               </div>
                             )}
-                            {!override && wasModified && (
-                              <div style="font-size:10px;color:#f59e0b;margin-top:2px;font-family:monospace;">
-                                was: {initial[key]}
-                              </div>
-                            )}
                           </>
                         ) : (
                           <>
@@ -651,7 +676,9 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
                               <TypeBadgeComp value={value} />
                               <span
                                 class="profiler-text--xs profiler-text--mono"
-                                style="word-break:break-all;flex:1;"
+                                onClick={() => !readOnly && !isEditing && startEdit(key)}
+                                title={!readOnly ? 'Click to edit' : undefined}
+                                style={`word-break:break-all;flex:1;${!readOnly ? 'cursor:pointer;' : ''}`}
                               >
                                 {unmasked
                                   ? isQuoted(value)
@@ -680,16 +707,6 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
                                 workers ← {override.value === '__profiler_deleted__' ? '(deleted)' : unmasked ? override.value : '•'.repeat(Math.min((override.value ?? '').length, 20))} · original: {override.original == null ? '(unset)' : unmasked ? override.original : '•'.repeat(Math.min(override.original.length, 20))}
                               </div>
                             )}
-                            {!override && wasModified && (
-                              <div style="font-size:10px;color:#f59e0b;margin-top:2px;font-family:monospace;">
-                                was: {unmasked
-                                  ? isQuoted(initial[key])
-                                    ? `"${initial[key]}"`
-                                    : initial[key]
-                                  : '•'.repeat(Math.min(initial[key].length, 20))
-                                }
-                              </div>
-                            )}
                           </>
                         )}
                       </td>
@@ -702,16 +719,16 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
                             </>
                           ) : (
                             <>
-                              <button onClick={() => startEdit(key)} disabled={saving} style="background:none;border:none;cursor:pointer;color:var(--profiler-accent);font-size:11px;padding:0 4px;">Edit</button>
+                              <button onClick={() => startEdit(key)} disabled={saving} title="Edit" style="background:none;border:none;cursor:pointer;color:var(--profiler-accent);font-size:14px;padding:0 4px;">✎</button>
                               {override && (
                                 <button
                                   onClick={() => resetVar(key)}
                                   disabled={saving}
                                   title={`Reset to original: ${override.original ?? '(unset)'}`}
-                                  style="background:none;border:none;cursor:pointer;color:var(--profiler-warning,#f59e0b);font-size:11px;padding:0 4px;"
-                                >↩ Reset</button>
+                                  style="background:none;border:none;cursor:pointer;color:var(--profiler-warning,#f59e0b);font-size:14px;padding:0 4px;"
+                                >↩</button>
                               )}
-                              <button onClick={() => deleteVar(key)} disabled={saving} style="background:none;border:none;cursor:pointer;color:var(--profiler-error,#ef4444);font-size:11px;padding:0 4px;">Delete</button>
+                              <button onClick={() => deleteVar(key)} disabled={saving} title="Delete" style="background:none;border:none;cursor:pointer;color:var(--profiler-error,#ef4444);font-size:14px;padding:0 4px;">✕</button>
                             </>
                           )}
                         </td>
