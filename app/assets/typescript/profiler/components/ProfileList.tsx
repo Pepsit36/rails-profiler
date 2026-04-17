@@ -3,6 +3,7 @@ import { Profile, ProfilesResponse, HttpRequest, EnvData } from '../dashboard/ty
 import { getGemVersion } from '../dashboard/utils'
 import { HttpRequestDetail } from './dashboard/tabs/HttpTab'
 import { EnvTab } from './dashboard/tabs/EnvTab'
+import { TestRunnerContent } from './test-runner/TestRunnerContent'
 
 const BASE = '/_profiler'
 
@@ -71,9 +72,9 @@ export function ProfileList() {
   const currentVersion = getGemVersion()
   const params = new URLSearchParams(window.location.search)
 
-  const initialSection = (): 'http' | 'jobs' | 'console' | 'outbound' | 'env' => {
+  const initialSection = (): 'http' | 'jobs' | 'console' | 'tests' | 'runner' | 'outbound' | 'env' => {
     const s = params.get('section')
-    return (s === 'http' || s === 'jobs' || s === 'console' || s === 'outbound' || s === 'env') ? s : 'http'
+    return (s === 'http' || s === 'jobs' || s === 'console' || s === 'tests' || s === 'runner' || s === 'outbound' || s === 'env') ? s : 'http'
   }
 
   const initialSort = (): { col: SortCol; dir: SortDir } => {
@@ -85,7 +86,7 @@ export function ProfileList() {
     }
   }
 
-  const [section, setSection] = useState<'http' | 'jobs' | 'console' | 'outbound' | 'env'>(initialSection)
+  const [section, setSection] = useState<'http' | 'jobs' | 'console' | 'tests' | 'runner' | 'outbound' | 'env'>(initialSection)
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [httpOffset, setHttpOffset] = useState(0)
   const [httpHasMore, setHttpHasMore] = useState(false)
@@ -98,6 +99,13 @@ export function ProfileList() {
   const [consoleOffset, setConsoleOffset] = useState(0)
   const [consoleHasMore, setConsoleHasMore] = useState(false)
   const [consoleLoadingMore, setConsoleLoadingMore] = useState(false)
+  const [tests, setTests] = useState<Profile[]>([])
+  const [testOffset, setTestOffset] = useState(0)
+  const [testHasMore, setTestHasMore] = useState(false)
+  const [testLoadingMore, setTestLoadingMore] = useState(false)
+  const [loadingTests, setLoadingTests] = useState(initialSection() === 'tests')
+  const [testsLoaded, setTestsLoaded] = useState(false)
+  const [testsError, setTestsError] = useState<string | null>(null)
   const [outboundRequests, setOutboundRequests] = useState<OutboundRequest[]>([])
   const [loadingHttp, setLoadingHttp] = useState(initialSection() === 'http')
   const [loadingJobs, setLoadingJobs] = useState(initialSection() === 'jobs')
@@ -132,6 +140,10 @@ export function ProfileList() {
   // Console filters
   const [consoleSearch, setConsoleSearch] = useState('')
   const [consoleStatus, setConsoleStatus] = useState('')
+  // Tests filters
+  const [testSearch, setTestSearch] = useState('')
+  const [testStatus, setTestStatus] = useState('')
+  const [testSort, setTestSort] = useState<{ col: JobSortCol; dir: SortDir }>({ col: null, dir: 'asc' })
   // Outbound filters
   const [outboundSearch, setOutboundSearch] = useState('')
   const [outboundMethod, setOutboundMethod] = useState('')
@@ -218,7 +230,39 @@ export function ProfileList() {
       .catch(() => setConsoleLoadingMore(false))
   }
 
-  const handleSectionChange = (s: 'http' | 'jobs' | 'console' | 'outbound' | 'env') => {
+  const loadTests = () => {
+    if (testsLoaded) return
+    setLoadingTests(true)
+    fetch(`${BASE}/api/tests?limit=50&offset=0`)
+      .then(res => res.json())
+      .then((data: ProfilesResponse) => {
+        setTests(data.profiles)
+        setTestOffset(data.profiles.length)
+        setTestHasMore(data.has_more)
+        setLoadingTests(false)
+        setTestsLoaded(true)
+      })
+      .catch(() => {
+        setTestsError('Failed to load test profiles')
+        setLoadingTests(false)
+        setTestsLoaded(true)
+      })
+  }
+
+  const loadMoreTests = () => {
+    setTestLoadingMore(true)
+    fetch(`${BASE}/api/tests?limit=50&offset=${testOffset}`)
+      .then(res => res.json())
+      .then((data: ProfilesResponse) => {
+        setTests(prev => [...prev, ...data.profiles])
+        setTestOffset(prev => prev + data.profiles.length)
+        setTestHasMore(data.has_more)
+        setTestLoadingMore(false)
+      })
+      .catch(() => setTestLoadingMore(false))
+  }
+
+  const handleSectionChange = (s: 'http' | 'jobs' | 'console' | 'tests' | 'runner' | 'outbound' | 'env') => {
     if (s === section) {
       refreshSection(s)
       return
@@ -227,12 +271,17 @@ export function ProfileList() {
     const url = new URL(window.location.href)
     url.searchParams.set('section', s)
     history.pushState(null, '', url.toString())
-    refreshSection(s)
+    if (s === 'tests') {
+      loadTests()
+    } else {
+      refreshSection(s)
+    }
     // Reset all filters
     setHttpSearch(''); setHttpMethod(''); setHttpStatus(''); setHttpDuration('')
     setHttpPreset(''); setHttpSort({ col: null, dir: 'asc' })
     setJobSearch(''); setJobStatus(''); setJobDuration(''); setJobSort({ col: null, dir: 'asc' })
     setConsoleSearch(''); setConsoleStatus(''); setConsoleSort({ col: null, dir: 'asc' })
+    setTestSearch(''); setTestStatus(''); setTestSort({ col: null, dir: 'asc' })
     setOutboundSearch(''); setOutboundMethod(''); setOutboundStatus('')
   }
 
@@ -261,6 +310,12 @@ export function ProfileList() {
     })
   }
 
+  const deleteTest = (token: string) => {
+    fetch(`${BASE}/api/tests/${token}`, { method: 'DELETE' }).then(() => {
+      setTests(prev => prev.filter(p => p.token !== token))
+    })
+  }
+
   const clearProfiles = () => {
     if (!window.confirm('Delete all HTTP profiles?')) return
     fetch(`${BASE}/api/profiles/clear`, { method: 'DELETE' }).then(() => {
@@ -282,6 +337,13 @@ export function ProfileList() {
     })
   }
 
+  const clearTests = () => {
+    if (!window.confirm('Delete all test profiles?')) return
+    fetch(`${BASE}/api/tests/clear`, { method: 'DELETE' }).then(() => {
+      setTests([])
+    })
+  }
+
   const clearAll = () => {
     if (!window.confirm('Delete all HTTP, job and console profiles?')) return
     Promise.all([
@@ -295,7 +357,7 @@ export function ProfileList() {
     })
   }
 
-  const refreshSection = (s: 'http' | 'jobs' | 'console' | 'outbound' | 'env') => {
+  const refreshSection = (s: 'http' | 'jobs' | 'console' | 'tests' | 'runner' | 'outbound' | 'env') => {
     if (s === 'http') {
       setLoadingHttp(true)
       fetch(`${BASE}/api/profiles?limit=50&offset=0`)
@@ -329,13 +391,26 @@ export function ProfileList() {
           setLoadingConsole(false)
         })
         .catch(() => { setConsoleError('Failed to load console profiles'); setLoadingConsole(false) })
+    } else if (s === 'tests') {
+      setLoadingTests(true)
+      setTestsLoaded(false)
+      fetch(`${BASE}/api/tests?limit=50&offset=0`)
+        .then(res => res.json())
+        .then((data: ProfilesResponse) => {
+          setTests(data.profiles)
+          setTestOffset(data.profiles.length)
+          setTestHasMore(data.has_more)
+          setLoadingTests(false)
+          setTestsLoaded(true)
+        })
+        .catch(() => { setTestsError('Failed to load test profiles'); setLoadingTests(false); setTestsLoaded(true) })
     } else if (s === 'outbound') {
       setLoadingOutbound(true)
       fetch(`${BASE}/api/outbound_http`)
         .then(res => res.json())
         .then(data => { setOutboundRequests(data); setLoadingOutbound(false) })
         .catch(() => { setOutboundError('Failed to load outbound HTTP requests'); setLoadingOutbound(false) })
-    } else {
+    } else if (s === 'env') {
       setLoadingEnv(true)
       fetch(`${BASE}/api/env_vars`)
         .then(res => res.json())
@@ -354,7 +429,7 @@ export function ProfileList() {
     )
   }
 
-  const tabClass = (s: 'http' | 'jobs' | 'console' | 'outbound' | 'env') => `tab${section === s ? ' active' : ''}`
+  const tabClass = (s: 'http' | 'jobs' | 'console' | 'tests' | 'runner' | 'outbound' | 'env') => `tab${section === s ? ' active' : ''}`
 
   // Computed filtered arrays
   const filteredProfiles = profiles.filter(p => {
@@ -456,9 +531,41 @@ export function ProfileList() {
       })
     : filteredConsoles
 
+  const filteredTests = tests.filter(p => {
+    if (testSearch) {
+      const testData = p.collectors_data?.test as any
+      const name = (testData?.test_name || p.path).toLowerCase()
+      if (!name.includes(testSearch.toLowerCase())) return false
+    }
+    if (testStatus === 'failed' && p.status !== 500) return false
+    if (testStatus === 'passed' && p.status === 500) return false
+    if (testStatus === 'pending') {
+      const testData = p.collectors_data?.test as any
+      if (testData?.status !== 'pending') return false
+    }
+    return true
+  })
+
+  const sortedTests = testSort.col
+    ? [...filteredTests].sort((a, b) => {
+        let av: number, bv: number
+        if (testSort.col === 'date') {
+          const diff = new Date(a.started_at).getTime() - new Date(b.started_at).getTime()
+          return testSort.dir === 'asc' ? diff : -diff
+        }
+        switch (testSort.col) {
+          case 'duration': av = a.duration; bv = b.duration; break
+          case 'status': av = a.status; bv = b.status; break
+          default: return 0
+        }
+        return testSort.dir === 'asc' ? av - bv : bv - av
+      })
+    : filteredTests
+
   const httpFiltersActive = !!(httpSearch || httpMethod || httpStatus || httpDuration || httpPreset)
   const jobFiltersActive = !!(jobSearch || jobStatus || jobDuration)
   const consoleFiltersActive = !!(consoleSearch || consoleStatus)
+  const testFiltersActive = !!(testSearch || testStatus)
   const outboundFiltersActive = !!(outboundSearch || outboundMethod || outboundStatus)
 
   const sortIcon = (activeCol: string | null, dir: SortDir, col: string) => {
@@ -479,7 +586,9 @@ export function ProfileList() {
           <a href="#" class={tabClass('http')} onClick={e => { e.preventDefault(); handleSectionChange('http') }}>HTTP Requests</a>
           <a href="#" class={tabClass('jobs')} onClick={e => { e.preventDefault(); handleSectionChange('jobs') }}>Background Jobs</a>
           <a href="#" class={tabClass('console')} onClick={e => { e.preventDefault(); handleSectionChange('console') }}>Console</a>
+          <a href="#" class={tabClass('tests')} onClick={e => { e.preventDefault(); handleSectionChange('tests') }}>Tests</a>
           <div style="flex: 1" />
+          <a href="#" class={tabClass('runner')} onClick={e => { e.preventDefault(); handleSectionChange('runner') }}>Test Runner</a>
           <a href="#" class={tabClass('outbound')} onClick={e => { e.preventDefault(); handleSectionChange('outbound') }}>Outbound HTTP</a>
           <a href="#" class={tabClass('env')} onClick={e => { e.preventDefault(); handleSectionChange('env') }}>Env</a>
         </div>
@@ -819,6 +928,117 @@ export function ProfileList() {
                 )}
               </>
             )
+          )}
+
+          {section === 'tests' && (
+            loadingTests ? (
+              <TableSkeleton cols={['sm', 'flex', 'md', 'sm', 'xs', 'sm']} />
+            ) : testsError ? (
+              <div class="profiler-empty"><div class="profiler-empty__title">{testsError}</div></div>
+            ) : tests.length === 0 ? (
+              <div class="profiler-empty">
+                <div class="profiler-empty__title">No test profiles found</div>
+                <p class="profiler-empty__description">
+                  Add <code>Profiler::TestHelpers::RSpecSupport.install(config)</code> to your spec_helper.rb and run your tests.
+                  Or use the <a href="#" style="color:var(--profiler-accent,#06b6d4)" onClick={e => { e.preventDefault(); handleSectionChange('runner') }}>Test Runner</a> tab to run tests from here.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div class="profiler-action-bar profiler-mb-3">
+                  <div class="profiler-filter-group">
+                    <input
+                      type="text"
+                      class="profiler-filter-input"
+                      placeholder="Search test name…"
+                      value={testSearch}
+                      onInput={e => setTestSearch((e.target as HTMLInputElement).value)}
+                    />
+                    <select class="profiler-filter-select" value={testStatus} onChange={e => setTestStatus((e.target as HTMLSelectElement).value)}>
+                      <option value="">All Statuses</option>
+                      <option value="passed">Passed</option>
+                      <option value="failed">Failed</option>
+                      <option value="pending">Pending</option>
+                    </select>
+                  </div>
+                  <div class="profiler-filter-group">
+                    {testFiltersActive && (
+                      <span class="profiler-filter-count">{filteredTests.length} / {tests.length}</span>
+                    )}
+                    <button class={`btn-refresh${loadingTests ? ' btn-refresh--spinning' : ''}`} onClick={refresh} disabled={loadingTests} title="Refresh">↺</button>
+                    <button class="btn btn-danger btn-sm" onClick={clearTests} title="Delete test profiles">Clear All</button>
+                  </div>
+                </div>
+                {filteredTests.length === 0 ? (
+                  <div class="profiler-empty">
+                    <div class="profiler-empty__title">No results match filters</div>
+                  </div>
+                ) : (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th class={`sortable${testSort.col === 'date' ? ' sortable--active' : ''}`} onClick={() => setTestSort(prev => ({ col: 'date', dir: prev.col === 'date' && prev.dir === 'asc' ? 'desc' : 'asc' }))}>
+                          Time {sortIcon(testSort.col, testSort.dir, 'date')}
+                        </th>
+                        <th>Test Name</th>
+                        <th>File</th>
+                        <th class={`sortable${testSort.col === 'duration' ? ' sortable--active' : ''}`} onClick={() => setTestSort(prev => ({ col: 'duration', dir: prev.col === 'duration' && prev.dir === 'asc' ? 'desc' : 'asc' }))}>
+                          Duration {sortIcon(testSort.col, testSort.dir, 'duration')}
+                        </th>
+                        <th>Queries</th>
+                        <th class={`sortable${testSort.col === 'status' ? ' sortable--active' : ''}`} onClick={() => setTestSort(prev => ({ col: 'status', dir: prev.col === 'status' && prev.dir === 'asc' ? 'desc' : 'asc' }))}>
+                          Status {sortIcon(testSort.col, testSort.dir, 'status')}
+                        </th>
+                        <th>Token</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedTests.map(p => {
+                        const testData = p.collectors_data?.test as any
+                        const isFailed = p.status === 500
+                        const status = testData?.status || (isFailed ? 'failed' : 'passed')
+                        return (
+                          <tr key={p.token}>
+                            <td>{formatTime(p.started_at)}</td>
+                            <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                              <a href={`${BASE}/profiles/${p.token}`} title={testData?.test_name || p.path}>
+                                {testData?.test_name || p.path}
+                              </a>
+                            </td>
+                            <td class="profiler-text--xs profiler-text--mono profiler-text--muted">{testData?.test_file || '-'}</td>
+                            <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
+                            <td>{p.collectors_data?.database?.total_queries ?? '—'}</td>
+                            <td>
+                              <span class={status === 'failed' ? 'badge-error' : status === 'pending' ? 'badge-warning' : 'badge-success'}>
+                                {status === 'failed' ? '✗ Failed' : status === 'pending' ? '⏸ Pending' : '✓ Passed'}
+                              </span>
+                            </td>
+                            <td class="profiler-text--xs profiler-text--mono profiler-text--muted">
+                              <button class="token-copy" onClick={() => copyToken(p.token)} title="Copy full token">
+                                {copiedToken === p.token ? '✓' : p.token.substring(0, 8) + '…'}
+                              </button>
+                            </td>
+                            <td><button class="btn-row-delete" onClick={() => deleteTest(p.token)} title="Delete">×</button></td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+                {testHasMore && !testFiltersActive && (
+                  <div class="profiler-load-more">
+                    <button class="btn btn-secondary" onClick={loadMoreTests} disabled={testLoadingMore}>
+                      {testLoadingMore ? 'Loading…' : 'Load more'}
+                    </button>
+                  </div>
+                )}
+              </>
+            )
+          )}
+
+          {section === 'runner' && (
+            <TestRunnerContent />
           )}
 
           {section === 'outbound' && (

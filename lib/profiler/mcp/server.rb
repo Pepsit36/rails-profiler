@@ -71,6 +71,7 @@ module Profiler
         require_relative "tools/get_profile_http"
         require_relative "tools/query_jobs"
         require_relative "tools/query_mailers"
+        require_relative "tools/query_test_profiles"
         require_relative "tools/clear_profiles"
         require_relative "tools/list_env_vars"
         require_relative "tools/set_env_var"
@@ -204,11 +205,26 @@ module Profiler
             handler: Tools::QueryMailers
           ),
           define_tool(
-            name: "clear_profiles",
-            description: "Clear profiler history. Omit type to clear everything, or pass 'http'/'job' to clear only requests or jobs.",
+            name: "query_test_profiles",
+            description: "Search and filter test profiles (RSpec/Minitest) by test name, status, or duration.",
             input_schema: {
               properties: {
-                type: { type: "string", description: "Optional: 'http' to clear only requests, 'job' to clear only jobs" }
+                test_name: { type: "string", description: "Filter by test name (partial match)" },
+                status: { type: "string", description: "Filter by status: 'passed', 'failed', or 'pending'" },
+                min_duration: { type: "number", description: "Minimum duration in milliseconds" },
+                limit: { type: "number", description: "Maximum number of results (default 20)" },
+                fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, test_name, status, duration, queries, n1, token. Omit for all." },
+                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen." }
+              }
+            },
+            handler: Tools::QueryTestProfiles
+          ),
+          define_tool(
+            name: "clear_profiles",
+            description: "Clear profiler history. Omit type to clear everything, or pass 'http'/'job'/'test' to clear only that type.",
+            input_schema: {
+              properties: {
+                type: { type: "string", description: "Optional: 'http' to clear only requests, 'job' to clear only jobs, 'test' to clear only test profiles" }
               }
             },
             handler: Tools::ClearProfiles
