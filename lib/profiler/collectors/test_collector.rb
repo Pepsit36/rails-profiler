@@ -39,6 +39,11 @@ module Profiler
         @exception_message = exception_message
       end
 
+      def update_extra(assertions: nil, skip_reason: nil)
+        @assertions = assertions
+        @skip_reason = skip_reason
+      end
+
       def collect
         store_data({
           test_name: @test_name,
@@ -46,7 +51,9 @@ module Profiler
           test_line: @test_line,
           framework: @framework.to_s,
           status: @status,
-          exception_message: @exception_message
+          exception_message: @exception_message,
+          assertions: @assertions,
+          skip_reason: @skip_reason
         })
       end
 

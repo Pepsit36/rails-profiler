@@ -26,6 +26,8 @@ export interface TestData {
   framework: string;
   status: 'passed' | 'failed' | 'pending' | 'running';
   exception_message?: string;
+  assertions?: number;
+  skip_reason?: string;
 }
 
 export interface TestRunFile {

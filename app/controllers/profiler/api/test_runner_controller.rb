@@ -6,6 +6,8 @@ require "profiler/test_runner/runner"
 module Profiler
   module Api
     class TestRunnerController < ApplicationController
+      include ActionController::Live
+
       skip_before_action :verify_authenticity_token
 
       def files
@@ -45,6 +47,49 @@ module Profiler
         return render json: { error: "Run not found" }, status: :not_found unless run
 
         render json: run.to_h
+      end
+
+      # SSE endpoint — streams output chunks as server-sent events.
+      # Replaces polling for live test output in the frontend.
+      def stream
+        run = Profiler::TestRunner.run_store.find(params[:id])
+        unless run
+          render json: { error: "Run not found" }, status: :not_found
+          return
+        end
+
+        response.headers["Content-Type"]  = "text/event-stream"
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["X-Accel-Buffering"] = "no"
+
+        sse = SSE.new(response.stream, retry: 1000, event: "output")
+        position = 0
+
+        begin
+          loop do
+            result = Profiler::TestRunner.run_store.wait_for_output(
+              params[:id], position: position, timeout: 15
+            )
+
+            result[:chunks].each do |chunk|
+              sse.write({ chunk: chunk })
+            end
+            position = result[:position]
+
+            if result[:finished]
+              current_run = Profiler::TestRunner.run_store.find(params[:id])
+              sse.write(
+                { status: result[:status], exit_code: current_run&.exit_code },
+                event: "done"
+              )
+              break
+            end
+          end
+        rescue ActionController::Live::ClientDisconnected, IOError
+          # Client navigated away — normal exit
+        ensure
+          sse.close
+        end
       end
 
       def destroy

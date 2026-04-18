@@ -82,19 +82,22 @@ module Profiler
         end
       end
 
+      BLOCKED_ENV_KEYS = %w[RAILS_ENV RACK_ENV DATABASE_URL SECRET_KEY_BASE].freeze
+
       def self.build_env
         base = ENV.to_h
 
-        # Inject env var overrides configured in the profiler
+        # Inject env var overrides configured in the profiler — skip blocked keys
         overrides = Profiler.env_override_store.all_overrides
         overrides.each do |key, entry|
+          next if BLOCKED_ENV_KEYS.include?(key.upcase)
           value = entry.is_a?(Hash) ? entry["value"] : entry
           base[key] = value
         end
 
-        # Ensure test environment
-        base["RAILS_ENV"] ||= "test"
-        base["RACK_ENV"]  ||= "test"
+        # Ensure test environment regardless of overrides
+        base["RAILS_ENV"] = "test"
+        base["RACK_ENV"]  = "test"
 
         base
       end
