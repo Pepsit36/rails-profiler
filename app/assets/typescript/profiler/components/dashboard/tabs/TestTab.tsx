@@ -32,6 +32,18 @@ export function TestTab({ testData }: Props) {
             <th>Framework</th>
             <td class="profiler-text--mono profiler-text--xs">{testData.framework}</td>
           </tr>
+          {testData.assertions != null && (
+            <tr>
+              <th>Assertions</th>
+              <td>{testData.assertions}</td>
+            </tr>
+          )}
+          {testData.skip_reason && (
+            <tr>
+              <th>Skip reason</th>
+              <td class="profiler-text--xs profiler-text--muted">{testData.skip_reason}</td>
+            </tr>
+          )}
           {testData.exception_message && (
             <tr>
               <th>Exception</th>

@@ -4,7 +4,6 @@ import { TestFileTree } from './TestFileTree'
 import { RunOutput } from './RunOutput'
 
 const BASE = '/_profiler'
-const POLL_INTERVAL = 1000
 
 export function TestRunnerContent() {
   const [framework, setFramework] = useState<string>('')
@@ -54,7 +53,7 @@ export function TestRunnerContent() {
       })
   }, [])
 
-  // Poll while run is active
+  // Stream output via SSE while run is active
   useEffect(() => {
     if (!currentRun || !isRunning) return
     if (['passed', 'failed', 'killed', 'error'].includes(currentRun.status)) {
@@ -62,20 +61,38 @@ export function TestRunnerContent() {
       return
     }
 
-    const timer = setTimeout(() => {
+    const es = new EventSource(`${BASE}/api/test_runner/runs/${currentRun.id}/stream`)
+
+    es.addEventListener('output', (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data)
+        setCurrentRun(prev => prev ? { ...prev, output: (prev.output || '') + data.chunk } : prev)
+      } catch {}
+    })
+
+    es.addEventListener('done', (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data)
+        setCurrentRun(prev => prev ? { ...prev, status: data.status } : prev)
+      } catch {}
+      setIsRunning(false)
+      es.close()
+    })
+
+    es.onerror = () => {
+      es.close()
+      // Fall back to one final poll to get the terminal state
       fetch(`${BASE}/api/test_runner/runs/${currentRun.id}`)
         .then(r => r.json())
         .then((data: TestRun) => {
           setCurrentRun(data)
-          if (['passed', 'failed', 'killed', 'error'].includes(data.status)) {
-            setIsRunning(false)
-          }
+          setIsRunning(false)
         })
-        .catch(() => {})
-    }, POLL_INTERVAL)
+        .catch(() => setIsRunning(false))
+    }
 
-    return () => clearTimeout(timer)
-  }, [currentRun, isRunning])
+    return () => es.close()
+  }, [currentRun?.id, isRunning])
 
   const handleFrameworkChange = (fw: string) => {
     setFramework(fw)

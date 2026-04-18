@@ -66,6 +66,32 @@ module Profiler
 
       begin
         result = block.call
+
+        # Minitest: Test#run catches assertion errors internally and returns self.
+        # Failures don't propagate — detect them from the result object.
+        if result.respond_to?(:passed?)
+          unless result.passed?
+            test_status = result.skipped? ? "pending" : "failed"
+            msg = result.failure&.message.to_s
+            error_message = msg.empty? ? nil : msg
+          end
+          test_collector.update_extra(
+            assertions: result.respond_to?(:assertions) ? result.assertions : nil,
+            skip_reason: (result.skipped? && result.failure) ? result.failure.message : nil
+          )
+        end
+
+        # RSpec: example.run catches errors internally and stores them in execution_result.
+        if result.respond_to?(:execution_result)
+          er = result.execution_result
+          rspec_status = er.status&.to_s
+          if rspec_status && rspec_status != "passed" && test_status == "passed"
+            test_status = rspec_status
+            msg = er.exception&.message.to_s
+            error_message = msg.empty? ? nil : msg
+          end
+        end
+
         result
       rescue Exception => e # rubocop:disable Lint/RescueException
         # Capture all exceptions (including test failures which may subclass Exception)
