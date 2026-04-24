@@ -60,7 +60,7 @@ module Profiler
           lines += section_views(profile)                 if want.("views")
           lines += section_cache(profile)                 if want.("cache")
           lines += section_ajax(profile)                  if want.("ajax")
-          lines += section_http(profile)                  if want.("http")
+          lines += section_http(profile, params)           if want.("http")
           lines += section_routes(profile)                if want.("routes")
           lines += section_dumps(profile)                 if want.("dumps")
           lines += section_related_jobs(profile)          if want.("related_jobs")
@@ -325,7 +325,7 @@ module Profiler
           lines
         end
 
-        def self.section_http(profile)
+        def self.section_http(profile, params = {})
           lines = []
           http_data = profile.collector_data("http")
           return lines unless http_data && http_data["total_requests"].to_i > 0
@@ -339,10 +339,39 @@ module Profiler
 
           if http_data["requests"] && !http_data["requests"].empty?
             lines << "### Request List"
-            http_data["requests"].each do |req|
+            http_data["requests"].each_with_index do |req, index|
               flag = req["duration"] >= threshold ? " [SLOW]" : ""
               err = req["status"] >= 400 || req["status"] == 0 ? " [ERROR]" : ""
-              lines << "- **#{req['method']} #{req['url']}** — #{req['status'] == 0 ? 'error' : req['status']} — #{req['duration'].round(2)} ms#{flag}#{err}"
+              lines << "\n**#{index + 1}. #{req['method']} #{req['url']}** — #{req['status'] == 0 ? 'error' : req['status']} — #{req['duration'].round(2)} ms#{flag}#{err}"
+
+              if req["request_body"] && !req["request_body"].empty?
+                lines << "**Request Body:**"
+                formatted = BodyFormatter.format_body(
+                  profile.token,
+                  "http_#{index}_request_body",
+                  req["request_body"],
+                  req["request_body_encoding"],
+                  params
+                )
+                lines << formatted if formatted
+              end
+
+              if req["response_body"] && !req["response_body"].empty?
+                lines << "**Response Body:**"
+                formatted = BodyFormatter.format_body(
+                  profile.token,
+                  "http_#{index}_response_body",
+                  req["response_body"],
+                  req["response_body_encoding"],
+                  params
+                )
+                lines << formatted if formatted
+              end
+
+              if req["backtrace"] && !req["backtrace"].empty?
+                lines << "_Backtrace:_"
+                req["backtrace"].each { |frame| lines << "  #{frame}" }
+              end
             end
             lines << ""
           end
