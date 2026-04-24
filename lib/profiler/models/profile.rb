@@ -32,9 +32,6 @@ module Profiler
         end
       end
 
-      TEXT_BODY_LIMIT   = 512 * 1024
-      BINARY_BODY_LIMIT = 256 * 1024
-
       def set_bodies(request_body:, response_body:, req_content_type:, resp_content_type:)
         req  = process_body(request_body, req_content_type)
         resp = process_body(response_body, resp_content_type)
@@ -159,10 +156,9 @@ module Profiler
         return { body: nil, encoding: "text" } if raw.nil? || raw.empty?
 
         if binary_content_type?(content_type)
-          truncated = raw.b[0, BINARY_BODY_LIMIT]
-          { body: Base64.strict_encode64(truncated), encoding: "base64" }
+          { body: Base64.strict_encode64(raw.b), encoding: "base64" }
         else
-          text = raw.encode("UTF-8", invalid: :replace, undef: :replace)[0, TEXT_BODY_LIMIT]
+          text = raw.encode("UTF-8", invalid: :replace, undef: :replace)
           if compress_body?(text)
             { body: Base64.strict_encode64(Zlib::Deflate.deflate(text)), encoding: "gzip+base64" }
           else

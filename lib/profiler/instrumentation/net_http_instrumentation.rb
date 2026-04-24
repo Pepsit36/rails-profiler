@@ -25,6 +25,24 @@ module Profiler
           # Fallback: body may be passed as the 2nd argument and only applied
           # to req inside super via req.set_body_internal(body)
           req_body = body.to_s if req_body.empty? && body
+          # Fallback: libraries like RestClient set body_stream instead of body
+          # and pass nil as the 2nd argument to Net::HTTP#request.
+          # Read the stream content, then restore it so the actual request works.
+          # RestClient::Payload doesn't implement #rewind, so we fall back to
+          # replacing body_stream with a fresh StringIO.
+          if req_body.empty? && req.body_stream
+            begin
+              stream = req.body_stream
+              req_body = stream.read.to_s
+              if stream.respond_to?(:rewind)
+                stream.rewind
+              else
+                req.body_stream = StringIO.new(req_body)
+              end
+            rescue
+              req_body = ""
+            end
+          end
           req_headers = req.to_hash.transform_values { |v| v.join(", ") }
           request_id = SecureRandom.hex(8)
           started_at = Time.now.iso8601(3)
@@ -105,9 +123,6 @@ module Profiler
 
       SKIP_HOSTS = %w[127.0.0.1 localhost ::1].freeze
 
-      TEXT_BODY_LIMIT   = 512 * 1024 # 512 KB
-      BINARY_BODY_LIMIT = 256 * 1024 # 256 KB (before base64)
-
       TEXT_CONTENT_TYPES   = /\A(text\/|application\/(json|xml|xhtml|javascript|x-www-form-urlencoded)|image\/svg)/i
       BINARY_CONTENT_TYPES = /\A(image\/|application\/pdf|application\/octet-stream|application\/zip|audio\/|video\/)/i
 
@@ -143,12 +158,10 @@ module Profiler
         mime = content_type.split(";").first.to_s.strip
 
         if mime.match?(BINARY_CONTENT_TYPES)
-          truncated = body.byteslice(0, BINARY_BODY_LIMIT) || ""
-          { body: Base64.strict_encode64(truncated.b), encoding: "base64" }
+          { body: Base64.strict_encode64(body.b), encoding: "base64" }
         else
-          # Text (including unknown content types)
           text = body.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")
-          { body: text.byteslice(0, TEXT_BODY_LIMIT), encoding: "text" }
+          { body: text, encoding: "text" }
         end
       end
 
