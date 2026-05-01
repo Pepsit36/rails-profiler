@@ -13,7 +13,8 @@ module Profiler
                     :response_headers, :collectors_data, :collectors_metadata,
                     :parent_token, :is_ajax, :profile_type,
                     :request_body, :request_body_encoding,
-                    :response_body, :response_body_encoding
+                    :response_body, :response_body_encoding,
+                    :gem_version
 
       def initialize(request = nil)
         @token = SecureRandom.hex(16)
@@ -76,6 +77,7 @@ module Profiler
 
         {
           profile_type: @profile_type,
+          gem_version: @gem_version,
           token: @token,
           path: @path,
           method: @method,
@@ -127,6 +129,7 @@ module Profiler
         profile.parent_token = data[:parent_token]
         profile.is_ajax = data[:is_ajax] || false
         profile.profile_type = data[:profile_type] || "http"
+        profile.gem_version = data[:gem_version]
 
         # Convert collectors_data keys to strings recursively for consistency
         profile.collectors_data = (data[:collectors_data] || {}).transform_keys(&:to_s).transform_values do |value|
