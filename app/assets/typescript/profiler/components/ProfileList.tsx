@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks'
 import { Profile, ProfilesResponse, HttpRequest, EnvData } from '../dashboard/types'
+import { getGemVersion } from '../dashboard/utils'
 import { HttpRequestDetail } from './dashboard/tabs/HttpTab'
 import { EnvTab } from './dashboard/tabs/EnvTab'
 
@@ -66,6 +67,7 @@ const PRESETS = [
 type PresetKey = typeof PRESETS[number]['key'] | ''
 
 export function ProfileList() {
+  const currentVersion = getGemVersion()
   const params = new URLSearchParams(window.location.search)
 
   const initialSection = (): 'http' | 'jobs' | 'outbound' | 'env' => {
@@ -442,6 +444,7 @@ export function ProfileList() {
       <div class="header">
         <h1><span class="h1-emoji">🔍</span> Rails Profiler</h1>
         <p>Recent profiled requests and jobs</p>
+        {currentVersion && <span class="profiler-version-badge">v{currentVersion}</span>}
       </div>
 
       <div class="profiler-panel profiler-mb-6">
@@ -552,7 +555,12 @@ export function ProfileList() {
                         <tr key={p.token}>
                           <td>{formatTime(p.started_at)}</td>
                           <td><span class={methodClass(p.method)}>{p.method}</span></td>
-                          <td><a href={`${BASE}/profiles/${p.token}`}>{p.path}</a></td>
+                          <td>
+                            <a href={`${BASE}/profiles/${p.token}`}>{p.path}</a>
+                            {p.gem_version && p.gem_version !== currentVersion && (
+                              <span class="profiler-version-warn" title={`Capturé avec v${p.gem_version} (actuel : v${currentVersion})`}>⚠️</span>
+                            )}
+                          </td>
                           <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
                           <td>{p.collectors_data?.database?.total_queries ?? '—'}</td>
                           <td>{formatMemory(p.memory)}</td>
@@ -651,7 +659,12 @@ export function ProfileList() {
                         return (
                           <tr key={p.token}>
                             <td>{formatTime(p.started_at)}</td>
-                            <td><a href={`${BASE}/profiles/${p.token}`}>{p.path}</a></td>
+                            <td>
+                              <a href={`${BASE}/profiles/${p.token}`}>{p.path}</a>
+                              {p.gem_version && p.gem_version !== currentVersion && (
+                                <span class="profiler-version-warn" title={`Capturé avec v${p.gem_version} (actuel : v${currentVersion})`}>⚠️</span>
+                              )}
+                            </td>
                             <td><span class="profiler-text--xs profiler-text--mono">{jobData?.queue || '-'}</span></td>
                             <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
                             <td><span class={isFailed ? 'badge-error' : 'badge-success'}>{isFailed ? '✗ Failed' : '✓ Completed'}</span></td>

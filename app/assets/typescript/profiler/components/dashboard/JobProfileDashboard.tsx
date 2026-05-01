@@ -10,6 +10,7 @@ import { LogsTab } from './tabs/LogsTab'
 import { ExceptionTab } from './tabs/ExceptionTab'
 import { EnvTab } from './tabs/EnvTab'
 import { FlameGraphTab } from './tabs/FlameGraphTab'
+import { getGemVersion } from '../../dashboard/utils'
 
 type JobTabKey = 'job' | 'database' | 'cache' | 'http' | 'jobs' | 'dump' | 'logs' | 'exception' | 'env' | 'timeline'
 
@@ -59,7 +60,13 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
           {profile.memory != null && (
             <span>Memory: <strong>{(profile.memory / 1024 / 1024).toFixed(2)} MB</strong></span>
           )}
+          {profile.gem_version && <span class="profiler-version-badge">v{profile.gem_version}</span>}
         </div>
+        {profile.gem_version && profile.gem_version !== getGemVersion() && (
+          <div class="profiler-version-mismatch">
+            ⚠️ Profil capturé avec la version <strong>{profile.gem_version}</strong> — version actuelle : <strong>{getGemVersion()}</strong>
+          </div>
+        )}
         {parent && (
           <div class="profiler-flex profiler-flex--gap-2 profiler-mt-2 profiler-text--sm">
             <span style="color:var(--profiler-text-muted)">Triggered by:</span>

@@ -50,6 +50,7 @@ module Profiler
     def run(&block)
       profile = Models::Profile.new
       profile.profile_type = "job"
+      profile.gem_version = Profiler::VERSION
       profile.path = @job_class
       profile.method = "JOB"
       profile.parent_token = @parent_token if @parent_token

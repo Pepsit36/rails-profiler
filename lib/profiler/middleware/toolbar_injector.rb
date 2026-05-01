@@ -62,7 +62,7 @@ module Profiler
       def toolbar_html
         <<~HTML
           #{ajax_interceptor_script}
-          <div id="profiler-toolbar" data-token="#{@token}"></div>
+          <div id="profiler-toolbar" data-token="#{@token}" data-version="#{Profiler::VERSION}"></div>
           <script src="/_profiler/assets/profiler-toolbar.js" defer#{nonce_attr}></script>
           <style>#{toolbar_styles}</style>
         HTML
