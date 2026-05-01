@@ -1,3 +1,7 @@
+export function getGemVersion(): string {
+  return document.querySelector<HTMLMetaElement>('meta[name="profiler-version"]')?.content ?? ''
+}
+
 export function escapeHtml(text: string): string {
   const div = document.createElement('div');
   div.textContent = text;

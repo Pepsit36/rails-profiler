@@ -20,6 +20,7 @@ module Profiler
         collectors = nil
 
         profile = Models::Profile.new(build_request(env))
+        profile.gem_version = Profiler::VERSION
         Profiler::CurrentContext.token = profile.token
 
         # Capture request body before app processes it

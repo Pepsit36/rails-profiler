@@ -424,6 +424,38 @@ table {
 }
 
 // ============================================================================
+// VERSION BADGE & MISMATCH WARNING
+// ============================================================================
+
+.profiler-version-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--profiler-radius-sm);
+  font-family: var(--profiler-font-mono);
+  font-size: var(--profiler-text-xs);
+  color: var(--profiler-text-muted);
+  background: var(--profiler-bg-lighter);
+  border: 1px solid var(--profiler-border);
+}
+
+.profiler-version-warn {
+  margin-left: 6px;
+  cursor: help;
+  font-size: var(--profiler-text-xs);
+}
+
+.profiler-version-mismatch {
+  margin-top: var(--profiler-space-2);
+  padding: var(--profiler-space-2) var(--profiler-space-3);
+  border-radius: var(--profiler-radius-sm);
+  font-size: var(--profiler-text-sm);
+  background: var(--profiler-warning-bg);
+  color: var(--profiler-warning);
+  border: 1px solid rgba(251, 146, 60, 0.3);
+}
+
+// ============================================================================
 // ANIMATIONS
 // ============================================================================
 

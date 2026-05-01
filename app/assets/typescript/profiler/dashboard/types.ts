@@ -28,6 +28,7 @@ export interface Profile {
   memory?: number;
   started_at: string;
   profile_type?: 'http' | 'job';
+  gem_version?: string;
   parent_token?: string;
   child_jobs?: ChildJobSummary[];
   parent_profile?: ParentProfileSummary;

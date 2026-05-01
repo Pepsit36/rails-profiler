@@ -14,6 +14,7 @@ import { RoutesTab } from './tabs/RoutesTab'
 import { I18nTab } from './tabs/I18nTab'
 import { JobsTab } from './tabs/JobsTab'
 import { EnvTab } from './tabs/EnvTab'
+import { getGemVersion } from '../../dashboard/utils'
 
 type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception' | 'routes' | 'i18n' | 'jobs' | 'env'
 
@@ -59,7 +60,13 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           <span style="color:var(--profiler-text-muted)">
             {new Date(profile.started_at).toLocaleString('en', { hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
+          {profile.gem_version && <span class="profiler-version-badge">v{profile.gem_version}</span>}
         </div>
+        {profile.gem_version && profile.gem_version !== getGemVersion() && (
+          <div class="profiler-version-mismatch">
+            ⚠️ Profil capturé avec la version <strong>{profile.gem_version}</strong> — version actuelle : <strong>{getGemVersion()}</strong>
+          </div>
+        )}
       </div>
 
       <div class="profiler-panel profiler-mb-6">
