@@ -76,6 +76,13 @@ module Profiler
           lines << "**Duration:** #{profile.duration.round(2)} ms"
           lines << "**Memory:** #{(profile.memory / 1024.0 / 1024.0).round(2)} MB" if profile.memory
           lines << "**Time:** #{profile.started_at}"
+          if profile.gem_version
+            if profile.gem_version != Profiler::VERSION
+              lines << "**Gem Version:** #{profile.gem_version} ⚠️ (current: #{Profiler::VERSION})"
+            else
+              lines << "**Gem Version:** #{profile.gem_version}"
+            end
+          end
           lines << "**Parent Token:** #{profile.parent_token}" if profile.parent_token
           lines << ""
           lines

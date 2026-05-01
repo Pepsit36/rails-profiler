@@ -51,17 +51,18 @@ module Profiler
         @db.execute(
           <<~SQL,
             INSERT OR REPLACE INTO profiler_profiles (
-              token, profile_type, path, method, status, duration, memory,
+              token, profile_type, gem_version, path, method, status, duration, memory,
               started_at, finished_at, parent_token, is_ajax,
               tabs, params, headers, response_headers, collectors_meta
             ) VALUES (
-              :token, :profile_type, :path, :method, :status, :duration, :memory,
+              :token, :profile_type, :gem_version, :path, :method, :status, :duration, :memory,
               :started_at, :finished_at, :parent_token, :is_ajax,
               :tabs, :params, :headers, :response_headers, :collectors_meta
             )
           SQL
           token:            token,
           profile_type:     data[:profile_type] || "http",
+          gem_version:      data[:gem_version],
           path:             data[:path],
           method:           data[:method],
           status:           data[:status],
@@ -176,6 +177,7 @@ module Profiler
           CREATE TABLE IF NOT EXISTS profiler_profiles (
             token              TEXT PRIMARY KEY,
             profile_type       TEXT NOT NULL DEFAULT 'http',
+            gem_version        TEXT,
             path               TEXT,
             method             TEXT,
             status             INTEGER,
@@ -202,6 +204,12 @@ module Profiler
           CREATE INDEX IF NOT EXISTS idx_profiler_profile_type
             ON profiler_profiles(profile_type);
         SQL
+
+        begin
+          @db.execute("ALTER TABLE profiler_profiles ADD COLUMN gem_version TEXT")
+        rescue SQLite3::Exception
+          # column already exists
+        end
       end
 
       def row_to_profile(row, load_blobs: true)
@@ -223,6 +231,7 @@ module Profiler
         Models::Profile.from_hash(
           token:                  row["token"],
           profile_type:           row["profile_type"],
+          gem_version:            row["gem_version"],
           path:                   row["path"],
           method:                 row["method"],
           status:                 row["status"],

@@ -4,7 +4,7 @@ module Profiler
   module MCP
     module Tools
       class QueryJobs
-        ALL_FIELDS = %w[time job_class queue status duration token parent_token].freeze
+        ALL_FIELDS = %w[time job_class queue status duration gem_version token parent_token].freeze
 
         def self.call(params)
           limit = params["limit"]&.to_i || 20
@@ -64,6 +64,9 @@ module Profiler
               when "queue"        then job_data["queue"] || "-"
               when "status"       then job_data["status"] || "-"
               when "duration"     then "#{profile.duration.round(2)}ms"
+              when "gem_version"
+                v = profile.gem_version || "-"
+                v != Profiler::VERSION ? "#{v} ⚠️" : v
               when "token"        then profile.token.to_s
               when "parent_token" then profile.parent_token || "-"
               end

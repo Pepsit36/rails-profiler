@@ -25,6 +25,8 @@ function mountToolbar(): void {
   const token = el.dataset.token
   if (!token) return
 
+  const currentVersion = el.dataset.version ?? ''
+
   applyTheme(el)
 
   window.addEventListener('storage', (e) => {
@@ -36,7 +38,7 @@ function mountToolbar(): void {
   }) as EventListener)
 
   const renderToolbar = (profile: Profile) => {
-    render(<ToolbarApp profile={profile} token={token} />, el)
+    render(<ToolbarApp profile={profile} token={token} currentVersion={currentVersion} />, el)
     applyTheme(el)
   }
 
