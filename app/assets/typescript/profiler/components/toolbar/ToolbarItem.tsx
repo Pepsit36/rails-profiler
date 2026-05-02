@@ -1,5 +1,5 @@
 import { ComponentChildren } from 'preact'
-import { useState, useRef, useEffect } from 'preact/hooks'
+import { useState, useRef, useLayoutEffect } from 'preact/hooks'
 
 interface Props {
   children: ComponentChildren
@@ -25,7 +25,7 @@ export function ToolbarItem({ children, panel, href, className, panelLarge }: Pr
     hideTimer.current = setTimeout(() => setVisible(false), 150)
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (visible && panelRef.current) {
       const el = panelRef.current
       el.style.left = '50%'
@@ -52,8 +52,7 @@ export function ToolbarItem({ children, panel, href, className, panelLarge }: Pr
   const panelEl = panel ? (
     <div
       ref={panelRef}
-      class={`profiler-toolbar-panel${panelLarge ? ' profiler-toolbar-panel-large' : ''}`}
-      style={{ display: visible ? 'block' : 'none' }}
+      class={`profiler-toolbar-panel${panelLarge ? ' profiler-toolbar-panel-large' : ''}${visible ? ' is-visible' : ''}`}
       onMouseEnter={show}
       onMouseLeave={hide}
     >

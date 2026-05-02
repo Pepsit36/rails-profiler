@@ -18,7 +18,6 @@ import { EnvPanel } from './panels/EnvPanel'
 interface Props {
   profile: Profile
   token: string
-  currentVersion: string
 }
 
 function statusClass(status: number): string {
@@ -43,7 +42,7 @@ function formatTime(iso: string): string {
   })
 }
 
-export function ToolbarApp({ profile, token, currentVersion }: Props) {
+export function ToolbarApp({ profile, token }: Props) {
   const cd = profile.collectors_data || {}
   const requestData = cd['request'] as Record<string, any> | undefined
   const dbData = cd['database'] as DatabaseData | undefined
@@ -67,7 +66,8 @@ export function ToolbarApp({ profile, token, currentVersion }: Props) {
   const cacheClass = (cacheData?.hit_rate ?? 0) > 80 ? 'profiler-text--success' : 'profiler-text--warning'
 
   return (
-    <div class="profiler-toolbar-container">
+    <>
+      <div class="profiler-toolbar-container">
       {requestData && (
         <>
           <ToolbarItem
@@ -280,18 +280,8 @@ export function ToolbarApp({ profile, token, currentVersion }: Props) {
         </ToolbarItem>
       )}
 
-      {profile.gem_version && profile.gem_version !== currentVersion ? (
-        <a
-          href={`/_profiler/profiles/${token}`}
-          class="profiler-toolbar-item profiler-text--warning"
-          title={`Capturé avec v${profile.gem_version} — actuel : v${currentVersion}`}
-        >
-          ⚠️ v{profile.gem_version}
-        </a>
-      ) : currentVersion ? (
-        <span class="profiler-toolbar-item" style="cursor:default">v{currentVersion}</span>
-      ) : null}
-      <a href="/_profiler" class="profiler-toolbar-item">&#11041; Profiler</a>
+      <a href="/_profiler" class="profiler-toolbar-item profiler-toolbar-logo">&#11041; Profiler</a>
     </div>
+    </>
   )
 }
