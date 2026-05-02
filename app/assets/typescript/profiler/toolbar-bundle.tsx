@@ -1,4 +1,5 @@
 import { render } from 'preact'
+import { useState, useEffect } from 'preact/hooks'
 import { ToolbarApp } from './components/toolbar/ToolbarApp'
 import type { Profile } from './dashboard/types'
 
@@ -10,80 +11,106 @@ declare global {
   }
 }
 
-function applyTheme(el: HTMLElement): void {
+const ANIM_MS = 280
+
+function applyTheme(elements: HTMLElement[]): void {
   const stored = localStorage.getItem('profiler-theme')
   const theme = stored === 'light' ? 'light'
     : stored === 'dark' ? 'dark'
     : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
-  el.setAttribute('data-theme', theme)
+  elements.forEach(el => el.setAttribute('data-theme', theme))
+}
+
+interface ToolbarMountProps {
+  token: string
+}
+
+function ToolbarMount({ token }: ToolbarMountProps) {
+  const [profile, setProfile] = useState<Profile | null>(null)
+
+  useEffect(() => {
+    const load = () => {
+      fetch(`/_profiler/api/toolbar/${token}`)
+        .then(res => res.json())
+        .then(data => { if (data.profile) setProfile(data.profile as Profile) })
+        .catch(err => console.debug('Profiler toolbar load failed:', err))
+    }
+    window.__PROFILER_REFRESH_TOOLBAR__ = load
+    load()
+  }, [token])
+
+  if (!profile) return null
+
+  return <ToolbarApp profile={profile} token={token} />
 }
 
 function mountToolbar(): void {
-  const el = document.getElementById('profiler-toolbar')
-  if (!el) return
+  const el = document.getElementById('profiler-toolbar') as HTMLElement | null
+  const toggleEl = document.getElementById('profiler-toolbar-toggle') as HTMLElement | null
+  if (!el || !toggleEl) return
 
   const token = el.dataset.token
   if (!token) return
 
-  const currentVersion = el.dataset.version ?? ''
-
-  applyTheme(el)
+  const themeEls = [el, toggleEl]
+  applyTheme(themeEls)
 
   window.addEventListener('storage', (e) => {
-    if (e.key === 'profiler-theme') applyTheme(el)
+    if (e.key === 'profiler-theme') applyTheme(themeEls)
   })
 
   window.addEventListener('profiler:theme-change', ((e: CustomEvent) => {
-    if (e.detail?.theme) el.setAttribute('data-theme', e.detail.theme)
+    if (e.detail?.theme) themeEls.forEach(elem => elem.setAttribute('data-theme', e.detail.theme))
   }) as EventListener)
 
-  const renderToolbar = (profile: Profile) => {
-    render(<ToolbarApp profile={profile} token={token} currentVersion={currentVersion} />, el)
-    applyTheme(el)
+  let isCollapsed = localStorage.getItem('profiler-toolbar-collapsed') === 'true'
+
+  // Sync toggle arrow to match current state
+  toggleEl.dataset.collapsed = String(isCollapsed)
+
+  // Fallback: if inline script didn't run (e.g. CSP blocked), hide toolbar now
+  if (isCollapsed && !el.style.transform) {
+    el.style.animation = 'none'
+    el.style.transform = 'translateX(calc(100% + 44px))'
   }
 
-  const loadAndRender = () => {
-    fetch(`/_profiler/api/toolbar/${token}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.profile) renderToolbar(data.profile as Profile)
-      })
-      .catch(err => console.debug('Profiler toolbar load failed:', err))
+  // After pfIn completes, clear its fill so translateX collapse works without conflict
+  if (!isCollapsed) {
+    setTimeout(() => { el.style.animation = 'none' }, 400)
   }
 
-  window.__PROFILER_REFRESH_TOOLBAR__ = loadAndRender
+  function toggleCollapse(): void {
+    const next = !isCollapsed
+    isCollapsed = next
+    localStorage.setItem('profiler-toolbar-collapsed', String(next))
+    toggleEl.dataset.collapsed = String(next)
 
-  loadAndRender()
+    if (next) {
+      el.style.transition = `transform ${ANIM_MS}ms cubic-bezier(0.4,0,0.2,1)`
+      el.style.transform = 'translateX(calc(100% + 44px))'
+    } else {
+      el.style.transition = 'none'
+      el.style.transform = 'translateX(calc(100% + 44px))'
+      void el.offsetWidth // force reflow so transition applies on next frame
+      el.style.transition = `transform ${ANIM_MS}ms cubic-bezier(0.4,0,0.2,1)`
+      el.style.transform = 'translateX(0)'
+      setTimeout(() => {
+        el.style.transform = ''
+        el.style.transition = ''
+      }, ANIM_MS + 50)
+    }
+  }
+
+  toggleEl.addEventListener('click', toggleCollapse)
 
   document.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.altKey && e.key === 'p') {
       e.preventDefault()
-      const hidden = el.dataset.hidden === 'true'
-      if (hidden) {
-        el.dataset.hidden = 'false'
-        el.style.transform = 'translateY(0)'
-        el.style.opacity = '1'
-        localStorage.setItem('profiler-toolbar-hidden', 'false')
-      } else {
-        el.dataset.hidden = 'true'
-        el.style.transform = 'translateY(100%)'
-        el.style.opacity = '0'
-        localStorage.setItem('profiler-toolbar-hidden', 'true')
-      }
-    }
-    if (e.key === 'Escape') {
-      el.dataset.hidden = 'true'
-      el.style.transform = 'translateY(100%)'
-      el.style.opacity = '0'
+      toggleCollapse()
     }
   })
 
-  const hidden = localStorage.getItem('profiler-toolbar-hidden') === 'true'
-  if (hidden) {
-    el.dataset.hidden = 'true'
-    el.style.transform = 'translateY(100%)'
-    el.style.opacity = '0'
-  }
+  render(<ToolbarMount token={token} />, el)
 }
 
 if (document.readyState === 'loading') {

@@ -3,6 +3,15 @@
 // Thermal aesthetic: instrument-precise, amber-accented, information-dense
 // ============================================================================
 
+@keyframes pfPop {
+  0%   { transform: scaleX(1);    }
+  15%  { transform: scaleX(1.18); }
+  40%  { transform: scaleX(0.87); }
+  65%  { transform: scaleX(1.08); }
+  85%  { transform: scaleX(0.97); }
+  100% { transform: scaleX(1);    }
+}
+
 // ============================================================================
 // SHELL
 // ============================================================================
@@ -21,6 +30,7 @@
   font-family: var(--profiler-font-mono);
   font-size: 11px;
   animation: toolbarIn 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  transition: left 280ms cubic-bezier(0.4, 0, 0.2, 1);
 
   // Amber top-line — the signature thermal accent
   &::before {
@@ -80,7 +90,6 @@
     color       var(--profiler-transition-fast),
     background  var(--profiler-transition-fast);
 
-  // Bottom heat-indicator — 0-width by default, grows on hover or by state
   &::after {
     content: '';
     position: absolute;
@@ -91,13 +100,11 @@
     background: var(--profiler-accent);
     transform: scaleX(0);
     transform-origin: left;
-    transition: transform var(--profiler-transition-base);
+    transition: transform 280ms cubic-bezier(.34,1.4,.64,1);
   }
 
   &:last-child {
     border-right: none;
-    margin-left: auto;
-    padding-left: 20px;
   }
 
   &:hover {
@@ -108,11 +115,32 @@
   }
 }
 
+// Collapse button — always last, pushed to the far right
+.profiler-toolbar-collapse-btn {
+  margin-left: auto;
+  padding: 0 14px;
+  border-left: 1px solid var(--profiler-border);
+  font-size: 10px;
+  color: var(--profiler-text-muted);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--profiler-text);
+    background: var(--profiler-accent-bg);
+    animation: pfPop 380ms ease-out both;
+  }
+}
+
 // Links (clickable items)
 a.profiler-toolbar-item {
   cursor: pointer;
   font-family: var(--profiler-font-mono);
   font-size: 11px;
+}
+
+// Logo link — no auto-margin, just its natural place
+.profiler-toolbar-logo {
+  border-right: 1px solid var(--profiler-border) !important;
 }
 
 // ============================================================================
@@ -126,15 +154,9 @@ a.profiler-toolbar-item {
 .profiler-text--muted   { color: var(--profiler-text-muted) !important; }
 .profiler-text--accent  { color: var(--profiler-accent)  !important; }
 
-// Error state: the whole segment takes on a faint red tint
-a.profiler-toolbar-item.profiler-text--error {
-  &::after { background: var(--profiler-error); }
-}
-
-// Warning state
-a.profiler-toolbar-item.profiler-text--warning {
-  &::after { background: var(--profiler-warning); }
-}
+.profiler-toolbar-item.profiler-text--error::after   { background: var(--profiler-error); }
+.profiler-toolbar-item.profiler-text--warning::after { background: var(--profiler-warning); }
+.profiler-toolbar-item.profiler-text--success::after { background: var(--profiler-success); }
 
 // ============================================================================
 // PANELS — popover detail cards that appear above toolbar items
@@ -144,7 +166,6 @@ a.profiler-toolbar-item.profiler-text--warning {
   position: relative;
 
   .profiler-toolbar-panel {
-    display: none;
     position: absolute;
     bottom: calc(100% + 12px);
     left: 50%;
@@ -159,8 +180,22 @@ a.profiler-toolbar-item.profiler-text--warning {
       0 0 0 1px var(--profiler-border-accent);
     z-index: var(--profiler-z-panel);
     overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity    160ms cubic-bezier(.4,0,.2,1),
+      visibility 0s   linear 160ms;
 
-    // Amber top bar on panels — thermal identity
+    &.is-visible {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition:
+        opacity    160ms cubic-bezier(.4,0,.2,1),
+        visibility 0s;
+    }
+
     &::before {
       content: '';
       position: absolute;
@@ -175,7 +210,6 @@ a.profiler-toolbar-item.profiler-text--warning {
       );
     }
 
-    // Arrow pointing down at toolbar item
     &::after {
       content: '';
       position: absolute;
@@ -191,9 +225,6 @@ a.profiler-toolbar-item.profiler-text--warning {
       max-width: 580px;
     }
   }
-
-  // Panels are shown/hidden by JS (initPanelInteractions in toolbar.ts)
-  // to allow viewport-aware clamping — no CSS :hover rule here.
 }
 
 // ============================================================================
@@ -340,4 +371,20 @@ a.profiler-toolbar-item.profiler-text--warning {
   letter-spacing: 0.05em;
   border-top: 1px dashed var(--profiler-border);
   margin-top: 6px;
+}
+
+// ============================================================================
+// COLLAPSED STATE — toolbar shrinks to the collapse button on the right
+// ============================================================================
+
+#profiler-toolbar[data-collapsed="true"] {
+  .profiler-toolbar-item:not(.profiler-toolbar-collapse-btn) {
+    display: none;
+  }
+
+  .profiler-toolbar-collapse-btn {
+    margin-left: 0;
+  }
+
+  &::before { opacity: 0; }
 }
