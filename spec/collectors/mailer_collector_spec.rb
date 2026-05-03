@@ -231,7 +231,7 @@ RSpec.describe Profiler::Collectors::MailerCollector do
     end
 
     context "with preview request" do
-      it "ignores process events from Rails preview paths" do
+      it "ignores all events from Rails preview paths" do
         Thread.current[:profiler_request_path] = "/rails/mailers/user_mailer/welcome_email"
 
         collector.subscribe
@@ -241,9 +241,68 @@ RSpec.describe Profiler::Collectors::MailerCollector do
         collector.collect
         data = profile.collector_data("mailer")
 
-        expect(data[:total]).to eq(1)
+        expect(data[:total]).to eq(0)
       ensure
         Thread.current[:profiler_request_path] = nil
+      end
+    end
+
+    context "with deliver_later in HTTP context" do
+      it "captures no email because deliver.action_mailer only fires in the job context" do
+        collector.subscribe
+        fire_process_event(mailer: "UserMailer", action: "welcome_email")
+        # No deliver event — simulates deliver_later where delivery happens in a background job
+
+        collector.collect
+        data = profile.collector_data("mailer")
+
+        expect(data[:total]).to eq(0)
+        expect(data[:emails]).to be_empty
+      end
+    end
+  end
+
+  describe "mailer_skip_actions" do
+    after { Profiler.configure { |c| c.mailer_skip_actions = [] } }
+
+    context "when action matches the skip list" do
+      before { Profiler.configure { |c| c.mailer_skip_actions = ["UserMailer#welcome_email"] } }
+
+      it "skips the matching mailer#action" do
+        collector.subscribe
+        fire_process_event(mailer: "UserMailer", action: "welcome_email")
+        fire_deliver_event(mailer_class: "UserMailer")
+
+        collector.collect
+        data = profile.collector_data("mailer")
+
+        expect(data[:total]).to eq(0)
+      end
+
+      it "still captures non-matching actions" do
+        collector.subscribe
+        fire_process_event(mailer: "UserMailer", action: "alert_email")
+        fire_deliver_event(mailer_class: "UserMailer")
+
+        collector.collect
+        data = profile.collector_data("mailer")
+
+        expect(data[:total]).to eq(1)
+      end
+    end
+
+    context "when the mailer class itself is in the skip list" do
+      before { Profiler.configure { |c| c.mailer_skip_actions = ["DeviseMailer"] } }
+
+      it "skips all actions for that mailer" do
+        collector.subscribe
+        fire_process_event(mailer: "DeviseMailer", action: "password_change")
+        fire_deliver_event(mailer_class: "DeviseMailer")
+
+        collector.collect
+        data = profile.collector_data("mailer")
+
+        expect(data[:total]).to eq(0)
       end
     end
   end

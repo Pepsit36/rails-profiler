@@ -44,7 +44,7 @@ export function MailerPanel({ mailerData }: Props) {
             <strong class="profiler-text--warning">{mailerData.loop_warnings.length}</strong>
           </div>
         )}
-        {mailerData.emails.slice(0, 3).map((email, i) => (
+        {[...mailerData.emails, ...mailerData.errors].slice(0, 3).map((email, i) => (
           <div key={i} class="profiler-toolbar-panel-row profiler-text--sm">
             <span class="profiler-text--muted">
               {email.mailer_class}#{email.action}
@@ -54,9 +54,9 @@ export function MailerPanel({ mailerData }: Props) {
             </span>
           </div>
         ))}
-        {mailerData.emails.length > 3 && (
+        {mailerData.total > 3 && (
           <div class="profiler-toolbar-panel-row profiler-text--muted profiler-text--xs">
-            +{mailerData.emails.length - 3} more…
+            +{mailerData.total - 3} more…
           </div>
         )}
       </div>
