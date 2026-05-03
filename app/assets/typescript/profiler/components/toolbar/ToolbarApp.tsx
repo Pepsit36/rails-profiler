@@ -1,4 +1,4 @@
-import { Profile, DatabaseData, AjaxData, PerformanceData, ViewData, CacheData, DumpData, HttpData, LogData, ExceptionData, RoutesData, I18nData, EnvData } from '../../dashboard/types'
+import { Profile, DatabaseData, AjaxData, PerformanceData, ViewData, CacheData, DumpData, HttpData, LogData, ExceptionData, RoutesData, I18nData, EnvData, MailerData } from '../../dashboard/types'
 import { ToolbarItem } from './ToolbarItem'
 import { RequestPanel } from './panels/RequestPanel'
 import { DatabasePanel } from './panels/DatabasePanel'
@@ -14,6 +14,7 @@ import { RoutesPanel } from './panels/RoutesPanel'
 import { I18nPanel } from './panels/I18nPanel'
 import { JobsPanel } from './panels/JobsPanel'
 import { EnvPanel } from './panels/EnvPanel'
+import { MailerPanel } from './panels/MailerPanel'
 
 interface Props {
   profile: Profile
@@ -57,6 +58,7 @@ export function ToolbarApp({ profile, token }: Props) {
   const routesData = cd['routes'] as RoutesData | undefined
   const i18nData = cd['i18n'] as I18nData | undefined
   const envData = cd['env'] as EnvData | undefined
+  const mailerData = cd['mailer'] as MailerData | undefined
   const childJobs = profile.child_jobs ?? []
 
   const reqClass = statusClass(profile.status)
@@ -266,6 +268,21 @@ export function ToolbarApp({ profile, token }: Props) {
           <span>{childJobs.length}</span>
           {childJobs.some(j => j.status === 'failed') && (
             <span class="profiler-text--error profiler-text--xs">✗</span>
+          )}
+        </ToolbarItem>
+      )}
+
+      {mailerData && mailerData.total > 0 && (
+        <ToolbarItem
+          href={`/_profiler/profiles/${token}?tab=mailer`}
+          className={mailerData.failed > 0 ? 'profiler-text--error' : 'profiler-text--success'}
+          panelLarge
+          panel={<MailerPanel mailerData={mailerData} />}
+        >
+          <span class="profiler-text--muted profiler-text--xs">✉️</span>
+          <span>{mailerData.total}</span>
+          {mailerData.failed > 0 && (
+            <span class="profiler-text--error profiler-text--xs">⚠ {mailerData.failed}</span>
           )}
         </ToolbarItem>
       )}

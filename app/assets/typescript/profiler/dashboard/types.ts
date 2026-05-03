@@ -56,6 +56,7 @@ export interface Profile {
     routes?: RoutesData;
     i18n?: I18nData;
     env?: EnvData;
+    mailer?: MailerData;
     [key: string]: any;  // Allow custom collector data
   };
   tabs?: TabConfig[];  // Tab configurations from collectors
@@ -278,6 +279,48 @@ export interface EnvData {
   variables: Record<string, string>;
   total: number;
   overrides?: Record<string, EnvOverride>;
+}
+
+export interface MailerEmail {
+  mailer_class: string;
+  action?: string;
+  subject?: string;
+  to?: string[];
+  from?: string[];
+  cc?: string[];
+  bcc?: string[];
+  reply_to?: string[];
+  message_id?: string;
+  delivery_method?: string;
+  delivery_mode?: 'deliver_now' | 'deliver_later';
+  duration_ms?: number;
+  delivery_ms?: number;
+  parts?: string[];
+  attachments?: { filename: string; size: number }[];
+  template?: string;
+  body_captured?: boolean;
+  body_html?: string;
+  body_text?: string;
+  error?: string;
+  triggered_at?: string;
+}
+
+export interface MailerLoopWarning {
+  key: string;
+  count: number;
+  message: string;
+}
+
+export interface MailerData {
+  total: number;
+  deliver_now: number;
+  deliver_later: number;
+  failed: number;
+  multi_part_count: number;
+  truncated?: boolean;
+  emails: MailerEmail[];
+  errors: MailerEmail[];
+  loop_warnings: MailerLoopWarning[];
 }
 
 export interface ProfilesResponse {
