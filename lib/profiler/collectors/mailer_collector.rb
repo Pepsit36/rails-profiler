@@ -51,18 +51,19 @@ module Profiler
 
         @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("deliver.action_mailer") do |_name, started, finished, _id, payload|
           next unless payload[:perform_deliveries]
+          next if rails_preview_request?
 
           delivery_ms = ((finished - started) * 1000).round(2)
           process_info = Thread.current.delete(:profiler_last_mailer_process) || {}
           mail = payload[:mail]
 
-          email = build_email_record(payload, mail, process_info, delivery_ms)
+          mailer_class = process_info[:mailer_class] || payload[:mailer_class].to_s
+          action = process_info[:action].to_s
+          config = Profiler.configuration
+          next if config.mailer_skip_actions.any? { |a| a == "#{mailer_class}##{action}" || a == mailer_class }
 
-          if email[:error]
-            @errors << email
-          else
-            @emails << email
-          end
+          email = build_email_record(payload, mail, process_info, delivery_ms)
+          email[:error] ? @errors << email : @emails << email
         rescue StandardError => e
           @errors << { error: e.message, triggered_at: Time.now.utc.iso8601(3) }
         end
@@ -82,7 +83,7 @@ module Profiler
           emails: emails.map { |e| e.transform_keys(&:to_s) },
           errors: @errors.map { |e| e.transform_keys(&:to_s) },
           loop_warnings: @loop_warnings,
-          total: @emails.size,
+          total: @emails.size + @errors.size,
           deliver_now: @emails.count { |e| e[:delivery_mode] == "deliver_now" },
           deliver_later: @emails.count { |e| e[:delivery_mode] == "deliver_later" },
           multi_part_count: @emails.count { |e| e[:parts]&.size.to_i > 1 },
@@ -160,8 +161,12 @@ module Profiler
       def extract_delivery_method(mail)
         return "unknown" unless mail
 
-        klass = mail.delivery_method&.class&.name || ""
-        klass.split("::").last&.gsub(/([A-Z])/) { "_#{$1.downcase}" }&.sub(/\A_/, "") || "unknown"
+        last = (mail.delivery_method&.class&.name || "").split("::").last || ""
+        return "unknown" if last.empty?
+
+        last.gsub(/([A-Z]+)([A-Z][a-z])/, '\1_\2')
+            .gsub(/([a-z\d])([A-Z])/, '\1_\2')
+            .downcase
       end
 
       def extract_parts(mail)

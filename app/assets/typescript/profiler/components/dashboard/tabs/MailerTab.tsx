@@ -132,8 +132,9 @@ function EmailRow({ email, onClick, isExpanded }: { email: MailerEmail; onClick:
 
 export function MailerTab({ mailerData }: Props) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
+  const [expandedErrorIndex, setExpandedErrorIndex] = useState<number | null>(null)
 
-  if (!mailerData || (mailerData.total === 0 && mailerData.failed === 0)) {
+  if (!mailerData || mailerData.total === 0) {
     return (
       <div class="profiler-empty">
         <p class="profiler-empty__description">No emails sent during this request</p>
@@ -142,6 +143,7 @@ export function MailerTab({ mailerData }: Props) {
   }
 
   const toggleRow = (i: number) => setExpandedIndex(expandedIndex === i ? null : i)
+  const toggleErrorRow = (i: number) => setExpandedErrorIndex(expandedErrorIndex === i ? null : i)
 
   return (
     <>
@@ -166,7 +168,7 @@ export function MailerTab({ mailerData }: Props) {
 
       {/* Loop warnings */}
       {mailerData.loop_warnings.length > 0 && (
-        <div class="profiler-mb-4" style="background: var(--profiler-warning-bg, rgba(251,191,36,0.1)); border: 1px solid var(--profiler-warning, #f59e0b); border-radius: 4px; padding: 12px;">
+        <div class="profiler-mb-4" style={{ background: 'var(--profiler-warning-bg, rgba(251,191,36,0.1))', border: '1px solid var(--profiler-warning, #f59e0b)', borderRadius: '4px', padding: '12px' }}>
           <strong class="profiler-text--warning">⚠️ Send loop detected</strong>
           {mailerData.loop_warnings.map((w, i) => (
             <div key={i} class="profiler-text--sm profiler-mt-2">{w.message}</div>
@@ -204,8 +206,8 @@ export function MailerTab({ mailerData }: Props) {
             <EmailRow
               key={`err-${i}`}
               email={email}
-              onClick={() => toggleRow(1000 + i)}
-              isExpanded={expandedIndex === 1000 + i}
+              onClick={() => toggleErrorRow(i)}
+              isExpanded={expandedErrorIndex === i}
             />
           ))}
         </>
