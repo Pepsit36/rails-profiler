@@ -6,11 +6,13 @@ module Profiler
   module Collectors
     class MailerCollector < BaseCollector
       MAX_EMAILS = 50
+      MAX_BODY_SIZE = 100 * 1024 # 100 KB
 
       def initialize(profile)
         super
         @emails = []
         @errors = []
+        @queued = []
         @loop_warnings = []
         @subscriptions = []
       end
@@ -42,14 +44,20 @@ module Profiler
         # job threads delivering mail enqueued via deliver_later) are ignored by this collector.
         @subscriber_thread = Thread.current
 
+        # Use a stack so multiple deliver_later calls in the same request are all tracked.
+        Thread.current[:profiler_pending_processes] ||= []
+
         @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("process.action_mailer") do |_name, started, finished, _id, payload|
           next unless Thread.current.equal?(@subscriber_thread)
           next if rails_preview_request?
 
-          Thread.current[:profiler_last_mailer_process] = {
-            mailer_class: payload[:mailer].to_s,
-            action: payload[:action].to_s,
-            duration_ms: ((finished - started) * 1000).round(2)
+          mailer_class = payload[:mailer].to_s
+          action = payload[:action].to_s
+          (Thread.current[:profiler_pending_processes] ||= []) << {
+            mailer_class: mailer_class,
+            action: action,
+            duration_ms: ((finished - started) * 1000).round(2),
+            assigns: extract_assigns(mailer_class, action, payload[:args])
           }
         end
 
@@ -59,8 +67,7 @@ module Profiler
           next if rails_preview_request?
 
           delivery_ms = ((finished - started) * 1000).round(2)
-          process_info = Thread.current[:profiler_last_mailer_process] || {}
-          Thread.current[:profiler_last_mailer_process] = nil
+          process_info = (Thread.current[:profiler_pending_processes] ||= []).pop || {}
           mail = payload[:mail]
 
           mailer_class = process_info[:mailer_class] || payload[:mailer_class].to_s
@@ -77,7 +84,23 @@ module Profiler
       end
 
       def collect
-        Thread.current[:profiler_last_mailer_process] = nil
+        # Any remaining pending process entries had no matching deliver event:
+        # they were enqueued via deliver_later in the HTTP context.
+        pending = Thread.current[:profiler_pending_processes] || []
+        Thread.current[:profiler_pending_processes] = nil
+
+        pending.each do |info|
+          @queued << {
+            mailer_class: info[:mailer_class],
+            action: info[:action],
+            delivery_mode: "deliver_later",
+            delivery_method: extract_delivery_method,
+            duration_ms: info[:duration_ms],
+            assigns: info[:assigns],
+            body_captured: false,
+            triggered_at: Time.now.utc.iso8601(3)
+          }
+        end
 
         @subscriptions.each { |sub| ActiveSupport::Notifications.unsubscribe(sub) }
 
@@ -89,8 +112,10 @@ module Profiler
         store_data(
           emails: emails.map { |e| e.transform_keys(&:to_s) },
           errors: @errors.map { |e| e.transform_keys(&:to_s) },
-          loop_warnings: @loop_warnings,
+          queued: @queued.map { |e| e.transform_keys(&:to_s) },
+          loop_warnings: @loop_warnings.map { |w| w.transform_keys(&:to_s) },
           total: @emails.size + @errors.size,
+          queued_count: @queued.size,
           deliver_now: @emails.count { |e| e[:delivery_mode] == "deliver_now" },
           deliver_later: @emails.count { |e| e[:delivery_mode] == "deliver_later" },
           multi_part_count: @emails.count { |e| e[:parts]&.size.to_i > 1 },
@@ -100,12 +125,13 @@ module Profiler
       end
 
       def has_data?
-        @emails.any? || @errors.any?
+        @emails.any? || @errors.any? || @queued.any?
       end
 
       def toolbar_summary
         total = @emails.size + @errors.size
-        return { text: "0 emails", color: "gray" } if total == 0
+        queued = @queued.size
+        return { text: "0 emails", color: "gray" } if total == 0 && queued == 0
 
         now_count = @emails.count { |e| e[:delivery_mode] == "deliver_now" }
         later_count = @emails.count { |e| e[:delivery_mode] == "deliver_later" }
@@ -114,9 +140,10 @@ module Profiler
         parts = []
         parts << "#{now_count} now" if now_count > 0
         parts << "#{later_count} later" if later_count > 0
+        parts << "#{queued} queued" if queued > 0
         detail = parts.any? ? " (#{parts.join(" · ")})" : ""
 
-        text = "#{total} email#{total > 1 ? "s" : ""}#{detail}"
+        text = "#{total + queued} email#{(total + queued) > 1 ? "s" : ""}#{detail}"
         text += " ⚠️ #{@errors.size} error#{@errors.size > 1 ? "s" : ""}" if @errors.any?
 
         { text: text, color: has_errors ? "red" : "green" }
@@ -134,10 +161,11 @@ module Profiler
         action = process_info[:action]
 
         # In Rails 7+, payload[:mail] is the encoded string (mail.encoded), not a Mail::Message.
-        # Parse it only for attributes not available in the payload (parts, attachments, reply_to).
+        # Parse it only for attributes not available in the payload (parts, attachments, reply_to, body).
         mail_obj = parse_mail(mail)
 
         to_list = sanitize_recipients(Array(payload[:to]), config)
+        body_html, body_text = config.capture_mail_body ? extract_body(mail_obj) : [nil, nil]
 
         {
           mailer_class: mailer_class,
@@ -156,12 +184,53 @@ module Profiler
           parts: extract_parts(mail_obj),
           attachments: extract_attachments(mail_obj),
           template: action ? "#{to_path(mailer_class)}/#{action}" : nil,
-          body_captured: false,
-          body_html: nil,
-          body_text: nil,
+          assigns: process_info[:assigns] || {},
+          body_captured: !body_html.nil? || !body_text.nil?,
+          body_html: body_html,
+          body_text: body_text,
           error: nil,
           triggered_at: Time.now.utc.iso8601(3)
         }
+      end
+
+      def extract_assigns(mailer_class, action, args)
+        return {} if action.nil? || action.empty? || args.nil?
+
+        klass = Object.const_get(mailer_class)
+        params = klass.instance_method(action).parameters
+        params.each_with_index.each_with_object({}) do |((_, name), i), h|
+          h[name.to_s] = serialize_assign(args[i])
+        end
+      rescue StandardError
+        {}
+      end
+
+      def extract_body(mail)
+        return [nil, nil] unless mail.respond_to?(:multipart?)
+
+        html = text = nil
+        if mail.multipart?
+          html_part = mail.parts.find { |p| p.content_type.to_s.start_with?("text/html") }
+          text_part = mail.parts.find { |p| p.content_type.to_s.start_with?("text/plain") }
+          html = html_part&.body&.decoded&.then { |b| b[0, MAX_BODY_SIZE] }
+          text = text_part&.body&.decoded&.then { |b| b[0, MAX_BODY_SIZE] }
+        elsif mail.content_type.to_s.start_with?("text/html")
+          html = mail.body.decoded[0, MAX_BODY_SIZE]
+        else
+          text = mail.body.decoded[0, MAX_BODY_SIZE]
+        end
+        [html.nil? || html.empty? ? nil : html, text.nil? || text.empty? ? nil : text]
+      rescue StandardError
+        [nil, nil]
+      end
+
+      def serialize_assign(value)
+        return "nil" if value.nil?
+
+        inspected = value.inspect
+        inspected.length > 300 ? "#{inspected[0, 300]}…" : inspected
+      rescue StandardError
+        value.to_s
       end
 
       def parse_mail(mail)
@@ -207,11 +276,11 @@ module Profiler
 
         (mail.attachments || []).map do |att|
           {
-            filename: att.filename.to_s,
-            size: att.body.decoded.bytesize
+            "filename" => att.filename.to_s,
+            "size" => att.body.decoded.bytesize
           }
         rescue StandardError
-          { filename: att.filename.to_s, size: 0 }
+          { "filename" => att.filename.to_s, "size" => 0 }
         end
       end
 
