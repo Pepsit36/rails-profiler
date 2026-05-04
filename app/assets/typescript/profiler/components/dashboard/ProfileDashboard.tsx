@@ -14,9 +14,10 @@ import { RoutesTab } from './tabs/RoutesTab'
 import { I18nTab } from './tabs/I18nTab'
 import { JobsTab } from './tabs/JobsTab'
 import { EnvTab } from './tabs/EnvTab'
+import { MailerTab } from './tabs/MailerTab'
 import { getGemVersion } from '../../dashboard/utils'
 
-type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception' | 'routes' | 'i18n' | 'jobs' | 'env'
+type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception' | 'routes' | 'i18n' | 'jobs' | 'env' | 'mailer'
 
 interface Props {
   profile: Profile
@@ -33,6 +34,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
   const hasRoutes = ((cd['routes'] as any)?.total ?? 0) > 0
   const hasI18n = ((cd['i18n'] as any)?.total ?? 0) > 0
   const hasJobs = (profile.child_jobs?.length ?? 0) > 0
+  const hasMailers = ((cd['mailer'] as any)?.total ?? 0) > 0
 
   const [activeTab, setActiveTab] = useState<TabKey>(hasException ? 'exception' : initialTab)
 
@@ -98,6 +100,9 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {hasJobs && (
             <a href="#" class={tabClass('jobs')} onClick={handleTabClick('jobs')}>Jobs ({profile.child_jobs!.length})</a>
           )}
+          {hasMailers && (
+            <a href="#" class={tabClass('mailer')} onClick={handleTabClick('mailer')}>Mailers</a>
+          )}
           <a href="#" class={tabClass('env')} onClick={handleTabClick('env')}>Env</a>
         </div>
 
@@ -115,6 +120,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {activeTab === 'routes' && <RoutesTab routesData={cd['routes'] as any} />}
           {activeTab === 'i18n' && <I18nTab i18nData={cd['i18n'] as any} />}
           {activeTab === 'jobs' && <JobsTab jobs={profile.child_jobs!} />}
+          {activeTab === 'mailer' && <MailerTab mailerData={cd['mailer'] as any} />}
           {activeTab === 'env' && <EnvTab envData={cd['env'] as any} readOnly />}
         </div>
       </div>

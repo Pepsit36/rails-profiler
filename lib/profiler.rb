@@ -103,6 +103,7 @@ require_relative "profiler/collectors/exception_collector"
 require_relative "profiler/collectors/routes_collector"
 require_relative "profiler/collectors/i18n_collector"
 require_relative "profiler/collectors/env_collector"
+require_relative "profiler/collectors/mailer_collector"
 
 require_relative "profiler/env_override_store"
 require_relative "profiler/railtie" if defined?(Rails::Railtie)
