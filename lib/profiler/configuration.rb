@@ -11,6 +11,7 @@ module Profiler
                   :track_ajax, :ajax_skip_paths,
                   :track_http, :slow_http_threshold, :http_skip_hosts,
                   :track_jobs,
+                  :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
                   :compress_bodies, :compress_body_threshold
 
     attr_writer :tmp_path
@@ -41,6 +42,10 @@ module Profiler
       @slow_http_threshold = 500 # milliseconds
       @http_skip_hosts = []
       @track_jobs = true
+      @track_mailers = true
+      @capture_mail_body = false
+      @sanitize_mailer_recipients = false
+      @mailer_skip_actions = []
       @compress_bodies = true
       @compress_body_threshold = 10 * 1024 # 10 KB
       @tmp_path = nil

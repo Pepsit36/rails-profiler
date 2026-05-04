@@ -70,6 +70,7 @@ module Profiler
         require_relative "tools/get_profile_dumps"
         require_relative "tools/get_profile_http"
         require_relative "tools/query_jobs"
+        require_relative "tools/query_mailers"
         require_relative "tools/clear_profiles"
 
         [
@@ -95,7 +96,7 @@ module Profiler
             input_schema: {
               properties: {
                 token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
-                sections: { type: "array", items: { type: "string" }, description: "Sections to include. Valid values: overview, exception, job, request, response, curl, database, performance, views, cache, ajax, http, routes, dumps. Omit for all." },
+                sections: { type: "array", items: { type: "string" }, description: "Sections to include. Valid values: overview, exception, job, request, response, curl, database, performance, views, cache, ajax, http, mailers, routes, dumps. Omit for all." },
                 save_bodies: { type: "boolean", description: "Save request/response bodies to temp files and return paths instead of inlining content." },
                 max_body_size: { type: "number", description: "Truncate inlined body content at N characters. Ignored when save_bodies is true." },
                 json_path: { type: "string", description: "JSONPath expression to extract from response body (e.g. '$.data.items[0]'). Only applied when save_bodies is true." },
@@ -180,6 +181,22 @@ module Profiler
               }
             },
             handler: Tools::QueryJobs
+          ),
+          define_tool(
+            name: "query_mailers",
+            description: "Search and filter ActionMailer deliveries across profiles. Returns emails sent via deliver_now or deliver_later.",
+            input_schema: {
+              properties: {
+                mailer_class: { type: "string", description: "Filter by mailer class name (partial match, e.g. 'UserMailer')" },
+                action: { type: "string", description: "Filter by mailer action name (partial match, e.g. 'welcome_email')" },
+                delivery_mode: { type: "string", description: "Filter by delivery mode: 'deliver_now' or 'deliver_later'" },
+                has_error: { type: "boolean", description: "Filter to only emails with delivery errors" },
+                limit: { type: "number", description: "Maximum number of results (default 20)" },
+                fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, profile, mailer, action, subject, to, mode, duration, status, token. Omit for all." },
+                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen." }
+              }
+            },
+            handler: Tools::QueryMailers
           ),
           define_tool(
             name: "clear_profiles",

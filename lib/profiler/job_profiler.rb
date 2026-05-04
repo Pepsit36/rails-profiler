@@ -11,6 +11,7 @@ require_relative "collectors/log_collector"
 require_relative "collectors/exception_collector"
 require_relative "collectors/env_collector"
 require_relative "collectors/flamegraph_collector"
+require_relative "collectors/mailer_collector"
 
 module Profiler
   class JobProfiler
@@ -22,7 +23,8 @@ module Profiler
       Collectors::LogCollector,
       Collectors::ExceptionCollector,
       Collectors::EnvCollector,
-      Collectors::FlameGraphCollector
+      Collectors::FlameGraphCollector,
+      Collectors::MailerCollector
     ].freeze
 
     def self.profile(job_class:, job_id:, queue:, arguments:, executions:, parent_token: nil, &block)
@@ -74,7 +76,9 @@ module Profiler
       error_message = nil
 
       previous_token = Profiler::CurrentContext.token
+      previous_job_class = Thread.current[:profiler_current_job_class]
       Profiler::CurrentContext.token = profile.token
+      Thread.current[:profiler_current_job_class] = @job_class
       begin
         result = block.call
         result
@@ -84,6 +88,7 @@ module Profiler
         exception_collector&.capture(e)
         raise
       ensure
+        Thread.current[:profiler_current_job_class] = previous_job_class
         Profiler::CurrentContext.token = previous_token
         if Profiler.configuration.track_memory
           profile.memory = current_memory - memory_before

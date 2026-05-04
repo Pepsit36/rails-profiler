@@ -61,6 +61,7 @@ module Profiler
           lines += section_cache(profile)                 if want.("cache")
           lines += section_ajax(profile)                  if want.("ajax")
           lines += section_http(profile, params)           if want.("http")
+          lines += section_mailers(profile)               if want.("mailers")
           lines += section_routes(profile)                if want.("routes")
           lines += section_dumps(profile)                 if want.("dumps")
           lines += section_related_jobs(profile)          if want.("related_jobs")
@@ -382,6 +383,56 @@ module Profiler
             end
             lines << ""
           end
+          lines
+        end
+
+        def self.section_mailers(profile)
+          lines = []
+          mailer_data = profile.collector_data("mailer")
+          return lines unless mailer_data && mailer_data["total"].to_i > 0
+
+          lines << "## Mailers"
+          lines << "- Total: #{mailer_data['total']}"
+          lines << "- deliver_now: #{mailer_data['deliver_now']}"
+          lines << "- deliver_later: #{mailer_data['deliver_later']}"
+          lines << "- Errors: #{mailer_data['failed']}"
+          lines << "- Multi-part: #{mailer_data['multi_part_count']}"
+          lines << "- Truncated: yes (showing first #{Profiler::Collectors::MailerCollector::MAX_EMAILS})" if mailer_data["truncated"]
+
+          warnings = mailer_data["loop_warnings"] || []
+          if warnings.any?
+            lines << ""
+            lines << "### ⚠️ Loop Warnings"
+            warnings.each { |w| lines << "- #{w['message']}" }
+          end
+
+          emails = mailer_data["emails"] || []
+          if emails.any?
+            lines << ""
+            lines << "### Emails"
+            lines << ""
+            lines << "| Mailer | Action | Subject | To | Mode | Duration | Status |"
+            lines << "|--------|--------|---------|-----|------|----------|--------|"
+            emails.each do |email|
+              to_str = Array(email["to"]).first(2).join(", ")
+              to_str += ", …" if Array(email["to"]).size > 2
+              mode = email["delivery_mode"] || "-"
+              duration = email["duration_ms"] ? "#{email["duration_ms"]}ms" : "-"
+              status = email["error"] ? "❌ #{email["error"]}" : "✅"
+              lines << "| #{email["mailer_class"]} | #{email["action"]} | #{(email["subject"].to_s)[0, 30]} | #{to_str} | #{mode} | #{duration} | #{status} |"
+            end
+            lines << ""
+          end
+
+          errors = mailer_data["errors"] || []
+          if errors.any?
+            lines << "### Delivery Errors"
+            errors.each do |err|
+              lines << "- **#{err["mailer_class"]}##{err["action"]}**: #{err["error"]}"
+            end
+            lines << ""
+          end
+
           lines
         end
 

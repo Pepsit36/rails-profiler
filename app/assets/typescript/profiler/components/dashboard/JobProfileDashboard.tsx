@@ -10,9 +10,10 @@ import { LogsTab } from './tabs/LogsTab'
 import { ExceptionTab } from './tabs/ExceptionTab'
 import { EnvTab } from './tabs/EnvTab'
 import { FlameGraphTab } from './tabs/FlameGraphTab'
+import { MailerTab } from './tabs/MailerTab'
 import { getGemVersion } from '../../dashboard/utils'
 
-type JobTabKey = 'job' | 'database' | 'cache' | 'http' | 'jobs' | 'dump' | 'logs' | 'exception' | 'env' | 'timeline'
+type JobTabKey = 'job' | 'database' | 'cache' | 'http' | 'jobs' | 'dump' | 'logs' | 'exception' | 'env' | 'timeline' | 'mailer'
 
 interface Props {
   profile: Profile
@@ -27,8 +28,9 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
   const hasDumps = ((cd['dump'] as any)?.count ?? 0) > 0
   const hasLogs = ((cd['logs'] as any)?.total ?? 0) > 0
   const hasException = !!(cd['exception'] as any)?.exception_class
+  const hasMailers = ((cd['mailer'] as any)?.total ?? 0) > 0
 
-  const validTabs: JobTabKey[] = ['job', 'database', 'cache', 'http', 'jobs', 'dump', 'logs', 'exception', 'env', 'timeline']
+  const validTabs: JobTabKey[] = ['job', 'database', 'cache', 'http', 'jobs', 'dump', 'logs', 'exception', 'env', 'timeline', 'mailer']
   const defaultTab: JobTabKey = validTabs.includes(initialTab as JobTabKey) ? (initialTab as JobTabKey) : 'job'
   const [activeTab, setActiveTab] = useState<JobTabKey>(hasException ? 'exception' : defaultTab)
   const jobData = cd['job'] as any
@@ -101,6 +103,9 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
           {hasLogs && (
             <a href="#" class={tabClass('logs')} onClick={handleTabClick('logs')}>Logs</a>
           )}
+          {hasMailers && (
+            <a href="#" class={tabClass('mailer')} onClick={handleTabClick('mailer')}>Mailers</a>
+          )}
           <a href="#" class={tabClass('env')} onClick={handleTabClick('env')}>Env</a>
         </div>
 
@@ -114,6 +119,7 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
           {activeTab === 'jobs' && <JobsTab jobs={profile.child_jobs!} />}
           {activeTab === 'dump' && <DumpsTab dumpData={cd['dump'] as any} />}
           {activeTab === 'logs' && <LogsTab logData={cd['logs'] as any} />}
+          {activeTab === 'mailer' && <MailerTab mailerData={cd['mailer'] as any} />}
           {activeTab === 'env' && <EnvTab envData={cd['env'] as any} readOnly />}
         </div>
       </div>
