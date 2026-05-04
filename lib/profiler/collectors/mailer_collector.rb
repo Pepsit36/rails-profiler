@@ -54,7 +54,8 @@ module Profiler
           next if rails_preview_request?
 
           delivery_ms = ((finished - started) * 1000).round(2)
-          process_info = Thread.current.delete(:profiler_last_mailer_process) || {}
+          process_info = Thread.current[:profiler_last_mailer_process] || {}
+          Thread.current[:profiler_last_mailer_process] = nil
           mail = payload[:mail]
 
           mailer_class = process_info[:mailer_class] || payload[:mailer_class].to_s
@@ -70,7 +71,7 @@ module Profiler
       end
 
       def collect
-        Thread.current.delete(:profiler_last_mailer_process)
+        Thread.current[:profiler_last_mailer_process] = nil
 
         @subscriptions.each { |sub| ActiveSupport::Notifications.unsubscribe(sub) }
 
