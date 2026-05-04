@@ -125,12 +125,7 @@ RSpec.describe Profiler::Collectors::MailerCollector do
         mail_obj = double("mail",
           multipart?: true,
           parts: [part_html, part_text],
-          cc: nil, reply_to: nil,
-          delivery_method: nil,
-          message_id: "<multi@mail>",
-          subject: "Multi",
-          to: ["u@example.com"],
-          from: ["a@example.com"],
+          reply_to: nil,
           attachments: []
         )
 
@@ -154,10 +149,7 @@ RSpec.describe Profiler::Collectors::MailerCollector do
           multipart?: false,
           content_type: "text/plain",
           parts: [],
-          cc: nil, reply_to: nil,
-          delivery_method: nil,
-          message_id: nil,
-          subject: nil, to: nil, from: nil,
+          reply_to: nil,
           attachments: [att]
         )
 
