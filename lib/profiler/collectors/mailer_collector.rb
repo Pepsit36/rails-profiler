@@ -38,8 +38,12 @@ module Profiler
         return unless defined?(ActiveSupport::Notifications)
         return unless Profiler.configuration.track_mailers
 
-        # Store process event context so deliver event can pick it up
+        # Capture the subscriber thread so notifications from other threads (e.g. async
+        # job threads delivering mail enqueued via deliver_later) are ignored by this collector.
+        @subscriber_thread = Thread.current
+
         @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("process.action_mailer") do |_name, started, finished, _id, payload|
+          next unless Thread.current.equal?(@subscriber_thread)
           next if rails_preview_request?
 
           Thread.current[:profiler_last_mailer_process] = {
@@ -50,6 +54,7 @@ module Profiler
         end
 
         @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("deliver.action_mailer") do |_name, started, finished, _id, payload|
+          next unless Thread.current.equal?(@subscriber_thread)
           next unless payload[:perform_deliveries]
           next if rails_preview_request?
 
@@ -63,7 +68,8 @@ module Profiler
           config = Profiler.configuration
           next if config.mailer_skip_actions.any? { |a| a == "#{mailer_class}##{action}" || a == mailer_class }
 
-          email = build_email_record(payload, mail, process_info, delivery_ms)
+          delivery_mode = mail_delivery_job? ? "deliver_later" : "deliver_now"
+          email = build_email_record(payload, mail, process_info, delivery_ms, delivery_mode)
           email[:error] ? @errors << email : @emails << email
         rescue StandardError => e
           @errors << { error: e.message, triggered_at: Time.now.utc.iso8601(3) }
@@ -118,7 +124,11 @@ module Profiler
 
       private
 
-      def build_email_record(payload, mail, process_info, delivery_ms)
+      def mail_delivery_job?
+        Thread.current[:profiler_current_job_class].to_s.end_with?("MailDeliveryJob")
+      end
+
+      def build_email_record(payload, mail, process_info, delivery_ms, delivery_mode = "deliver_now")
         config = Profiler.configuration
         mailer_class = process_info[:mailer_class] || payload[:mailer_class].to_s
         action = process_info[:action]
@@ -140,7 +150,7 @@ module Profiler
           reply_to: Array(mail_obj&.reply_to),
           message_id: payload[:message_id],
           delivery_method: extract_delivery_method,
-          delivery_mode: "deliver_now",
+          delivery_mode: delivery_mode,
           duration_ms: process_info[:duration_ms],
           delivery_ms: delivery_ms,
           parts: extract_parts(mail_obj),

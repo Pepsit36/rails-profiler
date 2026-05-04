@@ -76,7 +76,9 @@ module Profiler
       error_message = nil
 
       previous_token = Profiler::CurrentContext.token
+      previous_job_class = Thread.current[:profiler_current_job_class]
       Profiler::CurrentContext.token = profile.token
+      Thread.current[:profiler_current_job_class] = @job_class
       begin
         result = block.call
         result
@@ -86,6 +88,7 @@ module Profiler
         exception_collector&.capture(e)
         raise
       ensure
+        Thread.current[:profiler_current_job_class] = previous_job_class
         Profiler::CurrentContext.token = previous_token
         if Profiler.configuration.track_memory
           profile.memory = current_memory - memory_before
