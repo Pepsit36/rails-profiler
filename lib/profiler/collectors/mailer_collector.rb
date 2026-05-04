@@ -123,24 +123,28 @@ module Profiler
         mailer_class = process_info[:mailer_class] || payload[:mailer_class].to_s
         action = process_info[:action]
 
-        to_list = sanitize_recipients(Array(payload[:to] || mail&.to), config)
+        # In Rails 7+, payload[:mail] is the encoded string (mail.encoded), not a Mail::Message.
+        # Parse it only for attributes not available in the payload (parts, attachments, reply_to).
+        mail_obj = parse_mail(mail)
+
+        to_list = sanitize_recipients(Array(payload[:to]), config)
 
         {
           mailer_class: mailer_class,
           action: action,
-          subject: payload[:subject] || mail&.subject,
+          subject: payload[:subject],
           to: to_list,
-          from: Array(payload[:from] || mail&.from),
-          cc: Array(mail&.cc),
-          bcc: [],
-          reply_to: Array(mail&.reply_to),
-          message_id: payload[:message_id] || mail&.message_id,
-          delivery_method: extract_delivery_method(mail),
+          from: Array(payload[:from]),
+          cc: Array(payload[:cc]),
+          bcc: Array(payload[:bcc]),
+          reply_to: Array(mail_obj&.reply_to),
+          message_id: payload[:message_id],
+          delivery_method: extract_delivery_method,
           delivery_mode: "deliver_now",
           duration_ms: process_info[:duration_ms],
           delivery_ms: delivery_ms,
-          parts: extract_parts(mail),
-          attachments: extract_attachments(mail),
+          parts: extract_parts(mail_obj),
+          attachments: extract_attachments(mail_obj),
           template: action ? "#{to_path(mailer_class)}/#{action}" : nil,
           body_captured: false,
           body_html: nil,
@@ -148,6 +152,15 @@ module Profiler
           error: nil,
           triggered_at: Time.now.utc.iso8601(3)
         }
+      end
+
+      def parse_mail(mail)
+        return mail if mail.respond_to?(:multipart?)
+        return nil unless mail.is_a?(String)
+
+        Mail.new(mail)
+      rescue StandardError
+        nil
       end
 
       def sanitize_recipients(recipients, config)
@@ -159,15 +172,12 @@ module Profiler
         end
       end
 
-      def extract_delivery_method(mail)
-        return "unknown" unless mail
+      def extract_delivery_method
+        return "unknown" unless defined?(ActionMailer::Base)
 
-        last = (mail.delivery_method&.class&.name || "").split("::").last || ""
-        return "unknown" if last.empty?
-
-        last.gsub(/([A-Z]+)([A-Z][a-z])/, '\1_\2')
-            .gsub(/([a-z\d])([A-Z])/, '\1_\2')
-            .downcase
+        ActionMailer::Base.delivery_method.to_s
+      rescue StandardError
+        "unknown"
       end
 
       def extract_parts(mail)
