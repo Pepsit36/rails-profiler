@@ -11,6 +11,7 @@ require_relative "collectors/log_collector"
 require_relative "collectors/exception_collector"
 require_relative "collectors/env_collector"
 require_relative "collectors/flamegraph_collector"
+require_relative "collectors/mailer_collector"
 
 module Profiler
   class JobProfiler
@@ -22,7 +23,8 @@ module Profiler
       Collectors::LogCollector,
       Collectors::ExceptionCollector,
       Collectors::EnvCollector,
-      Collectors::FlameGraphCollector
+      Collectors::FlameGraphCollector,
+      Collectors::MailerCollector
     ].freeze
 
     def self.profile(job_class:, job_id:, queue:, arguments:, executions:, parent_token: nil, &block)
