@@ -240,7 +240,7 @@ RSpec.describe Profiler::Collectors::MailerCollector do
     end
 
     context "with deliver_later in HTTP context" do
-      it "captures no email because deliver.action_mailer only fires in the job context" do
+      it "records a queued entry and no delivered email" do
         collector.subscribe
         fire_process_event(mailer: "UserMailer", action: "welcome_email")
         # No deliver event — simulates deliver_later where delivery happens in a background job
@@ -250,6 +250,128 @@ RSpec.describe Profiler::Collectors::MailerCollector do
 
         expect(data[:total]).to eq(0)
         expect(data[:emails]).to be_empty
+        expect(data[:queued_count]).to eq(1)
+        expect(data[:queued].first["mailer_class"]).to eq("UserMailer")
+        expect(data[:queued].first["action"]).to eq("welcome_email")
+        expect(data[:queued].first["delivery_mode"]).to eq("deliver_later")
+      end
+    end
+
+    context "thread isolation" do
+      it "ignores events fired from a different thread" do
+        collector.subscribe
+
+        other_thread = Thread.new do
+          fire_process_event(mailer: "UserMailer", action: "welcome_email")
+          fire_deliver_event(mailer_class: "UserMailer")
+        end
+        other_thread.join
+
+        collector.collect
+        data = profile.collector_data("mailer")
+
+        expect(data[:total]).to eq(0)
+        expect(data[:emails]).to be_empty
+      end
+    end
+
+    context "deliver_later mode detection" do
+      it "marks email as deliver_later when running inside MailDeliveryJob" do
+        Thread.current[:profiler_current_job_class] = "ActionMailer::MailDeliveryJob"
+
+        collector.subscribe
+        fire_process_event
+        fire_deliver_event
+
+        collector.collect
+        data = profile.collector_data("mailer")
+
+        expect(data[:emails].first["delivery_mode"]).to eq("deliver_later")
+        expect(data[:deliver_later]).to eq(1)
+        expect(data[:deliver_now]).to eq(0)
+      ensure
+        Thread.current[:profiler_current_job_class] = nil
+      end
+
+      it "marks email as deliver_now by default" do
+        Thread.current[:profiler_current_job_class] = nil
+
+        collector.subscribe
+        fire_process_event
+        fire_deliver_event
+
+        collector.collect
+        data = profile.collector_data("mailer")
+
+        expect(data[:emails].first["delivery_mode"]).to eq("deliver_now")
+      end
+    end
+
+    context "assigns extraction" do
+      before do
+        stub_const("DemoMailer", Class.new do
+          def greet(name, user_id); end
+        end)
+      end
+
+      it "maps parameter names to argument values" do
+        collector.subscribe
+        ActiveSupport::Notifications.instrument("process.action_mailer",
+          mailer: "DemoMailer", action: "greet", args: ["Alice", 42])
+        fire_deliver_event(mailer_class: "DemoMailer")
+
+        collector.collect
+        data = profile.collector_data("mailer")
+        assigns = data[:emails].first["assigns"]
+
+        expect(assigns["name"]).to eq('"Alice"')
+        expect(assigns["user_id"]).to eq("42")
+      end
+    end
+
+    context "body capture" do
+      before { Profiler.configure { |c| c.track_mailers = true; c.capture_mail_body = true } }
+      after  { Profiler.configure { |c| c.capture_mail_body = false } }
+
+      it "captures HTML and text body parts from multipart mail" do
+        html_body = double("body", decoded: "<p>Hello</p>")
+        text_body = double("body", decoded: "Hello")
+        html_part = double("part", content_type: "text/html; charset=utf-8", body: html_body)
+        text_part = double("part", content_type: "text/plain; charset=utf-8", body: text_body)
+        mail_obj = double("mail",
+          multipart?: true,
+          parts: [html_part, text_part],
+          reply_to: nil,
+          attachments: []
+        )
+
+        collector.subscribe
+        fire_process_event
+        fire_deliver_event(mail: mail_obj)
+
+        collector.collect
+        data = profile.collector_data("mailer")
+        email = data[:emails].first
+
+        expect(email["body_captured"]).to be(true)
+        expect(email["body_html"]).to eq("<p>Hello</p>")
+        expect(email["body_text"]).to eq("Hello")
+      end
+
+      it "does not capture body when capture_mail_body is false" do
+        Profiler.configure { |c| c.capture_mail_body = false }
+
+        collector.subscribe
+        fire_process_event
+        fire_deliver_event
+
+        collector.collect
+        data = profile.collector_data("mailer")
+        email = data[:emails].first
+
+        expect(email["body_captured"]).to be(false)
+        expect(email["body_html"]).to be_nil
+        expect(email["body_text"]).to be_nil
       end
     end
   end
@@ -327,6 +449,14 @@ RSpec.describe Profiler::Collectors::MailerCollector do
       collector.subscribe
       fire_process_event
       fire_deliver_event
+      collector.collect
+      expect(collector.has_data?).to be(true)
+    end
+
+    it "returns true when queued emails present" do
+      collector.subscribe
+      fire_process_event
+      # no deliver event — queued
       collector.collect
       expect(collector.has_data?).to be(true)
     end

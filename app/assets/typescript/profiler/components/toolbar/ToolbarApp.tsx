@@ -272,7 +272,7 @@ export function ToolbarApp({ profile, token }: Props) {
         </ToolbarItem>
       )}
 
-      {mailerData && mailerData.total > 0 && (
+      {mailerData && (mailerData.total > 0 || (mailerData.queued_count ?? 0) > 0) && (
         <ToolbarItem
           href={`/_profiler/profiles/${token}?tab=mailer`}
           className={mailerData.failed > 0 ? 'profiler-text--error' : 'profiler-text--success'}
@@ -280,7 +280,13 @@ export function ToolbarApp({ profile, token }: Props) {
           panel={<MailerPanel mailerData={mailerData} />}
         >
           <span class="profiler-text--muted profiler-text--xs">MAIL</span>
-          <span>{mailerData.total}</span>
+          {mailerData.total > 0 && <span>{mailerData.total}</span>}
+          {mailerData.total === 0 && (mailerData.queued_count ?? 0) > 0 && (
+            <span class="profiler-text--muted">{mailerData.queued_count}q</span>
+          )}
+          {mailerData.total > 0 && (mailerData.queued_count ?? 0) > 0 && (
+            <span class="profiler-text--muted profiler-text--xs">+{mailerData.queued_count}q</span>
+          )}
           {mailerData.failed > 0 && (
             <span class="profiler-text--error profiler-text--xs">▲ {mailerData.failed}</span>
           )}

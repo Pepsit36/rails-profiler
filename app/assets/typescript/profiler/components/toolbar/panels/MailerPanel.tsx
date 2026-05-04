@@ -26,6 +26,12 @@ export function MailerPanel({ mailerData }: Props) {
             <strong>{mailerData.deliver_later}</strong>
           </div>
         )}
+        {(mailerData.queued_count ?? 0) > 0 && (
+          <div class="profiler-toolbar-panel-row">
+            <span>Queued</span>
+            <strong>{mailerData.queued_count}</strong>
+          </div>
+        )}
         {mailerData.multi_part_count > 0 && (
           <div class="profiler-toolbar-panel-row">
             <span>Multi-part</span>

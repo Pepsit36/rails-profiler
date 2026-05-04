@@ -298,6 +298,7 @@ export interface MailerEmail {
   parts?: string[];
   attachments?: { filename: string; size: number }[];
   template?: string;
+  assigns?: Record<string, string>;
   body_captured?: boolean;
   body_html?: string;
   body_text?: string;
@@ -320,6 +321,8 @@ export interface MailerData {
   truncated?: boolean;
   emails: MailerEmail[];
   errors: MailerEmail[];
+  queued?: MailerEmail[];
+  queued_count?: number;
   loop_warnings: MailerLoopWarning[];
 }
 
