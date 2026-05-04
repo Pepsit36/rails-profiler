@@ -279,8 +279,7 @@ export function ToolbarApp({ profile, token }: Props) {
           panelLarge
           panel={<MailerPanel mailerData={mailerData} />}
         >
-          <span class="profiler-text--muted profiler-text--xs">✉️</span>
-          <span>{mailerData.total}</span>
+          <span>{mailerData.total} mail{mailerData.total !== 1 ? 's' : ''}</span>
           {mailerData.failed > 0 && (
             <span class="profiler-text--error profiler-text--xs">⚠ {mailerData.failed}</span>
           )}

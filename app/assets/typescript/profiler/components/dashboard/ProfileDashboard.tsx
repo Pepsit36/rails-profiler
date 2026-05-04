@@ -101,7 +101,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
             <a href="#" class={tabClass('jobs')} onClick={handleTabClick('jobs')}>Jobs ({profile.child_jobs!.length})</a>
           )}
           {hasMailers && (
-            <a href="#" class={tabClass('mailer')} onClick={handleTabClick('mailer')}>✉️ Mailers</a>
+            <a href="#" class={tabClass('mailer')} onClick={handleTabClick('mailer')}>Mailers</a>
           )}
           <a href="#" class={tabClass('env')} onClick={handleTabClick('env')}>Env</a>
         </div>
