@@ -44,9 +44,28 @@ module Profiler
             end
           end
           req_headers = req.to_hash.transform_values { |v| v.join(", ") }
+          req_content_type = req["content-type"].to_s
+          processed_req = req_body.empty? ? { body: nil, encoding: "text" } : NetHttpInstrumentation.process_body(req_body, req_content_type)
+
           request_id = SecureRandom.hex(8)
           started_at = Time.now.iso8601(3)
           t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+          # Register the request as pending before the network call so that
+          # fire-and-forget threads appear in the UI immediately, even if
+          # collect() runs before this thread completes.
+          entry = collector.register_pending(
+            id: request_id,
+            started_at: started_at,
+            url: url,
+            method: req.method,
+            request_headers: req_headers,
+            request_body: processed_req[:body],
+            request_body_encoding: processed_req[:encoding],
+            request_size: req_body.bytesize,
+            backtrace: NetHttpInstrumentation.extract_backtrace
+          )
+
           Thread.current[:profiler_http_recording] = true
 
           response = super
@@ -56,29 +75,18 @@ module Profiler
           resp_content_encoding = response["content-encoding"].to_s.strip.downcase
           resp_body = NetHttpInstrumentation.decompress_body(resp_body_raw, resp_content_encoding)
           resp_content_type = response["content-type"].to_s
-          req_content_type = req["content-type"].to_s
-
-          processed_req = req_body.empty? ? { body: nil, encoding: "text" } : NetHttpInstrumentation.process_body(req_body, req_content_type)
           processed_resp = NetHttpInstrumentation.process_body(resp_body, resp_content_type)
 
           t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-          collector.record_request(
-            id: request_id,
-            started_at: started_at,
-            url: url,
-            method: req.method,
+          collector.complete_request(
+            entry,
             status: response.code.to_i,
             duration: duration,
-            request_headers: req_headers,
-            request_body: processed_req[:body],
-            request_body_encoding: processed_req[:encoding],
-            request_size: req_body.bytesize,
             response_headers: response.to_hash.transform_values { |v| v.join(", ") },
             response_body: processed_resp[:body],
             response_body_encoding: processed_resp[:encoding],
-            response_size: resp_body_raw.bytesize,
-            backtrace: NetHttpInstrumentation.extract_backtrace
+            response_size: resp_body_raw.bytesize
           )
 
           fg = Thread.current[:profiler_flamegraph_collector]
@@ -86,26 +94,9 @@ module Profiler
 
           response
         rescue => e
-          if defined?(t0) && t0
-            duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round(2)
-            collector&.record_request(
-              id: defined?(request_id) ? request_id : SecureRandom.hex(8),
-              started_at: defined?(started_at) ? started_at : Time.now.iso8601(3),
-              url: url,
-              method: req.method,
-              status: 0,
-              duration: duration,
-              request_headers: defined?(req_headers) ? req_headers : {},
-              request_body: nil,
-              request_body_encoding: "text",
-              request_size: 0,
-              response_headers: {},
-              response_body: nil,
-              response_body_encoding: "text",
-              response_size: 0,
-              backtrace: NetHttpInstrumentation.extract_backtrace,
-              error: e.message
-            )
+          duration = defined?(t0) && t0 ? ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round(2) : 0.0
+          if defined?(entry) && entry
+            collector.fail_request(entry, error: e.message, duration: duration)
           end
           raise
         ensure
@@ -166,9 +157,8 @@ module Profiler
       end
 
       def self.extract_backtrace
-        caller_locations(5, 15)
+        caller_locations(5, 40)
           .reject { |l| l.path.to_s.include?("net/http") || l.path.to_s.include?("profiler/instrumentation") }
-          .first(5)
           .map { |l| "#{l.path}:#{l.lineno}:in `#{l.label}`" }
       end
     end
