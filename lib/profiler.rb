@@ -106,5 +106,6 @@ require_relative "profiler/collectors/env_collector"
 require_relative "profiler/collectors/mailer_collector"
 
 require_relative "profiler/env_override_store"
+require_relative "profiler/instrumentation/thread_context_propagation"
 require_relative "profiler/railtie" if defined?(Rails::Railtie)
 require_relative "profiler/engine" if defined?(Rails::Engine)

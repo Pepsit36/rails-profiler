@@ -10,6 +10,7 @@ module Profiler
         super
         @events = []
         @subscriptions = []
+        @mutex = Mutex.new
       end
 
       def icon
@@ -38,7 +39,7 @@ module Profiler
 
         # Controller action
         @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("process_action.action_controller") do |_name, started, finished, _unique_id, payload|
-          @events << Models::TimelineEvent.new(
+          add_event Models::TimelineEvent.new(
             name: "#{payload[:controller]}##{payload[:action]}",
             started_at: started,
             finished_at: finished,
@@ -57,7 +58,7 @@ module Profiler
         # Template rendering
         @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("render_template.action_view") do |_name, started, finished, _unique_id, payload|
           identifier = short_identifier(payload[:identifier])
-          @events << Models::TimelineEvent.new(
+          add_event Models::TimelineEvent.new(
             name: "Render: #{identifier}",
             started_at: started,
             finished_at: finished,
@@ -69,7 +70,7 @@ module Profiler
         # Partial rendering
         @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("render_partial.action_view") do |_name, started, finished, _unique_id, payload|
           identifier = short_identifier(payload[:identifier])
-          @events << Models::TimelineEvent.new(
+          add_event Models::TimelineEvent.new(
             name: "Partial: #{identifier}",
             started_at: started,
             finished_at: finished,
@@ -84,7 +85,7 @@ module Profiler
           next if payload[:sql] =~ /^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT)/i
 
           sql = payload[:sql].to_s
-          @events << Models::TimelineEvent.new(
+          add_event Models::TimelineEvent.new(
             name: sql.length > 80 ? "#{sql[0, 80]}..." : sql,
             started_at: started,
             finished_at: finished,
@@ -98,7 +99,7 @@ module Profiler
           @subscriptions << ActiveSupport::Notifications.monotonic_subscribe(event_name) do |name, started, finished, _unique_id, payload|
             op = name.split(".").first.sub("cache_", "")
             key = payload[:key].to_s
-            @events << Models::TimelineEvent.new(
+            add_event Models::TimelineEvent.new(
               name: "cache_#{op}: #{key.length > 60 ? "#{key[0, 60]}..." : key}",
               started_at: started,
               finished_at: finished,
@@ -111,7 +112,7 @@ module Profiler
 
       # Called by Profiler.measure to record custom instrumentation events
       def record_custom_event(label:, started_at:, finished_at:, metadata: {})
-        @events << Models::TimelineEvent.new(
+        add_event Models::TimelineEvent.new(
           name: label,
           started_at: started_at,
           finished_at: finished_at,
@@ -122,7 +123,7 @@ module Profiler
 
       # Called by NetHttpInstrumentation to record outbound HTTP events
       def record_http_event(started_at:, finished_at:, url:, method:, status:)
-        @events << Models::TimelineEvent.new(
+        add_event Models::TimelineEvent.new(
           name: "HTTP #{method} #{url}",
           started_at: started_at,
           finished_at: finished_at,
@@ -180,6 +181,10 @@ module Profiler
         end
 
         roots
+      end
+
+      def add_event(event)
+        @mutex.synchronize { @events << event }
       end
 
       def short_identifier(identifier)

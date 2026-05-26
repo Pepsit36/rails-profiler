@@ -9,6 +9,8 @@ module Profiler
       def initialize(profile)
         super
         @requests = []
+        @mutex = Mutex.new
+        @collected = false
       end
 
       def icon
@@ -40,47 +42,88 @@ module Profiler
       def collect
         Thread.current[:profiler_http_collector] = nil
 
-        threshold = Profiler.configuration.slow_http_threshold
-
-        store_data(
-          total_requests: @requests.size,
-          total_duration: @requests.sum { |r| r[:duration] }.round(2),
-          slow_requests: @requests.count { |r| r[:duration] >= threshold },
-          error_requests: @requests.count { |r| r[:status] >= 400 || r[:status] == 0 },
-          by_host: group_by_host,
-          by_status: group_by_status,
-          requests: @requests.map { |r| r.transform_keys(&:to_s) }
-        )
+        data = @mutex.synchronize do
+          @collected = true
+          build_data(@requests)
+        end
+        store_data(data)
       end
 
-      def record_request(payload)
-        @requests << payload
+      # Called from NetHttpInstrumentation before the actual HTTP call.
+      # Returns the mutable entry so the caller can update it on completion.
+      def register_pending(payload)
+        entry = payload.merge(in_flight: true, status: 0, duration: nil,
+                              response_headers: {}, response_body: nil,
+                              response_body_encoding: "text", response_size: 0)
+        @mutex.synchronize { @requests << entry }
+        save_if_collected
+        entry
+      end
+
+      # Called from NetHttpInstrumentation after the HTTP response is received.
+      def complete_request(entry, **data)
+        @mutex.synchronize { entry.merge!(data.merge(in_flight: false)) }
+        save_if_collected
+      end
+
+      # Called from NetHttpInstrumentation when the HTTP call raises.
+      def fail_request(entry, error:, duration:)
+        @mutex.synchronize { entry.merge!(in_flight: false, status: 0, duration: duration, error: error) }
+        save_if_collected
       end
 
       def toolbar_summary
-        total = @requests.size
+        requests = @mutex.synchronize { @requests.dup }
+        total = requests.size
         return { text: "0 HTTP", color: "green" } if total == 0
 
         threshold = Profiler.configuration.slow_http_threshold
-        errors = @requests.count { |r| r[:status] >= 400 || r[:status] == 0 }
-        slow = @requests.count { |r| r[:duration] >= threshold }
-        duration = @requests.sum { |r| r[:duration] }.round(2)
+        in_flight = requests.count { |r| r[:in_flight] }
+        errors = requests.count { |r| !r[:in_flight] && (r[:status] >= 400 || r[:status] == 0) }
+        slow = requests.count { |r| !r[:in_flight] && r[:duration] && r[:duration] >= threshold }
+        duration = requests.sum { |r| r[:duration].to_f }.round(2)
 
         color = if errors > 0 || slow > 0
                   "red"
-                elsif total > 10
+                elsif in_flight > 0 || total > 10
                   "orange"
                 else
                   "green"
                 end
 
-        { text: "#{total} HTTP (#{duration}ms)", color: color }
+        text = in_flight > 0 ? "#{total} HTTP (#{in_flight} pending, #{duration}ms)" : "#{total} HTTP (#{duration}ms)"
+        { text: text, color: color }
       end
 
       private
 
-      def group_by_host
-        @requests.each_with_object(Hash.new(0)) do |req, h|
+      def build_data(requests)
+        threshold = Profiler.configuration.slow_http_threshold
+        {
+          total_requests: requests.size,
+          total_duration: requests.sum { |r| r[:duration].to_f }.round(2),
+          slow_requests: requests.count { |r| !r[:in_flight] && r[:duration] && r[:duration] >= threshold },
+          error_requests: requests.count { |r| !r[:in_flight] && (r[:status] >= 400 || r[:status] == 0) },
+          by_host: group_by_host(requests),
+          by_status: group_by_status(requests),
+          requests: requests.map { |r| r.transform_keys(&:to_s) }
+        }
+      end
+
+      # Rebuilds and persists HTTP data after collect has already run.
+      # Called when fire-and-forget threads register or complete requests post-collect.
+      def save_if_collected
+        data = @mutex.synchronize do
+          return unless @collected
+
+          build_data(@requests)
+        end
+        store_data(data)
+        Profiler.storage.save(@profile.token, @profile)
+      end
+
+      def group_by_host(requests)
+        requests.each_with_object(Hash.new(0)) do |req, h|
           host = begin
             URI.parse(req[:url]).host || "unknown"
           rescue URI::InvalidURIError
@@ -90,16 +133,17 @@ module Profiler
         end
       end
 
-      def group_by_status
-        @requests.each_with_object(Hash.new(0)) do |req, h|
-          status = req[:status]
-          key = if status == 0
+      def group_by_status(requests)
+        requests.each_with_object(Hash.new(0)) do |req, h|
+          key = if req[:in_flight]
+                  "pending"
+                elsif req[:status] == 0
                   "error"
-                elsif status < 300
+                elsif req[:status] < 300
                   "2xx"
-                elsif status < 400
+                elsif req[:status] < 400
                   "3xx"
-                elsif status < 500
+                elsif req[:status] < 500
                   "4xx"
                 else
                   "5xx"
