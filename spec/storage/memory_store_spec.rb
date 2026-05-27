@@ -99,6 +99,67 @@ RSpec.describe Profiler::Storage::MemoryStore do
     end
   end
 
+  describe "#delete" do
+    it "removes the profile by token" do
+      store.save(profile.token, profile)
+      store.delete(profile.token)
+      expect(store.load(profile.token)).to be_nil
+    end
+
+    it "does not affect other profiles" do
+      other = build_profile(path: "/other")
+      store.save(profile.token, profile)
+      store.save(other.token, other)
+      store.delete(profile.token)
+      expect(store.load(other.token)).not_to be_nil
+    end
+
+    it "does nothing when token does not exist" do
+      expect { store.delete("nonexistent") }.not_to raise_error
+    end
+  end
+
+  describe "#clear" do
+    let(:http_profile) { build_profile(path: "/api/users") }
+    let(:job_profile)  { build_job_profile(path: "MyJob") }
+
+    before do
+      store.save(http_profile.token, http_profile)
+      store.save(job_profile.token, job_profile)
+    end
+
+    context "with no type argument" do
+      it "removes all profiles" do
+        store.clear
+        expect(store.list).to be_empty
+      end
+    end
+
+    context "with type: 'http'" do
+      it "removes only HTTP profiles" do
+        store.clear(type: "http")
+        expect(store.load(http_profile.token)).to be_nil
+      end
+
+      it "preserves job profiles" do
+        store.clear(type: "http")
+        expect(store.load(job_profile.token)).not_to be_nil
+      end
+    end
+
+    context "with type: 'job'" do
+      it "removes only job profiles" do
+        store.clear(type: "job")
+        expect(store.load(job_profile.token)).to be_nil
+      end
+
+      it "preserves HTTP profiles" do
+        store.clear(type: "job")
+        expect(store.load(http_profile.token)).not_to be_nil
+      end
+    end
+  end
+
   describe "capacity management" do
     it "removes oldest profiles when max_profiles is exceeded" do
       store = described_class.new(max_profiles: 5)
