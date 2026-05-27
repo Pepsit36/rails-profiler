@@ -94,17 +94,14 @@ export function ProfileList() {
   const [jobHasMore, setJobHasMore] = useState(false)
   const [jobLoadingMore, setJobLoadingMore] = useState(false)
   const [outboundRequests, setOutboundRequests] = useState<OutboundRequest[]>([])
-  const [loadingHttp, setLoadingHttp] = useState(true)
-  const [loadingJobs, setLoadingJobs] = useState(false)
-  const [loadingOutbound, setLoadingOutbound] = useState(false)
-  const [jobsLoaded, setJobsLoaded] = useState(false)
-  const [outboundLoaded, setOutboundLoaded] = useState(false)
+  const [loadingHttp, setLoadingHttp] = useState(initialSection() === 'http')
+  const [loadingJobs, setLoadingJobs] = useState(initialSection() === 'jobs')
+  const [loadingOutbound, setLoadingOutbound] = useState(initialSection() === 'outbound')
   const [error, setError] = useState<string | null>(null)
   const [jobsError, setJobsError] = useState<string | null>(null)
   const [outboundError, setOutboundError] = useState<string | null>(null)
   const [envData, setEnvData] = useState<EnvData | undefined>(undefined)
-  const [loadingEnv, setLoadingEnv] = useState(false)
-  const [envLoaded, setEnvLoaded] = useState(false)
+  const [loadingEnv, setLoadingEnv] = useState(initialSection() === 'env')
   const [envError, setEnvError] = useState<string | null>(null)
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
 
@@ -130,24 +127,7 @@ export function ProfileList() {
   const [outboundStatus, setOutboundStatus] = useState('')
 
   useEffect(() => {
-    fetch(`${BASE}/api/profiles?limit=50&offset=0`)
-      .then(res => res.json())
-      .then((data: ProfilesResponse) => {
-        setProfiles(data.profiles)
-        setHttpOffset(data.profiles.length)
-        setHttpHasMore(data.has_more)
-        setLoadingHttp(false)
-      })
-      .catch(() => {
-        setError('Failed to load profiles')
-        setLoadingHttp(false)
-      })
-  }, [])
-
-  useEffect(() => {
-    if (section === 'jobs') loadJobs()
-    if (section === 'outbound') loadOutbound()
-    if (section === 'env') loadEnv()
+    refreshSection(section)
   }, [])
 
   // Sync sort + preset to URL
@@ -201,25 +181,6 @@ export function ProfileList() {
       .catch(() => setHttpLoadingMore(false))
   }
 
-  const loadJobs = () => {
-    if (jobsLoaded) return
-    setLoadingJobs(true)
-    fetch(`${BASE}/api/jobs?limit=50&offset=0`)
-      .then(res => res.json())
-      .then((data: ProfilesResponse) => {
-        setJobs(data.profiles)
-        setJobOffset(data.profiles.length)
-        setJobHasMore(data.has_more)
-        setLoadingJobs(false)
-        setJobsLoaded(true)
-      })
-      .catch(() => {
-        setJobsError('Failed to load job profiles')
-        setLoadingJobs(false)
-        setJobsLoaded(true)
-      })
-  }
-
   const loadMoreJobs = () => {
     setJobLoadingMore(true)
     fetch(`${BASE}/api/jobs?limit=50&offset=${jobOffset}`)
@@ -233,48 +194,16 @@ export function ProfileList() {
       .catch(() => setJobLoadingMore(false))
   }
 
-  const loadOutbound = () => {
-    if (outboundLoaded) return
-    setLoadingOutbound(true)
-    fetch(`${BASE}/api/outbound_http`)
-      .then(res => res.json())
-      .then(data => {
-        setOutboundRequests(data)
-        setLoadingOutbound(false)
-        setOutboundLoaded(true)
-      })
-      .catch(() => {
-        setOutboundError('Failed to load outbound HTTP requests')
-        setLoadingOutbound(false)
-        setOutboundLoaded(true)
-      })
-  }
-
-  const loadEnv = () => {
-    if (envLoaded) return
-    setLoadingEnv(true)
-    fetch(`${BASE}/api/env_vars`)
-      .then(res => res.json())
-      .then((data: EnvData) => {
-        setEnvData(data)
-        setLoadingEnv(false)
-        setEnvLoaded(true)
-      })
-      .catch(() => {
-        setEnvError('Failed to load environment variables')
-        setLoadingEnv(false)
-        setEnvLoaded(true)
-      })
-  }
-
   const handleSectionChange = (s: 'http' | 'jobs' | 'outbound' | 'env') => {
+    if (s === section) {
+      refreshSection(s)
+      return
+    }
     setSection(s)
     const url = new URL(window.location.href)
     url.searchParams.set('section', s)
     history.pushState(null, '', url.toString())
-    if (s === 'jobs') loadJobs()
-    if (s === 'outbound') loadOutbound()
-    if (s === 'env') loadEnv()
+    refreshSection(s)
     // Reset all filters
     setHttpSearch(''); setHttpMethod(''); setHttpStatus(''); setHttpDuration('')
     setHttpPreset(''); setHttpSort({ col: null, dir: 'asc' })
@@ -302,19 +231,32 @@ export function ProfileList() {
   }
 
   const clearProfiles = () => {
+    if (!window.confirm('Delete all HTTP profiles?')) return
     fetch(`${BASE}/api/profiles/clear`, { method: 'DELETE' }).then(() => {
       setProfiles([])
     })
   }
 
   const clearJobs = () => {
+    if (!window.confirm('Delete all job profiles?')) return
     fetch(`${BASE}/api/jobs/clear`, { method: 'DELETE' }).then(() => {
       setJobs([])
     })
   }
 
-  const refresh = () => {
-    if (section === 'http') {
+  const clearAll = () => {
+    if (!window.confirm('Delete all HTTP and job profiles?')) return
+    Promise.all([
+      fetch(`${BASE}/api/profiles/clear`, { method: 'DELETE' }),
+      fetch(`${BASE}/api/jobs/clear`, { method: 'DELETE' }),
+    ]).then(() => {
+      setProfiles([])
+      setJobs([])
+    })
+  }
+
+  const refreshSection = (s: 'http' | 'jobs' | 'outbound' | 'env') => {
+    if (s === 'http') {
       setLoadingHttp(true)
       fetch(`${BASE}/api/profiles?limit=50&offset=0`)
         .then(res => res.json())
@@ -325,7 +267,7 @@ export function ProfileList() {
           setLoadingHttp(false)
         })
         .catch(() => { setError('Failed to load profiles'); setLoadingHttp(false) })
-    } else if (section === 'jobs') {
+    } else if (s === 'jobs') {
       setLoadingJobs(true)
       fetch(`${BASE}/api/jobs?limit=50&offset=0`)
         .then(res => res.json())
@@ -336,7 +278,7 @@ export function ProfileList() {
           setLoadingJobs(false)
         })
         .catch(() => { setJobsError('Failed to load job profiles'); setLoadingJobs(false) })
-    } else if (section === 'outbound') {
+    } else if (s === 'outbound') {
       setLoadingOutbound(true)
       fetch(`${BASE}/api/outbound_http`)
         .then(res => res.json())
@@ -350,6 +292,8 @@ export function ProfileList() {
         .catch(() => { setEnvError('Failed to load environment variables'); setLoadingEnv(false) })
     }
   }
+
+  const refresh = () => refreshSection(section)
 
   const tabClass = (s: 'http' | 'jobs' | 'outbound' | 'env') => `tab${section === s ? ' active' : ''}`
 
@@ -518,7 +462,8 @@ export function ProfileList() {
                       <span class="profiler-filter-count">{filteredProfiles.length} / {profiles.length}</span>
                     )}
                     <button class={`btn-refresh${loadingHttp ? ' btn-refresh--spinning' : ''}`} onClick={refresh} disabled={loadingHttp} title="Refresh">↺</button>
-                    <button class="btn btn-danger btn-sm" onClick={clearProfiles}>Clear All</button>
+                    <button class="btn btn-danger btn-sm" onClick={clearProfiles} title="Delete HTTP profiles">Clear</button>
+                    <button class="btn btn-danger btn-sm" onClick={clearAll} title="Delete all HTTP and job profiles">Clear All</button>
                   </div>
                 </div>
                 {filteredProfiles.length === 0 ? (
@@ -625,7 +570,8 @@ export function ProfileList() {
                       <span class="profiler-filter-count">{filteredJobs.length} / {jobs.length}</span>
                     )}
                     <button class={`btn-refresh${loadingJobs ? ' btn-refresh--spinning' : ''}`} onClick={refresh} disabled={loadingJobs} title="Refresh">↺</button>
-                    <button class="btn btn-danger btn-sm" onClick={clearJobs}>Clear All</button>
+                    <button class="btn btn-danger btn-sm" onClick={clearJobs} title="Delete job profiles">Clear</button>
+                    <button class="btn btn-danger btn-sm" onClick={clearAll} title="Delete all HTTP and job profiles">Clear All</button>
                   </div>
                 </div>
                 {filteredJobs.length === 0 ? (
