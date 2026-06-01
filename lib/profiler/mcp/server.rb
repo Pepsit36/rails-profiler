@@ -72,6 +72,11 @@ module Profiler
         require_relative "tools/query_jobs"
         require_relative "tools/query_mailers"
         require_relative "tools/clear_profiles"
+        require_relative "tools/list_env_vars"
+        require_relative "tools/set_env_var"
+        require_relative "tools/delete_env_var"
+        require_relative "tools/reset_env_var"
+        require_relative "tools/reset_all_env_vars"
 
         [
           define_tool(
@@ -207,6 +212,57 @@ module Profiler
               }
             },
             handler: Tools::ClearProfiles
+          ),
+          define_tool(
+            name: "list_env_vars",
+            description: "List environment variables. By default shows only active overrides. Pass include_all: true to see all ENV vars.",
+            input_schema: {
+              properties: {
+                include_all: { type: "boolean", description: "If true, return all ENV variables (not just overrides). Default: false." },
+                filter: { type: "string", description: "Case-insensitive substring filter on key name." }
+              }
+            },
+            handler: Tools::ListEnvVars
+          ),
+          define_tool(
+            name: "set_env_var",
+            description: "Set an environment variable and persist the override across app restarts.",
+            input_schema: {
+              properties: {
+                key:   { type: "string", description: "Environment variable name (required)" },
+                value: { type: "string", description: "New value (required)" }
+              },
+              required: ["key", "value"]
+            },
+            handler: Tools::SetEnvVar
+          ),
+          define_tool(
+            name: "delete_env_var",
+            description: "Delete an environment variable for this session (persisted across restarts until reset).",
+            input_schema: {
+              properties: {
+                key: { type: "string", description: "Environment variable name (required)" }
+              },
+              required: ["key"]
+            },
+            handler: Tools::DeleteEnvVar
+          ),
+          define_tool(
+            name: "reset_env_var",
+            description: "Restore an overridden environment variable to its original value.",
+            input_schema: {
+              properties: {
+                key: { type: "string", description: "Environment variable name to restore (required)" }
+              },
+              required: ["key"]
+            },
+            handler: Tools::ResetEnvVar
+          ),
+          define_tool(
+            name: "reset_all_env_vars",
+            description: "Restore all overridden environment variables to their original values.",
+            input_schema: { properties: {} },
+            handler: Tools::ResetAllEnvVars
           )
         ]
       end
