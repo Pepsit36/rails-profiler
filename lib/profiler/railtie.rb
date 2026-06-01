@@ -81,6 +81,14 @@ module Profiler
       end
     end
 
+    console do
+      next unless Profiler.configuration.enabled && Profiler.configuration.track_console
+
+      require_relative "console_profiler"
+      require_relative "instrumentation/irb_instrumentation"
+      IRB::Context.prepend(Profiler::Instrumentation::IrbInstrumentation)
+    end
+
     rake_tasks do
       load "profiler/tasks/profiler.rake"
     end

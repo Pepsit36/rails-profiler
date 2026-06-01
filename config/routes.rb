@@ -29,6 +29,9 @@ Profiler::Engine.routes.draw do
     resources :jobs, only: [:index, :show, :destroy] do
       collection { delete :clear }
     end
+    resources :console, only: [:index, :show, :destroy] do
+      collection { delete :clear }
+    end
     resources :outbound_http, only: [:index]
     get "toolbar/:token", to: "toolbar#show"
     post "ajax/link", to: "ajax#link"
