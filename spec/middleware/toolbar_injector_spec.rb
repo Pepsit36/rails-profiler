@@ -19,7 +19,7 @@ RSpec.describe Profiler::Middleware::ToolbarInjector do
       it "injects the toolbar div before </body>" do
         result = injector.inject
         content = result.join
-        expect(content).to include('<div id="profiler-toolbar" data-token="abc123token">')
+        expect(content).to include('<div id="profiler-toolbar" class="profiler-root" data-token="abc123token">')
         expect(content).to include("</body>")
         expect(content.index("profiler-toolbar")).to be < content.index("</body>")
       end

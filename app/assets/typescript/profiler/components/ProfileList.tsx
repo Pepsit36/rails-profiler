@@ -27,6 +27,7 @@ interface OutboundRequest extends HttpRequest {
 
 type SortCol = 'date' | 'duration' | 'memory' | 'status' | 'queries' | null
 type JobSortCol = 'date' | 'duration' | 'status' | null
+type ConsoleSortCol = 'date' | 'duration' | 'status' | null
 type SortDir = 'asc' | 'desc'
 
 function methodClass(method: string): string {
@@ -70,9 +71,9 @@ export function ProfileList() {
   const currentVersion = getGemVersion()
   const params = new URLSearchParams(window.location.search)
 
-  const initialSection = (): 'http' | 'jobs' | 'outbound' | 'env' => {
+  const initialSection = (): 'http' | 'jobs' | 'console' | 'outbound' | 'env' => {
     const s = params.get('section')
-    return (s === 'http' || s === 'jobs' || s === 'outbound' || s === 'env') ? s : 'http'
+    return (s === 'http' || s === 'jobs' || s === 'console' || s === 'outbound' || s === 'env') ? s : 'http'
   }
 
   const initialSort = (): { col: SortCol; dir: SortDir } => {
@@ -84,7 +85,7 @@ export function ProfileList() {
     }
   }
 
-  const [section, setSection] = useState<'http' | 'jobs' | 'outbound' | 'env'>(initialSection)
+  const [section, setSection] = useState<'http' | 'jobs' | 'console' | 'outbound' | 'env'>(initialSection)
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [httpOffset, setHttpOffset] = useState(0)
   const [httpHasMore, setHttpHasMore] = useState(false)
@@ -93,12 +94,18 @@ export function ProfileList() {
   const [jobOffset, setJobOffset] = useState(0)
   const [jobHasMore, setJobHasMore] = useState(false)
   const [jobLoadingMore, setJobLoadingMore] = useState(false)
+  const [consoles, setConsoles] = useState<Profile[]>([])
+  const [consoleOffset, setConsoleOffset] = useState(0)
+  const [consoleHasMore, setConsoleHasMore] = useState(false)
+  const [consoleLoadingMore, setConsoleLoadingMore] = useState(false)
   const [outboundRequests, setOutboundRequests] = useState<OutboundRequest[]>([])
   const [loadingHttp, setLoadingHttp] = useState(initialSection() === 'http')
   const [loadingJobs, setLoadingJobs] = useState(initialSection() === 'jobs')
+  const [loadingConsole, setLoadingConsole] = useState(initialSection() === 'console')
   const [loadingOutbound, setLoadingOutbound] = useState(initialSection() === 'outbound')
   const [error, setError] = useState<string | null>(null)
   const [jobsError, setJobsError] = useState<string | null>(null)
+  const [consoleError, setConsoleError] = useState<string | null>(null)
   const [outboundError, setOutboundError] = useState<string | null>(null)
   const [envData, setEnvData] = useState<EnvData | undefined>(undefined)
   const [loadingEnv, setLoadingEnv] = useState(initialSection() === 'env')
@@ -116,11 +123,15 @@ export function ProfileList() {
   })
   const [httpSort, setHttpSort] = useState<{ col: SortCol; dir: SortDir }>(initialSort)
   const [jobSort, setJobSort] = useState<{ col: JobSortCol; dir: SortDir }>({ col: null, dir: 'asc' })
+  const [consoleSort, setConsoleSort] = useState<{ col: ConsoleSortCol; dir: SortDir }>({ col: null, dir: 'asc' })
 
   // Jobs filters
   const [jobSearch, setJobSearch] = useState('')
   const [jobStatus, setJobStatus] = useState('')
   const [jobDuration, setJobDuration] = useState('')
+  // Console filters
+  const [consoleSearch, setConsoleSearch] = useState('')
+  const [consoleStatus, setConsoleStatus] = useState('')
   // Outbound filters
   const [outboundSearch, setOutboundSearch] = useState('')
   const [outboundMethod, setOutboundMethod] = useState('')
@@ -194,7 +205,20 @@ export function ProfileList() {
       .catch(() => setJobLoadingMore(false))
   }
 
-  const handleSectionChange = (s: 'http' | 'jobs' | 'outbound' | 'env') => {
+  const loadMoreConsole = () => {
+    setConsoleLoadingMore(true)
+    fetch(`${BASE}/api/console?limit=50&offset=${consoleOffset}`)
+      .then(res => res.json())
+      .then((data: ProfilesResponse) => {
+        setConsoles(prev => [...prev, ...data.profiles])
+        setConsoleOffset(prev => prev + data.profiles.length)
+        setConsoleHasMore(data.has_more)
+        setConsoleLoadingMore(false)
+      })
+      .catch(() => setConsoleLoadingMore(false))
+  }
+
+  const handleSectionChange = (s: 'http' | 'jobs' | 'console' | 'outbound' | 'env') => {
     if (s === section) {
       refreshSection(s)
       return
@@ -208,6 +232,7 @@ export function ProfileList() {
     setHttpSearch(''); setHttpMethod(''); setHttpStatus(''); setHttpDuration('')
     setHttpPreset(''); setHttpSort({ col: null, dir: 'asc' })
     setJobSearch(''); setJobStatus(''); setJobDuration(''); setJobSort({ col: null, dir: 'asc' })
+    setConsoleSearch(''); setConsoleStatus(''); setConsoleSort({ col: null, dir: 'asc' })
     setOutboundSearch(''); setOutboundMethod(''); setOutboundStatus('')
   }
 
@@ -230,6 +255,12 @@ export function ProfileList() {
     })
   }
 
+  const deleteConsole = (token: string) => {
+    fetch(`${BASE}/api/console/${token}`, { method: 'DELETE' }).then(() => {
+      setConsoles(prev => prev.filter(p => p.token !== token))
+    })
+  }
+
   const clearProfiles = () => {
     if (!window.confirm('Delete all HTTP profiles?')) return
     fetch(`${BASE}/api/profiles/clear`, { method: 'DELETE' }).then(() => {
@@ -244,18 +275,27 @@ export function ProfileList() {
     })
   }
 
-  const clearAll = () => {
-    if (!window.confirm('Delete all HTTP and job profiles?')) return
-    Promise.all([
-      fetch(`${BASE}/api/profiles/clear`, { method: 'DELETE' }),
-      fetch(`${BASE}/api/jobs/clear`, { method: 'DELETE' }),
-    ]).then(() => {
-      setProfiles([])
-      setJobs([])
+  const clearConsole = () => {
+    if (!window.confirm('Delete all console profiles?')) return
+    fetch(`${BASE}/api/console/clear`, { method: 'DELETE' }).then(() => {
+      setConsoles([])
     })
   }
 
-  const refreshSection = (s: 'http' | 'jobs' | 'outbound' | 'env') => {
+  const clearAll = () => {
+    if (!window.confirm('Delete all HTTP, job and console profiles?')) return
+    Promise.all([
+      fetch(`${BASE}/api/profiles/clear`, { method: 'DELETE' }),
+      fetch(`${BASE}/api/jobs/clear`, { method: 'DELETE' }),
+      fetch(`${BASE}/api/console/clear`, { method: 'DELETE' }),
+    ]).then(() => {
+      setProfiles([])
+      setJobs([])
+      setConsoles([])
+    })
+  }
+
+  const refreshSection = (s: 'http' | 'jobs' | 'console' | 'outbound' | 'env') => {
     if (s === 'http') {
       setLoadingHttp(true)
       fetch(`${BASE}/api/profiles?limit=50&offset=0`)
@@ -278,6 +318,17 @@ export function ProfileList() {
           setLoadingJobs(false)
         })
         .catch(() => { setJobsError('Failed to load job profiles'); setLoadingJobs(false) })
+    } else if (s === 'console') {
+      setLoadingConsole(true)
+      fetch(`${BASE}/api/console?limit=50&offset=0`)
+        .then(res => res.json())
+        .then((data: ProfilesResponse) => {
+          setConsoles(data.profiles)
+          setConsoleOffset(data.profiles.length)
+          setConsoleHasMore(data.has_more)
+          setLoadingConsole(false)
+        })
+        .catch(() => { setConsoleError('Failed to load console profiles'); setLoadingConsole(false) })
     } else if (s === 'outbound') {
       setLoadingOutbound(true)
       fetch(`${BASE}/api/outbound_http`)
@@ -295,7 +346,15 @@ export function ProfileList() {
 
   const refresh = () => refreshSection(section)
 
-  const tabClass = (s: 'http' | 'jobs' | 'outbound' | 'env') => `tab${section === s ? ' active' : ''}`
+  const toggleConsoleSort = (col: NonNullable<ConsoleSortCol>) => {
+    setConsoleSort(prev =>
+      prev.col === col
+        ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { col, dir: 'asc' }
+    )
+  }
+
+  const tabClass = (s: 'http' | 'jobs' | 'console' | 'outbound' | 'env') => `tab${section === s ? ' active' : ''}`
 
   // Computed filtered arrays
   const filteredProfiles = profiles.filter(p => {
@@ -374,8 +433,32 @@ export function ProfileList() {
     return true
   })
 
+  const filteredConsoles = consoles.filter(p => {
+    if (consoleSearch && !p.path.toLowerCase().includes(consoleSearch.toLowerCase())) return false
+    if (consoleStatus === 'error' && p.status !== 500) return false
+    if (consoleStatus === 'ok' && p.status === 500) return false
+    return true
+  })
+
+  const sortedConsoles = consoleSort.col
+    ? [...filteredConsoles].sort((a, b) => {
+        if (consoleSort.col === 'date') {
+          const diff = new Date(a.started_at).getTime() - new Date(b.started_at).getTime()
+          return consoleSort.dir === 'asc' ? diff : -diff
+        }
+        let av: number, bv: number
+        switch (consoleSort.col) {
+          case 'duration': av = a.duration; bv = b.duration; break
+          case 'status': av = a.status; bv = b.status; break
+          default: return 0
+        }
+        return consoleSort.dir === 'asc' ? av - bv : bv - av
+      })
+    : filteredConsoles
+
   const httpFiltersActive = !!(httpSearch || httpMethod || httpStatus || httpDuration || httpPreset)
   const jobFiltersActive = !!(jobSearch || jobStatus || jobDuration)
+  const consoleFiltersActive = !!(consoleSearch || consoleStatus)
   const outboundFiltersActive = !!(outboundSearch || outboundMethod || outboundStatus)
 
   const sortIcon = (activeCol: string | null, dir: SortDir, col: string) => {
@@ -395,6 +478,7 @@ export function ProfileList() {
         <div class="tabs">
           <a href="#" class={tabClass('http')} onClick={e => { e.preventDefault(); handleSectionChange('http') }}>HTTP Requests</a>
           <a href="#" class={tabClass('jobs')} onClick={e => { e.preventDefault(); handleSectionChange('jobs') }}>Background Jobs</a>
+          <a href="#" class={tabClass('console')} onClick={e => { e.preventDefault(); handleSectionChange('console') }}>Console</a>
           <div style="flex: 1" />
           <a href="#" class={tabClass('outbound')} onClick={e => { e.preventDefault(); handleSectionChange('outbound') }}>Outbound HTTP</a>
           <a href="#" class={tabClass('env')} onClick={e => { e.preventDefault(); handleSectionChange('env') }}>Env</a>
@@ -631,6 +715,105 @@ export function ProfileList() {
                   <div class="profiler-load-more">
                     <button class="btn btn-secondary" onClick={loadMoreJobs} disabled={jobLoadingMore}>
                       {jobLoadingMore ? 'Loading…' : 'Load more'}
+                    </button>
+                  </div>
+                )}
+              </>
+            )
+          )}
+
+          {section === 'console' && (
+            loadingConsole ? (
+              <TableSkeleton cols={['sm', 'flex', 'sm', 'sm', 'xs', 'sm']} />
+            ) : consoleError ? (
+              <div class="profiler-empty"><div class="profiler-empty__title">{consoleError}</div></div>
+            ) : consoles.length === 0 ? (
+              <div class="profiler-empty">
+                <div class="profiler-empty__title">No console profiles found</div>
+                <p class="profiler-empty__description">Run expressions in <code>rails console</code> to see profiling data</p>
+              </div>
+            ) : (
+              <>
+                <div class="profiler-action-bar profiler-mb-3">
+                  <div class="profiler-filter-group">
+                    <input
+                      type="text"
+                      class="profiler-filter-input"
+                      placeholder="Search expression…"
+                      value={consoleSearch}
+                      onInput={e => setConsoleSearch((e.target as HTMLInputElement).value)}
+                    />
+                    <select class="profiler-filter-select" value={consoleStatus} onChange={e => setConsoleStatus((e.target as HTMLSelectElement).value)}>
+                      <option value="">All Statuses</option>
+                      <option value="ok">OK</option>
+                      <option value="error">Error</option>
+                    </select>
+                  </div>
+                  <div class="profiler-filter-group">
+                    {consoleFiltersActive && (
+                      <span class="profiler-filter-count">{filteredConsoles.length} / {consoles.length}</span>
+                    )}
+                    <button class={`btn-refresh${loadingConsole ? ' btn-refresh--spinning' : ''}`} onClick={refresh} disabled={loadingConsole} title="Refresh">↺</button>
+                    <button class="btn btn-danger btn-sm" onClick={clearConsole} title="Delete console profiles">Clear</button>
+                    <button class="btn btn-danger btn-sm" onClick={clearAll} title="Delete all profiles">Clear All</button>
+                  </div>
+                </div>
+                {filteredConsoles.length === 0 ? (
+                  <div class="profiler-empty">
+                    <div class="profiler-empty__title">No results match filters</div>
+                  </div>
+                ) : (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th class={`sortable${consoleSort.col === 'date' ? ' sortable--active' : ''}`} onClick={() => toggleConsoleSort('date')}>
+                          Time {sortIcon(consoleSort.col, consoleSort.dir, 'date')}
+                        </th>
+                        <th>Expression</th>
+                        <th class={`sortable${consoleSort.col === 'duration' ? ' sortable--active' : ''}`} onClick={() => toggleConsoleSort('duration')}>
+                          Duration {sortIcon(consoleSort.col, consoleSort.dir, 'duration')}
+                        </th>
+                        <th>SQL</th>
+                        <th class={`sortable${consoleSort.col === 'status' ? ' sortable--active' : ''}`} onClick={() => toggleConsoleSort('status')}>
+                          Status {sortIcon(consoleSort.col, consoleSort.dir, 'status')}
+                        </th>
+                        <th>Token</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedConsoles.map(p => {
+                        const isError = p.status === 500
+                        return (
+                          <tr key={p.token}>
+                            <td>{formatTime(p.started_at)}</td>
+                            <td>
+                              <a href={`${BASE}/profiles/${p.token}`} class="profiler-text--mono" style="font-size:0.85em;">
+                                {p.path.length > 60 ? p.path.slice(0, 60) + '…' : p.path}
+                              </a>
+                              {p.gem_version && p.gem_version !== currentVersion && (
+                                <span class="profiler-version-warn" title={`Capturé avec v${p.gem_version} (actuel : v${currentVersion})`}>⚠️</span>
+                              )}
+                            </td>
+                            <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
+                            <td>{(p.collectors_data?.database as any)?.total_queries ?? '—'}</td>
+                            <td><span class={isError ? 'badge-error' : 'badge-success'}>{isError ? '✗ Error' : '✓ OK'}</span></td>
+                            <td class="profiler-text--xs profiler-text--mono profiler-text--muted">
+                              <button class="token-copy" onClick={() => copyToken(p.token)} title="Copy full token">
+                                {copiedToken === p.token ? '✓' : p.token.substring(0, 8) + '…'}
+                              </button>
+                            </td>
+                            <td><button class="btn-row-delete" onClick={() => deleteConsole(p.token)} title="Delete">×</button></td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+                {consoleHasMore && !consoleFiltersActive && (
+                  <div class="profiler-load-more">
+                    <button class="btn btn-secondary" onClick={loadMoreConsole} disabled={consoleLoadingMore}>
+                      {consoleLoadingMore ? 'Loading…' : 'Load more'}
                     </button>
                   </div>
                 )}

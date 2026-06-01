@@ -9,7 +9,7 @@ module Profiler
         limit  = (params[:limit]  || 50).to_i
         offset = (params[:offset] || 0).to_i
         all    = Profiler.storage.list(limit: 1000, offset: 0)
-        http   = all.reject { |p| p.profile_type == "job" }
+        http   = all.select { |p| p.profile_type == "http" }
         page   = http.drop(offset).first(limit + 1)
         render json: {
           profiles: page.first(limit).map(&:to_h),
