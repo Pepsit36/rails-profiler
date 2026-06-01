@@ -25,7 +25,8 @@ RSpec.describe Profiler::Instrumentation::SidekiqMiddleware do
         job_id: "abc123def456",
         queue: "critical",
         arguments: [1, "hello"],
-        executions: 2
+        executions: 2,
+        parent_token: nil
       )
 
       middleware.call(worker, job, queue) {}
