@@ -29,10 +29,11 @@ Clicking the **Profiler** logo at the right opens the full profile in the dashbo
 
 ![Profile list](screenshots/profile-list.png)
 
-Navigate to `/_profiler` to see all recorded profiles. The list is split into three sections:
+Navigate to `/_profiler` to see all recorded profiles. The list is split into four sections:
 
 - **HTTP Requests** — regular web requests
 - **Background Jobs** — Sidekiq / ActiveJob executions
+- **Console** — expressions evaluated in `rails console`
 - **Outbound HTTP** — external API calls grouped separately
 
 ### Filters
@@ -249,3 +250,26 @@ Missing keys are highlighted in red — useful for catching untranslated strings
 ## Background Jobs
 
 Background jobs (Sidekiq, ActiveJob) are profiled separately and appear under the **Background Jobs** tab in the profile list. Each job profile contains the same tabs as an HTTP profile, with an additional **Job** section showing queue name, job class, arguments, status, and error details for failed jobs.
+
+---
+
+## Console Profiles
+
+Expressions evaluated in `rails console` are profiled automatically when `track_console: true` (default) and appear under the **Console** tab.
+
+### Columns
+
+| Column | Description |
+|--------|-------------|
+| Time | When the expression was evaluated |
+| Expression | The Ruby expression (truncated to 60 chars) |
+| Duration | Evaluation time, color-coded |
+| SQL | Number of SQL queries executed |
+| Status | ✓ OK or ✗ Error |
+| Token | Unique profile identifier (click to copy) |
+
+Column headers marked with ⇅ are sortable. The Expression column is filterable by substring; a Status filter lets you show only errors or successes.
+
+### Env overrides
+
+Environment variable overrides set via the profiler UI or MCP tools are applied before each expression evaluation — changes take effect immediately in the open console without a restart.

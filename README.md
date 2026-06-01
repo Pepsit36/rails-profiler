@@ -14,6 +14,7 @@ A comprehensive Rails profiler featuring a web debug toolbar, full profiling das
 - **Log Capture** — Rails logger output per request with level filtering
 - **I18n Tracking** — translation lookups and missing key detection
 - **Background Jobs** — Sidekiq and ActiveJob profiling
+- **Console Profiling** — profile expressions evaluated in `rails console` with env overrides applied before each evaluation
 - **MCP Server** — exposes profiling data to AI assistants (Claude Desktop, Claude Code)
 - **Extensible Collectors** — add custom profiling tabs with a simple API
 
@@ -94,6 +95,9 @@ Profiler.configure do |config|
   # Background job tracking
   config.track_jobs = true
 
+  # Console profiling (rails console expressions)
+  config.track_console = true
+
   # CORS — restrict to specific origins (default: ['*'])
   config.cors_allowed_origins = ['http://localhost:3001', 'https://myapp.dev']
 
@@ -166,6 +170,30 @@ end
 ```
 
 Custom events appear as pink blocks in the **Timeline** tab, nested at the correct position in the call hierarchy.
+
+### Console profiling
+
+When `track_console: true` (default), every expression evaluated in `rails console` is automatically profiled:
+
+```ruby
+# In rails console — all of these are profiled automatically
+User.where(active: true).count
+Post.includes(:comments).limit(10).to_a
+```
+
+Results appear in the **Console** tab at `/_profiler`. Each entry shows the expression, duration, SQL query count, and whether it raised an error.
+
+Env overrides set via the profiler UI or MCP tools are applied before each console evaluation — no need to restart the console to pick up changes.
+
+To disable console profiling:
+
+```ruby
+Profiler.configure do |config|
+  config.track_console = false
+end
+```
+
+---
 
 ### MCP Server (AI assistant integration)
 
