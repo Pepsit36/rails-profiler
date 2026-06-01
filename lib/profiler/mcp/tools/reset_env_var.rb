@@ -1,0 +1,26 @@
+# frozen_string_literal: true
+
+module Profiler
+  module MCP
+    module Tools
+      class ResetEnvVar
+        def self.call(params)
+          key = params["key"].to_s.strip
+
+          return [{ type: "text", text: "Error: key cannot be blank." }] if key.empty?
+
+          overrides = Profiler.env_override_store.all_overrides
+          unless overrides.key?(key)
+            return [{ type: "text", text: "No active override for #{key}." }]
+          end
+
+          original = overrides[key]["original"]
+          Profiler.env_override_store.reset(key)
+
+          restored = original || "(unset)"
+          [{ type: "text", text: "Reset #{key} to original value: #{restored}" }]
+        end
+      end
+    end
+  end
+end
