@@ -69,11 +69,13 @@ module Profiler
         require_relative "tools/get_profile_ajax"
         require_relative "tools/get_profile_dumps"
         require_relative "tools/get_profile_http"
+        require_relative "tools/get_profile_mailers"
         require_relative "tools/query_jobs"
         require_relative "tools/query_mailers"
         require_relative "tools/query_test_profiles"
         require_relative "tools/get_test_profile_detail"
         require_relative "tools/run_tests"
+        require_relative "tools/query_console_profiles"
         require_relative "tools/clear_profiles"
         require_relative "tools/list_env_vars"
         require_relative "tools/set_env_var"
@@ -104,11 +106,13 @@ module Profiler
             input_schema: {
               properties: {
                 token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
-                sections: { type: "array", items: { type: "string" }, description: "Sections to include. Valid values: overview, exception, job, request, response, curl, database, performance, views, cache, ajax, http, mailers, routes, dumps. Omit for all." },
+                sections: { type: "array", items: { type: "string" }, description: "Sections to include. Valid values: overview, exception, job, console, request, response, curl, database, performance, views, cache, ajax, http, mailers, routes, dumps, logs, env, i18n, related_jobs. Omit for all." },
                 save_bodies: { type: "boolean", description: "Save request/response bodies to temp files and return paths instead of inlining content." },
                 max_body_size: { type: "number", description: "Truncate inlined body content at N characters. Ignored when save_bodies is true." },
                 json_path: { type: "string", description: "JSONPath expression to extract from response body (e.g. '$.data.items[0]'). Only applied when save_bodies is true." },
-                xml_path: { type: "string", description: "XPath expression to extract from response body (e.g. '//items/item[1]/name'). Only applied when save_bodies is true." }
+                xml_path: { type: "string", description: "XPath expression to extract from response body (e.g. '//items/item[1]/name'). Only applied when save_bodies is true." },
+                log_min_level: { type: "string", description: "Minimum log level to include in the logs section: DEBUG, INFO, WARN, ERROR, FATAL. Only applied when 'logs' section is requested." },
+                env_filter: { type: "string", description: "Required when requesting the env section. Case-insensitive substring filter on ENV key name (e.g. 'RAILS', 'DATABASE')." }
               },
               required: ["token"]
             },
@@ -175,6 +179,22 @@ module Profiler
               required: ["token"]
             },
             handler: Tools::GetProfileHttp
+          ),
+          define_tool(
+            name: "get_profile_mailers",
+            description: "Get detailed mailer activity for a profile: delivered emails, errors, and queued deliveries — including email bodies when capture_mail_body is enabled.",
+            input_schema: {
+              properties: {
+                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
+                mailer_class: { type: "string", description: "Filter by mailer class name (partial match, e.g. 'UserMailer')" },
+                action: { type: "string", description: "Filter by mailer action (partial match, e.g. 'welcome_email')" },
+                delivery_mode: { type: "string", description: "Filter by delivery mode: 'deliver_now', 'deliver_later', or 'queued'" },
+                save_bodies: { type: "boolean", description: "Save email bodies to temp files and return paths instead of inlining content." },
+                max_body_size: { type: "number", description: "Truncate inlined body content at N characters." }
+              },
+              required: ["token"]
+            },
+            handler: Tools::GetProfileMailers
           ),
           define_tool(
             name: "query_jobs",
@@ -259,11 +279,26 @@ module Profiler
             handler: Tools::RunTests
           ),
           define_tool(
-            name: "clear_profiles",
-            description: "Clear profiler history. Omit type to clear everything, or pass 'http'/'job'/'test' to clear only that type.",
+            name: "query_console_profiles",
+            description: "Search and filter Rails console profiling sessions (IRB/rails console executions).",
             input_schema: {
               properties: {
-                type: { type: "string", description: "Optional: 'http' to clear only requests, 'job' to clear only jobs, 'test' to clear only test profiles" }
+                expression: { type: "string", description: "Filter by expression content (partial match, e.g. 'User.find')" },
+                status: { type: "string", description: "Filter by status: 'completed' or 'failed'" },
+                min_duration: { type: "number", description: "Minimum duration in milliseconds" },
+                limit: { type: "number", description: "Maximum number of results (default 20)" },
+                fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, expression, return_value, status, duration, queries, token. Omit for all." },
+                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen. Returns profiles older than this." }
+              }
+            },
+            handler: Tools::QueryConsoleProfiles
+          ),
+          define_tool(
+            name: "clear_profiles",
+            description: "Clear profiler history. Omit type to clear everything, or pass 'http', 'job', 'test', or 'console' to clear only that type.",
+            input_schema: {
+              properties: {
+                type: { type: "string", description: "Optional: 'http' to clear only requests, 'job' to clear only jobs, 'test' to clear only test profiles, 'console' to clear only console sessions" }
               }
             },
             handler: Tools::ClearProfiles
@@ -336,14 +371,16 @@ module Profiler
         require_relative "resources/recent_jobs"
         require_relative "resources/slow_tests"
         require_relative "resources/failing_tests"
+        require_relative "resources/recent_console"
 
         handlers = {
-          "profiler://recent"        => Resources::RecentRequests,
-          "profiler://slow-queries"  => Resources::SlowQueries,
-          "profiler://n1-patterns"   => Resources::N1Patterns,
-          "profiler://recent-jobs"   => Resources::RecentJobs,
-          "profiler://slow-tests"    => Resources::SlowTests,
-          "profiler://failing-tests" => Resources::FailingTests
+          "profiler://recent"          => Resources::RecentRequests,
+          "profiler://slow-queries"    => Resources::SlowQueries,
+          "profiler://n1-patterns"     => Resources::N1Patterns,
+          "profiler://recent-jobs"     => Resources::RecentJobs,
+          "profiler://slow-tests"      => Resources::SlowTests,
+          "profiler://failing-tests"   => Resources::FailingTests,
+          "profiler://recent-console"  => Resources::RecentConsole
         }
 
         resources = [
@@ -381,6 +418,12 @@ module Profiler
             uri: "profiler://failing-tests",
             name: "Failing Tests",
             description: "Recent test profiles with status 'failed', including exception messages",
+            mime_type: "application/json"
+          ),
+          ::MCP::Resource.new(
+            uri: "profiler://recent-console",
+            name: "Recent Console Sessions",
+            description: "List of recently profiled Rails console (IRB) executions",
             mime_type: "application/json"
           )
         ]
