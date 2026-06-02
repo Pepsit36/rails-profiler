@@ -85,7 +85,9 @@ Get the full detail of a specific profile. Use `"latest"` as token to get the mo
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `token` | string | Profile token or `"latest"` **(required)** |
-| `sections` | array | Sections to include: `overview`, `exception`, `job`, `request`, `response`, `curl`, `database`, `performance`, `views`, `cache`, `ajax`, `http`, `routes`, `dumps` |
+| `sections` | array | Sections to include: `overview`, `exception`, `job`, `console`, `request`, `response`, `curl`, `database`, `performance`, `views`, `cache`, `ajax`, `http`, `mailers`, `routes`, `dumps`, `logs`, `env`, `i18n`, `related_jobs` |
+| `log_min_level` | string | Minimum log level when using the `logs` section: `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL` |
+| `env_filter` | string | Required when using the `env` section — case-insensitive substring filter on ENV key name (e.g. `"RAILS"`, `"DATABASE"`) |
 | `save_bodies` | boolean | Save request/response bodies to temp files; return paths instead of inline content |
 | `max_body_size` | number | Truncate inline body at N characters |
 | `json_path` | string | JSONPath expression to extract from response body (e.g. `$.data.items[0]`) |
@@ -95,6 +97,9 @@ Get the full detail of a specific profile. Use `"latest"` as token to get the mo
 > "Show me the full details of the latest request"
 > "Get the database queries section for token abc123"
 > "Get the response body of the latest profile, extract $.users[0]"
+> "Show me the Rails logs from the latest request (WARN and above)"
+> "Which ENV variables starting with REDIS were active during this request?"
+> "Are there any missing i18n translations in the latest profile?"
 
 ---
 
@@ -191,6 +196,26 @@ Search and filter background job profiles (Sidekiq, ActiveJob).
 
 ---
 
+### `get_profile_mailers`
+
+Get detailed mailer activity for a profile: delivered emails (with bodies when `capture_mail_body` is enabled), delivery errors, and emails queued via `deliver_later`.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `token` | string | Profile token or `"latest"` **(required)** |
+| `mailer_class` | string | Filter by mailer class (partial match, e.g. `"UserMailer"`) |
+| `action` | string | Filter by mailer action (partial match, e.g. `"welcome_email"`) |
+| `delivery_mode` | string | Filter by mode: `"deliver_now"`, `"deliver_later"`, or `"queued"` |
+| `save_bodies` | boolean | Save email bodies to temp files; return paths instead of inline content |
+| `max_body_size` | number | Truncate inline body content at N characters |
+
+**Example prompts:**
+> "Show me all emails sent during the latest request, including their HTML body"
+> "Were there any mailer errors in profile abc123?"
+> "Which emails were queued via deliver_later in the latest request?"
+
+---
+
 ### `query_test_profiles`
 
 Search and filter test profiles captured by the test profiler (RSpec / Minitest).
@@ -246,13 +271,110 @@ Run test files and wait for results. Synchronous — blocks until tests complete
 
 ---
 
+### `query_mailers`
+
+Search and filter ActionMailer deliveries across profiles. Returns emails sent via `deliver_now` or `deliver_later`.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `mailer_class` | string | Filter by mailer class name (partial match, e.g. `"UserMailer"`) |
+| `action` | string | Filter by mailer action name (partial match, e.g. `"welcome_email"`) |
+| `delivery_mode` | string | `"deliver_now"` or `"deliver_later"` |
+| `has_error` | boolean | Only return emails with delivery errors |
+| `limit` | number | Max results (default: 20) |
+| `fields` | array | Columns: `time`, `mailer`, `action`, `subject`, `to`, `mode`, `duration`, `status`, `token` |
+| `cursor` | string | Pagination cursor |
+
+**Example prompts:**
+> "Have any emails failed to deliver recently?"
+> "Show me all welcome emails sent in the last hour"
+> "Which mailer actions are called most often?"
+
+---
+
+### `query_console_profiles`
+
+Search and filter Rails console profiling sessions (IRB / `rails console` executions).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `expression` | string | Filter by expression content (partial match, e.g. `"User.find"`) |
+| `status` | string | `"completed"` or `"failed"` |
+| `min_duration` | number | Minimum duration in milliseconds |
+| `limit` | number | Max results (default: 20) |
+| `fields` | array | Columns: `time`, `expression`, `return_value`, `status`, `duration`, `queries`, `token` |
+| `cursor` | string | Pagination cursor |
+
+**Example prompts:**
+> "What console commands have been run recently?"
+> "Show me all console expressions that triggered more than 5 SQL queries"
+> "Find the console session where I ran User.find_by"
+
+---
+
 ### `clear_profiles`
 
 Clear profiler history.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `type` | string | Optional: `"http"` to clear only requests, `"job"` to clear only jobs, `"test"` to clear only test profiles. Omit to clear all. |
+| `type` | string | Optional: `"http"` to clear only requests, `"job"` to clear only jobs, `"test"` to clear only test profiles, `"console"` to clear only console sessions. Omit to clear all. |
+
+---
+
+## ENV Variables
+
+These tools let you override Rails `ENV` variables at runtime without restarting the app. Overrides are persisted across restarts until explicitly reset.
+
+### `list_env_vars`
+
+List environment variables. By default shows only active overrides.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `include_all` | boolean | Return all ENV variables, not just overrides (default: `false`) |
+| `filter` | string | Case-insensitive substring filter on key name |
+
+---
+
+### `set_env_var`
+
+Set an environment variable and persist the override across app restarts.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | string | Variable name **(required)** |
+| `value` | string | New value **(required)** |
+
+**Example prompts:**
+> "Set FEATURE_NEW_DASHBOARD to true"
+> "Change REDIS_URL to point to my local instance"
+
+---
+
+### `delete_env_var`
+
+Delete an environment variable for this session (persisted across restarts until reset).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | string | Variable name **(required)** |
+
+---
+
+### `reset_env_var`
+
+Restore a single overridden environment variable to its original value.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | string | Variable name to restore **(required)** |
+
+---
+
+### `reset_all_env_vars`
+
+Restore all overridden environment variables to their original values. Takes no parameters.
 
 ---
 
@@ -268,6 +390,7 @@ MCP resources are read-only data feeds that Claude can subscribe to or read on d
 | `profiler://recent-jobs` | Recently profiled background jobs |
 | `profiler://slow-tests` | Top 10 slowest test profiles with query counts and N+1 flags |
 | `profiler://failing-tests` | Recent failing test profiles with exception messages |
+| `profiler://recent-console` | Recently profiled Rails console executions |
 
 ---
 
@@ -299,6 +422,15 @@ MCP resources are read-only data feeds that Claude can subscribe to or read on d
 
 ### Debug a failing test
 > "Run the failing spec, then get the full detail of the failed test profile including the exception and SQL queries."
+
+### Inspect console activity
+> "Show me all the Rails console commands run in the last hour that touched the database."
+
+### Debug a mailer
+> "Has UserMailer#welcome_email been called recently? Did any deliveries fail?"
+
+### Toggle a feature flag via ENV
+> "Set FEATURE_DARK_MODE to 'true' so I can test it in this session."
 
 ---
 
