@@ -2,7 +2,7 @@
 
 module Profiler
   class Configuration
-    attr_accessor :enabled, :storage, :storage_options, :collectors,
+    attr_accessor :enabled, :storage_options, :collectors,
                   :skip_paths, :slow_query_threshold, :max_queries_warning,
                   :track_memory, :memory_warning_threshold,
                   :mcp_enabled, :mcp_transport, :mcp_port,
@@ -12,6 +12,7 @@ module Profiler
                   :track_http, :slow_http_threshold, :http_skip_hosts,
                   :track_jobs,
                   :track_console,
+                  :track_tests,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
                   :compress_bodies, :compress_body_threshold
 
@@ -44,6 +45,7 @@ module Profiler
       @http_skip_hosts = []
       @track_jobs = true
       @track_console = true
+      @track_tests = false
       @track_mailers = true
       @capture_mail_body = false
       @sanitize_mailer_recipients = false
@@ -70,6 +72,15 @@ module Profiler
       else
         false
       end
+    end
+
+    def storage
+      @storage
+    end
+
+    def storage=(value)
+      @storage = value
+      @storage_backend = nil
     end
 
     def storage_backend

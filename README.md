@@ -15,7 +15,8 @@ A comprehensive Rails profiler featuring a web debug toolbar, full profiling das
 - **I18n Tracking** — translation lookups and missing key detection
 - **Background Jobs** — Sidekiq and ActiveJob profiling
 - **Console Profiling** — profile expressions evaluated in `rails console` with env overrides applied before each evaluation
-- **MCP Server** — exposes profiling data to AI assistants (Claude Desktop, Claude Code)
+- **Test Profiling** — per-test SQL, cache, and exception capture for RSpec and Minitest
+- **MCP Server** — exposes profiling data to AI assistants; includes `run_tests` to trigger test runs from the AI
 - **Extensible Collectors** — add custom profiling tabs with a simple API
 
 ## Requirements
@@ -97,6 +98,10 @@ Profiler.configure do |config|
 
   # Console profiling (rails console expressions)
   config.track_console = true
+
+  # Test profiling — capture SQL, cache, exceptions per test (RSpec / Minitest)
+  # Defaults to true in test env, false elsewhere
+  config.track_tests = Rails.env.test?
 
   # CORS — restrict to specific origins (default: ['*'])
   config.cors_allowed_origins = ['http://localhost:3001', 'https://myapp.dev']
@@ -195,6 +200,40 @@ end
 
 ---
 
+### Test Profiling
+
+When `config.track_tests = true` (default in `test` env), the profiler wraps every RSpec or Minitest test and captures SQL queries, cache operations, exceptions, and timing.
+
+**RSpec** — add to `spec/spec_helper.rb` or `spec/rails_helper.rb`:
+
+```ruby
+require 'profiler/test_helpers/rspec_support'
+
+RSpec.configure do |config|
+  Profiler::TestHelpers::RSpecSupport.install(config)
+end
+```
+
+**Minitest** — add to `test/test_helper.rb`:
+
+```ruby
+require 'profiler/test_helpers/minitest_support'
+Profiler::TestHelpers::MinitestSupport.install
+```
+
+After the suite runs, a summary is printed to stdout:
+
+```
+┌─ Profiler Test Report ────────────────────────────────────────┐
+│ 42 tests · 40 passed · 1 failed · 1 pending                   │
+│ Total: 3420ms · 187 queries · 2 N+1 detected                  │
+├─ Slowest tests ────────────────────────────────────────────────┤
+│  1. UserSpec#creates a user with associations   820ms  12q ⚠ N+1 │
+...
+```
+
+Test profiles are stored like HTTP profiles and can be viewed in the dashboard at `/_profiler` or queried via the MCP tools `query_test_profiles`, `get_test_profile`, and `run_tests`.
+
 ### MCP Server (AI assistant integration)
 
 Connect Claude (or any MCP-compatible AI assistant) to your profiler data:
@@ -203,7 +242,7 @@ Connect Claude (or any MCP-compatible AI assistant) to your profiler data:
 bundle exec rake profiler:mcp
 ```
 
-See the **[MCP Guide](docs/mcp.md)** for Claude Desktop and Claude Code setup, all available tools (`query_profiles`, `analyze_queries`, `explain_query`, `get_profile`, etc.), and example prompts.
+See the **[MCP Guide](docs/mcp.md)** for Claude Desktop and Claude Code setup, all available tools (`query_profiles`, `analyze_queries`, `run_tests`, `query_test_profiles`, etc.), and example prompts.
 
 ### Rake tasks
 
