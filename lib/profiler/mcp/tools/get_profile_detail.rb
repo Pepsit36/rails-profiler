@@ -52,6 +52,7 @@ module Profiler
           lines += section_overview(profile)              if want.("overview")
           lines += section_exception(profile)             if want.("exception")
           lines += section_job(profile)                   if want.("job")
+          lines += section_console(profile)               if want.("console")
           lines += section_request(profile, params)       if want.("request")
           lines += section_response(profile, params)      if want.("response")
           lines += section_curl(profile)                  if want.("curl")
@@ -64,6 +65,9 @@ module Profiler
           lines += section_mailers(profile)               if want.("mailers")
           lines += section_routes(profile)                if want.("routes")
           lines += section_dumps(profile)                 if want.("dumps")
+          lines += section_logs(profile, params)          if want.("logs")
+          lines += section_env(profile, params)           if want.("env")
+          lines += section_i18n(profile)                  if want.("i18n")
           lines += section_related_jobs(profile)          if want.("related_jobs")
           lines.join("\n")
         end
@@ -71,7 +75,12 @@ module Profiler
         def self.section_overview(profile)
           lines = []
           lines << "# Profile Details: #{profile.token}\n"
-          lines << "**Type:** #{profile.profile_type == 'job' ? 'Job' : 'HTTP Request'}"
+          type_label = case profile.profile_type
+                       when "job"     then "Job"
+                       when "console" then "Console"
+                       else "HTTP Request"
+                       end
+          lines << "**Type:** #{type_label}"
           lines << "**Request:** #{profile.method} #{profile.path}"
           lines << "**Status:** #{profile.status}"
           lines << "**Duration:** #{profile.duration.round(2)} ms"
@@ -124,6 +133,26 @@ module Profiler
           lines << "- Error: #{job_data['error']}" if job_data["error"]
           if job_data["arguments"] && !job_data["arguments"].empty?
             lines << "- Arguments: #{job_data['arguments'].map(&:to_s).join(', ')}"
+          end
+          lines << ""
+          lines
+        end
+
+        def self.section_console(profile)
+          lines = []
+          console_data = profile.collector_data("console")
+          return lines unless console_data && console_data["expression"]
+
+          lines << "## Console"
+          lines << "**Expression:**"
+          lines << "```ruby"
+          lines << console_data["expression"].to_s
+          lines << "```"
+          if console_data.key?("return_value")
+            lines << "**Return Value:**"
+            lines << "```"
+            lines << console_data["return_value"].to_s
+            lines << "```"
           end
           lines << ""
           lines
@@ -473,6 +502,99 @@ module Profiler
             lines << (dump["formatted"] || dump["value"].inspect)
             lines << "```"
           end
+          lines << ""
+          lines
+        end
+
+        def self.section_logs(profile, params = {})
+          lines = []
+          log_data = profile.collector_data("logs")
+          return lines unless log_data && log_data["count"].to_i > 0
+
+          logs = log_data["logs"] || []
+
+          min_level = params["log_min_level"]&.upcase
+          if min_level
+            severity_order = %w[DEBUG INFO WARN ERROR FATAL UNKNOWN]
+            min_idx = severity_order.index(min_level) || 0
+            logs = logs.select { |l| (severity_order.index(l["level"]) || 0) >= min_idx }
+          end
+
+          return lines if logs.empty?
+
+          lines << "## Logs (#{log_data['count']} total, #{log_data['errors']} errors, #{log_data['warnings']} warnings)\n"
+
+          logs.each do |entry|
+            level = entry["level"] || "INFO"
+            prefix = case level
+                     when "ERROR", "FATAL" then "❌"
+                     when "WARN"           then "⚠️"
+                     when "DEBUG"          then "🔍"
+                     else                       "ℹ️"
+                     end
+            lines << "- #{prefix} **#{level}** #{entry['message']}"
+          end
+          lines << ""
+          lines
+        end
+
+        def self.section_env(profile, params = {})
+          lines = []
+          env_data = profile.collector_data("env")
+          return lines unless env_data
+
+          filter = params["env_filter"]
+          unless filter && !filter.strip.empty?
+            lines << "## ENV Variables"
+            lines << "_Pass `env_filter` parameter to filter by key name (e.g. `RAILS`, `DATABASE`). #{env_data['total']} variables captured._"
+            lines << ""
+            return lines
+          end
+
+          variables = env_data["variables"] || {}
+          term = filter.downcase
+          matches = variables.select { |k, _| k.downcase.include?(term) }
+
+          lines << "## ENV Variables (filter: #{filter})\n"
+          if matches.empty?
+            lines << "_No variables matching '#{filter}'._"
+          else
+            matches.each { |k, v| lines << "- `#{k}` = `#{v}`" }
+          end
+          lines << ""
+          lines
+        end
+
+        def self.section_i18n(profile)
+          lines = []
+          i18n_data = profile.collector_data("i18n")
+          return lines unless i18n_data && i18n_data["total"].to_i > 0
+
+          lookups = i18n_data["lookups"] || []
+          missing = lookups.select { |l| l["missing"] }
+
+          lines << "## I18n"
+          lines << "- **Locale:** #{i18n_data['locale']}"
+          lines << "- **Total lookups:** #{i18n_data['total']}"
+          lines << "- **Missing translations:** #{i18n_data['missing_count']}"
+
+          if missing.any?
+            lines << ""
+            lines << "### Missing Translations"
+            missing.each { |l| lines << "- `#{l['key']}` (#{l['locale']})" }
+          end
+
+          top = lookups.group_by { |l| l["key"] }
+                       .map { |k, ls| [k, ls.size] }
+                       .sort_by { |_, c| -c }
+                       .first(10)
+
+          if top.any?
+            lines << ""
+            lines << "### Most Called Keys (top #{top.size})"
+            top.each { |key, count| lines << "- `#{key}`: #{count}×" }
+          end
+
           lines << ""
           lines
         end

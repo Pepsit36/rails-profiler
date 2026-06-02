@@ -7,13 +7,13 @@ module Profiler
         def self.call(params)
           type = params["type"]
 
-          if type && !%w[http job].include?(type)
-            return [{ type: "text", text: "Error: type must be 'http' or 'job'" }]
+          if type && !%w[http job test console].include?(type)
+            return [{ type: "text", text: "Error: type must be 'http', 'job', 'test', or 'console'" }]
           end
 
           Profiler.storage.clear(type: type)
 
-          label = type ? "#{type} profiles" : "all profiles (requests and jobs)"
+          label = type ? "#{type} profiles" : "all profiles"
           [{ type: "text", text: "Cleared #{label}." }]
         end
       end
