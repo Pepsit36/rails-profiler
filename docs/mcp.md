@@ -191,13 +191,68 @@ Search and filter background job profiles (Sidekiq, ActiveJob).
 
 ---
 
+### `query_test_profiles`
+
+Search and filter test profiles captured by the test profiler (RSpec / Minitest).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `test_name` | string | Filter by test name substring (e.g. `"UserSpec"`) |
+| `status` | string | `"passed"`, `"failed"`, or `"pending"` |
+| `min_duration` | number | Minimum duration in milliseconds |
+| `limit` | number | Max results (default: 20) |
+| `fields` | array | Columns: `time`, `test_name`, `status`, `duration`, `queries`, `n1`, `token` |
+| `cursor` | string | Pagination cursor (ISO8601 timestamp) |
+
+**Example prompts:**
+> "Show me all failing tests"
+> "Which tests are slowest and have N+1 queries?"
+
+---
+
+### `get_test_profile`
+
+Get full detail for a single test profile. Use `"latest"` to get the most recent test.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `token` | string | Test profile token or `"latest"` **(required)** |
+
+**Returns:** test metadata (name, framework, file, line, assertions), status, exception message, SQL queries, N+1 patterns, cache operations.
+
+**Example prompts:**
+> "Show me the detail of the latest failing test"
+> "What SQL queries did this test fire? Are there N+1 patterns?"
+
+---
+
+### `run_tests`
+
+Run test files and wait for results. Synchronous — blocks until tests complete or timeout is reached. Returns output, status, and tokens of test profiles created during the run.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `files` | array | Relative paths to run (e.g. `["spec/models/user_spec.rb"]`). Omit to run all discovered tests. |
+| `framework` | string | `"rspec"` or `"minitest"`. Auto-detected if omitted. |
+| `timeout_seconds` | number | Max wait time in seconds (default: 120). |
+| `max_output` | number | Max characters of output returned (tail, default: 4000). |
+
+**Returns:** run summary (status, duration, exit code), truncated output, and the token list of test profiles created — use these with `get_test_profile` or `analyze_queries` to drill in.
+
+**Example prompts:**
+> "Run spec/models/user_spec.rb and show me the results"
+> "Run all the model specs and tell me which ones are slow or have N+1 queries"
+> "Run the failing tests and analyze the SQL queries from each one"
+
+---
+
 ### `clear_profiles`
 
 Clear profiler history.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `type` | string | Optional: `"http"` to clear only requests, `"job"` to clear only jobs. Omit to clear all. |
+| `type` | string | Optional: `"http"` to clear only requests, `"job"` to clear only jobs, `"test"` to clear only test profiles. Omit to clear all. |
 
 ---
 
@@ -211,6 +266,8 @@ MCP resources are read-only data feeds that Claude can subscribe to or read on d
 | `profiler://slow-queries` | Slow SQL queries aggregated across all profiles |
 | `profiler://n1-patterns` | Cross-profile N+1 query pattern detection (last 100 profiles) |
 | `profiler://recent-jobs` | Recently profiled background jobs |
+| `profiler://slow-tests` | Top 10 slowest test profiles with query counts and N+1 flags |
+| `profiler://failing-tests` | Recent failing test profiles with exception messages |
 
 ---
 
@@ -233,6 +290,15 @@ MCP resources are read-only data feeds that Claude can subscribe to or read on d
 
 ### Compare requests
 > "Compare the query count between the last 5 requests to `/dashboard`. Is there any variance?"
+
+### Run and analyze tests
+> "Run spec/models/user_spec.rb, then show me the SQL queries from each test and flag any N+1 patterns."
+
+### Find slow tests
+> "Which tests in the suite are slowest? Read profiler://slow-tests and suggest optimizations."
+
+### Debug a failing test
+> "Run the failing spec, then get the full detail of the failed test profile including the exception and SQL queries."
 
 ---
 

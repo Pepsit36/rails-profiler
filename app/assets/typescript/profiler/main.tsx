@@ -3,6 +3,8 @@ import { ProfileList } from './components/ProfileList'
 import { ProfileDashboard } from './components/dashboard/ProfileDashboard'
 import { JobProfileDashboard } from './components/dashboard/JobProfileDashboard'
 import { ConsoleProfileDashboard } from './components/dashboard/ConsoleProfileDashboard'
+import { TestProfileDashboard } from './components/dashboard/TestProfileDashboard'
+import { TestRunnerPage } from './components/test-runner/TestRunnerPage'
 import { initTimeline } from './timeline'
 import { formatSQL } from './sql-formatter'
 import { themeManager, createThemeToggle } from './theme'
@@ -24,13 +26,20 @@ document.addEventListener('DOMContentLoaded', () => {
         render(<JobProfileDashboard profile={profile} initialTab={tab} embedded={embedded} />, showEl)
       } else if (profile.profile_type === 'console') {
         render(<ConsoleProfileDashboard profile={profile} initialTab={tab} embedded={embedded} />, showEl)
+      } else if (profile.profile_type === 'test') {
+        render(<TestProfileDashboard profile={profile} initialTab={tab} embedded={embedded} />, showEl)
       } else {
         render(<ProfileDashboard profile={profile} initialTab={tab as any} embedded={embedded} />, showEl)
       }
     }
   }
 
-  if (!indexEl && !showEl) {
+  const testRunnerEl = document.getElementById('profiler-test-runner')
+  if (testRunnerEl) {
+    render(<TestRunnerPage />, testRunnerEl)
+  }
+
+  if (!indexEl && !showEl && !testRunnerEl) {
     const header = document.querySelector('.header, .profiler-detail') as HTMLElement | null
     if (header) {
       const toggle = createThemeToggle()

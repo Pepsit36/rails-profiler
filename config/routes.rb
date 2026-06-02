@@ -22,6 +22,8 @@ Profiler::Engine.routes.draw do
   get "assets/profiler.js", to: "assets#main_js"
   get "assets/profiler.css", to: "assets#main_css"
 
+  get "test_runner", to: "test_runner#index"
+
   namespace :api do
     resources :profiles, only: [:index, :show, :destroy] do
       collection { delete :clear }
@@ -32,6 +34,9 @@ Profiler::Engine.routes.draw do
     resources :console, only: [:index, :show, :destroy] do
       collection { delete :clear }
     end
+    resources :tests, only: [:index, :show, :destroy] do
+      collection { delete :clear }
+    end
     resources :outbound_http, only: [:index]
     get "toolbar/:token", to: "toolbar#show"
     post "ajax/link", to: "ajax#link"
@@ -40,5 +45,10 @@ Profiler::Engine.routes.draw do
     resource :env_vars, only: [:show, :update], controller: "env_vars"
     delete "env_vars/reset", to: "env_vars#reset_override"
     delete "env_vars/reset_all", to: "env_vars#reset_all"
+    get    "test_runner/files",           to: "test_runner#files"
+    post   "test_runner/runs",            to: "test_runner#create"
+    get    "test_runner/runs/:id",        to: "test_runner#show",   as: :test_runner_run
+    get    "test_runner/runs/:id/stream", to: "test_runner#stream", as: :test_runner_run_stream
+    delete "test_runner/runs/:id",        to: "test_runner#destroy"
   end
 end

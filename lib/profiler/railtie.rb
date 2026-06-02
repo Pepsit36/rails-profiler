@@ -14,8 +14,9 @@ module Profiler
       # Set default configuration for Rails environment
       Profiler.configure do |config|
         config.enabled = Rails.env.development? || Rails.env.test?
-        config.storage = Rails.env.development? ? :file : :memory
+        config.storage = (Rails.env.development? || Rails.env.test?) ? :file : :memory
         config.tmp_path = Rails.root.join("tmp", "rails-profiler")
+        config.track_tests = Rails.env.test?
       end
     end
 
@@ -54,6 +55,17 @@ module Profiler
           ]
         end
       end
+    end
+
+    initializer "profiler.setup_test_profiler" do
+      next unless Profiler.configuration.enabled && Profiler.configuration.track_tests
+
+      require_relative "test_profiler"
+      require_relative "test_helpers/rspec_support"
+      require_relative "test_helpers/minitest_support"
+      require_relative "test_runner/discovery"
+      require_relative "test_runner/run_store"
+      require_relative "test_runner/runner"
     end
 
     initializer "profiler.setup_job_instrumentation" do

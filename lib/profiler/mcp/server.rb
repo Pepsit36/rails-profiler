@@ -71,6 +71,9 @@ module Profiler
         require_relative "tools/get_profile_http"
         require_relative "tools/query_jobs"
         require_relative "tools/query_mailers"
+        require_relative "tools/query_test_profiles"
+        require_relative "tools/get_test_profile_detail"
+        require_relative "tools/run_tests"
         require_relative "tools/clear_profiles"
         require_relative "tools/list_env_vars"
         require_relative "tools/set_env_var"
@@ -204,11 +207,63 @@ module Profiler
             handler: Tools::QueryMailers
           ),
           define_tool(
-            name: "clear_profiles",
-            description: "Clear profiler history. Omit type to clear everything, or pass 'http'/'job' to clear only requests or jobs.",
+            name: "query_test_profiles",
+            description: "Search and filter test profiles (RSpec/Minitest) by test name, status, or duration.",
             input_schema: {
               properties: {
-                type: { type: "string", description: "Optional: 'http' to clear only requests, 'job' to clear only jobs" }
+                test_name: { type: "string", description: "Filter by test name (partial match)" },
+                status: { type: "string", description: "Filter by status: 'passed', 'failed', or 'pending'" },
+                min_duration: { type: "number", description: "Minimum duration in milliseconds" },
+                limit: { type: "number", description: "Maximum number of results (default 20)" },
+                fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, test_name, status, duration, queries, n1, token. Omit for all." },
+                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen." }
+              }
+            },
+            handler: Tools::QueryTestProfiles
+          ),
+          define_tool(
+            name: "get_test_profile",
+            description: "Get detailed data for a test profile: metadata, SQL queries, N+1 patterns, cache, exception. Use 'latest' as token for the most recent test.",
+            input_schema: {
+              properties: {
+                token: { type: "string", description: "Test profile token, or 'latest' for the most recent test profile (required)" }
+              },
+              required: ["token"]
+            },
+            handler: Tools::GetTestProfileDetail
+          ),
+          define_tool(
+            name: "run_tests",
+            description: "Run test files and wait for results. Returns output, status, duration, and tokens of test profiles created. Synchronous with configurable timeout (default 120s).",
+            input_schema: {
+              properties: {
+                files: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Relative paths of test files to run (e.g. ['spec/models/user_spec.rb']). Omit to run all discovered tests."
+                },
+                framework: {
+                  type: "string",
+                  description: "Test framework: 'rspec' or 'minitest'. Auto-detected if omitted."
+                },
+                timeout_seconds: {
+                  type: "number",
+                  description: "Maximum seconds to wait for tests to finish (default: 120)."
+                },
+                max_output: {
+                  type: "number",
+                  description: "Maximum characters of output to return (tail). Default: 4000."
+                }
+              }
+            },
+            handler: Tools::RunTests
+          ),
+          define_tool(
+            name: "clear_profiles",
+            description: "Clear profiler history. Omit type to clear everything, or pass 'http'/'job'/'test' to clear only that type.",
+            input_schema: {
+              properties: {
+                type: { type: "string", description: "Optional: 'http' to clear only requests, 'job' to clear only jobs, 'test' to clear only test profiles" }
               }
             },
             handler: Tools::ClearProfiles
@@ -279,12 +334,16 @@ module Profiler
         require_relative "resources/slow_queries"
         require_relative "resources/n1_patterns"
         require_relative "resources/recent_jobs"
+        require_relative "resources/slow_tests"
+        require_relative "resources/failing_tests"
 
         handlers = {
-          "profiler://recent" => Resources::RecentRequests,
-          "profiler://slow-queries" => Resources::SlowQueries,
-          "profiler://n1-patterns" => Resources::N1Patterns,
-          "profiler://recent-jobs" => Resources::RecentJobs
+          "profiler://recent"        => Resources::RecentRequests,
+          "profiler://slow-queries"  => Resources::SlowQueries,
+          "profiler://n1-patterns"   => Resources::N1Patterns,
+          "profiler://recent-jobs"   => Resources::RecentJobs,
+          "profiler://slow-tests"    => Resources::SlowTests,
+          "profiler://failing-tests" => Resources::FailingTests
         }
 
         resources = [
@@ -310,6 +369,18 @@ module Profiler
             uri: "profiler://recent-jobs",
             name: "Recent Jobs",
             description: "List of recently profiled background jobs",
+            mime_type: "application/json"
+          ),
+          ::MCP::Resource.new(
+            uri: "profiler://slow-tests",
+            name: "Slow Tests",
+            description: "Top 10 slowest test profiles with query counts and N+1 detection",
+            mime_type: "application/json"
+          ),
+          ::MCP::Resource.new(
+            uri: "profiler://failing-tests",
+            name: "Failing Tests",
+            description: "Recent test profiles with status 'failed', including exception messages",
             mime_type: "application/json"
           )
         ]
