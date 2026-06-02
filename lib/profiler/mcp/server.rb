@@ -73,6 +73,7 @@ module Profiler
         require_relative "tools/query_mailers"
         require_relative "tools/query_test_profiles"
         require_relative "tools/get_test_profile_detail"
+        require_relative "tools/run_tests"
         require_relative "tools/clear_profiles"
         require_relative "tools/list_env_vars"
         require_relative "tools/set_env_var"
@@ -230,6 +231,32 @@ module Profiler
               required: ["token"]
             },
             handler: Tools::GetTestProfileDetail
+          ),
+          define_tool(
+            name: "run_tests",
+            description: "Run test files and wait for results. Returns output, status, duration, and tokens of test profiles created. Synchronous with configurable timeout (default 120s).",
+            input_schema: {
+              properties: {
+                files: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Relative paths of test files to run (e.g. ['spec/models/user_spec.rb']). Omit to run all discovered tests."
+                },
+                framework: {
+                  type: "string",
+                  description: "Test framework: 'rspec' or 'minitest'. Auto-detected if omitted."
+                },
+                timeout_seconds: {
+                  type: "number",
+                  description: "Maximum seconds to wait for tests to finish (default: 120)."
+                },
+                max_output: {
+                  type: "number",
+                  description: "Maximum characters of output to return (tail). Default: 4000."
+                }
+              }
+            },
+            handler: Tools::RunTests
           ),
           define_tool(
             name: "clear_profiles",

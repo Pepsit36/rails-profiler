@@ -168,28 +168,28 @@ GET  /_profiler/api/toolbar/:token - Toolbar data (AJAX)
 
 **MCP Tools:**
 
-1. **query_profiles** - Search/filter profiles
-   ```
-   Input: { path, method, min_duration, limit }
-   Output: Markdown table of matching profiles
-   ```
-
-2. **get_profile** - Detailed profile data
-   ```
-   Input: { token }
-   Output: Formatted profile with all collector data
-   ```
-
-3. **analyze_queries** - SQL analysis
-   ```
-   Input: { token }
-   Output: N+1 detection, slow queries, duplicates
-   ```
+1. **query_profiles** - Search/filter HTTP profiles
+2. **get_profile** - Detailed profile data by token (`"latest"` supported)
+3. **analyze_queries** - N+1 detection, slow queries, duplicates
+4. **explain_query** - EXPLAIN ANALYZE for a specific query index
+5. **get_profile_ajax** - AJAX sub-request breakdown
+6. **get_profile_dumps** - Variable dumps per request
+7. **get_profile_http** - Outbound HTTP call details
+8. **query_jobs** - Search/filter background job profiles
+9. **query_mailers** - Search/filter ActionMailer deliveries
+10. **query_test_profiles** - Search/filter RSpec/Minitest test profiles by name, status, duration
+11. **get_test_profile** - Full test profile detail: SQL, N+1, cache, exception, assertions
+12. **run_tests** - Run test files synchronously, return output + test profile tokens
+13. **clear_profiles** - Clear history by type (`"http"`, `"job"`, `"test"`, or all)
 
 **MCP Resources:**
 
-1. **profiler://recent** - Recent requests JSON
-2. **profiler://slow-queries** - Slow queries across all profiles
+1. **profiler://recent** — Recent HTTP requests JSON
+2. **profiler://slow-queries** — Slow SQL queries across all profiles
+3. **profiler://n1-patterns** — Cross-profile N+1 pattern detection
+4. **profiler://recent-jobs** — Recent background job profiles
+5. **profiler://slow-tests** — Top 10 slowest test profiles
+6. **profiler://failing-tests** — Recent failing test profiles with exception messages
 
 **Claude Desktop Integration:**
 ```json
@@ -352,10 +352,13 @@ end
 ## Testing Strategy
 
 ### Unit Tests
-- Each collector
+- Each collector (including `TestCollector`)
 - Storage backends
 - Models (Profile, SqlQuery, TimelineEvent)
 - Configuration
+- MCP tools (`analyze_queries`, `query_test_profiles`, `get_test_profile`, `run_tests`)
+- Test runner components (`Discovery`, `RunStore`, `Runner`)
+- Test helpers (`Reporter`)
 
 ### Integration Tests
 - Middleware behavior
@@ -363,11 +366,20 @@ end
 - Toolbar injection
 - MCP server protocol
 
+### Test Profiling (self-hosted)
+The gem ships a test profiling subsystem used by the host app's test suite:
+- **`TestProfiler`** — wraps each test in a profiling context, collects SQL/cache/exceptions
+- **`TestCollector`** — stores test metadata (name, file, line, framework, status, assertions)
+- **`TestHelpers::RSpecSupport`** — installs an `around(:each)` hook via `RSpecSupport.install(config)`
+- **`TestHelpers::MinitestSupport`** — prepends a `run` wrapper via `MinitestSupport.install`
+- **`TestHelpers::Reporter`** — prints a summary table to stdout after the suite (slowest tests, N+1 patterns, failures)
+- Enabled via `config.track_tests = true` (Railtie default: `Rails.env.test?`)
+
 ### Manual Testing
 - Docker-based test environment
-- Example Rails app
+- Example Rails app (`test_app/`)
 - Browser testing
-- MCP client testing
+- MCP client testing (`profiler:mcp` rake task)
 
 ## Future Enhancements
 

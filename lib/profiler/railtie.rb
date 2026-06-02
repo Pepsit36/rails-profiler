@@ -16,6 +16,7 @@ module Profiler
         config.enabled = Rails.env.development? || Rails.env.test?
         config.storage = (Rails.env.development? || Rails.env.test?) ? :file : :memory
         config.tmp_path = Rails.root.join("tmp", "rails-profiler")
+        config.track_tests = Rails.env.test?
       end
     end
 
@@ -57,7 +58,7 @@ module Profiler
     end
 
     initializer "profiler.setup_test_profiler" do
-      next unless Profiler.configuration.enabled
+      next unless Profiler.configuration.enabled && Profiler.configuration.track_tests
 
       require_relative "test_profiler"
       require_relative "test_helpers/rspec_support"
