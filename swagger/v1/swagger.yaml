@@ -1,0 +1,1795 @@
+---
+openapi: 3.0.1
+info:
+  title: Rails Profiler API
+  version: v1
+  description: Internal API for the Rails Profiler dashboard
+paths:
+  "/_profiler/api/console":
+    get:
+      summary: List console profiles
+      operationId: listConsoles
+      tags:
+      - Console
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: console profiles list
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ProfilesResponse"
+  "/_profiler/api/console/{id}":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Get console profile details
+      operationId: getConsole
+      tags:
+      - Console
+      responses:
+        '200':
+          description: console profile found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Profile"
+        '404':
+          description: console profile not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+    delete:
+      summary: Delete a console profile
+      operationId: deleteConsole
+      tags:
+      - Console
+      responses:
+        '204':
+          description: console profile deleted
+  "/_profiler/api/console/clear":
+    delete:
+      summary: Clear all console profiles
+      operationId: clearConsoles
+      tags:
+      - Console
+      responses:
+        '204':
+          description: console profiles cleared
+  "/_profiler/api/env_vars":
+    get:
+      summary: Get current environment variables
+      operationId: getEnvVars
+      tags:
+      - Env Vars
+      responses:
+        '200':
+          description: env vars returned
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EnvData"
+    patch:
+      summary: Set or delete an environment variable
+      operationId: updateEnvVar
+      tags:
+      - Env Vars
+      parameters: []
+      responses:
+        '200':
+          description: variable updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:
+                    type: string
+                  value:
+                    type: string
+                    nullable: true
+                  override:
+                    "$ref": "#/components/schemas/EnvOverride"
+                    nullable: true
+        '422':
+          description: key is blank
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - key
+              properties:
+                key:
+                  type: string
+                value:
+                  type: string
+                  nullable: true
+  "/_profiler/api/env_vars/reset":
+    delete:
+      summary: Reset a single env var override
+      operationId: resetEnvVar
+      tags:
+      - Env Vars
+      parameters:
+      - name: key
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: override reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:
+                    type: string
+                  value:
+                    type: string
+                    nullable: true
+                  reset:
+                    type: boolean
+  "/_profiler/api/env_vars/reset_all":
+    delete:
+      summary: Reset all env var overrides
+      operationId: resetAllEnvVars
+      tags:
+      - Env Vars
+      responses:
+        '200':
+          description: all overrides reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reset:
+                    type: boolean
+  "/_profiler/api/explain":
+    post:
+      summary: Run EXPLAIN ANALYZE on a stored query
+      operationId: explainQuery
+      tags:
+      - Database
+      parameters: []
+      responses:
+        '200':
+          description: explain result
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ExplainResult"
+        '422':
+          description: invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - token
+              - query_index
+              properties:
+                token:
+                  type: string
+                  description: Profile token
+                query_index:
+                  type: integer
+                  description: Index of the query in collectors_data.database.queries
+  "/_profiler/api/function_profiling":
+    get:
+      summary: Get function profiling configuration
+      operationId: getFunctionProfiling
+      tags:
+      - Function Profiling
+      responses:
+        '200':
+          description: function profiling config
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/FunctionProfilingConfig"
+    patch:
+      summary: Update function profiling configuration
+      operationId: updateFunctionProfiling
+      tags:
+      - Function Profiling
+      parameters: []
+      responses:
+        '200':
+          description: config updated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/FunctionProfilingConfig"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                max_frames:
+                  type: integer
+                mode:
+                  type: string
+                  enum:
+                  - full
+                  - lite
+                clock:
+                  type: string
+                  enum:
+                  - wall
+                  - cpu
+                  - object
+  "/_profiler/api/jobs":
+    get:
+      summary: List job profiles
+      operationId: listJobs
+      tags:
+      - Jobs
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: jobs list
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ProfilesResponse"
+  "/_profiler/api/jobs/{id}":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Get job profile details
+      operationId: getJob
+      tags:
+      - Jobs
+      responses:
+        '200':
+          description: job profile found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Profile"
+        '404':
+          description: job profile not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+    delete:
+      summary: Delete a job profile
+      operationId: deleteJob
+      tags:
+      - Jobs
+      responses:
+        '204':
+          description: job profile deleted
+  "/_profiler/api/jobs/clear":
+    delete:
+      summary: Clear all job profiles
+      operationId: clearJobs
+      tags:
+      - Jobs
+      responses:
+        '204':
+          description: job profiles cleared
+  "/_profiler/api/outbound_http":
+    get:
+      summary: List all outbound HTTP requests across profiles
+      operationId: listOutboundRequests
+      tags:
+      - Outbound HTTP
+      responses:
+        '200':
+          description: outbound requests list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/OutboundRequest"
+  "/_profiler/api/profiles":
+    get:
+      summary: List HTTP profiles
+      operationId: listProfiles
+      tags:
+      - Profiles
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: profiles list
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ProfilesResponse"
+  "/_profiler/api/profiles/{id}":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Get profile details
+      operationId: getProfile
+      tags:
+      - Profiles
+      responses:
+        '200':
+          description: profile found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Profile"
+        '404':
+          description: profile not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+    delete:
+      summary: Delete a profile
+      operationId: deleteProfile
+      tags:
+      - Profiles
+      responses:
+        '204':
+          description: profile deleted
+  "/_profiler/api/profiles/clear":
+    delete:
+      summary: Clear all HTTP profiles
+      operationId: clearProfiles
+      tags:
+      - Profiles
+      responses:
+        '204':
+          description: profiles cleared
+  "/_profiler/api/test_runner/files":
+    get:
+      summary: List test files and frameworks
+      operationId: getTestRunnerFiles
+      tags:
+      - Test Runner
+      parameters:
+      - name: framework
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: test files tree
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/TestRunnerFilesResponse"
+  "/_profiler/api/test_runner/runs":
+    post:
+      summary: Start a test run
+      operationId: createTestRun
+      tags:
+      - Test Runner
+      parameters: []
+      responses:
+        '422':
+          description: no files selected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - files
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                framework:
+                  type: string
+  "/_profiler/api/test_runner/runs/{id}":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Get test run status
+      operationId: getTestRun
+      tags:
+      - Test Runner
+      responses:
+        '404':
+          description: run not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+    delete:
+      summary: Kill a test run
+      operationId: deleteTestRun
+      tags:
+      - Test Runner
+      responses:
+        '404':
+          description: run not found
+  "/_profiler/api/tests":
+    get:
+      summary: List test profiles
+      operationId: listTests
+      tags:
+      - Tests
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: test profiles list
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ProfilesResponse"
+  "/_profiler/api/tests/{id}":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Get test profile details
+      operationId: getTest
+      tags:
+      - Tests
+      responses:
+        '200':
+          description: test profile found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Profile"
+        '404':
+          description: test profile not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+    delete:
+      summary: Delete a test profile
+      operationId: deleteTest
+      tags:
+      - Tests
+      responses:
+        '204':
+          description: test profile deleted
+  "/_profiler/api/tests/clear":
+    delete:
+      summary: Clear all test profiles
+      operationId: clearTests
+      tags:
+      - Tests
+      responses:
+        '204':
+          description: test profiles cleared
+  "/_profiler/api/toolbar/{token}":
+    parameters:
+    - name: token
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Get toolbar data for a profile
+      operationId: getToolbar
+      tags:
+      - Toolbar
+      responses:
+        '200':
+          description: toolbar data
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ToolbarResponse"
+        '404':
+          description: profile not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+components:
+  schemas:
+    ProfilesResponse:
+      type: object
+      required:
+      - profiles
+      - limit
+      - offset
+      - has_more
+      properties:
+        profiles:
+          type: array
+          items:
+            "$ref": "#/components/schemas/Profile"
+        limit:
+          type: integer
+        offset:
+          type: integer
+        has_more:
+          type: boolean
+    Profile:
+      type: object
+      required:
+      - token
+      - method
+      - path
+      - status
+      - duration
+      - started_at
+      properties:
+        token:
+          type: string
+        method:
+          type: string
+        path:
+          type: string
+        status:
+          type: integer
+        duration:
+          type: number
+          format: float
+        memory:
+          type: integer
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+        profile_type:
+          type: string
+          enum:
+          - http
+          - job
+          - test
+          nullable: true
+        gem_version:
+          type: string
+          nullable: true
+        parent_token:
+          type: string
+          nullable: true
+        child_jobs:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ChildJobSummary"
+          nullable: true
+        parent_profile:
+          "$ref": "#/components/schemas/ParentProfileSummary"
+          nullable: true
+        params:
+          type: object
+          additionalProperties: true
+          nullable: true
+        headers:
+          type: object
+          additionalProperties: true
+          nullable: true
+        response_headers:
+          type: object
+          additionalProperties: true
+          nullable: true
+        request_body:
+          type: string
+          nullable: true
+        request_body_encoding:
+          type: string
+          enum:
+          - text
+          - base64
+          nullable: true
+        response_body:
+          type: string
+          nullable: true
+        response_body_encoding:
+          type: string
+          enum:
+          - text
+          - base64
+          nullable: true
+        collectors_data:
+          "$ref": "#/components/schemas/CollectorsData"
+          nullable: true
+        tabs:
+          type: array
+          items:
+            "$ref": "#/components/schemas/TabConfig"
+          nullable: true
+    CollectorsData:
+      type: object
+      properties:
+        database:
+          "$ref": "#/components/schemas/DatabaseData"
+        cache:
+          "$ref": "#/components/schemas/CacheData"
+        dump:
+          "$ref": "#/components/schemas/DumpData"
+        request:
+          "$ref": "#/components/schemas/RequestData"
+        performance:
+          "$ref": "#/components/schemas/PerformanceData"
+        view:
+          "$ref": "#/components/schemas/ViewData"
+        ajax:
+          "$ref": "#/components/schemas/AjaxData"
+        http:
+          "$ref": "#/components/schemas/HttpData"
+        job:
+          "$ref": "#/components/schemas/JobData"
+        flamegraph:
+          "$ref": "#/components/schemas/FlameGraphData"
+        logs:
+          "$ref": "#/components/schemas/LogData"
+        exception:
+          "$ref": "#/components/schemas/ExceptionData"
+        routes:
+          "$ref": "#/components/schemas/RoutesData"
+        i18n:
+          "$ref": "#/components/schemas/I18nData"
+        env:
+          "$ref": "#/components/schemas/EnvData"
+        mailer:
+          "$ref": "#/components/schemas/MailerData"
+      additionalProperties: true
+    DatabaseData:
+      type: object
+      required:
+      - total_queries
+      - total_duration
+      - slow_queries
+      - cached_queries
+      - queries
+      properties:
+        total_queries:
+          type: integer
+        total_duration:
+          type: number
+          format: float
+        slow_queries:
+          type: integer
+        cached_queries:
+          type: integer
+        queries:
+          type: array
+          items:
+            "$ref": "#/components/schemas/DatabaseQuery"
+    DatabaseQuery:
+      type: object
+      required:
+      - sql
+      - duration
+      - slow
+      - cached
+      properties:
+        sql:
+          type: string
+        duration:
+          type: number
+          format: float
+        slow:
+          type: boolean
+        cached:
+          type: boolean
+        transaction:
+          type: boolean
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        binds:
+          type: array
+          items: {}
+          nullable: true
+        backtrace:
+          type: array
+          items:
+            type: string
+          nullable: true
+    CacheData:
+      type: object
+      required:
+      - total_reads
+      - total_writes
+      - total_deletes
+      - hit_rate
+      - hits
+      - misses
+      properties:
+        total_reads:
+          type: integer
+        total_writes:
+          type: integer
+        total_deletes:
+          type: integer
+        hit_rate:
+          type: number
+          format: float
+        hits:
+          type: integer
+        misses:
+          type: integer
+        reads:
+          type: array
+          items:
+            "$ref": "#/components/schemas/CacheOperation"
+          nullable: true
+        writes:
+          type: array
+          items:
+            "$ref": "#/components/schemas/CacheOperation"
+          nullable: true
+        deletes:
+          type: array
+          items:
+            "$ref": "#/components/schemas/CacheOperation"
+          nullable: true
+    CacheOperation:
+      type: object
+      required:
+      - key
+      - duration
+      properties:
+        key:
+          type: string
+        duration:
+          type: number
+          format: float
+        hit:
+          type: boolean
+          nullable: true
+    DumpData:
+      type: object
+      required:
+      - count
+      - dumps
+      properties:
+        count:
+          type: integer
+        dumps:
+          type: array
+          items:
+            "$ref": "#/components/schemas/Dump"
+    Dump:
+      type: object
+      required:
+      - file
+      - line
+      - timestamp
+      - formatted
+      properties:
+        label:
+          type: string
+          nullable: true
+        file:
+          type: string
+        line:
+          type: integer
+        timestamp:
+          type: string
+        formatted:
+          type: string
+    RequestData:
+      type: object
+      required:
+      - headers
+      - params
+      properties:
+        headers:
+          type: object
+          additionalProperties: true
+        params:
+          type: object
+          additionalProperties: true
+        response_headers:
+          type: object
+          additionalProperties: true
+          nullable: true
+        request_body:
+          type: string
+          nullable: true
+        request_body_encoding:
+          type: string
+          enum:
+          - text
+          - base64
+          nullable: true
+        response_body:
+          type: string
+          nullable: true
+        response_body_encoding:
+          type: string
+          enum:
+          - text
+          - base64
+          nullable: true
+        route_name:
+          type: string
+          nullable: true
+        route_pattern:
+          type: string
+          nullable: true
+        route_params:
+          type: object
+          additionalProperties: true
+          nullable: true
+        controller_action:
+          type: string
+          nullable: true
+    PerformanceData:
+      type: object
+      required:
+      - total_events
+      - total_duration
+      - events
+      properties:
+        total_events:
+          type: integer
+        total_duration:
+          type: number
+          format: float
+        events:
+          type: array
+          items:
+            "$ref": "#/components/schemas/PerformanceEvent"
+    PerformanceEvent:
+      type: object
+      required:
+      - name
+      - duration
+      properties:
+        name:
+          type: string
+        duration:
+          type: number
+          format: float
+        payload:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ViewData:
+      type: object
+      required:
+      - total_views
+      - total_partials
+      - total_duration
+      properties:
+        total_views:
+          type: integer
+        total_partials:
+          type: integer
+        total_duration:
+          type: number
+          format: float
+        views:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ViewRender"
+          nullable: true
+        partials:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ViewRender"
+          nullable: true
+    ViewRender:
+      type: object
+      required:
+      - identifier
+      - duration
+      properties:
+        identifier:
+          type: string
+        duration:
+          type: number
+          format: float
+    AjaxData:
+      type: object
+      required:
+      - total_requests
+      - total_duration
+      - by_method
+      - by_status
+      - requests
+      properties:
+        total_requests:
+          type: integer
+        total_duration:
+          type: number
+          format: float
+        by_method:
+          type: object
+          additionalProperties:
+            type: integer
+        by_status:
+          type: object
+          additionalProperties:
+            type: integer
+        requests:
+          type: array
+          items:
+            "$ref": "#/components/schemas/AjaxRequest"
+    AjaxRequest:
+      type: object
+      required:
+      - token
+      - path
+      - method
+      - status
+      - duration
+      - started_at
+      properties:
+        token:
+          type: string
+        path:
+          type: string
+        method:
+          type: string
+        status:
+          type: integer
+        duration:
+          type: number
+          format: float
+        started_at:
+          type: string
+          format: date-time
+    HttpData:
+      type: object
+      required:
+      - total_requests
+      - total_duration
+      - slow_requests
+      - error_requests
+      - by_host
+      - by_status
+      - requests
+      properties:
+        total_requests:
+          type: integer
+        total_duration:
+          type: number
+          format: float
+        slow_requests:
+          type: integer
+        error_requests:
+          type: integer
+        by_host:
+          type: object
+          additionalProperties:
+            type: integer
+        by_status:
+          type: object
+          additionalProperties:
+            type: integer
+        requests:
+          type: array
+          items:
+            "$ref": "#/components/schemas/HttpRequest"
+    HttpRequest:
+      type: object
+      required:
+      - url
+      - method
+      - status
+      - duration
+      - request_headers
+      - request_size
+      - response_headers
+      - response_size
+      - backtrace
+      properties:
+        url:
+          type: string
+        method:
+          type: string
+        status:
+          type: integer
+        duration:
+          type: number
+          format: float
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        request_headers:
+          type: object
+          additionalProperties:
+            type: string
+        request_body:
+          type: string
+          nullable: true
+        request_body_encoding:
+          type: string
+          enum:
+          - text
+          - base64
+          nullable: true
+        request_size:
+          type: integer
+        response_headers:
+          type: object
+          additionalProperties:
+            type: string
+        response_body:
+          type: string
+          nullable: true
+        response_body_encoding:
+          type: string
+          enum:
+          - text
+          - base64
+          nullable: true
+        response_size:
+          type: integer
+        backtrace:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+          nullable: true
+    JobData:
+      type: object
+      required:
+      - job_class
+      - job_id
+      - queue
+      - arguments
+      - executions
+      - status
+      properties:
+        job_class:
+          type: string
+        job_id:
+          type: string
+        queue:
+          type: string
+        arguments:
+          type: array
+          items: {}
+        executions:
+          type: integer
+        status:
+          type: string
+          enum:
+          - running
+          - completed
+          - failed
+        error:
+          type: string
+          nullable: true
+    LogData:
+      type: object
+      required:
+      - count
+      - errors
+      - warnings
+      - logs
+      properties:
+        count:
+          type: integer
+        errors:
+          type: integer
+        warnings:
+          type: integer
+        logs:
+          type: array
+          items:
+            "$ref": "#/components/schemas/LogEntry"
+    LogEntry:
+      type: object
+      required:
+      - level
+      - message
+      - timestamp
+      properties:
+        level:
+          type: string
+          enum:
+          - DEBUG
+          - INFO
+          - WARN
+          - ERROR
+          - FATAL
+          - UNKNOWN
+        message:
+          type: string
+        timestamp:
+          type: string
+    ExceptionData:
+      type: object
+      required:
+      - exception_class
+      - message
+      - backtrace
+      properties:
+        exception_class:
+          type: string
+        message:
+          type: string
+        backtrace:
+          type: array
+          items:
+            "$ref": "#/components/schemas/BacktraceFrame"
+    BacktraceFrame:
+      type: object
+      required:
+      - location
+      - app_frame
+      properties:
+        location:
+          type: string
+        app_frame:
+          type: boolean
+    RoutesData:
+      type: object
+      required:
+      - total
+      - routes
+      properties:
+        total:
+          type: integer
+        matched:
+          "$ref": "#/components/schemas/RouteEntry"
+          nullable: true
+        routes:
+          type: array
+          items:
+            "$ref": "#/components/schemas/RouteEntry"
+    RouteEntry:
+      type: object
+      required:
+      - pattern
+      - verb
+      - matched
+      properties:
+        name:
+          type: string
+          nullable: true
+        pattern:
+          type: string
+        verb:
+          type: string
+        controller_action:
+          type: string
+          nullable: true
+        matched:
+          type: boolean
+    I18nData:
+      type: object
+      required:
+      - locale
+      - total
+      - missing_count
+      - lookups
+      properties:
+        locale:
+          type: string
+        total:
+          type: integer
+        missing_count:
+          type: integer
+        lookups:
+          type: array
+          items:
+            "$ref": "#/components/schemas/I18nLookup"
+    I18nLookup:
+      type: object
+      required:
+      - key
+      - locale
+      - value
+      - missing
+      properties:
+        key:
+          type: string
+        locale:
+          type: string
+        value:
+          type: string
+        missing:
+          type: boolean
+    EnvData:
+      type: object
+      required:
+      - variables
+      - total
+      properties:
+        variables:
+          type: object
+          additionalProperties:
+            type: string
+        total:
+          type: integer
+        overrides:
+          type: object
+          additionalProperties:
+            "$ref": "#/components/schemas/EnvOverride"
+          nullable: true
+    EnvOverride:
+      type: object
+      required:
+      - value
+      properties:
+        value:
+          type: string
+        original:
+          type: string
+          nullable: true
+    MailerData:
+      type: object
+      required:
+      - total
+      - deliver_now
+      - deliver_later
+      - failed
+      - multi_part_count
+      - emails
+      - errors
+      - loop_warnings
+      properties:
+        total:
+          type: integer
+        deliver_now:
+          type: integer
+        deliver_later:
+          type: integer
+        failed:
+          type: integer
+        multi_part_count:
+          type: integer
+        truncated:
+          type: boolean
+          nullable: true
+        emails:
+          type: array
+          items:
+            "$ref": "#/components/schemas/MailerEmail"
+        errors:
+          type: array
+          items:
+            "$ref": "#/components/schemas/MailerEmail"
+        queued:
+          type: array
+          items:
+            "$ref": "#/components/schemas/MailerEmail"
+          nullable: true
+        queued_count:
+          type: integer
+          nullable: true
+        loop_warnings:
+          type: array
+          items:
+            "$ref": "#/components/schemas/MailerLoopWarning"
+    MailerEmail:
+      type: object
+      required:
+      - mailer_class
+      properties:
+        mailer_class:
+          type: string
+        action:
+          type: string
+          nullable: true
+        subject:
+          type: string
+          nullable: true
+        to:
+          type: array
+          items:
+            type: string
+          nullable: true
+        from:
+          type: array
+          items:
+            type: string
+          nullable: true
+        cc:
+          type: array
+          items:
+            type: string
+          nullable: true
+        bcc:
+          type: array
+          items:
+            type: string
+          nullable: true
+        reply_to:
+          type: array
+          items:
+            type: string
+          nullable: true
+        message_id:
+          type: string
+          nullable: true
+        delivery_method:
+          type: string
+          nullable: true
+        delivery_mode:
+          type: string
+          enum:
+          - deliver_now
+          - deliver_later
+          nullable: true
+        duration_ms:
+          type: number
+          nullable: true
+        delivery_ms:
+          type: number
+          nullable: true
+        parts:
+          type: array
+          items:
+            type: string
+          nullable: true
+        body_captured:
+          type: boolean
+          nullable: true
+        body_html:
+          type: string
+          nullable: true
+        body_text:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        triggered_at:
+          type: string
+          nullable: true
+        template:
+          type: string
+          nullable: true
+        assigns:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+    MailerLoopWarning:
+      type: object
+      required:
+      - key
+      - count
+      - message
+      properties:
+        key:
+          type: string
+        count:
+          type: integer
+        message:
+          type: string
+    FlameGraphData:
+      type: object
+      required:
+      - total_events
+      - total_duration
+      - root_events
+      properties:
+        total_events:
+          type: integer
+        total_duration:
+          type: number
+          format: float
+        root_events:
+          type: array
+          items:
+            "$ref": "#/components/schemas/FlameGraphNode"
+    FlameGraphNode:
+      type: object
+      required:
+      - name
+      - started_at
+      - finished_at
+      - duration
+      - category
+      - children
+      properties:
+        name:
+          type: string
+        started_at:
+          type: number
+        finished_at:
+          type: number
+        duration:
+          type: number
+          format: float
+        category:
+          type: string
+          enum:
+          - controller
+          - view
+          - partial
+          - sql
+          - cache
+          - http
+          - custom
+          - method
+        payload:
+          type: object
+          additionalProperties: true
+          nullable: true
+        children:
+          type: array
+          items:
+            "$ref": "#/components/schemas/FlameGraphNode"
+    ChildJobSummary:
+      type: object
+      required:
+      - token
+      - job_class
+      - status
+      - duration
+      - started_at
+      properties:
+        token:
+          type: string
+        job_class:
+          type: string
+        job_id:
+          type: string
+          nullable: true
+        queue:
+          type: string
+          nullable: true
+        status:
+          type: string
+        duration:
+          type: number
+          format: float
+        started_at:
+          type: string
+          format: date-time
+    ParentProfileSummary:
+      type: object
+      required:
+      - token
+      - profile_type
+      - path
+      - duration
+      - started_at
+      properties:
+        token:
+          type: string
+        profile_type:
+          type: string
+          enum:
+          - http
+          - job
+        path:
+          type: string
+        method:
+          type: string
+          nullable: true
+        http_status:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        duration:
+          type: number
+          format: float
+        started_at:
+          type: string
+          format: date-time
+    TabConfig:
+      type: object
+      required:
+      - key
+      - label
+      - priority
+      - enabled
+      - render_mode
+      - has_data
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+          nullable: true
+        priority:
+          type: integer
+        enabled:
+          type: boolean
+        default_active:
+          type: boolean
+          nullable: true
+        render_mode:
+          type: string
+          enum:
+          - auto
+          - custom
+          - client
+        html:
+          type: string
+          nullable: true
+        has_data:
+          type: boolean
+    ToolbarResponse:
+      type: object
+      required:
+      - profile
+      properties:
+        profile:
+          "$ref": "#/components/schemas/Profile"
+    FunctionProfilingConfig:
+      type: object
+      required:
+      - enabled
+      - max_frames
+      - mode
+      - clock
+      properties:
+        enabled:
+          type: boolean
+        max_frames:
+          type: integer
+        mode:
+          type: string
+          enum:
+          - full
+          - lite
+        clock:
+          type: string
+          enum:
+          - wall
+          - cpu
+          - object
+    ExplainResult:
+      type: object
+      required:
+      - format
+      - adapter
+      properties:
+        result: {}
+        format:
+          type: string
+          enum:
+          - json
+          - text
+        adapter:
+          type: string
+    TestRun:
+      type: object
+      required:
+      - id
+      - status
+      - files
+      - framework
+      - output
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - passed
+          - failed
+          - killed
+          - error
+        pid:
+          type: integer
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        output:
+          type: string
+        exit_code:
+          type: integer
+          nullable: true
+        files:
+          type: array
+          items:
+            type: string
+        framework:
+          type: string
+        duration:
+          type: number
+          nullable: true
+    TestRunFile:
+      type: object
+      required:
+      - path
+      - name
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+    TestRunnerTree:
+      type: object
+      required:
+      - directory
+      - files
+      properties:
+        directory:
+          type: string
+        files:
+          type: array
+          items:
+            "$ref": "#/components/schemas/TestRunFile"
+    TestRunnerFilesResponse:
+      type: object
+      required:
+      - frameworks
+      - tree
+      properties:
+        frameworks:
+          type: array
+          items:
+            type: string
+        tree:
+          type: array
+          items:
+            "$ref": "#/components/schemas/TestRunnerTree"
+    OutboundRequest:
+      type: object
+      required:
+      - url
+      - method
+      - status
+      - duration
+      - request_headers
+      - request_size
+      - response_headers
+      - response_size
+      - backtrace
+      - profile_token
+      - profile_started_at
+      properties:
+        url:
+          type: string
+        method:
+          type: string
+        status:
+          type: integer
+        duration:
+          type: number
+          format: float
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        request_headers:
+          type: object
+          additionalProperties:
+            type: string
+        request_body:
+          type: string
+          nullable: true
+        request_body_encoding:
+          type: string
+          nullable: true
+        request_size:
+          type: integer
+        response_headers:
+          type: object
+          additionalProperties:
+            type: string
+        response_body:
+          type: string
+          nullable: true
+        response_body_encoding:
+          type: string
+          nullable: true
+        response_size:
+          type: integer
+        backtrace:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+          nullable: true
+        profile_token:
+          type: string
+        profile_started_at:
+          type: string

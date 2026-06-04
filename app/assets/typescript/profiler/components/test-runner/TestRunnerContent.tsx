@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'preact/hooks'
+import { useGetTestRunnerFiles, useCreateTestRun, useDeleteTestRun } from '../../generated/api'
 import { TestRunTree, TestRun } from '../../../dashboard/types'
 import { TestFileTree } from './TestFileTree'
 import { RunOutput } from './RunOutput'
@@ -7,51 +8,31 @@ const BASE = '/_profiler'
 
 export function TestRunnerContent() {
   const [framework, setFramework] = useState<string>('')
-  const [frameworks, setFrameworks] = useState<string[]>([])
-  const [tree, setTree] = useState<TestRunTree[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(true)
   const [currentRun, setCurrentRun] = useState<TestRun | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const loadFiles = useCallback((fw: string) => {
-    setLoading(true)
-    fetch(`${BASE}/api/test_runner/files?framework=${fw}`)
-      .then(r => r.json())
-      .then(data => {
-        setFrameworks(data.frameworks || [])
-        setTree(data.tree || [])
-        setSelected(new Set())
-        setLoading(false)
-      })
-      .catch(() => {
-        setError('Failed to load test files')
-        setLoading(false)
-      })
-  }, [])
+  const { data: filesData, isLoading: loading, refetch: refetchFiles } = useGetTestRunnerFiles(
+    framework ? { framework } : {},
+    { query: { refetchOnWindowFocus: false } }
+  )
+  const { mutateAsync: startTestRun } = useCreateTestRun()
+  const { mutateAsync: killTestRun } = useDeleteTestRun()
+
+  const frameworks: string[] = filesData?.frameworks ?? []
+  const tree: TestRunTree[] = (filesData?.tree ?? []) as TestRunTree[]
 
   useEffect(() => {
-    // First discover available frameworks, then load files for the first one
-    fetch(`${BASE}/api/test_runner/files`)
-      .then(r => r.json())
-      .then(data => {
-        const fws: string[] = (data.frameworks || []).map(String)
-        setFrameworks(fws)
-        const defaultFw = fws[0] || 'minitest'
-        setFramework(defaultFw)
-        return fetch(`${BASE}/api/test_runner/files?framework=${defaultFw}`)
-      })
-      .then(r => r.json())
-      .then(data => {
-        setTree(data.tree || [])
-        setLoading(false)
-      })
-      .catch(() => {
-        setError('Failed to load test files')
-        setLoading(false)
-      })
-  }, [])
+    if (!framework && frameworks.length > 0) {
+      setFramework(frameworks[0])
+    }
+  }, [frameworks])
+
+  const loadFiles = useCallback((fw: string) => {
+    setSelected(new Set())
+    refetchFiles()
+  }, [refetchFiles])
 
   // Stream output via SSE while run is active
   useEffect(() => {
@@ -84,10 +65,7 @@ export function TestRunnerContent() {
       // Fall back to one final poll to get the terminal state
       fetch(`${BASE}/api/test_runner/runs/${currentRun.id}`)
         .then(r => r.json())
-        .then((data: TestRun) => {
-          setCurrentRun(data)
-          setIsRunning(false)
-        })
+        .then((data: TestRun) => { setCurrentRun(data); setIsRunning(false) })
         .catch(() => setIsRunning(false))
     }
 
@@ -127,31 +105,25 @@ export function TestRunnerContent() {
 
   const selectNone = () => setSelected(new Set())
 
-  const runTests = () => {
+  const runTests = async () => {
     if (selected.size === 0 || isRunning) return
     setError(null)
-
-    fetch(`${BASE}/api/test_runner/runs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: Array.from(selected), framework })
-    })
-      .then(r => r.json())
-      .then((data: TestRun) => {
-        setCurrentRun(data)
-        setIsRunning(true)
-      })
-      .catch(() => setError('Failed to start test run'))
+    try {
+      const data = await startTestRun({ files: Array.from(selected), framework }) as TestRun
+      setCurrentRun(data)
+      setIsRunning(true)
+    } catch {
+      setError('Failed to start test run')
+    }
   }
 
-  const stopRun = () => {
+  const stopRun = async () => {
     if (!currentRun) return
-    fetch(`${BASE}/api/test_runner/runs/${currentRun.id}`, { method: 'DELETE' })
-      .then(() => {
-        setIsRunning(false)
-        setCurrentRun(prev => prev ? { ...prev, status: 'killed' } : prev)
-      })
-      .catch(() => {})
+    try {
+      await killTestRun({ id: currentRun.id })
+      setIsRunning(false)
+      setCurrentRun(prev => prev ? { ...prev, status: 'killed' } : prev)
+    } catch {}
   }
 
   const totalFiles = tree.reduce((n, d) => n + d.files.length, 0)

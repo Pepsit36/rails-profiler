@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'preact/hooks'
+import { useExplainQuery } from '../../../generated/api'
 import { DatabaseData, DatabaseQuery } from '../../../dashboard/types'
 
 interface Props {
@@ -147,6 +148,7 @@ export function DatabaseTab({ dbData, token }: Props) {
   const [explainState, setExplainState] = useState<ExplainState>({
     open: false, loading: false, result: null, format: 'text', adapter: '', error: null
   })
+  const { mutateAsync: runExplainMutation } = useExplainQuery()
 
   if (!dbData?.queries) {
     return (
@@ -170,17 +172,7 @@ export function DatabaseTab({ dbData, token }: Props) {
   const runExplain = async (queryIndex: number) => {
     setExplainState({ open: true, loading: true, result: null, format: 'text', adapter: '', error: null })
     try {
-      const res = await fetch('/_profiler/api/explain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, query_index: queryIndex })
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        setExplainState(s => ({ ...s, loading: false, error: body.error ?? `HTTP ${res.status}` }))
-        return
-      }
-      const data = await res.json()
+      const data = await runExplainMutation({ token, query_index: queryIndex })
       setExplainState(s => ({
         ...s,
         loading: false,
