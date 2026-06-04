@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'preact/hooks'
+import { useUpdateFunctionProfiling } from '../../../generated/api'
 import type { FlameGraphData, FlameGraphNode, FlameGraphCategory, PerformanceData, FunctionProfileData, FunctionStat } from '../../../dashboard/types'
 import { FlameGraphRenderer, FlatFrame } from '../../../flamegraph/FlameGraphRenderer'
 import { FlameGraphTooltip } from '../../../flamegraph/FlameGraphTooltip'
@@ -58,14 +59,7 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
   const [fnModeUpdating, setFnModeUpdating] = useState(false)
   const [fnClockUpdating, setFnClockUpdating] = useState(false)
 
-  const patchFunctionProfiling = async (patch: { enabled?: boolean; max_frames?: number; mode?: string; clock?: string }) => {
-    const res = await fetch('/_profiler/api/function_profiling', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch)
-    })
-    return res.json()
-  }
+  const { mutateAsync: patchFunctionProfiling } = useUpdateFunctionProfiling()
 
   const toggleFunctionProfiling = async () => {
     setFnToggling(true)
