@@ -5,7 +5,11 @@
     "moduleResolution": "bundler",
     "strict": true,
     "target": "ES2020",
-    "module": "ESNext"
+    "module": "ESNext",
+    "baseUrl": ".",
+    "paths": {
+      "@tanstack/react-query": ["node_modules/@tanstack/preact-query"]
+    }
   },
   "include": ["app/assets/typescript/**/*"]
 }

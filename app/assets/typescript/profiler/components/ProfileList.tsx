@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'preact/hooks'
-import { Profile, ProfilesResponse, HttpRequest, EnvData } from '../dashboard/types'
+import {
+  useListProfilesInfinite, useListJobsInfinite, useListConsolesInfinite, useListTestsInfinite,
+  useListOutboundRequests, useGetEnvVars,
+  useDeleteProfile, useClearProfiles,
+  useDeleteJob, useClearJobs,
+  useDeleteConsole, useClearConsoles,
+  useDeleteTest, useClearTests,
+} from '../generated/api'
+import type { Profile, HttpRequest } from '../dashboard/types'
 import { getGemVersion } from '../dashboard/utils'
 import { HttpRequestDetail } from './dashboard/tabs/HttpTab'
 import { EnvTab } from './dashboard/tabs/EnvTab'
@@ -87,37 +95,63 @@ export function ProfileList() {
   }
 
   const [section, setSection] = useState<'http' | 'jobs' | 'console' | 'tests' | 'runner' | 'outbound' | 'env'>(initialSection)
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [httpOffset, setHttpOffset] = useState(0)
-  const [httpHasMore, setHttpHasMore] = useState(false)
-  const [httpLoadingMore, setHttpLoadingMore] = useState(false)
-  const [jobs, setJobs] = useState<Profile[]>([])
-  const [jobOffset, setJobOffset] = useState(0)
-  const [jobHasMore, setJobHasMore] = useState(false)
-  const [jobLoadingMore, setJobLoadingMore] = useState(false)
-  const [consoles, setConsoles] = useState<Profile[]>([])
-  const [consoleOffset, setConsoleOffset] = useState(0)
-  const [consoleHasMore, setConsoleHasMore] = useState(false)
-  const [consoleLoadingMore, setConsoleLoadingMore] = useState(false)
-  const [tests, setTests] = useState<Profile[]>([])
-  const [testOffset, setTestOffset] = useState(0)
-  const [testHasMore, setTestHasMore] = useState(false)
-  const [testLoadingMore, setTestLoadingMore] = useState(false)
-  const [loadingTests, setLoadingTests] = useState(initialSection() === 'tests')
-  const [testsLoaded, setTestsLoaded] = useState(false)
-  const [testsError, setTestsError] = useState<string | null>(null)
-  const [outboundRequests, setOutboundRequests] = useState<OutboundRequest[]>([])
-  const [loadingHttp, setLoadingHttp] = useState(initialSection() === 'http')
-  const [loadingJobs, setLoadingJobs] = useState(initialSection() === 'jobs')
-  const [loadingConsole, setLoadingConsole] = useState(initialSection() === 'console')
-  const [loadingOutbound, setLoadingOutbound] = useState(initialSection() === 'outbound')
-  const [error, setError] = useState<string | null>(null)
-  const [jobsError, setJobsError] = useState<string | null>(null)
-  const [consoleError, setConsoleError] = useState<string | null>(null)
-  const [outboundError, setOutboundError] = useState<string | null>(null)
-  const [envData, setEnvData] = useState<EnvData | undefined>(undefined)
-  const [loadingEnv, setLoadingEnv] = useState(initialSection() === 'env')
-  const [envError, setEnvError] = useState<string | null>(null)
+
+  const infiniteOpts = (key: string) => ({
+    query: {
+      enabled: section === key,
+      getNextPageParam: (lastPage: { has_more: boolean; offset: number; limit: number }) =>
+        lastPage.has_more ? lastPage.offset + lastPage.limit : undefined,
+      initialPageParam: 0,
+      refetchOnWindowFocus: false,
+    }
+  })
+
+  const httpQuery    = useListProfilesInfinite({ limit: 50 }, infiniteOpts('http'))
+  const jobsQuery    = useListJobsInfinite({ limit: 50 }, infiniteOpts('jobs'))
+  const consolesQuery = useListConsolesInfinite({ limit: 50 }, infiniteOpts('console'))
+  const testsQuery   = useListTestsInfinite({ limit: 50 }, infiniteOpts('tests'))
+  const outboundQuery = useListOutboundRequests({ query: { enabled: section === 'outbound', refetchOnWindowFocus: false } })
+  const envQuery     = useGetEnvVars({ query: { enabled: section === 'env', refetchOnWindowFocus: false } })
+
+  const { mutateAsync: deleteProfileMutation } = useDeleteProfile()
+  const { mutateAsync: clearProfilesMutation } = useClearProfiles()
+  const { mutateAsync: deleteJobMutation }     = useDeleteJob()
+  const { mutateAsync: clearJobsMutation }     = useClearJobs()
+  const { mutateAsync: deleteConsoleMutation } = useDeleteConsole()
+  const { mutateAsync: clearConsolesMutation } = useClearConsoles()
+  const { mutateAsync: deleteTestMutation }    = useDeleteTest()
+  const { mutateAsync: clearTestsMutation }    = useClearTests()
+
+  const profiles        = httpQuery.data?.pages.flatMap(p => p.profiles) ?? []
+  const jobs            = jobsQuery.data?.pages.flatMap(p => p.profiles) ?? []
+  const consoles        = consolesQuery.data?.pages.flatMap(p => p.profiles) ?? []
+  const tests           = testsQuery.data?.pages.flatMap(p => p.profiles) ?? []
+  const outboundRequests = (outboundQuery.data ?? []) as OutboundRequest[]
+  const envData         = envQuery.data
+
+  const loadingHttp    = httpQuery.isLoading
+  const loadingJobs    = jobsQuery.isLoading
+  const loadingConsole = consolesQuery.isLoading
+  const loadingTests   = testsQuery.isLoading
+  const loadingOutbound = outboundQuery.isLoading
+  const loadingEnv     = envQuery.isLoading
+
+  const error        = httpQuery.error?.message ?? null
+  const jobsError    = jobsQuery.error?.message ?? null
+  const consoleError = consolesQuery.error?.message ?? null
+  const testsError   = testsQuery.error?.message ?? null
+  const outboundError = outboundQuery.error?.message ?? null
+  const envError     = envQuery.error?.message ?? null
+
+  const httpHasMore    = !!httpQuery.hasNextPage
+  const jobHasMore     = !!jobsQuery.hasNextPage
+  const consoleHasMore = !!consolesQuery.hasNextPage
+  const testHasMore    = !!testsQuery.hasNextPage
+
+  const httpLoadingMore    = httpQuery.isFetchingNextPage
+  const jobLoadingMore     = jobsQuery.isFetchingNextPage
+  const consoleLoadingMore = consolesQuery.isFetchingNextPage
+  const testLoadingMore    = testsQuery.isFetchingNextPage
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
 
   // HTTP filters
@@ -149,9 +183,7 @@ export function ProfileList() {
   const [outboundMethod, setOutboundMethod] = useState('')
   const [outboundStatus, setOutboundStatus] = useState('')
 
-  useEffect(() => {
-    refreshSection(section)
-  }, [])
+  // Queries auto-fetch when section matches their `enabled` condition
 
   // Sync sort + preset to URL
   useEffect(() => {
@@ -191,91 +223,29 @@ export function ProfileList() {
     setHttpPreset(prev => prev === key ? '' : key)
   }
 
-  const loadMoreHttp = () => {
-    setHttpLoadingMore(true)
-    fetch(`${BASE}/api/profiles?limit=50&offset=${httpOffset}`)
-      .then(res => res.json())
-      .then((data: ProfilesResponse) => {
-        setProfiles(prev => [...prev, ...data.profiles])
-        setHttpOffset(prev => prev + data.profiles.length)
-        setHttpHasMore(data.has_more)
-        setHttpLoadingMore(false)
-      })
-      .catch(() => setHttpLoadingMore(false))
-  }
+  const loadMoreHttp    = () => httpQuery.fetchNextPage()
+  const loadMoreJobs    = () => jobsQuery.fetchNextPage()
+  const loadMoreConsole = () => consolesQuery.fetchNextPage()
+  const loadMoreTests   = () => testsQuery.fetchNextPage()
 
-  const loadMoreJobs = () => {
-    setJobLoadingMore(true)
-    fetch(`${BASE}/api/jobs?limit=50&offset=${jobOffset}`)
-      .then(res => res.json())
-      .then((data: ProfilesResponse) => {
-        setJobs(prev => [...prev, ...data.profiles])
-        setJobOffset(prev => prev + data.profiles.length)
-        setJobHasMore(data.has_more)
-        setJobLoadingMore(false)
-      })
-      .catch(() => setJobLoadingMore(false))
-  }
-
-  const loadMoreConsole = () => {
-    setConsoleLoadingMore(true)
-    fetch(`${BASE}/api/console?limit=50&offset=${consoleOffset}`)
-      .then(res => res.json())
-      .then((data: ProfilesResponse) => {
-        setConsoles(prev => [...prev, ...data.profiles])
-        setConsoleOffset(prev => prev + data.profiles.length)
-        setConsoleHasMore(data.has_more)
-        setConsoleLoadingMore(false)
-      })
-      .catch(() => setConsoleLoadingMore(false))
-  }
-
-  const loadTests = () => {
-    if (testsLoaded) return
-    setLoadingTests(true)
-    fetch(`${BASE}/api/tests?limit=50&offset=0`)
-      .then(res => res.json())
-      .then((data: ProfilesResponse) => {
-        setTests(data.profiles)
-        setTestOffset(data.profiles.length)
-        setTestHasMore(data.has_more)
-        setLoadingTests(false)
-        setTestsLoaded(true)
-      })
-      .catch(() => {
-        setTestsError('Failed to load test profiles')
-        setLoadingTests(false)
-        setTestsLoaded(true)
-      })
-  }
-
-  const loadMoreTests = () => {
-    setTestLoadingMore(true)
-    fetch(`${BASE}/api/tests?limit=50&offset=${testOffset}`)
-      .then(res => res.json())
-      .then((data: ProfilesResponse) => {
-        setTests(prev => [...prev, ...data.profiles])
-        setTestOffset(prev => prev + data.profiles.length)
-        setTestHasMore(data.has_more)
-        setTestLoadingMore(false)
-      })
-      .catch(() => setTestLoadingMore(false))
+  const refetchSection = (s: typeof section) => {
+    if (s === 'http')     httpQuery.refetch()
+    else if (s === 'jobs')     jobsQuery.refetch()
+    else if (s === 'console')  consolesQuery.refetch()
+    else if (s === 'tests')    testsQuery.refetch()
+    else if (s === 'outbound') outboundQuery.refetch()
+    else if (s === 'env')      envQuery.refetch()
   }
 
   const handleSectionChange = (s: 'http' | 'jobs' | 'console' | 'tests' | 'runner' | 'outbound' | 'env') => {
     if (s === section) {
-      refreshSection(s)
+      refetchSection(s)
       return
     }
     setSection(s)
     const url = new URL(window.location.href)
     url.searchParams.set('section', s)
     history.pushState(null, '', url.toString())
-    if (s === 'tests') {
-      loadTests()
-    } else {
-      refreshSection(s)
-    }
     // Reset all filters
     setHttpSearch(''); setHttpMethod(''); setHttpStatus(''); setHttpDuration('')
     setHttpPreset(''); setHttpSort({ col: null, dir: 'asc' })
@@ -292,134 +262,52 @@ export function ProfileList() {
     })
   }
 
-  const deleteProfile = (token: string) => {
-    fetch(`${BASE}/api/profiles/${token}`, { method: 'DELETE' }).then(() => {
-      setProfiles(prev => prev.filter(p => p.token !== token))
-    })
-  }
+  const deleteProfile = (token: string) =>
+    deleteProfileMutation({ id: token }).then(() => httpQuery.refetch())
 
-  const deleteJob = (token: string) => {
-    fetch(`${BASE}/api/jobs/${token}`, { method: 'DELETE' }).then(() => {
-      setJobs(prev => prev.filter(p => p.token !== token))
-    })
-  }
+  const deleteJob = (token: string) =>
+    deleteJobMutation({ id: token }).then(() => jobsQuery.refetch())
 
-  const deleteConsole = (token: string) => {
-    fetch(`${BASE}/api/console/${token}`, { method: 'DELETE' }).then(() => {
-      setConsoles(prev => prev.filter(p => p.token !== token))
-    })
-  }
+  const deleteConsole = (token: string) =>
+    deleteConsoleMutation({ id: token }).then(() => consolesQuery.refetch())
 
-  const deleteTest = (token: string) => {
-    fetch(`${BASE}/api/tests/${token}`, { method: 'DELETE' }).then(() => {
-      setTests(prev => prev.filter(p => p.token !== token))
-    })
-  }
+  const deleteTest = (token: string) =>
+    deleteTestMutation({ id: token }).then(() => testsQuery.refetch())
 
   const clearProfiles = () => {
     if (!window.confirm('Delete all HTTP profiles?')) return
-    fetch(`${BASE}/api/profiles/clear`, { method: 'DELETE' }).then(() => {
-      setProfiles([])
-    })
+    clearProfilesMutation().then(() => httpQuery.refetch())
   }
 
   const clearJobs = () => {
     if (!window.confirm('Delete all job profiles?')) return
-    fetch(`${BASE}/api/jobs/clear`, { method: 'DELETE' }).then(() => {
-      setJobs([])
-    })
+    clearJobsMutation().then(() => jobsQuery.refetch())
   }
 
   const clearConsole = () => {
     if (!window.confirm('Delete all console profiles?')) return
-    fetch(`${BASE}/api/console/clear`, { method: 'DELETE' }).then(() => {
-      setConsoles([])
-    })
+    clearConsolesMutation().then(() => consolesQuery.refetch())
   }
 
   const clearTests = () => {
     if (!window.confirm('Delete all test profiles?')) return
-    fetch(`${BASE}/api/tests/clear`, { method: 'DELETE' }).then(() => {
-      setTests([])
-    })
+    clearTestsMutation().then(() => testsQuery.refetch())
   }
 
   const clearAll = () => {
     if (!window.confirm('Delete all HTTP, job and console profiles?')) return
     Promise.all([
-      fetch(`${BASE}/api/profiles/clear`, { method: 'DELETE' }),
-      fetch(`${BASE}/api/jobs/clear`, { method: 'DELETE' }),
-      fetch(`${BASE}/api/console/clear`, { method: 'DELETE' }),
+      clearProfilesMutation(),
+      clearJobsMutation(),
+      clearConsolesMutation(),
     ]).then(() => {
-      setProfiles([])
-      setJobs([])
-      setConsoles([])
+      httpQuery.refetch()
+      jobsQuery.refetch()
+      consolesQuery.refetch()
     })
   }
 
-  const refreshSection = (s: 'http' | 'jobs' | 'console' | 'tests' | 'runner' | 'outbound' | 'env') => {
-    if (s === 'http') {
-      setLoadingHttp(true)
-      fetch(`${BASE}/api/profiles?limit=50&offset=0`)
-        .then(res => res.json())
-        .then((data: ProfilesResponse) => {
-          setProfiles(data.profiles)
-          setHttpOffset(data.profiles.length)
-          setHttpHasMore(data.has_more)
-          setLoadingHttp(false)
-        })
-        .catch(() => { setError('Failed to load profiles'); setLoadingHttp(false) })
-    } else if (s === 'jobs') {
-      setLoadingJobs(true)
-      fetch(`${BASE}/api/jobs?limit=50&offset=0`)
-        .then(res => res.json())
-        .then((data: ProfilesResponse) => {
-          setJobs(data.profiles)
-          setJobOffset(data.profiles.length)
-          setJobHasMore(data.has_more)
-          setLoadingJobs(false)
-        })
-        .catch(() => { setJobsError('Failed to load job profiles'); setLoadingJobs(false) })
-    } else if (s === 'console') {
-      setLoadingConsole(true)
-      fetch(`${BASE}/api/console?limit=50&offset=0`)
-        .then(res => res.json())
-        .then((data: ProfilesResponse) => {
-          setConsoles(data.profiles)
-          setConsoleOffset(data.profiles.length)
-          setConsoleHasMore(data.has_more)
-          setLoadingConsole(false)
-        })
-        .catch(() => { setConsoleError('Failed to load console profiles'); setLoadingConsole(false) })
-    } else if (s === 'tests') {
-      setLoadingTests(true)
-      setTestsLoaded(false)
-      fetch(`${BASE}/api/tests?limit=50&offset=0`)
-        .then(res => res.json())
-        .then((data: ProfilesResponse) => {
-          setTests(data.profiles)
-          setTestOffset(data.profiles.length)
-          setTestHasMore(data.has_more)
-          setLoadingTests(false)
-          setTestsLoaded(true)
-        })
-        .catch(() => { setTestsError('Failed to load test profiles'); setLoadingTests(false); setTestsLoaded(true) })
-    } else if (s === 'outbound') {
-      setLoadingOutbound(true)
-      fetch(`${BASE}/api/outbound_http`)
-        .then(res => res.json())
-        .then(data => { setOutboundRequests(data); setLoadingOutbound(false) })
-        .catch(() => { setOutboundError('Failed to load outbound HTTP requests'); setLoadingOutbound(false) })
-    } else if (s === 'env') {
-      setLoadingEnv(true)
-      fetch(`${BASE}/api/env_vars`)
-        .then(res => res.json())
-        .then((data: EnvData) => { setEnvData(data); setLoadingEnv(false) })
-        .catch(() => { setEnvError('Failed to load environment variables'); setLoadingEnv(false) })
-    }
-  }
-
-  const refresh = () => refreshSection(section)
+  const refresh = () => refetchSection(section)
 
   const toggleConsoleSort = (col: NonNullable<ConsoleSortCol>) => {
     setConsoleSort(prev =>

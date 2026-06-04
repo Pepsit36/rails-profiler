@@ -27,14 +27,14 @@ interface Props {
 
 export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
   const cd = profile.collectors_data || {}
-  const hasAjax = (cd['ajax'] as any)?.total_requests > 0
-  const hasHttp = (cd['http'] as any)?.total_requests > 0
-  const hasException = !!(cd['exception'] as any)?.exception_class
-  const hasLogs = ((cd['logs'] as any)?.count ?? 0) > 0
-  const hasRoutes = ((cd['routes'] as any)?.total ?? 0) > 0
-  const hasI18n = ((cd['i18n'] as any)?.total ?? 0) > 0
+  const hasAjax = (cd.ajax?.total_requests ?? 0) > 0
+  const hasHttp = (cd.http?.total_requests ?? 0) > 0
+  const hasException = !!cd.exception?.exception_class
+  const hasLogs = (cd.logs?.count ?? 0) > 0
+  const hasRoutes = (cd.routes?.total ?? 0) > 0
+  const hasI18n = (cd.i18n?.total ?? 0) > 0
   const hasJobs = (profile.child_jobs?.length ?? 0) > 0
-  const hasMailers = ((cd['mailer'] as any)?.total ?? 0) > 0
+  const hasMailers = (cd.mailer?.total ?? 0) > 0
 
   const [activeTab, setActiveTab] = useState<TabKey>(hasException ? 'exception' : initialTab)
 
@@ -107,21 +107,21 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
         </div>
 
         <div class="profiler-p-4 tab-content active">
-          {activeTab === 'exception' && <ExceptionTab exceptionData={cd['exception'] as any} />}
+          {activeTab === 'exception' && <ExceptionTab exceptionData={cd.exception} />}
           {activeTab === 'request' && <RequestTab profile={profile} />}
-          {activeTab === 'dump' && <DumpsTab dumpData={cd['dump'] as any} />}
-          {activeTab === 'database' && <DatabaseTab dbData={cd['database'] as any} token={profile.token} />}
-          {activeTab === 'ajax' && <AjaxTab ajaxData={cd['ajax'] as any} />}
-          {activeTab === 'http' && <HttpTab httpData={cd['http'] as any} />}
-          {activeTab === 'timeline' && <FlameGraphTab flamegraphData={cd['flamegraph'] as any} perfData={cd['performance'] as any} functionProfileData={cd['function_profile'] as any} />}
-          {activeTab === 'views' && <ViewsTab viewData={cd['view'] as any} />}
-          {activeTab === 'cache' && <CacheTab cacheData={cd['cache'] as any} />}
-          {activeTab === 'logs' && <LogsTab logData={cd['logs'] as any} />}
-          {activeTab === 'routes' && <RoutesTab routesData={cd['routes'] as any} />}
-          {activeTab === 'i18n' && <I18nTab i18nData={cd['i18n'] as any} />}
+          {activeTab === 'dump' && <DumpsTab dumpData={cd.dump} />}
+          {activeTab === 'database' && <DatabaseTab dbData={cd.database} token={profile.token} />}
+          {activeTab === 'ajax' && <AjaxTab ajaxData={cd.ajax} />}
+          {activeTab === 'http' && <HttpTab httpData={cd.http} />}
+          {activeTab === 'timeline' && <FlameGraphTab flamegraphData={cd.flamegraph} perfData={cd.performance} functionProfileData={cd.function_profile} />}
+          {activeTab === 'views' && <ViewsTab viewData={cd.view} />}
+          {activeTab === 'cache' && <CacheTab cacheData={cd.cache} />}
+          {activeTab === 'logs' && <LogsTab logData={cd.logs} />}
+          {activeTab === 'routes' && <RoutesTab routesData={cd.routes} />}
+          {activeTab === 'i18n' && <I18nTab i18nData={cd.i18n} />}
           {activeTab === 'jobs' && <JobsTab jobs={profile.child_jobs!} />}
-          {activeTab === 'mailer' && <MailerTab mailerData={cd['mailer'] as any} />}
-          {activeTab === 'env' && <EnvTab envData={cd['env'] as any} readOnly />}
+          {activeTab === 'mailer' && <MailerTab mailerData={cd.mailer} />}
+          {activeTab === 'env' && <EnvTab envData={cd.env} readOnly />}
         </div>
       </div>
 

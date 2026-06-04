@@ -4,11 +4,11 @@ stages:
 
 build:
   stage: build
-  image: node:20
+  image: node:22
   script:
     - yarn install --frozen-lockfile
     - mkdir -p app/assets/builds
-    - yarn build
+    - yarn build:full
   artifacts:
     paths:
       - app/assets/builds/

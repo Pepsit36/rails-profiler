@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'preact/hooks'
+import { useUpdateEnvVar, useResetEnvVar, useResetAllEnvVars, getEnvVars } from '../../../generated/api'
 import { EnvData, EnvOverride } from '../../../dashboard/types'
 
 interface Props {
@@ -33,7 +34,7 @@ function getPrefix(key: string): string {
   return idx > 0 ? key.slice(0, idx) : 'OTHER'
 }
 
-function parseEnvFile(content: string): Record<string, string> {
+export function parseEnvFile(content: string): Record<string, string> {
   const result: Record<string, string> = {}
   for (const raw of content.split('\n')) {
     const line = raw.trim()
@@ -106,34 +107,6 @@ function isQuoted(value: string): boolean {
   return true
 }
 
-async function patchEnvVar(key: string, value: string | null): Promise<{ key: string; value: string | null; override?: EnvOverride | null }> {
-  const res = await fetch('/_profiler/api/env_vars', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key, value }),
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error ?? `Request failed (${res.status})`)
-  }
-  return res.json()
-}
-
-async function resetEnvVar(key: string): Promise<{ value: string | null }> {
-  const res = await fetch(`/_profiler/api/env_vars/reset?key=${encodeURIComponent(key)}`, {
-    method: 'DELETE',
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error ?? `Request failed (${res.status})`)
-  }
-  return res.json()
-}
-
-async function resetAllEnvVars(): Promise<void> {
-  const res = await fetch('/_profiler/api/env_vars/reset_all', { method: 'DELETE' })
-  if (!res.ok) throw new Error(`Request failed (${res.status})`)
-}
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -160,6 +133,9 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
   const [showImport, setShowImport] = useState(false)
   const [importContent, setImportContent] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
+  const { mutateAsync: patchEnvVar } = useUpdateEnvVar()
+  const { mutateAsync: resetEnvVar } = useResetEnvVar()
+  const { mutateAsync: resetAllEnvVars } = useResetAllEnvVars()
 
   useEffect(() => {
     if (editingKey !== null) editInputRef.current?.focus()
@@ -212,9 +188,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
   const refresh = async () => {
     setRefreshing(true)
     try {
-      const res = await fetch('/_profiler/api/env_vars')
-      if (!res.ok) throw new Error(`Request failed (${res.status})`)
-      const data = await res.json()
+      const data = await getEnvVars()
       setVariables(data.variables)
       setTotal(data.total)
       setOverrides(data.overrides ?? {})
@@ -252,7 +226,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     if (!entries.length) return
     setSaving(true)
     try {
-      await Promise.all(entries.map(([k, v]) => patchEnvVar(k, v)))
+      await Promise.all(entries.map(([k, v]) => patchEnvVar({ key: k, value: v })))
       setVariables(prev => ({ ...prev, ...importPreview }))
       setImportContent('')
       setShowImport(false)
@@ -278,7 +252,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     }
     setSaving(true)
     try {
-      const data = await patchEnvVar(key, editValue)
+      const data = await patchEnvVar({ key, value: editValue })
       setVariables(prev => ({ ...prev, [key]: editValue }))
       setOverrides(prev => {
         const n = { ...prev }
@@ -297,7 +271,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
   const deleteVar = async (key: string) => {
     setSaving(true)
     try {
-      const data = await patchEnvVar(key, null)
+      const data = await patchEnvVar({ key, value: null })
       setVariables(prev => { const n = { ...prev }; delete n[key]; return n })
       setOverrides(prev => {
         const n = { ...prev }
@@ -317,7 +291,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     const next = /^(true|yes)$/i.test(current) ? 'false' : 'true'
     setSaving(true)
     try {
-      const data = await patchEnvVar(key, next)
+      const data = await patchEnvVar({ key, value: next })
       setVariables(prev => ({ ...prev, [key]: next }))
       setOverrides(prev => {
         const n = { ...prev }
@@ -336,7 +310,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     if (!key) return
     setSaving(true)
     try {
-      const data = await patchEnvVar(key, newValue)
+      const data = await patchEnvVar({ key, value: newValue })
       setVariables(prev => ({ ...prev, [key]: newValue }))
       setOverrides(prev => {
         const n = { ...prev }
@@ -362,7 +336,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
   const resetVar = async (key: string) => {
     setSaving(true)
     try {
-      const data = await resetEnvVar(key)
+      const data = await resetEnvVar({ key })
       setOverrides(prev => { const n = { ...prev }; delete n[key]; return n })
       const updater = (prev: Record<string, string>) => {
         const n = { ...prev }
@@ -382,7 +356,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
   const doResetAll = async () => {
     setSaving(true)
     try {
-      await resetAllEnvVars()
+      await resetAllEnvVars({})
       setOverrides({})
       const data = await refresh()
       if (data) setInitial(data.variables)
