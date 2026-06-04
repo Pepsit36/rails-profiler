@@ -1,4 +1,5 @@
 import { render } from 'preact'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ProfileList } from './components/ProfileList'
 import { ProfileDashboard } from './components/dashboard/ProfileDashboard'
 import { JobProfileDashboard } from './components/dashboard/JobProfileDashboard'
@@ -9,10 +10,19 @@ import { initTimeline } from './timeline'
 import { formatSQL } from './sql-formatter'
 import { themeManager, createThemeToggle } from './theme'
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
+})
+
 document.addEventListener('DOMContentLoaded', () => {
   const indexEl = document.getElementById('profiler-index')
   if (indexEl) {
-    render(<ProfileList />, indexEl)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ProfileList />
+      </QueryClientProvider>,
+      indexEl
+    )
   }
 
   const showEl = document.getElementById('profiler-show')

@@ -3,16 +3,20 @@
   "private": true,
   "scripts": {
     "build": "yarn build:js && yarn build:toolbar && yarn build:css",
-    "build:js": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020",
-    "build:toolbar": "esbuild app/assets/typescript/profiler/toolbar-bundle.tsx --bundle --outfile=app/assets/builds/profiler-toolbar.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020",
+    "build:full": "yarn codegen && yarn build",
+    "build:js": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --alias:@tanstack/react-query=@tanstack/preact-query",
+    "build:toolbar": "esbuild app/assets/typescript/profiler/toolbar-bundle.tsx --bundle --outfile=app/assets/builds/profiler-toolbar.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --alias:@tanstack/react-query=@tanstack/preact-query",
     "build:css": "sass app/assets/stylesheets/profiler/main.scss app/assets/builds/profiler.css --no-source-map",
-    "watch": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --watch"
+    "codegen": "orval",
+    "watch": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --alias:@tanstack/react-query=@tanstack/preact-query --watch"
   },
   "dependencies": {
+    "@tanstack/preact-query": "^5.0.0",
     "preact": "^10.0.0"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
+    "orval": "^7.0.0",
     "sass": "^1.85.0",
     "typescript": "^5.0.0"
   }

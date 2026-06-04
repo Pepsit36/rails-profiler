@@ -1,7 +1,8 @@
 import { render } from 'preact'
-import { useState, useEffect } from 'preact/hooks'
+import { useEffect } from 'preact/hooks'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToolbarApp } from './components/toolbar/ToolbarApp'
-import type { Profile } from './dashboard/types'
+import { useGetToolbar } from './generated/api'
 
 declare global {
   interface Window {
@@ -25,20 +26,18 @@ interface ToolbarMountProps {
   token: string
 }
 
+const toolbarQueryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
+})
+
 function ToolbarMount({ token }: ToolbarMountProps) {
-  const [profile, setProfile] = useState<Profile | null>(null)
+  const { data, refetch } = useGetToolbar(token, { query: { refetchOnWindowFocus: false } })
 
   useEffect(() => {
-    const load = () => {
-      fetch(`/_profiler/api/toolbar/${token}`)
-        .then(res => res.json())
-        .then(data => { if (data.profile) setProfile(data.profile as Profile) })
-        .catch(err => console.debug('Profiler toolbar load failed:', err))
-    }
-    window.__PROFILER_REFRESH_TOOLBAR__ = load
-    load()
-  }, [token])
+    window.__PROFILER_REFRESH_TOOLBAR__ = () => { refetch() }
+  }, [refetch])
 
+  const profile = data?.profile ?? null
   if (!profile) return null
 
   return <ToolbarApp profile={profile} token={token} />
@@ -110,7 +109,12 @@ function mountToolbar(): void {
     }
   })
 
-  render(<ToolbarMount token={token} />, el)
+  render(
+    <QueryClientProvider client={toolbarQueryClient}>
+      <ToolbarMount token={token} />
+    </QueryClientProvider>,
+    el
+  )
 }
 
 if (document.readyState === 'loading') {
