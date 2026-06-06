@@ -9,7 +9,7 @@ module Profiler
                   :authorization_mode, :max_profiles, :extension_cors_enabled,
                   :cors_allowed_origins,
                   :track_ajax, :ajax_skip_paths,
-                  :track_http, :slow_http_threshold, :http_skip_hosts,
+                  :track_http, :slow_http_threshold, :http_skip_hosts, :http_backtrace_depth,
                   :track_jobs,
                   :track_console,
                   :track_tests,
@@ -43,6 +43,7 @@ module Profiler
       @track_http = true
       @slow_http_threshold = 500 # milliseconds
       @http_skip_hosts = []
+      @http_backtrace_depth = 40
       @track_jobs = true
       @track_console = true
       @track_tests = false
