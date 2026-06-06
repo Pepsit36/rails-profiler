@@ -157,9 +157,11 @@ module Profiler
       end
 
       def self.extract_backtrace
-        caller_locations(5, 40)
-          .reject { |l| l.path.to_s.include?("net/http") || l.path.to_s.include?("profiler/instrumentation") }
-          .map { |l| "#{l.path}:#{l.lineno}:in `#{l.label}`" }
+        depth = Profiler.configuration.http_backtrace_depth
+        frames = caller_locations(5, depth || 1000)
+                   .reject { |l| l.path.to_s.include?("net/http") || l.path.to_s.include?("profiler/instrumentation") }
+                   .map { |l| "#{l.path}:#{l.lineno}:in `#{l.label}`" }
+        depth ? frames.first(depth) : frames
       end
     end
   end
