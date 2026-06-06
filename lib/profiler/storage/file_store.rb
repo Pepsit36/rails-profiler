@@ -7,10 +7,13 @@ require_relative "../models/profile"
 
 module Profiler
   module Storage
+    # File-based profile storage backend. Persists each profile as a JSON file
+    # under tmp_path and evicts the oldest files when total size exceeds max_size.
     class FileStore < BaseStore
       def initialize(options = {})
+        super()
         @path = options[:path] || default_path
-        @max_size = options[:max_size] || 100 * 1024 * 1024 # 100 MB
+        @max_size = options[:max_size] || (100 * 1024 * 1024) # 100 MB
         ensure_directory_exists
       end
 
@@ -27,7 +30,7 @@ module Profiler
 
         json_data = File.read(file_path)
         Models::Profile.from_json(json_data)
-      rescue => e
+      rescue StandardError => e
         warn "Failed to load profile #{token}: #{e.message}"
         nil
       end
@@ -46,8 +49,8 @@ module Profiler
         cutoff_time = Time.now - older_than
         profile_files.each do |file|
           File.delete(file) if File.mtime(file) < cutoff_time
-        rescue => e
-          warn "Failed to delete profile file #{file}: #{e.message}"
+        rescue Errno::ENOENT
+          nil
         end
       end
 
@@ -56,22 +59,25 @@ module Profiler
           .map { |f| load(File.basename(f, ".json")) }
           .compact
           .select { |profile| profile.parent_token == parent_token }
-          .sort_by { |profile| profile.started_at }
+          .sort_by(&:started_at)
       end
 
       def delete(token)
-        file_path = profile_file_path(token)
-        File.delete(file_path) if File.exist?(file_path)
+        FileUtils.rm_f(profile_file_path(token))
       end
 
-      def clear(type: nil)
+      def clear(type: nil) # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         if type.nil?
-          profile_files.each { |f| File.delete(f) rescue nil }
+          profile_files.each do |f|
+            File.delete(f)
+          rescue StandardError
+            nil
+          end
         else
           profile_files.each do |f|
             profile = load(File.basename(f, ".json"))
             File.delete(f) if profile&.profile_type == type.to_s
-          rescue
+          rescue StandardError
             nil
           end
         end
@@ -95,20 +101,28 @@ module Profiler
         Dir.glob(File.join(@path, "*.json"))
       end
 
-      def cleanup_if_needed
-        total_size = profile_files.sum { |f| File.size(f) }
+      def cleanup_if_needed # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+        total_size = profile_files.sum do |f|
+          File.size(f)
+        rescue Errno::ENOENT
+          0
+        end
         return if total_size < @max_size
 
-        # Delete oldest files until we're under the limit
-        profile_files
-          .sort_by { |f| File.mtime(f) }
-          .each do |file|
-            File.delete(file)
-            total_size -= File.size(file)
-            break if total_size < @max_size * 0.8
-          rescue => e
-            warn "Failed to delete profile file #{file}: #{e.message}"
-          end
+        sorted = profile_files.sort_by do |f|
+          File.mtime(f)
+        rescue Errno::ENOENT
+          Time.now
+        end
+
+        sorted.each do |file|
+          file_size = File.size(file)
+          File.delete(file)
+          total_size -= file_size
+          break if total_size < @max_size * 0.8
+        rescue Errno::ENOENT
+          nil
+        end
       end
     end
   end
