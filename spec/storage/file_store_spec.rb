@@ -87,6 +87,33 @@ RSpec.describe Profiler::Storage::FileStore do
 
       expect(File.exist?(file_path)).to be true
     end
+
+    it "silently skips files that disappear during iteration" do
+      store.save(profile.token, profile)
+      file_path = File.join(@tmpdir, "#{profile.token}.json")
+      old_time = Time.now - 7200
+      File.utime(old_time, old_time, file_path)
+      File.delete(file_path)
+
+      expect { store.cleanup(older_than: 3600) }.not_to raise_error
+    end
+  end
+
+  describe "#cleanup_if_needed (via save)" do
+    it "does not raise when a file disappears between glob and size check" do
+      store = described_class.new(path: @tmpdir, max_size: 1)
+      allow(File).to receive(:size).and_call_original
+      allow(File).to receive(:size).with(/\.json$/).and_raise(Errno::ENOENT)
+
+      expect { store.save(profile.token, profile) }.not_to raise_error
+    end
+
+    it "does not raise when a file is already deleted before File.delete" do
+      store = described_class.new(path: @tmpdir, max_size: 1)
+      allow(File).to receive(:delete).and_raise(Errno::ENOENT)
+
+      expect { store.save(profile.token, profile) }.not_to raise_error
+    end
   end
 
   describe "#find_by_parent" do
