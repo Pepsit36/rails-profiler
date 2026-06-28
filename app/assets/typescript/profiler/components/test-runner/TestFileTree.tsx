@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks'
-import { TestRunTree } from '../../../dashboard/types'
+import { TestRunTree } from '../../dashboard/types'
 
 interface Props {
   tree: TestRunTree[]

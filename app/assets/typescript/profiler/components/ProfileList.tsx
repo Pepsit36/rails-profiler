@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'preact/hooks'
+import type { InfiniteData } from '@tanstack/react-query'
 import {
   useListProfilesInfinite, useListJobsInfinite, useListConsolesInfinite, useListTestsInfinite,
   useListOutboundRequests, useGetEnvVars,
@@ -7,7 +8,7 @@ import {
   useDeleteConsole, useClearConsoles,
   useDeleteTest, useClearTests,
 } from '../generated/api'
-import type { Profile, HttpRequest } from '../dashboard/types'
+import type { Profile, HttpRequest, ProfilesResponse } from '../dashboard/types'
 import { getGemVersion } from '../dashboard/utils'
 import { HttpRequestDetail } from './dashboard/tabs/HttpTab'
 import { EnvTab } from './dashboard/tabs/EnvTab'
@@ -96,7 +97,7 @@ export function ProfileList() {
 
   const [section, setSection] = useState<'http' | 'jobs' | 'console' | 'tests' | 'runner' | 'outbound' | 'env'>(initialSection)
 
-  const infiniteOpts = (key: string) => ({
+  const infiniteOpts = (key: string): any => ({
     query: {
       enabled: section === key,
       getNextPageParam: (lastPage: { has_more: boolean; offset: number; limit: number }) =>
@@ -110,8 +111,8 @@ export function ProfileList() {
   const jobsQuery    = useListJobsInfinite({ limit: 50 }, infiniteOpts('jobs'))
   const consolesQuery = useListConsolesInfinite({ limit: 50 }, infiniteOpts('console'))
   const testsQuery   = useListTestsInfinite({ limit: 50 }, infiniteOpts('tests'))
-  const outboundQuery = useListOutboundRequests({ query: { enabled: section === 'outbound', refetchOnWindowFocus: false } })
-  const envQuery     = useGetEnvVars({ query: { enabled: section === 'env', refetchOnWindowFocus: false } })
+  const outboundQuery = useListOutboundRequests({ query: { enabled: section === 'outbound', refetchOnWindowFocus: false } } as any)
+  const envQuery     = useGetEnvVars({ query: { enabled: section === 'env', refetchOnWindowFocus: false } } as any)
 
   const { mutateAsync: deleteProfileMutation } = useDeleteProfile()
   const { mutateAsync: clearProfilesMutation } = useClearProfiles()
@@ -122,10 +123,10 @@ export function ProfileList() {
   const { mutateAsync: deleteTestMutation }    = useDeleteTest()
   const { mutateAsync: clearTestsMutation }    = useClearTests()
 
-  const profiles        = httpQuery.data?.pages.flatMap(p => p.profiles) ?? []
-  const jobs            = jobsQuery.data?.pages.flatMap(p => p.profiles) ?? []
-  const consoles        = consolesQuery.data?.pages.flatMap(p => p.profiles) ?? []
-  const tests           = testsQuery.data?.pages.flatMap(p => p.profiles) ?? []
+  const profiles        = (httpQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? []
+  const jobs            = (jobsQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? []
+  const consoles        = (consolesQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? []
+  const tests           = (testsQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? []
   const outboundRequests = (outboundQuery.data ?? []) as OutboundRequest[]
   const envData         = envQuery.data
 
@@ -136,12 +137,12 @@ export function ProfileList() {
   const loadingOutbound = outboundQuery.isLoading
   const loadingEnv     = envQuery.isLoading
 
-  const error        = httpQuery.error?.message ?? null
-  const jobsError    = jobsQuery.error?.message ?? null
-  const consoleError = consolesQuery.error?.message ?? null
-  const testsError   = testsQuery.error?.message ?? null
-  const outboundError = outboundQuery.error?.message ?? null
-  const envError     = envQuery.error?.message ?? null
+  const error        = (httpQuery.error as Error | null)?.message ?? null
+  const jobsError    = (jobsQuery.error as Error | null)?.message ?? null
+  const consoleError = (consolesQuery.error as Error | null)?.message ?? null
+  const testsError   = (testsQuery.error as Error | null)?.message ?? null
+  const outboundError = (outboundQuery.error as Error | null)?.message ?? null
+  const envError     = (envQuery.error as Error | null)?.message ?? null
 
   const httpHasMore    = !!httpQuery.hasNextPage
   const jobHasMore     = !!jobsQuery.hasNextPage
@@ -589,7 +590,7 @@ export function ProfileList() {
                           </td>
                           <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
                           <td>{p.collectors_data?.database?.total_queries ?? '—'}</td>
-                          <td>{formatMemory(p.memory)}</td>
+                          <td>{formatMemory(p.memory ?? undefined)}</td>
                           <td><span class={statusClass(p.status)}>{p.status}</span></td>
                           <td class="profiler-text--xs profiler-text--mono profiler-text--muted">
                             <button class="token-copy" onClick={() => copyToken(p.token)} title="Copy full token">

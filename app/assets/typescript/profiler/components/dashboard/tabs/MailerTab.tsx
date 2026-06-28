@@ -50,7 +50,7 @@ function BodyPreview({ email }: { email: MailerEmail }) {
       </div>
       {mode === 'preview' && hasHtml && (
         <iframe
-          srcdoc={email.body_html}
+          srcdoc={email.body_html ?? undefined}
           sandbox="allow-same-origin"
           style={{ width: '100%', height: '300px', border: '1px solid var(--profiler-border)', borderRadius: 'var(--profiler-radius-md)', background: '#fff', display: 'block' }}
         />
@@ -112,10 +112,10 @@ function EmailDetail({ email }: { email: MailerEmail }) {
       {email.parts && email.parts.length > 0 && (
         <div class="profiler-kv-row"><span>Parts</span><span style={{ textAlign: 'right' }}>{email.parts.join(', ')}</span></div>
       )}
-      {email.attachments && email.attachments.length > 0 && (
+      {(email as any).attachments && (email as any).attachments.length > 0 && (
         <div class="profiler-kv-row">
           <span>Attachments</span>
-          <span style={{ textAlign: 'right' }}>{email.attachments.map(a => `${a.filename} (${(a.size / 1024).toFixed(1)} KB)`).join(', ')}</span>
+          <span style={{ textAlign: 'right' }}>{(email as any).attachments.map((a: { filename: string; size: number }) => `${a.filename} (${(a.size / 1024).toFixed(1)} KB)`).join(', ')}</span>
         </div>
       )}
       <div class="profiler-kv-row">

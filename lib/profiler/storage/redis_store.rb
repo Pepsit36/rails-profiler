@@ -10,13 +10,15 @@ module Profiler
     class RedisStore < BaseStore
       DEFAULT_TTL = 24 * 60 * 60 # 24 hours
 
+      attr_reader :redis
+
       def initialize(options = {})
         @redis = options[:redis] || build_redis_client(options)
         @ttl = options[:ttl] || DEFAULT_TTL
         @key_prefix = options[:key_prefix] || "profiler"
       end
 
-      def save(token, profile)
+      def do_save(token, profile)
         key = profile_key(token)
         @redis.setex(key, @ttl, profile.to_json)
 

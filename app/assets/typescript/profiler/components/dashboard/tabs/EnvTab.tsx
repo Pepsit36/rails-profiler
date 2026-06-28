@@ -226,7 +226,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     if (!entries.length) return
     setSaving(true)
     try {
-      await Promise.all(entries.map(([k, v]) => patchEnvVar({ key: k, value: v })))
+      await Promise.all(entries.map(([k, v]) => patchEnvVar({ data: { key: k, value: v } })))
       setVariables(prev => ({ ...prev, ...importPreview }))
       setImportContent('')
       setShowImport(false)
@@ -252,7 +252,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     }
     setSaving(true)
     try {
-      const data = await patchEnvVar({ key, value: editValue })
+      const data = await patchEnvVar({ data: { key, value: editValue } })
       setVariables(prev => ({ ...prev, [key]: editValue }))
       setOverrides(prev => {
         const n = { ...prev }
@@ -271,7 +271,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
   const deleteVar = async (key: string) => {
     setSaving(true)
     try {
-      const data = await patchEnvVar({ key, value: null })
+      const data = await patchEnvVar({ data: { key, value: null } })
       setVariables(prev => { const n = { ...prev }; delete n[key]; return n })
       setOverrides(prev => {
         const n = { ...prev }
@@ -291,7 +291,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     const next = /^(true|yes)$/i.test(current) ? 'false' : 'true'
     setSaving(true)
     try {
-      const data = await patchEnvVar({ key, value: next })
+      const data = await patchEnvVar({ data: { key, value: next } })
       setVariables(prev => ({ ...prev, [key]: next }))
       setOverrides(prev => {
         const n = { ...prev }
@@ -310,7 +310,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
     if (!key) return
     setSaving(true)
     try {
-      const data = await patchEnvVar({ key, value: newValue })
+      const data = await patchEnvVar({ data: { key, value: newValue } })
       setVariables(prev => ({ ...prev, [key]: newValue }))
       setOverrides(prev => {
         const n = { ...prev }
@@ -336,11 +336,11 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
   const resetVar = async (key: string) => {
     setSaving(true)
     try {
-      const data = await resetEnvVar({ key })
+      const data = await resetEnvVar({ params: { key } })
       setOverrides(prev => { const n = { ...prev }; delete n[key]; return n })
       const updater = (prev: Record<string, string>) => {
         const n = { ...prev }
-        if (data.value === null) { delete n[key] } else { n[key] = data.value }
+        if (data.value === null || data.value === undefined) { delete n[key] } else { n[key] = data.value }
         return n
       }
       setVariables(updater)
@@ -356,7 +356,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
   const doResetAll = async () => {
     setSaving(true)
     try {
-      await resetAllEnvVars({})
+      await resetAllEnvVars()
       setOverrides({})
       const data = await refresh()
       if (data) setInitial(data.variables)
