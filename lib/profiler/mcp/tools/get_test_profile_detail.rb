@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
 module Profiler
   module MCP
     module Tools
@@ -10,11 +12,12 @@ module Profiler
             return [{ type: "text", text: "Error: token parameter is required" }]
           end
 
+          storage = MCP::SlaveSupport.resolve_storage(params)
           profile = if token == "latest"
-            profiles = Profiler.storage.list(limit: 200)
+            profiles = storage.list(limit: 200)
             profiles.find { |p| p.profile_type == "test" }
           else
-            Profiler.storage.load(token)
+            storage.load(token)
           end
 
           unless profile && profile.profile_type == "test"

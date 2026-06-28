@@ -9,8 +9,10 @@ module Profiler
         limit  = (params[:limit]  || 50).to_i
         offset = (params[:offset] || 0).to_i
         all    = Profiler.storage.list(limit: 1000, offset: 0)
-        http   = all.select { |p| p.profile_type == "http" }
-        page   = http.drop(offset).first(limit + 1)
+        # all_types is an opt-in used by the cluster proxy so it can mirror the full
+        # storage.list contract; the dashboard relies on the default http-only filter.
+        scope  = all_types? ? all : all.select { |p| p.profile_type == "http" }
+        page   = scope.drop(offset).first(limit + 1)
         render json: {
           profiles: page.first(limit).map(&:to_h),
           limit:    limit,
@@ -49,6 +51,10 @@ module Profiler
       end
 
       private
+
+      def all_types?
+        %w[1 true].include?(params[:all_types].to_s)
+      end
 
       def recalculate_ajax_data(profile)
         # Find AJAX collector in the configured collectors

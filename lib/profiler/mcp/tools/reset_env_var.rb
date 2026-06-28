@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
+require "uri"
+
 module Profiler
   module MCP
     module Tools
@@ -8,6 +12,11 @@ module Profiler
           key = params["key"].to_s.strip
 
           return [{ type: "text", text: "Error: key cannot be blank." }] if key.empty?
+
+          if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
+            proxy.delete_json("/_profiler/api/env_vars/reset?key=#{URI.encode_www_form_component(key)}")
+            return [{ type: "text", text: "Reset #{key} on slave '#{params["slave"]}'." }]
+          end
 
           overrides = Profiler.env_override_store.all_overrides
           unless overrides.key?(key)
