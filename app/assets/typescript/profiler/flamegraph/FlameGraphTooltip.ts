@@ -86,7 +86,7 @@ export class FlameGraphTooltip {
         this.addRow('Memory', () => {
           const span = document.createElement('span')
           span.className = 'value'
-          span.textContent = formatBytes(node.payload!.memory_bytes)
+          span.textContent = formatBytes(node.payload!.memory_bytes as number)
           return span
         })
       }
@@ -94,7 +94,7 @@ export class FlameGraphTooltip {
         this.addRow('Objects', () => {
           const span = document.createElement('span')
           span.className = 'value'
-          span.textContent = `${node.payload!.allocated_objects.toLocaleString()} obj`
+          span.textContent = `${(node.payload!.allocated_objects as number).toLocaleString()} obj`
           return span
         })
       }
@@ -119,11 +119,12 @@ export class FlameGraphTooltip {
     if (node.payload && category !== 'method') {
       let payloadText: string | null = null
       if (category === 'sql' && node.payload.sql) {
-        payloadText = node.payload.sql.length > 200 ? node.payload.sql.slice(0, 200) + '...' : node.payload.sql
+        const sql = node.payload.sql as string
+        payloadText = sql.length > 200 ? sql.slice(0, 200) + '...' : sql
       } else if (category === 'cache' && node.payload.key) {
-        payloadText = `Key: ${node.payload.key}`
+        payloadText = `Key: ${node.payload.key as string}`
       } else if (category === 'http' && node.payload.url) {
-        payloadText = node.payload.url
+        payloadText = node.payload.url as string
       } else if (category === 'custom' && Object.keys(node.payload).length > 0) {
         const entries = Object.entries(node.payload)
           .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)

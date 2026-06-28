@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks'
-import { TestRun } from '../../../dashboard/types'
+import { TestRun } from '../../dashboard/types'
 
 interface Props {
   run: TestRun | null

@@ -3,6 +3,7 @@ import { useEffect } from 'preact/hooks'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToolbarApp } from './components/toolbar/ToolbarApp'
 import { useGetToolbar } from './generated/api'
+import { useProfileEvents } from './hooks/useProfileEvents'
 
 declare global {
   interface Window {
@@ -31,11 +32,13 @@ const toolbarQueryClient = new QueryClient({
 })
 
 function ToolbarMount({ token }: ToolbarMountProps) {
-  const { data, refetch } = useGetToolbar(token, { query: { refetchOnWindowFocus: false } })
+  const { data, refetch } = useGetToolbar(token, { query: { refetchOnWindowFocus: false } } as any)
 
   useEffect(() => {
     window.__PROFILER_REFRESH_TOOLBAR__ = () => { refetch() }
   }, [refetch])
+
+  useProfileEvents(token, [], () => { refetch() })
 
   const profile = data?.profile ?? null
   if (!profile) return null
@@ -44,8 +47,8 @@ function ToolbarMount({ token }: ToolbarMountProps) {
 }
 
 function mountToolbar(): void {
-  const el = document.getElementById('profiler-toolbar') as HTMLElement | null
-  const toggleEl = document.getElementById('profiler-toolbar-toggle') as HTMLElement | null
+  const el = document.getElementById('profiler-toolbar') as HTMLElement
+  const toggleEl = document.getElementById('profiler-toolbar-toggle') as HTMLElement
   if (!el || !toggleEl) return
 
   const token = el.dataset.token

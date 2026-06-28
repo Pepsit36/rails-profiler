@@ -86,13 +86,13 @@ export function TestProfileDashboard({ profile, initialTab, embedded }: Props) {
         <div class="profiler-p-4 tab-content active">
           {activeTab === 'test' && testData && <TestTab testData={testData} />}
           {activeTab === 'database' && <DatabaseTab dbData={cd['database'] as any} token={profile.token} />}
-          {activeTab === 'cache' && <CacheTab data={cd['cache'] as any} />}
+          {activeTab === 'cache' && <CacheTab cacheData={cd['cache'] as any} />}
           {activeTab === 'timeline' && (
-            <FlameGraphTab data={cd['flamegraph'] as any} />
+            <FlameGraphTab flamegraphData={cd['flamegraph'] as any} perfData={cd['performance'] as any} functionProfileData={cd['function_profile'] as any} />
           )}
-          {activeTab === 'dump' && hasDumps && <DumpsTab data={cd['dump'] as any} />}
-          {activeTab === 'logs' && hasLogs && <LogsTab data={cd['logs'] as any} />}
-          {activeTab === 'exception' && hasException && <ExceptionTab data={cd['exception'] as any} />}
+          {activeTab === 'dump' && hasDumps && <DumpsTab dumpData={cd['dump'] as any} />}
+          {activeTab === 'logs' && hasLogs && <LogsTab logData={cd['logs'] as any} />}
+          {activeTab === 'exception' && hasException && <ExceptionTab exceptionData={cd['exception'] as any} />}
           {activeTab === 'env' && <EnvTab envData={cd['env'] as any} />}
         </div>
       </div>
