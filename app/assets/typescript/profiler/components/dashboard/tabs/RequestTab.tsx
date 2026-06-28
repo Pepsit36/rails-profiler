@@ -76,14 +76,14 @@ export function RequestTab({ profile }: Props) {
       <HttpReqRespDetail
         request={{
           headers: (profile.headers ?? {}) as Record<string, string>,
-          body: profile.request_body,
-          body_encoding: profile.request_body_encoding,
+          body: profile.request_body ?? undefined,
+          body_encoding: profile.request_body_encoding as 'text' | 'base64' | undefined,
           params: hasParams ? profile.params as Record<string, unknown> : undefined,
         }}
         response={{
           headers: (profile.response_headers ?? {}) as Record<string, string>,
-          body: profile.response_body,
-          body_encoding: profile.response_body_encoding,
+          body: profile.response_body ?? undefined,
+          body_encoding: profile.response_body_encoding as 'text' | 'base64' | undefined,
         }}
       />
     </div>

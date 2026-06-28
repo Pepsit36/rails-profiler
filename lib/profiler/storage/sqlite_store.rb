@@ -28,7 +28,7 @@ module Profiler
         migrate!
       end
 
-      def save(token, profile)
+      def do_save(token, profile)
         data = profile.to_h
 
         collectors_meta = {}

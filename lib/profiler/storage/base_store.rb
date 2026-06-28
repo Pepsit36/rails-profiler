@@ -3,8 +3,16 @@
 module Profiler
   module Storage
     class BaseStore
+      # Public interface: persists the profile then fires an SSE broadcast.
+      # Subclasses implement #do_save, not #save.
       def save(token, profile)
-        raise NotImplementedError, "#{self.class} must implement #save"
+        result = do_save(token, profile)
+        broadcast_event(token, profile)
+        result
+      end
+
+      def do_save(token, profile)
+        raise NotImplementedError, "#{self.class} must implement #do_save"
       end
 
       def load(token)
@@ -35,6 +43,15 @@ module Profiler
 
       def clear(type: nil)
         raise NotImplementedError, "#{self.class} must implement #clear"
+      end
+
+      private
+
+      def broadcast_event(token, profile)
+        collectors = profile.collectors_data.keys
+        Profiler::SSE.current.broadcast(token, collectors)
+      rescue StandardError
+        # Never let a broadcast failure prevent profile persistence
       end
     end
   end

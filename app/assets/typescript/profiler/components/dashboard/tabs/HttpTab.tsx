@@ -128,8 +128,8 @@ export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest,
 
       {open && (
         <HttpReqRespDetail
-          request={{ headers: req.request_headers || {}, body: req.request_body, body_encoding: req.request_body_encoding }}
-          response={{ headers: req.response_headers || {}, body: req.response_body, body_encoding: req.response_body_encoding }}
+          request={{ headers: req.request_headers || {}, body: req.request_body ?? undefined, body_encoding: req.request_body_encoding as 'text' | 'base64' | undefined }}
+          response={{ headers: req.response_headers || {}, body: req.response_body ?? undefined, body_encoding: req.response_body_encoding as 'text' | 'base64' | undefined }}
           backtrace={req.backtrace}
         />
       )}

@@ -113,11 +113,11 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {activeTab === 'database' && <DatabaseTab dbData={cd.database} token={profile.token} />}
           {activeTab === 'ajax' && <AjaxTab ajaxData={cd.ajax} />}
           {activeTab === 'http' && <HttpTab httpData={cd.http} />}
-          {activeTab === 'timeline' && <FlameGraphTab flamegraphData={cd.flamegraph} perfData={cd.performance} functionProfileData={cd.function_profile} />}
+          {activeTab === 'timeline' && <FlameGraphTab flamegraphData={cd.flamegraph} perfData={cd.performance} functionProfileData={cd.function_profile as import('../../dashboard/types').FunctionProfileData | undefined} />}
           {activeTab === 'views' && <ViewsTab viewData={cd.view} />}
           {activeTab === 'cache' && <CacheTab cacheData={cd.cache} />}
           {activeTab === 'logs' && <LogsTab logData={cd.logs} />}
-          {activeTab === 'routes' && <RoutesTab routesData={cd.routes} />}
+          {activeTab === 'routes' && <RoutesTab routesData={cd.routes!} />}
           {activeTab === 'i18n' && <I18nTab i18nData={cd.i18n} />}
           {activeTab === 'jobs' && <JobsTab jobs={profile.child_jobs!} />}
           {activeTab === 'mailer' && <MailerTab mailerData={cd.mailer} />}
