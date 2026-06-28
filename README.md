@@ -17,6 +17,7 @@ A comprehensive Rails profiler featuring a web debug toolbar, full profiling das
 - **Console Profiling** — profile expressions evaluated in `rails console` with env overrides applied before each evaluation
 - **Test Profiling** — per-test SQL, cache, and exception capture for RSpec and Minitest
 - **MCP Server** — exposes profiling data to AI assistants; includes `run_tests` to trigger test runs from the AI
+- **Cluster (Master/Slave)** — connect multiple profiler instances; query any slave from the master UI or MCP
 - **Extensible Collectors** — add custom profiling tabs with a simple API
 
 ## Requirements
@@ -233,6 +234,44 @@ After the suite runs, a summary is printed to stdout:
 ```
 
 Test profiles are stored like HTTP profiles and can be viewed in the dashboard at `/_profiler` or queried via the MCP tools `query_test_profiles`, `get_test_profile`, and `run_tests`.
+
+### Cluster (Multi-instance)
+
+Connect multiple Rails profiler instances so a single **master** dashboard and MCP server can query any **slave**.
+
+**On the master** (no extra config needed — it accepts slave connections automatically):
+```ruby
+Profiler.configure do |config|
+  config.name = "main"  # optional display name
+end
+```
+
+**On each slave**, add to `config/initializers/profiler.rb`:
+```ruby
+Profiler.configure do |config|
+  config.name       = "payment-service"           # display name
+  config.master_url = "http://master-host:3000"   # master's URL
+  config.self_url   = "http://this-host:3001"     # this instance's URL (reachable from master)
+
+  # Optional tuning (defaults shown)
+  config.cluster_heartbeat_interval = 15  # seconds between heartbeats
+  config.cluster_offline_threshold  = 60  # seconds without heartbeat → offline
+end
+```
+
+The slave registers automatically at boot and sends periodic heartbeats. No code changes required in the master.
+
+**In the UI** (`/_profiler` on the master): a **Profiler** dropdown appears in the header listing all connected slaves. Selecting one proxies all data through the master — the rest of the interface is unchanged.
+
+**In MCP**: all tools accept an optional `slave: "<name>"` parameter:
+```
+query_profiles slave: "payment-service", path: "/api/charges"
+list_slaves  # → shows connected slaves and their status
+```
+
+> ⚠️ **Security — trusted networks only.** The cluster has **no authentication**: any client that can reach the master's `/_profiler/api/cluster/register` endpoint can register an arbitrary `url`, and the master will then issue proxied HTTP requests to that URL (a server-side request forgery vector). Only enable the cluster on trusted development networks, keep `/_profiler` behind your `authorization_mode`, and never expose a cluster master to untrusted traffic. The profiler is disabled in production by default — keep it that way for clustered setups.
+
+---
 
 ### MCP Server (AI assistant integration)
 

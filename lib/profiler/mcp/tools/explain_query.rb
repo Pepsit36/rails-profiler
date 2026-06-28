@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
 require "profiler/explain_runner"
 
 module Profiler
@@ -16,6 +18,12 @@ module Profiler
 
           if query_index.nil?
             return [{ type: "text", text: "Error: query_index parameter is required" }]
+          end
+
+          if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
+            result = proxy.post_json("/_profiler/api/explain", { token: token, query_index: query_index.to_i })
+            text = result["error"] ? "Error: #{result["error"]}" : result.inspect
+            return [{ type: "text", text: text }]
           end
 
           unless Profiler.configuration.enabled

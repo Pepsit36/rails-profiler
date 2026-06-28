@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
 module Profiler
   module MCP
     module Tools
@@ -9,6 +11,11 @@ module Profiler
           value = params["value"].to_s
 
           return [{ type: "text", text: "Error: key cannot be blank." }] if key.empty?
+
+          if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
+            proxy.patch_json("/_profiler/api/env_vars", { key: key, value: value })
+            return [{ type: "text", text: "Set #{key}=#{value} on slave '#{params["slave"]}'" }]
+          end
 
           Profiler.env_override_store.set(key, value)
           ENV[key] = value

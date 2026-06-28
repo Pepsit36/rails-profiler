@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
 module Profiler
   module MCP
     module Tools
@@ -15,10 +17,11 @@ module Profiler
             ]
           end
 
+          storage = MCP::SlaveSupport.resolve_storage(params)
           profile = if token == "latest"
-            Profiler.storage.list(limit: 1).first
+            storage.list(limit: 1).first
           else
-            Profiler.storage.load(token)
+            storage.load(token)
           end
           unless profile
             return [

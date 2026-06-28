@@ -59,6 +59,7 @@ module Profiler
       private
 
       def build_tools
+        require_relative "slave_support"
         require_relative "file_cache"
         require_relative "path_extractor"
         require_relative "body_formatter"
@@ -82,6 +83,9 @@ module Profiler
         require_relative "tools/delete_env_var"
         require_relative "tools/reset_env_var"
         require_relative "tools/reset_all_env_vars"
+        require_relative "tools/list_slaves"
+
+        slave_param = { type: "string", description: "Name of a connected slave profiler to target. Omit to use this profiler's own data." }
 
         [
           define_tool(
@@ -95,7 +99,8 @@ module Profiler
                 profile_type: { type: "string", description: "Filter by type: 'http' or 'job'" },
                 limit: { type: "number", description: "Maximum number of results (default 20)" },
                 fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, type, method, path, duration, queries, status, token. Omit for all." },
-                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen. Returns profiles older than this." }
+                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen. Returns profiles older than this." },
+                slave: slave_param
               }
             },
             handler: Tools::QueryProfiles
@@ -112,7 +117,8 @@ module Profiler
                 json_path: { type: "string", description: "JSONPath expression to extract from response body (e.g. '$.data.items[0]'). Only applied when save_bodies is true." },
                 xml_path: { type: "string", description: "XPath expression to extract from response body (e.g. '//items/item[1]/name'). Only applied when save_bodies is true." },
                 log_min_level: { type: "string", description: "Minimum log level to include in the logs section: DEBUG, INFO, WARN, ERROR, FATAL. Only applied when 'logs' section is requested." },
-                env_filter: { type: "string", description: "Required when requesting the env section. Case-insensitive substring filter on ENV key name (e.g. 'RAILS', 'DATABASE')." }
+                env_filter: { type: "string", description: "Required when requesting the env section. Case-insensitive substring filter on ENV key name (e.g. 'RAILS', 'DATABASE')." },
+                slave: slave_param
               },
               required: ["token"]
             },
@@ -124,7 +130,8 @@ module Profiler
             input_schema: {
               properties: {
                 token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
-                summary_only: { type: "boolean", description: "Return only the summary statistics section, skipping slow query and N+1 details." }
+                summary_only: { type: "boolean", description: "Return only the summary statistics section, skipping slow query and N+1 details." },
+                slave: slave_param
               },
               required: ["token"]
             },
@@ -136,7 +143,8 @@ module Profiler
             input_schema: {
               properties: {
                 token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
-                query_index: { type: "integer", description: "Zero-based index of the query within the profile's database queries list (required)" }
+                query_index: { type: "integer", description: "Zero-based index of the query within the profile's database queries list (required)" },
+                slave: slave_param
               },
               required: ["token", "query_index"]
             },
@@ -147,7 +155,8 @@ module Profiler
             description: "Get detailed AJAX sub-request breakdown for a profile. Use 'latest' as token to get the most recent profile.",
             input_schema: {
               properties: {
-                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" }
+                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
+                slave: slave_param
               },
               required: ["token"]
             },
@@ -158,7 +167,8 @@ module Profiler
             description: "Get variable dumps captured during a profile. Use 'latest' as token to get the most recent profile.",
             input_schema: {
               properties: {
-                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" }
+                token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
+                slave: slave_param
               },
               required: ["token"]
             },
@@ -174,7 +184,8 @@ module Profiler
                 save_bodies: { type: "boolean", description: "Save request/response bodies to temp files and return paths instead of inlining content." },
                 max_body_size: { type: "number", description: "Truncate inlined body content at N characters. Ignored when save_bodies is true." },
                 json_path: { type: "string", description: "JSONPath expression to extract from response bodies (e.g. '$.data.items[0]'). Only applied when save_bodies is true." },
-                xml_path: { type: "string", description: "XPath expression to extract from response bodies (e.g. '//items/item[1]/name'). Only applied when save_bodies is true." }
+                xml_path: { type: "string", description: "XPath expression to extract from response bodies (e.g. '//items/item[1]/name'). Only applied when save_bodies is true." },
+                slave: slave_param
               },
               required: ["token"]
             },
@@ -190,7 +201,8 @@ module Profiler
                 action: { type: "string", description: "Filter by mailer action (partial match, e.g. 'welcome_email')" },
                 delivery_mode: { type: "string", description: "Filter by delivery mode: 'deliver_now', 'deliver_later', or 'queued'" },
                 save_bodies: { type: "boolean", description: "Save email bodies to temp files and return paths instead of inlining content." },
-                max_body_size: { type: "number", description: "Truncate inlined body content at N characters." }
+                max_body_size: { type: "number", description: "Truncate inlined body content at N characters." },
+                slave: slave_param
               },
               required: ["token"]
             },
@@ -205,7 +217,8 @@ module Profiler
                 status: { type: "string", description: "Filter by status (completed, failed)" },
                 limit: { type: "number", description: "Maximum number of results (default 20)" },
                 fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, job_class, queue, status, duration, token. Omit for all." },
-                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen. Returns jobs older than this." }
+                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen. Returns jobs older than this." },
+                slave: slave_param
               }
             },
             handler: Tools::QueryJobs
@@ -221,7 +234,8 @@ module Profiler
                 has_error: { type: "boolean", description: "Filter to only emails with delivery errors" },
                 limit: { type: "number", description: "Maximum number of results (default 20)" },
                 fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, profile, mailer, action, subject, to, mode, duration, status, token. Omit for all." },
-                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen." }
+                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen." },
+                slave: slave_param
               }
             },
             handler: Tools::QueryMailers
@@ -236,7 +250,8 @@ module Profiler
                 min_duration: { type: "number", description: "Minimum duration in milliseconds" },
                 limit: { type: "number", description: "Maximum number of results (default 20)" },
                 fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, test_name, status, duration, queries, n1, token. Omit for all." },
-                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen." }
+                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen." },
+                slave: slave_param
               }
             },
             handler: Tools::QueryTestProfiles
@@ -246,7 +261,8 @@ module Profiler
             description: "Get detailed data for a test profile: metadata, SQL queries, N+1 patterns, cache, exception. Use 'latest' as token for the most recent test.",
             input_schema: {
               properties: {
-                token: { type: "string", description: "Test profile token, or 'latest' for the most recent test profile (required)" }
+                token: { type: "string", description: "Test profile token, or 'latest' for the most recent test profile (required)" },
+                slave: slave_param
               },
               required: ["token"]
             },
@@ -273,7 +289,8 @@ module Profiler
                 max_output: {
                   type: "number",
                   description: "Maximum characters of output to return (tail). Default: 4000."
-                }
+                },
+                slave: slave_param
               }
             },
             handler: Tools::RunTests
@@ -288,7 +305,8 @@ module Profiler
                 min_duration: { type: "number", description: "Minimum duration in milliseconds" },
                 limit: { type: "number", description: "Maximum number of results (default 20)" },
                 fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, expression, return_value, status, duration, queries, token. Omit for all." },
-                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen. Returns profiles older than this." }
+                cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen. Returns profiles older than this." },
+                slave: slave_param
               }
             },
             handler: Tools::QueryConsoleProfiles
@@ -298,7 +316,8 @@ module Profiler
             description: "Clear profiler history. Omit type to clear everything, or pass 'http', 'job', 'test', or 'console' to clear only that type.",
             input_schema: {
               properties: {
-                type: { type: "string", description: "Optional: 'http' to clear only requests, 'job' to clear only jobs, 'test' to clear only test profiles, 'console' to clear only console sessions" }
+                type: { type: "string", description: "Optional: 'http' to clear only requests, 'job' to clear only jobs, 'test' to clear only test profiles, 'console' to clear only console sessions" },
+                slave: slave_param
               }
             },
             handler: Tools::ClearProfiles
@@ -309,7 +328,8 @@ module Profiler
             input_schema: {
               properties: {
                 include_all: { type: "boolean", description: "If true, return all ENV variables (not just overrides). Default: false." },
-                filter: { type: "string", description: "Case-insensitive substring filter on key name." }
+                filter: { type: "string", description: "Case-insensitive substring filter on key name." },
+                slave: slave_param
               }
             },
             handler: Tools::ListEnvVars
@@ -320,7 +340,8 @@ module Profiler
             input_schema: {
               properties: {
                 key:   { type: "string", description: "Environment variable name (required)" },
-                value: { type: "string", description: "New value (required)" }
+                value: { type: "string", description: "New value (required)" },
+                slave: slave_param
               },
               required: ["key", "value"]
             },
@@ -331,7 +352,8 @@ module Profiler
             description: "Delete an environment variable for this session (persisted across restarts until reset).",
             input_schema: {
               properties: {
-                key: { type: "string", description: "Environment variable name (required)" }
+                key: { type: "string", description: "Environment variable name (required)" },
+                slave: slave_param
               },
               required: ["key"]
             },
@@ -342,7 +364,8 @@ module Profiler
             description: "Restore an overridden environment variable to its original value.",
             input_schema: {
               properties: {
-                key: { type: "string", description: "Environment variable name to restore (required)" }
+                key: { type: "string", description: "Environment variable name to restore (required)" },
+                slave: slave_param
               },
               required: ["key"]
             },
@@ -351,8 +374,14 @@ module Profiler
           define_tool(
             name: "reset_all_env_vars",
             description: "Restore all overridden environment variables to their original values.",
-            input_schema: { properties: {} },
+            input_schema: { properties: { slave: slave_param } },
             handler: Tools::ResetAllEnvVars
+          ),
+          define_tool(
+            name: "list_slaves",
+            description: "List all slave profilers connected to this master profiler, with their connection status.",
+            input_schema: { properties: {} },
+            handler: Tools::ListSlaves
           )
         ]
       end

@@ -25,6 +25,19 @@ Clicking the **Profiler** logo at the right opens the full profile in the dashbo
 
 ---
 
+## Profiler Selector (Cluster)
+
+When the master profiler has slave instances connected, a **Profiler** dropdown appears at the top of the `/_profiler` interface.
+
+- **Local (master)** — shows profiles captured by the current instance (default)
+- **\<slave name\>** — proxies all data through the master to the selected slave; the rest of the UI is identical
+
+Selecting a slave updates all profile lists, detail views, and actions so they operate on the slave's data. The selection is remembered for the current browser session (sessionStorage).
+
+Slaves appear as `(offline)` and cannot be selected if their last heartbeat was more than 60 seconds ago.
+
+---
+
 ## Profile List
 
 ![Profile list](screenshots/profile-list.png)
