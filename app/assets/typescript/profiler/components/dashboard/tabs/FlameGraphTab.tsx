@@ -64,7 +64,7 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
   const toggleFunctionProfiling = async () => {
     setFnToggling(true)
     try {
-      const json = await patchFunctionProfiling({ enabled: !fnEnabled })
+      const json = await patchFunctionProfiling({ data: { enabled: !fnEnabled } })
       setFnEnabled(json.enabled)
     } finally {
       setFnToggling(false)
@@ -74,7 +74,7 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
   const updateMaxFrames = async (value: number) => {
     setFnMaxFramesUpdating(true)
     try {
-      const json = await patchFunctionProfiling({ max_frames: value })
+      const json = await patchFunctionProfiling({ data: { max_frames: value } })
       setFnMaxFrames(json.max_frames)
     } finally {
       setFnMaxFramesUpdating(false)
@@ -85,7 +85,7 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
     setFnMode(value)
     setFnModeUpdating(true)
     try {
-      const json = await patchFunctionProfiling({ mode: value })
+      const json = await patchFunctionProfiling({ data: { mode: value } })
       setFnMode(json.mode ?? value)
     } finally {
       setFnModeUpdating(false)
@@ -95,7 +95,7 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
   const updateClock = async (value: 'wall' | 'cpu' | 'object') => {
     setFnClockUpdating(true)
     try {
-      const json = await patchFunctionProfiling({ clock: value })
+      const json = await patchFunctionProfiling({ data: { clock: value } })
       setFnClock(json.clock ?? value)
     } finally {
       setFnClockUpdating(false)

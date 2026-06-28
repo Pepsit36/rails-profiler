@@ -12,7 +12,7 @@ module Profiler
         @max_profiles = options[:max_profiles] || Profiler.configuration.max_profiles || 100
       end
 
-      def save(token, profile)
+      def do_save(token, profile)
         cleanup_if_needed
         @profiles[token] = serialize_profile(profile)
         token

@@ -172,7 +172,7 @@ export function DatabaseTab({ dbData, token }: Props) {
   const runExplain = async (queryIndex: number) => {
     setExplainState({ open: true, loading: true, result: null, format: 'text', adapter: '', error: null })
     try {
-      const data = await runExplainMutation({ token, query_index: queryIndex })
+      const data = await runExplainMutation({ data: { token, query_index: queryIndex } })
       setExplainState(s => ({
         ...s,
         loading: false,

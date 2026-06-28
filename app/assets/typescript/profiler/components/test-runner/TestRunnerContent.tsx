@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'preact/hooks'
 import { useGetTestRunnerFiles, useCreateTestRun, useDeleteTestRun } from '../../generated/api'
-import { TestRunTree, TestRun } from '../../../dashboard/types'
+import { TestRunTree, TestRun } from '../../dashboard/types'
 import { TestFileTree } from './TestFileTree'
 import { RunOutput } from './RunOutput'
 
@@ -15,7 +15,7 @@ export function TestRunnerContent() {
 
   const { data: filesData, isLoading: loading, refetch: refetchFiles } = useGetTestRunnerFiles(
     framework ? { framework } : {},
-    { query: { refetchOnWindowFocus: false } }
+    { query: { refetchOnWindowFocus: false } } as any
   )
   const { mutateAsync: startTestRun } = useCreateTestRun()
   const { mutateAsync: killTestRun } = useDeleteTestRun()
@@ -109,7 +109,7 @@ export function TestRunnerContent() {
     if (selected.size === 0 || isRunning) return
     setError(null)
     try {
-      const data = await startTestRun({ files: Array.from(selected), framework }) as TestRun
+      const data = await startTestRun({ data: { files: Array.from(selected), framework } }) as TestRun
       setCurrentRun(data)
       setIsRunning(true)
     } catch {

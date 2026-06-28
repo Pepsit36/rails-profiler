@@ -17,7 +17,7 @@ module Profiler
         ensure_directory_exists
       end
 
-      def save(token, profile)
+      def do_save(token, profile)
         file_path = profile_file_path(token)
         File.write(file_path, profile.to_json)
         cleanup_if_needed
