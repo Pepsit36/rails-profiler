@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
 module Profiler
   module MCP
     module Tools
@@ -8,6 +10,11 @@ module Profiler
           key = params["key"].to_s.strip
 
           return [{ type: "text", text: "Error: key cannot be blank." }] if key.empty?
+
+          if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
+            proxy.patch_json("/_profiler/api/env_vars", { key: key, value: "" })
+            return [{ type: "text", text: "Deleted #{key} on slave '#{params["slave"]}'. Override persisted across restarts until reset." }]
+          end
 
           Profiler.env_override_store.delete(key)
           ENV.delete(key)

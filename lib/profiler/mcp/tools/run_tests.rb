@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
 require_relative "../../test_runner/discovery"
 require_relative "../../test_runner/run_store"
 require_relative "../../test_runner/runner"
@@ -13,6 +15,10 @@ module Profiler
         POLL_TIMEOUT       = 10 # seconds per wait_for_output call
 
         def self.call(params)
+          if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
+            return run_on_slave(proxy, params)
+          end
+
           files          = Array(params["files"])
           framework      = params["framework"]&.to_s
           timeout_secs   = (params["timeout_seconds"] || DEFAULT_TIMEOUT).to_i
@@ -64,6 +70,41 @@ module Profiler
         end
 
         private
+
+        def self.run_on_slave(proxy, params)
+          files        = Array(params["files"])
+          framework    = params["framework"].to_s
+          timeout_secs = (params["timeout_seconds"] || DEFAULT_TIMEOUT).to_i
+          max_output   = (params["max_output"] || DEFAULT_MAX_OUTPUT).to_i
+
+          run_data = proxy.post_json("/_profiler/api/test_runner/runs", { files: files, framework: framework.presence || "rspec" })
+
+          if run_data["error"]
+            return [{ type: "text", text: "Error starting tests on slave: #{run_data["error"]}" }]
+          end
+
+          run_id  = run_data["id"]
+          deadline = Time.now + timeout_secs
+          timed_out = false
+
+          loop do
+            break if Time.now > deadline && (timed_out = true)
+            run_data = proxy.get_json("/_profiler/api/test_runner/runs/#{run_id}")
+            break if %w[completed failed cancelled].include?(run_data["status"])
+            sleep 2
+          end
+
+          output = run_data["output_lines"]&.join.to_s
+          output = "…(truncated)\n" + output[-(max_output)..] if output.length > max_output
+
+          text = "# Test Run on slave '#{params["slave"]}' #{timed_out ? "(timed out)" : ""}\n\n"
+          text += "| Field | Value |\n|-------|-------|\n"
+          text += "| Run ID | `#{run_id}` |\n"
+          text += "| Status | **#{run_data["status"]}** |\n"
+          text += "| Exit code | #{run_data["exit_code"].inspect} |\n\n"
+          text += "## Output\n```\n#{output.strip}\n```"
+          [{ type: "text", text: text }]
+        end
 
         def self.collect_run_profiles(since)
           Profiler.storage.list(limit: 500).select do |p|

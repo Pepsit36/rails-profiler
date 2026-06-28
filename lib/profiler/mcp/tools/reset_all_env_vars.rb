@@ -1,10 +1,17 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
 module Profiler
   module MCP
     module Tools
       class ResetAllEnvVars
-        def self.call(_params)
+        def self.call(params)
+          if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
+            proxy.delete_json("/_profiler/api/env_vars/reset_all")
+            return [{ type: "text", text: "Reset all ENV overrides on slave '#{params["slave"]}'." }]
+          end
+
           overrides = Profiler.env_override_store.all_overrides
           count = overrides.size
 

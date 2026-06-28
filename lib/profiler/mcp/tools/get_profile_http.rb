@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
 require "shellwords"
 require "uri"
 
@@ -13,10 +15,11 @@ module Profiler
             return [{ type: "text", text: "Error: token parameter is required" }]
           end
 
+          storage = MCP::SlaveSupport.resolve_storage(params)
           profile = if token == "latest"
-            Profiler.storage.list(limit: 1).first
+            storage.list(limit: 1).first
           else
-            Profiler.storage.load(token)
+            storage.load(token)
           end
           unless profile
             return [{ type: "text", text: "Profile not found: #{token}" }]

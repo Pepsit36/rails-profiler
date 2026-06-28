@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
 module Profiler
   module MCP
     module Tools
@@ -7,9 +9,10 @@ module Profiler
         ALL_FIELDS = %w[time type method path duration queries status token].freeze
 
         def self.call(params)
+          storage = MCP::SlaveSupport.resolve_storage(params)
           limit = params["limit"]&.to_i || 20
           fetch_size = [limit * 5, 500].min
-          profiles = Profiler.storage.list(limit: fetch_size)
+          profiles = storage.list(limit: fetch_size)
 
           profiles = profiles.select { |p| p.path&.include?(params["path"]) } if params["path"]
           profiles = profiles.select { |p| p.method == params["method"]&.upcase } if params["method"]
