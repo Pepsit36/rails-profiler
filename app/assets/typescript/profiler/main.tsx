@@ -1,6 +1,7 @@
 import { render } from 'preact'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ProfileList } from './components/ProfileList'
+import { ProfilerSelector } from './components/ProfilerSelector'
 import { ProfileDashboard } from './components/dashboard/ProfileDashboard'
 import { JobProfileDashboard } from './components/dashboard/JobProfileDashboard'
 import { ConsoleProfileDashboard } from './components/dashboard/ConsoleProfileDashboard'
@@ -15,6 +16,17 @@ const queryClient = new QueryClient({
 })
 
 document.addEventListener('DOMContentLoaded', () => {
+  const selectorEl = document.getElementById('profiler-cluster-selector')
+  const isMaster = document.querySelector('meta[name="profiler-is-master"]')?.getAttribute('content') === 'true'
+  if (selectorEl && isMaster) {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ProfilerSelector />
+      </QueryClientProvider>,
+      selectorEl
+    )
+  }
+
   const indexEl = document.getElementById('profiler-index')
   if (indexEl) {
     render(

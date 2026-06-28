@@ -6,12 +6,15 @@
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
     <meta name="profiler-version" content="<%= Profiler::VERSION %>">
+    <meta name="profiler-name" content="<%= Profiler.configuration.resolved_name %>">
+    <meta name="profiler-is-master" content="<%= Profiler.configuration.master? %>">
 
     <link rel="stylesheet" href="/_profiler/assets/profiler.css">
     <script src="/_profiler/assets/profiler.js" defer></script>
   </head>
 
   <body>
+    <div id="profiler-cluster-selector"></div>
     <%= yield %>
   </body>
 </html>

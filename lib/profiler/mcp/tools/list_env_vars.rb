@@ -1,10 +1,19 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
 module Profiler
   module MCP
     module Tools
       class ListEnvVars
         def self.call(params)
+          if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
+            data = proxy.get_json("/_profiler/api/env_vars",
+              include_all: params["include_all"], filter: params["filter"])
+            text = format_slave_env_vars(data, params)
+            return [{ type: "text", text: text }]
+          end
+
           include_all = params["include_all"]
           filter = params["filter"]&.downcase
 
@@ -50,6 +59,35 @@ module Profiler
           end
 
           [{ type: "text", text: text }]
+        end
+
+        private
+
+        def self.format_slave_env_vars(data, params)
+          overrides = data["overrides"] || {}
+          filter = params["filter"]&.downcase
+
+          if params["include_all"]
+            vars = (data["variables"] || {}).sort.to_h
+            vars = vars.select { |k, _| k.downcase.include?(filter) } if filter
+            return "No environment variables match filter '#{params["filter"]}'." if vars.empty?
+
+            rows = vars.map do |key, value|
+              override = overrides[key]
+              overridden = override ? "✓ (was: #{override["original"] || "(unset)"})" : ""
+              "| #{key} | #{value} | #{overridden} |"
+            end
+            "**ENV variables (#{vars.size})**\n\n| Key | Current Value | Overridden |\n|-----|--------------|------------|\n" + rows.join("\n")
+          else
+            overrides = overrides.select { |k, _| k.downcase.include?(filter) } if filter
+            return "No overrides active." if overrides.empty?
+
+            rows = overrides.map do |key, entry|
+              current = entry["value"] == "__PROFILER_DELETED__" ? "(deleted)" : entry["value"]
+              "| #{key} | #{current} | #{entry["original"] || "(unset)"} |"
+            end
+            "**Active ENV overrides (#{overrides.size})**\n\n| Key | Current Value | Original Value |\n|-----|--------------|----------------|\n" + rows.join("\n")
+          end
         end
       end
     end

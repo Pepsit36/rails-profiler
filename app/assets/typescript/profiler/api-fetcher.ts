@@ -1,3 +1,5 @@
+import { getActiveSlavePrefix } from './cluster-context'
+
 // Custom HTTP fetcher for orval-generated code — uses native fetch, no axios dependency.
 export async function apiFetch<T>(config: {
   url: string
@@ -7,7 +9,13 @@ export async function apiFetch<T>(config: {
   headers?: Record<string, string>
   signal?: AbortSignal
 }): Promise<T> {
-  const { url, method, params, data, headers = {}, signal } = config
+  const prefix = getActiveSlavePrefix()
+  const resolvedUrl = prefix
+    ? config.url.replace('/_profiler/api', `/_profiler/api${prefix}`)
+    : config.url
+
+  const { method, params, data, headers = {}, signal } = config
+  const url = resolvedUrl
 
   const qs = params
     ? '?' + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()

@@ -56,7 +56,40 @@ When `mcp_transport: :http`, the MCP endpoint is available at `/_profiler/mcp` a
 
 ---
 
+## Cluster (Master/Slave)
+
+When running multiple Rails instances (e.g. git worktrees or microservices), connect them as a cluster so the master MCP server can query any slave.
+
+All tools accept an optional `slave` parameter: pass the slave's name to target it instead of the local profiler.
+
+```
+# Local profiler (default)
+query_profiles path: "/api/users"
+
+# Slave profiler named "payment"
+query_profiles path: "/api/charges", slave: "payment"
+
+# List all connected slaves and their status
+list_slaves
+```
+
+See [Cluster setup](../README.md#cluster-multi-instance) for configuration details.
+
+---
+
 ## Tools
+
+> **Cluster note:** All tools accept an optional `slave: "<name>"` parameter. When provided, the master proxies the request to the named slave profiler and returns its data. Omit `slave` to query the local profiler. Use `list_slaves` to see available slaves and their status.
+
+### `list_slaves`
+
+List all slave profilers connected to this master and their connection status.
+
+Takes no parameters.
+
+**Returns:** table of connected slaves with name, URL, status (`online` / `offline`), registration time, and last heartbeat.
+
+---
 
 ### `query_profiles`
 
@@ -71,10 +104,12 @@ Search and filter profiled HTTP requests.
 | `limit` | number | Max results (default: 20) |
 | `fields` | array | Columns to return: `time`, `type`, `method`, `path`, `duration`, `queries`, `status`, `token` |
 | `cursor` | string | ISO8601 timestamp for pagination (returns profiles older than this) |
+| `slave` | string | Name of a connected slave profiler to query (omit for local data) |
 
 **Example prompts:**
 > "Show me the slowest API requests from the last hour"
 > "List all POST requests that took more than 500ms"
+> "Show me requests on the payment slave that took more than 200ms"
 
 ---
 
@@ -92,6 +127,7 @@ Get the full detail of a specific profile. Use `"latest"` as token to get the mo
 | `max_body_size` | number | Truncate inline body at N characters |
 | `json_path` | string | JSONPath expression to extract from response body (e.g. `$.data.items[0]`) |
 | `xml_path` | string | XPath expression to extract from response body |
+| `slave` | string | Name of a connected slave profiler to query |
 
 **Example prompts:**
 > "Show me the full details of the latest request"

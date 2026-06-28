@@ -14,7 +14,9 @@ module Profiler
                   :track_console,
                   :track_tests,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
-                  :compress_bodies, :compress_body_threshold
+                  :compress_bodies, :compress_body_threshold,
+                  :name, :master_url, :self_url,
+                  :cluster_heartbeat_interval, :cluster_offline_threshold
 
     attr_writer :tmp_path
 
@@ -54,10 +56,27 @@ module Profiler
       @compress_bodies = true
       @compress_body_threshold = 10 * 1024 # 10 KB
       @tmp_path = nil
+      @name = nil
+      @master_url = nil
+      @self_url = nil
+      @cluster_heartbeat_interval = 15
+      @cluster_offline_threshold = 60
     end
 
     def tmp_path
       @tmp_path || default_tmp_path
+    end
+
+    def slave?
+      !master_url.nil? && !master_url.empty?
+    end
+
+    def master?
+      !slave?
+    end
+
+    def resolved_name
+      @name || (defined?(Rails) ? Rails.application.class.module_parent_name.underscore : "profiler")
     end
 
     def authorize_with(&block)

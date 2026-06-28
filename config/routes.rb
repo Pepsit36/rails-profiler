@@ -51,5 +51,15 @@ Profiler::Engine.routes.draw do
     get    "test_runner/runs/:id/stream", to: "test_runner#stream", as: :test_runner_run_stream
     delete "test_runner/runs/:id",        to: "test_runner#destroy"
     get    "events/:token",               to: "events#subscribe",  as: :profile_events
+
+    # Cluster endpoints (master-side)
+    post "cluster/register",  to: "cluster#register"
+    post "cluster/heartbeat", to: "cluster#heartbeat"
+    get  "cluster/slaves",    to: "cluster#slaves"
+
+    # Slave proxy — must be last to avoid shadowing other api routes
+    scope "/slaves/:slave_name" do
+      match "*path", to: "slave_proxy#forward", via: :all
+    end
   end
 end

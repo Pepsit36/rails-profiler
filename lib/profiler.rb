@@ -29,6 +29,13 @@ module Profiler
       @env_override_store ||= EnvOverrideStore.new
     end
 
+    def slave_registry
+      @slave_registry ||= begin
+        require_relative "profiler/cluster/slave_registry"
+        Cluster::SlaveRegistry.new
+      end
+    end
+
     def enabled?
       configuration.enabled
     end

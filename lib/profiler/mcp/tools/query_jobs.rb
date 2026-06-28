@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../slave_support"
+
 module Profiler
   module MCP
     module Tools
@@ -9,7 +11,8 @@ module Profiler
         def self.call(params)
           limit = params["limit"]&.to_i || 20
           fetch_size = [limit * 5, 500].min
-          profiles = Profiler.storage.list(limit: fetch_size)
+          storage = MCP::SlaveSupport.resolve_storage(params)
+          profiles = storage.list(limit: fetch_size)
 
           jobs = profiles.select { |p| p.profile_type == "job" }
 
