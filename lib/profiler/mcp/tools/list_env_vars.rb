@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../slave_support"
+require_relative "../../env_override_store"
 
 module Profiler
   module MCP
@@ -83,7 +84,7 @@ module Profiler
             return "No overrides active." if overrides.empty?
 
             rows = overrides.map do |key, entry|
-              current = entry["value"] == "__PROFILER_DELETED__" ? "(deleted)" : entry["value"]
+              current = entry["value"] == Profiler::EnvOverrideStore::DELETED_SENTINEL ? "(deleted)" : entry["value"]
               "| #{key} | #{current} | #{entry["original"] || "(unset)"} |"
             end
             "**Active ENV overrides (#{overrides.size})**\n\n| Key | Current Value | Original Value |\n|-----|--------------|----------------|\n" + rows.join("\n")

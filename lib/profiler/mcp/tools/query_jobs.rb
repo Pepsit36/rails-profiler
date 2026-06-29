@@ -62,11 +62,11 @@ module Profiler
             job_data = profile.collector_data("job") || {}
             row = fields.map do |f|
               case f
-              when "time"         then profile.started_at.strftime("%H:%M:%S")
+              when "time"         then profile.started_at&.strftime("%H:%M:%S") || "-"
               when "job_class"    then job_data["job_class"] || profile.path
               when "queue"        then job_data["queue"] || "-"
               when "status"       then job_data["status"] || "-"
-              when "duration"     then "#{profile.duration.round(2)}ms"
+              when "duration"     then profile.duration ? "#{profile.duration.round(2)}ms" : "-"
               when "gem_version"
                 v = profile.gem_version || "-"
                 v != Profiler::VERSION ? "#{v} ⚠️" : v
