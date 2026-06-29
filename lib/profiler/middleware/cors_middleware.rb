@@ -20,6 +20,7 @@ module Profiler
           end
 
           status, headers, body = @app.call(env)
+          headers = headers.dup
 
           # Add CORS headers
           cors_headers(env).each do |key, value|
