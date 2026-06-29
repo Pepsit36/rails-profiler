@@ -44,21 +44,33 @@ document.addEventListener('DOMContentLoaded', () => {
       const profile = JSON.parse(dataEl.textContent!)
       const tab = new URLSearchParams(location.search).get('tab') || 'request'
       const embedded = showEl.dataset.embedded === 'true'
+      let dashboard
       if (profile.profile_type === 'job') {
-        render(<JobProfileDashboard profile={profile} initialTab={tab} embedded={embedded} />, showEl)
+        dashboard = <JobProfileDashboard profile={profile} initialTab={tab} embedded={embedded} />
       } else if (profile.profile_type === 'console') {
-        render(<ConsoleProfileDashboard profile={profile} initialTab={tab} embedded={embedded} />, showEl)
+        dashboard = <ConsoleProfileDashboard profile={profile} initialTab={tab} embedded={embedded} />
       } else if (profile.profile_type === 'test') {
-        render(<TestProfileDashboard profile={profile} initialTab={tab} embedded={embedded} />, showEl)
+        dashboard = <TestProfileDashboard profile={profile} initialTab={tab} embedded={embedded} />
       } else {
-        render(<ProfileDashboard profile={profile} initialTab={tab as any} embedded={embedded} />, showEl)
+        dashboard = <ProfileDashboard profile={profile} initialTab={tab as any} embedded={embedded} />
       }
+      render(
+        <QueryClientProvider client={queryClient}>
+          {dashboard}
+        </QueryClientProvider>,
+        showEl
+      )
     }
   }
 
   const testRunnerEl = document.getElementById('profiler-test-runner')
   if (testRunnerEl) {
-    render(<TestRunnerPage />, testRunnerEl)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TestRunnerPage />
+      </QueryClientProvider>,
+      testRunnerEl
+    )
   }
 
   if (!indexEl && !showEl && !testRunnerEl) {
