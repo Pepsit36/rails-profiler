@@ -36,6 +36,7 @@ module Profiler
         memory_before = current_memory if Profiler.configuration.track_memory
 
         status, headers, body = @app.call(env)
+        headers = headers.dup
 
         # Measure memory after
         if Profiler.configuration.track_memory
