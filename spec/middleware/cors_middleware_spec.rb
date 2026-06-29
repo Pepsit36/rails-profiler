@@ -44,6 +44,24 @@ RSpec.describe Profiler::Middleware::CorsMiddleware do
 
       expect(last_response.headers["Content-Security-Policy"]).to include("frame-ancestors")
     end
+
+    context "when downstream returns a frozen headers hash" do
+      let(:frozen_headers) { { "Content-Type" => "text/event-stream", "Cache-Control" => "no-cache" }.freeze }
+      let(:inner_app) { ->(_env) { [200, frozen_headers, ["data: hello\n\n"]] } }
+
+      it "does not raise and adds CORS/CSP headers without mutating the original hash" do
+        original_snapshot = frozen_headers.dup
+
+        env = Rack::MockRequest.env_for("/_profiler/mcp")
+        status, headers, _body = app.call(env)
+
+        expect(status).to eq(200)
+        expect(headers["Access-Control-Allow-Origin"]).to eq("*")
+        expect(headers["Content-Security-Policy"]).to include("frame-ancestors")
+        expect(frozen_headers).to eq(original_snapshot)
+        expect(frozen_headers).to be_frozen
+      end
+    end
   end
 
   describe "request on a non-profiler path" do
