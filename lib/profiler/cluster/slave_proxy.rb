@@ -80,7 +80,8 @@ module Profiler
 
       def request(uri, req)
         resp = Net::HTTP.start(uri.hostname, uri.port,
-                               open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT) do |http|
+                               open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT,
+                               use_ssl: uri.scheme == "https") do |http|
           http.request(req)
         end
         return {} if resp.code == "204"
