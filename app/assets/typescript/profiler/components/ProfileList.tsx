@@ -2,6 +2,7 @@ import { useState, useEffect } from 'preact/hooks'
 import type { InfiniteData } from '@tanstack/react-query'
 import {
   useListProfilesInfinite, useListJobsInfinite, useListConsolesInfinite, useListTestsInfinite,
+  listProfiles, listJobs, listConsoles, listTests,
   useListOutboundRequests, useGetEnvVars,
   useDeleteProfile, useClearProfiles,
   useDeleteJob, useClearJobs,
@@ -97,9 +98,13 @@ export function ProfileList() {
 
   const [section, setSection] = useState<'http' | 'jobs' | 'console' | 'tests' | 'runner' | 'outbound' | 'env'>(initialSection)
 
-  const infiniteOpts = (key: string): any => ({
+  const infiniteOpts = (
+    key: string,
+    fetchFn: (offset: number, signal?: AbortSignal) => Promise<any>
+  ): any => ({
     query: {
       enabled: section === key,
+      queryFn: ({ pageParam = 0, signal }: any) => fetchFn(pageParam as number, signal),
       getNextPageParam: (lastPage: { has_more: boolean; offset: number; limit: number }) =>
         lastPage.has_more ? lastPage.offset + lastPage.limit : undefined,
       initialPageParam: 0,
@@ -107,10 +112,10 @@ export function ProfileList() {
     }
   })
 
-  const httpQuery    = useListProfilesInfinite({ limit: 50 }, infiniteOpts('http'))
-  const jobsQuery    = useListJobsInfinite({ limit: 50 }, infiniteOpts('jobs'))
-  const consolesQuery = useListConsolesInfinite({ limit: 50 }, infiniteOpts('console'))
-  const testsQuery   = useListTestsInfinite({ limit: 50 }, infiniteOpts('tests'))
+  const httpQuery     = useListProfilesInfinite({ limit: 50 }, infiniteOpts('http',    (offset, signal) => listProfiles({ limit: 50, offset }, signal)))
+  const jobsQuery     = useListJobsInfinite({ limit: 50 },     infiniteOpts('jobs',    (offset, signal) => listJobs({ limit: 50, offset }, signal)))
+  const consolesQuery = useListConsolesInfinite({ limit: 50 }, infiniteOpts('console', (offset, signal) => listConsoles({ limit: 50, offset }, signal)))
+  const testsQuery    = useListTestsInfinite({ limit: 50 },    infiniteOpts('tests',   (offset, signal) => listTests({ limit: 50, offset }, signal)))
   const outboundQuery = useListOutboundRequests({ query: { enabled: section === 'outbound', refetchOnWindowFocus: false } } as any)
   const envQuery     = useGetEnvVars({ query: { enabled: section === 'env', refetchOnWindowFocus: false } } as any)
 

@@ -72,10 +72,10 @@ module Profiler
 
             row = fields.map do |f|
               case f
-              when "time"      then profile.started_at.strftime("%H:%M:%S")
+              when "time"      then profile.started_at&.strftime("%H:%M:%S") || "-"
               when "test_name" then (test_data["test_name"] || profile.path).to_s.then { |n| n.length > 60 ? n[0, 57] + "..." : n }
               when "status"    then test_data["status"] || "-"
-              when "duration"  then "#{profile.duration.round(2)}ms"
+              when "duration"  then profile.duration ? "#{profile.duration.round(2)}ms" : "-"
               when "queries"   then db_data["total_queries"].to_i.to_s
               when "n1"        then n1_count > 0 ? "⚠ #{n1_count}" : "✓"
               when "token"     then profile.token.to_s
