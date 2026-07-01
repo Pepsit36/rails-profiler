@@ -72,4 +72,48 @@ RSpec.describe Profiler::Cluster::SlaveProxy do
       expect(proxy.load("abc")).to be_a(Profiler::Models::Profile)
     end
   end
+
+  describe "#find_by_parent" do
+    it "requests profiles filtered by parent_token with all_types" do
+      allow(proxy).to receive(:get_json).and_return({ "profiles" => [] })
+      proxy.find_by_parent("parent-tok")
+      expect(proxy).to have_received(:get_json).with(
+        "/_profiler/api/profiles", hash_including(parent_token: "parent-tok", all_types: true)
+      )
+    end
+
+    it "returns an array of Profile objects" do
+      allow(proxy).to receive(:get_json).and_return(
+        "profiles" => [
+          {
+            "token" => "job1", "profile_type" => "job", "path" => "/work",
+            "method" => "JOB", "status" => 200, "duration" => 1.0,
+            "started_at" => Time.now.iso8601
+          }
+        ]
+      )
+      result = proxy.find_by_parent("parent-tok")
+      expect(result.size).to eq(1)
+      expect(result.first).to be_a(Profiler::Models::Profile)
+      expect(result.first.profile_type).to eq("job")
+    end
+
+    it "returns an empty array when no children exist" do
+      allow(proxy).to receive(:get_json).and_return({ "profiles" => [] })
+      expect(proxy.find_by_parent("no-children")).to eq([])
+    end
+  end
+
+  describe "timeout overrides" do
+    it "uses custom open/read timeouts when provided" do
+      proxy_with_timeouts = described_class.new("payment", open_timeout: 2, read_timeout: 3)
+      expect(proxy_with_timeouts.instance_variable_get(:@open_timeout)).to eq(2)
+      expect(proxy_with_timeouts.instance_variable_get(:@read_timeout)).to eq(3)
+    end
+
+    it "falls back to constants when no overrides given" do
+      expect(proxy.instance_variable_get(:@open_timeout)).to eq(Profiler::Cluster::SlaveProxy::OPEN_TIMEOUT)
+      expect(proxy.instance_variable_get(:@read_timeout)).to eq(Profiler::Cluster::SlaveProxy::READ_TIMEOUT)
+    end
+  end
 end

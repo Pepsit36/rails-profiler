@@ -17,26 +17,30 @@ module Profiler
     end
 
     def build_child_jobs(profile)
-      Profiler.storage.find_by_parent(profile.token)
-               .select { |p| p.profile_type == "job" }
-               .map do |j|
-                 job_data = j.collector_data("job") || {}
-                 {
-                   token: j.token,
-                   job_class: j.path,
-                   job_id: job_data["job_id"],
-                   queue: job_data["queue"],
-                   status: job_data["status"],
-                   duration: j.duration,
-                   started_at: j.started_at&.iso8601
-                 }
-               end
+      storage = @resolved_storage || Profiler.storage
+      storage.find_by_parent(profile.token)
+             .select { |p| p.profile_type == "job" }
+             .map do |j|
+               job_data = j.collector_data("job") || {}
+               {
+                 token: j.token,
+                 job_class: j.path,
+                 job_id: job_data["job_id"],
+                 queue: job_data["queue"],
+                 status: job_data["status"],
+                 duration: j.duration,
+                 started_at: j.started_at&.iso8601
+               }
+             end
     end
 
     def build_parent_summary(profile)
       return nil unless profile.parent_token
 
-      parent = Profiler.storage.load(profile.parent_token)
+      storage = @resolved_storage || Profiler.storage
+      parent  = storage.load(profile.parent_token)
+      # Cross-node fallback: parent may live on the master when the profile is on a slave
+      parent ||= Profiler.storage.load(profile.parent_token) if storage != Profiler.storage
       return nil unless parent
 
       if parent.profile_type == "job"

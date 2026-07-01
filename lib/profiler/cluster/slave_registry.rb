@@ -45,6 +45,10 @@ module Profiler
       def all
         @slaves.values.map(&:to_h)
       end
+
+      def online_names
+        @slaves.select { |_, entry| entry.status == "online" }.keys
+      end
     end
   end
 end
