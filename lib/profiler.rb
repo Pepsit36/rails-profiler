@@ -36,6 +36,13 @@ module Profiler
       end
     end
 
+    def token_cache
+      @token_cache ||= begin
+        require_relative "profiler/cluster/token_cache"
+        Cluster::TokenCache.new
+      end
+    end
+
     def enabled?
       configuration.enabled
     end

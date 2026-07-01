@@ -11,11 +11,13 @@ module Profiler
       OPEN_TIMEOUT = 5  # seconds
       READ_TIMEOUT = 10 # seconds
 
-      def initialize(slave_name)
+      def initialize(slave_name, open_timeout: nil, read_timeout: nil)
         entry = Profiler.slave_registry.find!(slave_name)
         raise Profiler::Error, "Slave profiler '#{slave_name}' is offline" if entry.status == "offline"
 
         @base_url = entry.url.to_s.chomp("/")
+        @open_timeout = open_timeout || OPEN_TIMEOUT
+        @read_timeout = read_timeout || READ_TIMEOUT
       end
 
       # Storage-compatible interface for MCP query tools
@@ -33,6 +35,11 @@ module Profiler
 
         raw = data["profile"] || data
         profile_from_api(raw)
+      end
+
+      def find_by_parent(parent_token)
+        data = get_json("/_profiler/api/profiles", parent_token: parent_token, all_types: true)
+        Array(data["profiles"]).map { |h| profile_from_api(h) }
       end
 
       def clear(type: nil)
@@ -80,7 +87,7 @@ module Profiler
 
       def request(uri, req)
         resp = Net::HTTP.start(uri.hostname, uri.port,
-                               open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT,
+                               open_timeout: @open_timeout, read_timeout: @read_timeout,
                                use_ssl: uri.scheme == "https") do |http|
           http.request(req)
         end
