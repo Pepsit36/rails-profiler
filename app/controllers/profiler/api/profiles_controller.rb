@@ -12,6 +12,7 @@ module Profiler
         # all_types is an opt-in used by the cluster proxy so it can mirror the full
         # storage.list contract; the dashboard relies on the default http-only filter.
         scope  = all_types? ? all : all.select { |p| p.profile_type == "http" }
+        scope  = scope.select { |p| p.parent_token == params[:parent_token] } if params[:parent_token].present?
         page   = scope.drop(offset).first(limit + 1)
         render json: {
           profiles: page.first(limit).map(&:to_h),

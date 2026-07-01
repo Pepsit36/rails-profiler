@@ -5,6 +5,11 @@ require_relative "base_collector"
 module Profiler
   module Collectors
     class AjaxCollector < BaseCollector
+      def initialize(profile, storage: Profiler.storage)
+        super(profile)
+        @storage = storage
+      end
+
       def icon
         "🌐"
       end
@@ -29,8 +34,7 @@ module Profiler
       end
 
       def collect
-        # Query storage for child AJAX profiles
-        ajax_profiles = Profiler.storage.find_by_parent(@profile.token)
+        ajax_profiles = @storage.find_by_parent(@profile.token)
 
         return store_data({}) if ajax_profiles.empty?
 
