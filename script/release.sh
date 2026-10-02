@@ -49,38 +49,23 @@ redact() { sed -e 's#://[^/@[:space:]]*@#://***@#g'; }
 
 # --- version computation ---------------------------------------------------
 
+# The version is not computed here: `bin/changelog version` is the one
+# implementation, shared with the stamp and the branch check, so the number the
+# author stamped and the number published can never come from two rules.
 compute_new_version() {
-  local last_tag base_version commits major minor patch
-  last_tag="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
-  if [ -z "$last_tag" ]; then
-    base_version="0.0.0"
-    commits="$(git log --format="%s%n%b")"
-  else
-    base_version="${last_tag#v}"
-    commits="$(git log "${last_tag}..HEAD" --format="%s%n%b")"
-  fi
+  local out rc
+  LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
 
-  LAST_TAG="$last_tag"
+  set +e
+  out="$(ruby bin/changelog version --since "$LAST_TAG")"
+  rc=$?
+  set -e
 
-  if [ -z "$commits" ]; then
-    log "No commits since last tag, skipping."
-    return 1
-  fi
-
-  major="$(echo "$base_version" | cut -d. -f1)"
-  minor="$(echo "$base_version" | cut -d. -f2)"
-  patch="$(echo "$base_version" | cut -d. -f3)"
-
-  if echo "$commits" | grep -qE "^BREAKING CHANGE:|^[a-z]+(\(.+\))?!:"; then
-    NEW_VERSION="$((major + 1)).0.0"
-  elif echo "$commits" | grep -qE "^feat(\(.+\))?:"; then
-    NEW_VERSION="${major}.$((minor + 1)).0"
-  elif echo "$commits" | grep -qE "^fix(\(.+\))?:"; then
-    NEW_VERSION="${major}.${minor}.$((patch + 1))"
-  else
-    log "No releasable commits (chore/docs/style/ci/test), skipping."
-    return 1
-  fi
+  case "$rc" in
+    0) NEW_VERSION="$out" ;;
+    3) log "Nothing to publish since ${LAST_TAG:-the start of the history}, skipping."; return 1 ;;
+    *) die "bin/changelog version failed with exit ${rc}" ;;
+  esac
 }
 
 tag_exists_on_remote() {
