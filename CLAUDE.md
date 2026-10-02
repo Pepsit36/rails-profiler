@@ -7,9 +7,18 @@ Instructions for Claude, and any other agent, working in this repository.
 - `lib/profiler/version.rb` stays at `0.0.0` on `master`. Never edit it and never bump a version
   by hand. The `release` CI job sets it for the build only, and never commits it.
 - The version comes from `bin/changelog version`, the single implementation shared by the branch
-  stamp, the branch check and the release job: the last tag plus the Conventional Commit types
-  since it (`BREAKING CHANGE:` or `type!:` major, `feat:` minor, `fix:` patch; `chore`, `ci`,
-  `docs`, `test`, `style` and `refactor` alone publish nothing).
+  stamp, the branch check and the release job.
+- On a branch, the base is the highest of the last tag reachable from HEAD **and** the versions
+  `CHANGELOG.md` already carries outside your own section, so a version stamped by a branch merged
+  before yours counts; the commits that decide the bump are the ones your branch adds on top of
+  `master`, not everything since the last tag. `bin/changelog stamp` prints both, as in
+  `Counting from origin/master (0a1b2c3d): base 1.1.0, publishing 1.1.1.`
+- Only three things publish: `feat:` publishes a minor, `fix:` publishes a patch, and a breaking
+  marker (`BREAKING CHANGE:` in a body, or `type!:`) publishes a major. **Every other type
+  publishes nothing**, `perf`, `build`, `deps`, `revert`, `security`, `refactor`, `docs`, `chore`,
+  `ci`, `test` and `style` included.
+- So a revert that users need to receive has to be written as a `fix:`. `revert:` alone reaches
+  nobody: the gem is never republished and the fix stays in the registry.
 - Merging a `fix:` or `feat:` commit into `master` **publishes the gem** to the GitLab registry
   and to rubygems.org. Choose the commit type deliberately.
 - **Only non-merge commits count.** A merge commit repeats the merge request title, and titles
@@ -34,6 +43,13 @@ Instructions for Claude, and any other agent, working in this repository.
 
 A section written by `stamp` carries `<!-- stamped -->` and no sha. The sha comments at the end of
 bullets belong to the older sections only: do not remove them, and never invent one.
+
+Two open merge requests both touching `CHANGELOG.md` will conflict, every time. Resolve it by
+putting **your own** entries back under `## [Unreleased]`, leaving every section below it exactly
+as it was, then running `bin/changelog stamp` again, which gives your section the number that
+follows theirs. Never fold your entry into someone else's section and never drop it; the branch
+check compares the file with the merge base and fails if a section it inherited was changed,
+reordered or removed.
 
 `changelog:check` runs in the branch pipeline, on every branch except the default one. It fails
 when the branch has a publishable commit and the top section of `CHANGELOG.md` does not carry
