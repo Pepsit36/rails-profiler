@@ -31,6 +31,22 @@ RSpec.describe ".gitlab-ci.yml" do
     expect(config.fetch("rspec").fetch("stage")).to eq("test")
   end
 
+  # From Ruby 3.4 on, the standard library calls Thread.new with arguments, in the
+  # Happy Eyeballs hostname resolution of Socket.tcp, and the gem prepends a module
+  # to Thread#initialize. Dropping the 3.4 job would make that class of breakage
+  # invisible again.
+  it "runs the suite on both supported Ruby minor versions" do
+    images = config.select { |_, job| job.is_a?(Hash) && job["script"].to_a.include?("bundle exec rspec") }
+                   .transform_values { |job| job.fetch("image") }
+    expect(images).to eq("rspec" => "ruby:3.3", "rspec:ruby3.4" => "ruby:3.4")
+  end
+
+  it "gives each rspec job its own bundle cache, since the bundle is per Ruby ABI" do
+    expect(config.fetch("rspec:ruby3.4").fetch("stage")).to eq("test")
+    expect(config.fetch("rspec:ruby3.4").fetch("cache").fetch("key"))
+      .not_to eq(config.fetch("rspec").fetch("cache").fetch("key"))
+  end
+
   it "runs both changelog checks, and needs the full history for the second" do
     expect(changelog_check.fetch("script")).to include("ruby bin/changelog check --base origin/master")
     expect(changelog_check.fetch("script")).to include("ruby bin/changelog coverage")

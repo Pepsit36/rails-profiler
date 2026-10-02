@@ -16,6 +16,23 @@ rspec:
   before_script:
     - bundle config set --local path vendor/bundle
 
+# The same suite on the next Ruby, not a nicety: from 3.4 on, the standard library
+# itself calls Thread.new with arguments, in the Happy Eyeballs hostname resolution
+# of Socket.tcp, and the gem prepends a module to Thread#initialize. A breakage
+# there is invisible on 3.3. Its own cache key, since the bundle is per Ruby ABI.
+rspec:ruby3.4:
+  stage: test
+  image: ruby:3.4
+  script:
+    - bundle install
+    - bundle exec rspec
+  cache:
+    key: gem-bundle-ruby3.4-$CI_COMMIT_REF_SLUG
+    paths:
+      - vendor/bundle
+  before_script:
+    - bundle config set --local path vendor/bundle
+
 # Runs in the ordinary branch pipeline, next to rspec, on every branch that is not
 # the default one. No prefix allowlist: feat/, refactor/, docs/ and chore/ branches
 # have already been merged here, and a prefix list silently exempts whatever it
