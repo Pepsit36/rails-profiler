@@ -404,6 +404,52 @@ RSpec.describe "bin/changelog" do
       expect(err).to include(stray)
     end
 
+    it "ignores an editorial comment in a published section" do
+      complete_changelog(dir, extra: "\n<!-- TODO: reword this once the UI settles -->\n")
+
+      out, err, status = run(dir, "coverage")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("changelog coverage: OK")
+    end
+
+    it "fails on a sha that is both referenced and excluded" do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [0.2.0] - 2026-02-01
+
+        ### Fixed
+
+        - **UI:** Align the toolbar <!-- #{@fix} -->
+
+        <!-- excluded:
+          #{@fix} pipeline only
+          #{@ci} pipeline only
+        -->
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- #{@feature} -->
+      MD
+
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).not_to be_success
+      expect(err).to include("#{@fix} is both referenced and excluded")
+    end
+
+    it "tells an ambiguous reference from an unknown one" do
+      complete_changelog(dir, extra: "\n<!-- covered: 0123abc -->\n")
+
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).not_to be_success
+      expect(err).to include("0123abc is referenced but no commit of this repository matches it")
+    end
+
     it "fails on a commit that is neither described nor excluded" do
       changelog(dir, <<~MD)
         # Changelog
@@ -474,7 +520,7 @@ RSpec.describe "bin/changelog" do
       _out, err, status = run(dir, "coverage")
 
       expect(status).not_to be_success
-      expect(err).to include("0123abc is referenced but is not a commit of this repository")
+      expect(err).to include("0123abc is referenced but no commit of this repository matches it")
     end
 
     it "fails on a missing version section" do
