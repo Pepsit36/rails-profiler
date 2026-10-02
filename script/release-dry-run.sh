@@ -1,30 +1,34 @@
 #!/usr/bin/env bash
 #
-# Dry run for script/release.sh, with a simulated origin and simulated
-# registries. No GitLab, no runner, no rubygems.org, no credential: the
-# registries are directories, and the two probe functions plus the two push
-# functions are replaced through the --stubs injection point.
+# Dry run for the branch stamp and for script/release.sh, with a simulated
+# origin and simulated registries. No GitLab, no runner, no rubygems.org, no
+# credential: the registries are directories, and the two probe functions, the
+# two push functions and the gem build are replaced through the --stubs
+# injection point of script/release.sh.
 #
 # Scenarios:
-#   1. normal release: changelog stamped, commit holding only CHANGELOG.md,
-#      tag on that commit, atomic push, gem on both registries;
-#   2. rubygems.org refuses the push, then the job is re-run on the same
-#      pipeline SHA: the tag is already there, so the gem is published from the
-#      tag to the registry that is still missing it;
-#   3. master advanced during the pipeline: explicit failure, nothing pushed;
-#   4. the push is refused (pre-receive hook standing in for a protected
-#      branch): noisy failure naming the GitLab settings;
-#   5. re-run while the version is present on both registries: exits 0 without
-#      republishing anything;
-#   6. a registry that refuses the push as already published: tolerated, but
-#      only because a second probe confirms the version is really there;
-#   7. the real GitLab registry probe against a stand-in Packages API: a version
-#      that is not on page 1, and near misses on name and version;
-#   8. app/assets/builds missing or expired, on both paths;
-#   9. a release on a tree where CHANGELOG.md is not tracked yet;
-#  10. the coverage check right after a publication, plus a stale reference and
-#      a clone without tags;
-#  11. a version published on master while a branch is open.
+#    1. normal release: the tag alone is pushed, no commit, gem on both registries;
+#    2. nothing in the job commits or pushes a branch;
+#    3. re-run of a publication that did not complete;
+#    4. the tag push is refused;
+#    5. re-run while the version is on both registries;
+#    6. a registry refuses the push as already published;
+#    7. the real GitLab registry probe against a stand-in Packages API;
+#    8. app/assets/builds missing or expired;
+#    9. a CHANGELOG with no released section;
+#   10. the coverage check right after a publication, a stale reference, no tags;
+#   11. a version published on master while a branch is open;
+#   12. stamp on a fresh branch, then the branch check;
+#   13. stamp run again after new commits on the branch;
+#   14. the branch check without a stamp, and what its message says;
+#   15. the release refuses a section that disagrees with the commits;
+#   16. two close merges: the second branch stamps the version after the first;
+#   17. two close merges whose pipelines run out of order, then in order;
+#   18. a merge titled feat over a branch holding only a fix;
+#   19. a squash merge, whose single commit carries the merge request title;
+#   20. a branch of tooling commits only: nothing published, nothing tagged;
+#   21. a stamped section with nothing publishable behind it;
+#   22. an abandoned version, and the branch that repairs the file.
 #
 # Usage: script/release-dry-run.sh [work directory]
 
@@ -35,6 +39,7 @@ ROOT="${1:-$(mktemp -d)}"
 FAILURES=0
 
 banner() { printf '\n========== %s ==========\n' "$*"; }
+step() { printf -- '--- %s ---\n' "$*"; }
 ok() { printf 'PASS  %s\n' "$*"; }
 ko() { printf 'FAIL  %s\n' "$*"; FAILURES=$((FAILURES + 1)); }
 
@@ -123,7 +128,6 @@ case "${FAKE_API_MODE:-}" in
     if printf '%s' "$url" | grep -q 'package_version=0\.1\.1'; then
       printf '[{"id":9,"name":"rails-profiler","version":"0.1.1","package_type":"rubygems"}]'
     else
-      # page 1, created_at asc: 100 canary preversions, none of them 0.1.1
       printf '['
       i=1
       while [ "$i" -le 100 ]; do
@@ -135,8 +139,6 @@ case "${FAKE_API_MODE:-}" in
     fi
     ;;
   fuzzy)
-    # Another package carries that version, and this package carries a version
-    # that only matches 0.1.1 if the dots are read as wildcards.
     printf '[{"id":1,"name":"rails-profiler-extras","version":"0.1.1","package_type":"rubygems"},'
     printf '{"id":2,"name":"rails-profiler","version":"0x1x1","package_type":"rubygems"}]'
     ;;
@@ -166,8 +168,16 @@ probe_gitlab() {
 
 # --- fixture ----------------------------------------------------------------
 
-# Builds <case>/origin.git (bare master), <case>/work (clone at the pipeline
-# SHA) and <case>/registry. Echoes the pipeline SHA.
+add_unreleased_entry() {
+  ruby -e '
+    path, heading, entry = ARGV
+    text = File.read(path)
+    File.write(path, text.sub("## [Unreleased]\n", "## [Unreleased]\n\n### #{heading}\n\n#{entry}\n"))
+  ' "$1" "$2" "$3"
+}
+
+# Builds <case>/origin.git (bare master holding v0.1.0 and its changelog),
+# <case>/work (clone of master) and <case>/registry.
 make_fixture() {
   local case_dir="$1" origin="$1/origin.git" work="$1/work"
 
@@ -177,8 +187,8 @@ make_fixture() {
 
   git init --quiet "$work"
   git -C "$work" symbolic-ref HEAD refs/heads/master
-  git -C "$work" config user.email "ci@gitlab"
-  git -C "$work" config user.name "GitLab CI"
+  git -C "$work" config user.email "dev@example.com"
+  git -C "$work" config user.name "A Developer"
 
   mkdir -p "$work/bin" "$work/script" "$work/lib/profiler"
   cp "$REPO_ROOT/bin/changelog" "$work/bin/changelog"
@@ -196,37 +206,54 @@ make_fixture() {
 
 ## [Unreleased]
 
-### Fixed
-
-- a missing profile file no longer breaks the profile list
-
 ## [0.1.0] - 2026-01-01
 
 ### Added
 
-- the first release
+- The first release
 MD
 
   git -C "$work" add --all
-  git -C "$work" commit --quiet -m "chore: initial tree"
+  git -C "$work" commit --quiet -m "chore(release): v0.1.0 [skip ci]"
   git -C "$work" tag v0.1.0
-  # The 0.1.0 section has to account for the commit its tag sits on, and that
-  # sha is only known now. Recorded by the next commit, as a person would.
-  printf '\n<!-- excluded:\n  %s housekeeping, not user visible\n-->\n' \
-    "$(git -C "$work" rev-parse --short=7 v0.1.0^{commit})" >> "$work/CHANGELOG.md"
-  printf 'touched\n' > "$work/touched.txt"
-  git -C "$work" add --all
-  git -C "$work" commit --quiet -m "fix(storage): survive a missing profile file"
   git -C "$work" remote add origin "$origin"
   git -C "$work" push --quiet origin master v0.1.0
+  git -C "$work" update-ref refs/remotes/origin/master master
 
   write_stubs "$case_dir/stubs.sh"
-  git -C "$work" rev-parse HEAD
 }
 
-# Runs script/release.sh in a working copy, as the CI job would.
+# A branch with one commit, its entry under [Unreleased], and the stamp.
+author_branch() {
+  local work="$1" branch="$2" subject="$3"
+  local entry="${4:-- **Storage:** A missing profile file no longer breaks the list}"
+
+  git -C "$work" checkout --quiet -b "$branch" master
+  printf '%s\n' "$subject" >> "$work/touched.txt"
+  git -C "$work" add --all
+  git -C "$work" commit --quiet -m "$subject"
+
+  add_unreleased_entry "$work/CHANGELOG.md" "Fixed" "$entry"
+  git -C "$work" add --all
+  git -C "$work" commit --quiet -m "docs: describe the change"
+  (cd "$work" && ruby bin/changelog stamp --default-branch master > /dev/null)
+  git -C "$work" add --all
+  git -C "$work" commit --quiet -m "docs: stamp the changelog"
+}
+
+merge_branch() {
+  local work="$1" branch="$2" title="${3:-}"
+  [ -n "$title" ] || title="Merge branch '${branch}' into 'master'"
+  git -C "$work" checkout --quiet master
+  git -C "$work" merge --quiet --no-ff -m "$title" "$branch"
+  git -C "$work" push --quiet origin master
+  git -C "$work" update-ref refs/remotes/origin/master master
+}
+
+# Runs script/release.sh on a working copy, as the CI job would.
 run_release() {
-  local work="$1" case_dir="$2" sha="$3"
+  local work="$1" case_dir="$2" sha="${3:-}"
+  [ -n "$sha" ] || sha="$(git -C "$work" rev-parse HEAD)"
   (
     cd "$work" || exit 1
     REG_DIR="$case_dir/registry" \
@@ -236,193 +263,166 @@ run_release() {
   )
 }
 
-# A re-run of the job: GitLab checks out the same pipeline SHA in a fresh clone.
-fresh_checkout() {
+# A pipeline runs on a fresh checkout of one commit.
+pipeline_checkout() {
   local case_dir="$1" sha="$2" name="$3"
   git clone --quiet "$case_dir/origin.git" "$case_dir/$name"
   git -C "$case_dir/$name" config user.email "ci@gitlab"
   git -C "$case_dir/$name" config user.name "GitLab CI"
   git -C "$case_dir/$name" checkout --quiet --detach "$sha"
-  # A re-run also gets the artifacts of the `build` job again, as long as they
-  # have not expired; scenario 8 is the one that takes them away.
   mkdir -p "$case_dir/$name/app/assets/builds"
   printf 'console.log("built");\n' > "$case_dir/$name/app/assets/builds/profiler.js"
   printf '%s\n' "$case_dir/$name"
 }
 
-# --- scenario 1: normal release ---------------------------------------------
+tags_on_origin() { git -C "$1/origin.git" tag -l | tr '\n' ' '; }
+top_section() { grep -m1 '^## \[0' "$1"; }
+
+# --- scenarios ---------------------------------------------------------------
 
 scenario_normal() {
   banner "1. normal release"
-  local case_dir="$ROOT/normal" sha out
-  sha="$(make_fixture "$case_dir")"
-  out="$(run_release "$case_dir/work" "$case_dir" "$sha")"
-  local status=$?
+  local case_dir="$ROOT/normal" out status
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  merge_branch "$case_dir/work" "fix/missing-file"
+
+  out="$(run_release "$case_dir/work" "$case_dir")"
+  status=$?
   printf '%s\n' "$out"
 
-  printf -- '--- assertions ---\n'
+  step assertions
   assert_eq "$status" "0" "the job succeeds"
-  assert_has "$out" "Next version: 0.1.1" "0.1.1 derived from the fix: commit"
-  assert_has "$out" "Reusing the 3 line(s) already written under [Unreleased]" "the hand written entry is reused"
-  assert_has "$out" "Release commit" "a release commit is made"
-  assert_has "$out" "Pushed the release commit and v0.1.1 to master" "commit and tag pushed atomically"
+  assert_has "$out" "CHANGELOG.md says 0.1.1 at the top" "the stamped version is read from the file"
+  assert_has "$out" "compute 0.1.1" "the commits compute the same version"
+  assert_has "$out" "Pushed v0.1.1" "the tag is pushed"
   assert_has "$out" "is published on both registries" "both registries got the gem"
-
-  local tagged_files pushed_master changelog
-  tagged_files="$(git -C "$case_dir/origin.git" show --format='' --name-only v0.1.1)"
-  assert_eq "$tagged_files" "CHANGELOG.md" "the release commit holds CHANGELOG.md and nothing else"
-  pushed_master="$(git -C "$case_dir/origin.git" rev-parse master)"
-  assert_eq "$pushed_master" "$(git -C "$case_dir/origin.git" rev-list -n1 v0.1.1)" "the tag sits on the commit at the tip of master"
-  changelog="$(git -C "$case_dir/origin.git" show "v0.1.1:CHANGELOG.md")"
-  assert_has "$changelog" "## [0.1.1] - " "the pushed changelog carries the stamped section"
-  assert_has "$changelog" "- a missing profile file no longer breaks the profile list" "the entry moved under 0.1.1"
-  assert_lacks "$(git -C "$case_dir/origin.git" show v0.1.1 --format='' --name-only)" "version.rb" "version.rb was never committed"
-  assert_has "$(cd "$case_dir/work" && git status --porcelain)" "lib/profiler/version.rb" "version.rb is only dirty in the workspace"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 v0.1.1 " "origin carries both tags"
+  assert_eq "$(git -C "$case_dir/origin.git" rev-list -n1 v0.1.1)" \
+            "$(git -C "$case_dir/origin.git" rev-parse master)" "the tag sits on the merged commit"
   assert_eq "$(ls "$case_dir/registry/gitlab")" "0.1.1" "GitLab registry holds 0.1.1"
   assert_eq "$(ls "$case_dir/registry/rubygems")" "0.1.1" "rubygems.org holds 0.1.1"
 }
 
-# --- scenario 2: failed publication, then re-run -----------------------------
+scenario_no_commit() {
+  banner "2. the job commits nothing and pushes no branch"
+  local case_dir="$ROOT/nocommit" before after out
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  merge_branch "$case_dir/work" "fix/missing-file"
+  before="$(git -C "$case_dir/origin.git" rev-parse master)"
+
+  out="$(run_release "$case_dir/work" "$case_dir")"
+  after="$(git -C "$case_dir/origin.git" rev-parse master)"
+
+  step assertions
+  assert_eq "$after" "$before" "master is exactly where the merge left it"
+  assert_eq "$(git -C "$case_dir/origin.git" log --format='%s' master | grep -c 'chore(release)')" "1" \
+            "the only chore(release) commit is the one the fixture made"
+  assert_eq "$(grep -cE 'git commit|--atomic|HEAD:master' "$REPO_ROOT/script/release.sh")" "0" \
+            "script/release.sh holds no commit and no branch push at all"
+}
 
 scenario_retry() {
-  banner "2. rubygems.org refuses, then the job is re-run on the same pipeline SHA"
-  local case_dir="$ROOT/retry" sha out status rerun
-  sha="$(make_fixture "$case_dir")"
+  banner "3. re-run of a publication that did not complete"
+  local case_dir="$ROOT/retry" out status rerun sha
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  merge_branch "$case_dir/work" "fix/missing-file"
+  sha="$(git -C "$case_dir/work" rev-parse HEAD)"
   touch "$case_dir/registry/rubygems.down"
 
-  printf -- '--- first run (rubygems.org down) ---\n'
-  out="$(run_release "$case_dir/work" "$case_dir" "$sha")"
+  step "first run, rubygems.org down"
+  out="$(run_release "$case_dir/work" "$case_dir")"
   status=$?
   printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
+  step assertions
   assert_eq "$status" "1" "the first run fails loudly"
-  assert_has "$out" "502 Bad Gateway" "the rubygems.org refusal is in the log"
-  assert_has "$out" "Pushed the release commit and v0.1.1 to master" "commit and tag are already pushed"
-  assert_has "$out" "re-running this job will publish from the tag" "the log says what a re-run will do"
+  assert_has "$out" "Pushed v0.1.1" "the tag is already pushed"
   assert_eq "$(ls "$case_dir/registry/gitlab")" "0.1.1" "GitLab registry got 0.1.1"
   assert_eq "$(ls "$case_dir/registry/rubygems")" "" "rubygems.org did not"
 
   rm -f "$case_dir/registry/rubygems.down"
-  printf -- '--- re-run of the same job, fresh checkout of the pipeline SHA ---\n'
-  rerun="$(fresh_checkout "$case_dir" "$sha" "rerun")"
-  printf 'git describe --tags --abbrev=0 from the pipeline SHA: %s\n' \
-    "$(git -C "$rerun" describe --tags --abbrev=0)"
-  printf 'v0.1.1 is an ancestor of the pipeline SHA: %s\n' \
-    "$(git -C "$rerun" merge-base --is-ancestor v0.1.1 "$sha" && echo yes || echo no)"
+  step "re-run of the same job, fresh checkout of the same commit"
+  rerun="$(pipeline_checkout "$case_dir" "$sha" "rerun")"
+  printf 'git describe --tags --abbrev=0: %s\n' "$(git -C "$rerun" describe --tags --abbrev=0)"
+  printf 'git tag --points-at HEAD:      %s\n' "$(git -C "$rerun" tag --points-at HEAD | tr '\n' ' ')"
   out="$(run_release "$rerun" "$case_dir" "$sha")"
   status=$?
   printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
+  step assertions
   assert_eq "$status" "0" "the re-run succeeds"
-  assert_has "$out" "Next version: 0.1.1" "the same version is derived again"
-  assert_has "$out" "re-run of a release whose publication did not complete" "the re-run path is taken, not a skip"
-  assert_lacks "$out" "already exists, skipping" "the old silent skip is gone"
-  assert_has "$out" "Publishing 0.1.1 from the tag v0.1.1" "publication happens from the tag"
-  assert_has "$out" "Registry gitlab: 0.1.1 already published, nothing to push" "GitLab is left alone"
+  assert_has "$out" "already on HEAD: this is a re-run" "the re-run path is taken before any computation"
+  assert_lacks "$out" "Nothing to publish since" "the old silent skip never happens"
+  assert_has "$out" "Registry gitlab: 0.1.1 already published" "GitLab is left alone"
   assert_has "$out" "Registry rubygems: pushed" "rubygems.org gets the gem"
   assert_eq "$(ls "$case_dir/registry/rubygems")" "0.1.1" "rubygems.org now holds 0.1.1"
-  assert_eq "$(git -C "$case_dir/origin.git" rev-list --count master)" "3" "no second release commit was pushed"
 }
 
-# --- scenario 3: master advanced during the pipeline ------------------------
-
-scenario_advanced() {
-  banner "3. master advanced during the pipeline"
-  local case_dir="$ROOT/advanced" sha out status other
-  sha="$(make_fixture "$case_dir")"
-
-  other="$case_dir/other"
-  git clone --quiet "$case_dir/origin.git" "$other"
-  git -C "$other" config user.email "dev@example.com"
-  git -C "$other" config user.name "Someone Else"
-  printf 'later\n' > "$other/later.txt"
-  git -C "$other" add --all
-  git -C "$other" commit --quiet -m "fix(ui): a later change"
-  git -C "$other" push --quiet origin master
-
-  out="$(run_release "$case_dir/work" "$case_dir" "$sha")"
-  status=$?
-  printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
-  assert_eq "$status" "1" "the job fails"
-  assert_has "$out" "master advanced during this pipeline" "the reason is explicit"
-  assert_has "$out" "Not rebasing" "no rebase is attempted"
-  assert_has "$out" "no tag and no commit were pushed" "the log says nothing was pushed"
-  assert_has "$out" "The next pipeline on master will publish this change" "the log says what happens next"
-  assert_eq "$(git -C "$case_dir/origin.git" tag -l 'v0.1.1')" "" "no v0.1.1 tag on origin"
-  assert_eq "$(git -C "$case_dir/origin.git" rev-parse master)" "$(git -C "$other" rev-parse HEAD)" "master is untouched by the job"
-  assert_eq "$(ls "$case_dir/registry/gitlab")" "" "nothing was published"
-}
-
-# --- scenario 4: the push is refused ----------------------------------------
-
-scenario_refused() {
-  banner "4. the push is refused (protected branch / job token rights)"
-  local case_dir="$ROOT/refused" sha out status hook
-  sha="$(make_fixture "$case_dir")"
+scenario_tag_refused() {
+  banner "4. the tag push is refused"
+  local case_dir="$ROOT/refused" out status hook
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  merge_branch "$case_dir/work" "fix/missing-file"
 
   hook="$case_dir/origin.git/hooks/pre-receive"
   cat > "$hook" <<'HOOK'
 #!/bin/sh
-echo "GitLab: You are not allowed to push code to protected branches on this project." >&2
+echo "GitLab: You are not allowed to create this tag as it is protected." >&2
 exit 1
 HOOK
   chmod +x "$hook"
 
-  out="$(run_release "$case_dir/work" "$case_dir" "$sha")"
+  out="$(run_release "$case_dir/work" "$case_dir")"
   status=$?
   printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
+  step assertions
   assert_eq "$status" "1" "the job fails"
-  assert_has "$out" "was refused" "the refusal is reported"
+  assert_has "$out" "pushing the tag v0.1.1 was refused" "the refusal is reported"
   assert_has "$out" "No gem was published" "the log says the release is not done"
-  assert_has "$out" 'Settings > CI/CD > Job token permissions > "Allow Git push requests to the repository"' "the job token setting is named"
-  assert_has "$out" 'Settings > Repository > Protected branches > master > "Allowed to push and merge"' "the protected branch setting is named"
-  assert_eq "$(git -C "$case_dir/origin.git" tag -l 'v0.1.1')" "" "no tag reached origin"
+  assert_has "$out" "Protected tags" "the setting to check is named"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 " "no tag reached origin"
   assert_eq "$(ls "$case_dir/registry/gitlab")" "" "nothing was published"
 }
 
-# --- scenario 5: re-run with the version already on both registries ---------
-
 scenario_already_everywhere() {
   banner "5. re-run while 0.1.1 is present on both registries"
-  local case_dir="$ROOT/already" sha out status rerun
-  sha="$(make_fixture "$case_dir")"
-  out="$(run_release "$case_dir/work" "$case_dir" "$sha")" || true
+  local case_dir="$ROOT/already" out status rerun sha
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  merge_branch "$case_dir/work" "fix/missing-file"
+  sha="$(git -C "$case_dir/work" rev-parse HEAD)"
+  run_release "$case_dir/work" "$case_dir" > /dev/null
 
-  rerun="$(fresh_checkout "$case_dir" "$sha" "rerun")"
+  rerun="$(pipeline_checkout "$case_dir" "$sha" "rerun")"
   out="$(run_release "$rerun" "$case_dir" "$sha")"
   status=$?
   printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
+  step assertions
   assert_eq "$status" "0" "the re-run exits 0"
   assert_has "$out" "already published on both registries, nothing to do" "nothing is republished"
   assert_lacks "$out" "Registry gitlab: pushed" "no push to GitLab"
   assert_lacks "$out" "Registry rubygems: pushed" "no push to rubygems.org"
-  assert_eq "$(git -C "$case_dir/origin.git" rev-list --count master)" "3" "master is unchanged"
 }
-
-# --- scenario 6: the registry says "already published" -----------------------
 
 scenario_already_published_refusal() {
   banner "6. a registry refuses the push as already published"
-  local case_dir="$ROOT/refusal" sha out status
-  sha="$(make_fixture "$case_dir")"
-  # 0.1.1 is on rubygems.org, but the first probe will not see it.
+  local case_dir="$ROOT/refusal" out status
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  merge_branch "$case_dir/work" "fix/missing-file"
   touch "$case_dir/registry/rubygems/0.1.1" "$case_dir/registry/rubygems.race"
 
-  out="$(run_release "$case_dir/work" "$case_dir" "$sha")"
+  out="$(run_release "$case_dir/work" "$case_dir")"
   status=$?
   printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
+  step assertions
   assert_eq "$status" "0" "the job succeeds"
   assert_has "$out" "Repushing of gem versions is not allowed" "the registry message is in the log"
   assert_has "$out" "refused as already published, re-probing to confirm" "the refusal alone is not trusted"
   assert_has "$out" "0.1.1 confirmed present, treating the refusal as success" "the second probe settles it"
-  assert_has "$out" "is published on both registries" "the release completes"
 }
-
-# --- scenario 7: the GitLab registry probe ----------------------------------
 
 scenario_gitlab_probe() {
   banner "7. GitLab registry probe against a simulated Packages API"
@@ -430,169 +430,528 @@ scenario_gitlab_probe() {
   mkdir -p "$case_dir/fakebin"
   write_fake_curl "$case_dir/fakebin/curl"
 
-  printf -- '--- 0.1.1 exists, but page 1 is full of older canary preversions ---\n'
+  step "0.1.1 exists, but page 1 is full of older canary preversions"
   out="$(probe_gitlab "$case_dir" paged)"
   printf '%s\n' "$out"
   assert_has "$out" "RESULT=present" "the probe finds a version that is not on page 1"
 
-  printf -- '--- only another package has 0.1.1, and this one has 0x1x1 ---\n'
+  step "only another package has 0.1.1, and this one has 0x1x1"
   out="$(probe_gitlab "$case_dir" fuzzy)"
   printf '%s\n' "$out"
   assert_has "$out" "RESULT=absent" "the probe does not take another package, or 0x1x1, for 0.1.1"
 }
 
-# --- scenario 8: the compiled assets are missing ----------------------------
-
 scenario_missing_assets() {
   banner "8. app/assets/builds missing or expired"
-  local case_dir="$ROOT/assets" sha out status rerun
-  sha="$(make_fixture "$case_dir")"
-
-  printf -- '--- normal path, no compiled assets at all ---\n'
+  local case_dir="$ROOT/assets" out status
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  merge_branch "$case_dir/work" "fix/missing-file"
   rm -rf "$case_dir/work/app/assets/builds"
-  out="$(run_release "$case_dir/work" "$case_dir" "$sha")"
+
+  out="$(run_release "$case_dir/work" "$case_dir")"
   status=$?
   printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
+  step assertions
   assert_eq "$status" "1" "the job fails"
   assert_has "$out" "app/assets/builds is missing or empty" "the reason is explicit"
   assert_has "$out" "they expired" "expired artifacts are named as a cause"
   assert_has "$out" "Re-run the whole pipeline, not just this job" "the fix is spelled out"
-  assert_eq "$(git -C "$case_dir/origin.git" tag -l 'v0.1.1')" "" "nothing was tagged"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 " "nothing was tagged"
   assert_eq "$(ls "$case_dir/registry/gitlab")" "" "nothing was published"
-
-  printf -- '--- re-run path, artifacts expired since the tag was pushed ---\n'
-  mkdir -p "$case_dir/work/app/assets/builds"
-  printf 'console.log("built");\n' > "$case_dir/work/app/assets/builds/profiler.js"
-  touch "$case_dir/registry/rubygems.down"
-  run_release "$case_dir/work" "$case_dir" "$sha" > /dev/null
-  rm -f "$case_dir/registry/rubygems.down"
-  rerun="$(fresh_checkout "$case_dir" "$sha" "rerun")"
-  rm -rf "$rerun/app/assets/builds"
-  out="$(run_release "$rerun" "$case_dir" "$sha")"
-  status=$?
-  printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
-  assert_eq "$status" "1" "the re-run fails too"
-  assert_has "$out" "app/assets/builds is missing or empty" "the same guard covers the re-run path"
-  assert_eq "$(ls "$case_dir/registry/rubygems")" "" "no gem without assets was pushed"
 }
 
-# --- scenario 9: CHANGELOG.md not tracked yet -------------------------------
+scenario_no_section() {
+  banner "9. a CHANGELOG with no released section"
+  local case_dir="$ROOT/nosection" out status
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  merge_branch "$case_dir/work" "fix/missing-file"
+  printf '# Changelog\n\n## [Unreleased]\n' > "$case_dir/work/CHANGELOG.md"
 
-scenario_untracked_changelog() {
-  banner "9. release on a tree where CHANGELOG.md is not tracked yet"
-  local case_dir="$ROOT/untracked" sha out status
-  sha="$(make_fixture "$case_dir")"
-  git -C "$case_dir/work" rm --quiet --cached CHANGELOG.md
-  rm -f "$case_dir/work/CHANGELOG.md"
-  git -C "$case_dir/work" commit --quiet -m "chore: drop the changelog"
-  git -C "$case_dir/work" push --quiet origin master
-  sha="$(git -C "$case_dir/work" rev-parse HEAD)"
-
-  out="$(run_release "$case_dir/work" "$case_dir" "$sha")"
+  out="$(run_release "$case_dir/work" "$case_dir")"
   status=$?
   printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
-  assert_eq "$status" "0" "the job succeeds"
-  assert_has "$out" "CHANGELOG.md does not exist, creating it." "the generator creates the file"
-  assert_has "$out" "Pushed the release commit and v0.1.1 to master" "the new file is committed and pushed"
-  assert_eq "$(git -C "$case_dir/origin.git" show --format='' --name-only v0.1.1)" "CHANGELOG.md" "the release commit holds CHANGELOG.md alone"
+  step assertions
+  assert_eq "$status" "1" "the job fails"
+  assert_has "$out" "no released section found" "the reason is explicit"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 " "nothing was tagged"
 }
-
-# --- scenario 10: coverage right after a publication -------------------------
 
 scenario_coverage_after_release() {
-  banner "10. the changelog coverage check, right after a simulated publication"
-  local case_dir="$ROOT/coverage" sha out status
-  sha="$(make_fixture "$case_dir")"
+  banner "10. the coverage check, right after a publication"
+  local case_dir="$ROOT/coverage" out status
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  merge_branch "$case_dir/work" "fix/missing-file"
+  run_release "$case_dir/work" "$case_dir" > /dev/null
 
-  printf -- '--- release ---\n'
-  out="$(run_release "$case_dir/work" "$case_dir" "$sha")"
-  status=$?
-  printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
-  assert_eq "$status" "0" "the release succeeds"
-  assert_has "$out" "Commit references written into the 0.1.1 section" "the job says what it recorded"
-
-  printf -- '--- bin/changelog coverage, on the released tree ---\n'
+  step "bin/changelog coverage, on the released tree"
   out="$(cd "$case_dir/work" && ruby bin/changelog coverage 2>&1)"
   status=$?
   printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
+  step assertions
   assert_eq "$status" "0" "coverage passes immediately after the publication"
   assert_has "$out" "changelog coverage: OK" "every commit of both intervals is accounted for"
-  assert_lacks "$out" "chore(release)" "the release commit is matched by its subject, not by a sha"
 
-  printf -- '--- a sha cited outside its own interval ---\n'
-  (cd "$case_dir/work" && sed -i "s|<!-- covered: |<!-- covered: $(git rev-parse --short=7 v0.1.0^{commit}) |" CHANGELOG.md)
+  step "a sha cited in the wrong interval"
+  (cd "$case_dir/work" && sed -i "s|- The first release|- The first release <!-- $(git rev-parse --short=7 HEAD) -->|" CHANGELOG.md)
   out="$(cd "$case_dir/work" && ruby bin/changelog coverage 2>&1)"
   status=$?
   printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
+  step assertions
   assert_eq "$status" "1" "coverage fails"
   assert_has "$out" "does not belong to" "the stale reference is named"
 
-  printf -- '--- a clone without tags ---\n'
+  step "a clone without tags"
   git clone --quiet --no-tags "$case_dir/origin.git" "$case_dir/untagged"
   out="$(cd "$case_dir/untagged" && ruby bin/changelog coverage 2>&1)"
   status=$?
   printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
+  step assertions
   assert_eq "$status" "1" "coverage refuses to pass with no tag"
   assert_has "$out" "no tag reachable from HEAD" "the reason is explicit"
   assert_has "$out" "GIT_DEPTH" "the usual cause is named"
 }
 
-# --- scenario 11: a version is published while a branch is open --------------
-
 scenario_tag_published_during_branch() {
   banner "11. a version is published on master while a branch is open"
-  local case_dir="$ROOT/newtag" sha out status clone
-  sha="$(make_fixture "$case_dir")"
-
-  # A contributor branches off before the publication, and pushes.
-  git -C "$case_dir/work" checkout --quiet -b feature/later
+  local case_dir="$ROOT/newtag" out status clone
+  make_fixture "$case_dir"
+  git -C "$case_dir/work" checkout --quiet -b feature/later master
   git -C "$case_dir/work" push --quiet origin feature/later
-  git -C "$case_dir/work" checkout --quiet master
 
-  # master publishes 0.1.1 in the meantime.
-  run_release "$case_dir/work" "$case_dir" "$sha" > /dev/null
-  printf 'origin now carries: %s\n' "$(git -C "$case_dir/origin.git" tag -l | tr "\n" " ")"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  merge_branch "$case_dir/work" "fix/missing-file"
+  run_release "$case_dir/work" "$case_dir" > /dev/null
+  printf 'origin now carries: %s\n' "$(tags_on_origin "$case_dir")"
 
-  # What the changelog:check job does on that branch, in order.
+  step "what changelog:check does on that branch, in order"
   clone="$case_dir/branchclone"
   git init --quiet "$clone"
   git -C "$clone" remote add origin "$case_dir/origin.git"
   git -C "$clone" fetch --quiet origin feature/later
   git -C "$clone" checkout --quiet -B feature/later FETCH_HEAD
   git -C "$clone" fetch --quiet origin "+refs/heads/master:refs/remotes/origin/master"
-
-  printf 'git tag:               %s\n' "$(git -C "$clone" tag -l | tr "\n" " ")"
-  printf 'git tag --merged HEAD: %s\n' "$(git -C "$clone" tag -l --merged HEAD | tr "\n" " ")"
+  printf 'git tag:               %s\n' "$(git -C "$clone" tag -l | tr '\n' ' ')"
+  printf 'git tag --merged HEAD: %s\n' "$(git -C "$clone" tag -l --merged HEAD | tr '\n' ' ')"
 
   out="$(cd "$clone" && ruby bin/changelog coverage 2>&1)"
   status=$?
   printf '%s\n' "$out"
-  printf -- '--- assertions ---\n'
+  step assertions
   assert_has "$(git -C "$clone" tag -l)" "v0.1.1" "the fetch of master brought the newer tag along"
   assert_eq "$status" "0" "coverage passes on a branch that predates the publication"
-  assert_lacks "$out" "no \`## [0.1.1]\` section" "the branch is not blamed for a version it cannot know"
   assert_has "$out" "changelog coverage: OK" "only the tags reachable from HEAD are walked"
+}
+
+scenario_stamp_fresh() {
+  banner "12. stamp on a fresh branch, then the branch check"
+  local case_dir="$ROOT/stamp" out status
+  make_fixture "$case_dir"
+  git -C "$case_dir/work" checkout --quiet -b fix/missing-file master
+  printf 'work\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "fix(storage): survive a missing profile file"
+  add_unreleased_entry "$case_dir/work/CHANGELOG.md" "Fixed" \
+    "- **Storage:** A missing profile file no longer breaks the list"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: describe the change"
+
+  step "bin/changelog stamp"
+  out="$(cd "$case_dir/work" && ruby bin/changelog stamp --default-branch master 2>&1)"
+  status=$?
+  printf '%s\n' "$out"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: stamp the changelog"
+  sed -n '1,20p' "$case_dir/work/CHANGELOG.md"
+
+  step assertions
+  assert_eq "$status" "0" "stamp succeeds"
+  assert_has "$out" "publishing 0.1.1" "it names the version the merge will publish"
+  assert_has "$(cat "$case_dir/work/CHANGELOG.md")" "## [0.1.1] - " "the section carries the number and a date"
+  assert_has "$(cat "$case_dir/work/CHANGELOG.md")" "<!-- stamped -->" "the section is marked as stamped"
+  assert_lacks "$(sed -n '/## \[0.1.1\]/,/## \[0.1.0\]/p' "$case_dir/work/CHANGELOG.md" | grep -v stamped)" "<!--" \
+               "no sha in the stamped section"
+
+  step "bin/changelog check"
+  out="$(cd "$case_dir/work" && ruby bin/changelog check --base master 2>&1)"
+  status=$?
+  printf '%s\n' "$out"
+  assert_eq "$status" "0" "the branch check passes"
+  assert_has "$out" "this branch publishes 0.1.1" "the check agrees with the stamp"
+}
+
+scenario_stamp_again() {
+  banner "13. stamp run again after new commits on the branch"
+  local case_dir="$ROOT/restamp" out status
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  printf 'before: %s\n' "$(top_section "$case_dir/work/CHANGELOG.md")"
+
+  step "a feature lands on the branch, with its entry"
+  printf 'more\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "feat(api): expose a profiles endpoint"
+  add_unreleased_entry "$case_dir/work/CHANGELOG.md" "Added" "- **API:** Expose a profiles endpoint"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: describe the feature"
+
+  out="$(cd "$case_dir/work" && ruby bin/changelog stamp --default-branch master 2>&1)"
+  status=$?
+  printf '%s\n' "$out"
+  sed -n '1,22p' "$case_dir/work/CHANGELOG.md"
+
+  step assertions
+  assert_eq "$status" "0" "stamp succeeds"
+  assert_has "$out" "0.1.1 becomes 0.2.0" "it says which number it corrected"
+  assert_has "$(top_section "$case_dir/work/CHANGELOG.md")" "## [0.2.0]" "the section now carries 0.2.0"
+  assert_lacks "$(cat "$case_dir/work/CHANGELOG.md")" "## [0.1.1]" "the wrong number is gone"
+  assert_has "$(cat "$case_dir/work/CHANGELOG.md")" "- **API:** Expose a profiles endpoint" "the new entry was folded in"
+  assert_has "$(cat "$case_dir/work/CHANGELOG.md")" "- **Storage:** A missing profile file no longer breaks the list" \
+             "the earlier entry is still there"
+}
+
+scenario_check_without_stamp() {
+  banner "14. the branch check without a stamp"
+  local case_dir="$ROOT/nostamp" out status
+  make_fixture "$case_dir"
+  git -C "$case_dir/work" checkout --quiet -b fix/missing-file master
+  printf 'work\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "fix(storage): survive a missing profile file"
+
+  out="$(cd "$case_dir/work" && ruby bin/changelog check --base master 2>&1)"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "1" "the check fails"
+  assert_has "$out" "This branch publishes 0.1.1" "it names the version"
+  assert_has "$out" "bin/changelog stamp" "it names the command to run"
+}
+
+scenario_release_disagrees() {
+  banner "15. the release refuses a section that disagrees with the commits"
+  local case_dir="$ROOT/disagree" out status
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  step "the author then adds a feature and forgets to stamp again"
+  printf 'more\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "feat(api): expose a profiles endpoint"
+  merge_branch "$case_dir/work" "fix/missing-file"
+
+  out="$(run_release "$case_dir/work" "$case_dir")"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "1" "the job fails"
+  assert_has "$out" "disagree about the version" "the reason is explicit"
+  assert_has "$out" "says 0.1.1" "the file version is named"
+  assert_has "$out" "compute  0.2.0" "the computed version is named"
+  assert_has "$out" "Nothing was tagged and nothing was published" "it says nothing happened"
+  assert_has "$out" "bin/changelog stamp" "it says what to run"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 " "no tag reached origin"
+  assert_eq "$(ls "$case_dir/registry/gitlab")" "" "nothing was published"
+}
+
+scenario_two_merges_stamp() {
+  banner "16. two close merges: the second branch stamps the version after the first"
+  local case_dir="$ROOT/twostamp" out
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/first" "fix(first): the first fix"
+  merge_branch "$case_dir/work" "fix/first"
+  printf 'master holds, untagged: %s\n' "$(top_section "$case_dir/work/CHANGELOG.md")"
+  printf 'tags on origin:         %s\n' "$(tags_on_origin "$case_dir")"
+
+  step "the second branch, cut after that merge, stamps"
+  git -C "$case_dir/work" checkout --quiet -b fix/second master
+  printf 'second\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "fix(second): the second fix"
+  out="$(cd "$case_dir/work" && ruby bin/changelog stamp --default-branch master 2>&1)"
+  printf '%s\n' "$out"
+
+  step assertions
+  assert_has "$out" "base 0.1.1, publishing 0.1.2" "the base is the untagged section, not the last tag"
+  assert_has "$(top_section "$case_dir/work/CHANGELOG.md")" "## [0.1.2]" "the new section is 0.1.2"
+  assert_has "$(cat "$case_dir/work/CHANGELOG.md")" "## [0.1.1]" "the inherited section is untouched"
+}
+
+scenario_two_merges_order() {
+  banner "17. two close merges whose pipelines run out of order, then in order"
+  local case_dir="$ROOT/twoorder" out status first second clone
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/first" "fix(first): the first fix"
+  merge_branch "$case_dir/work" "fix/first"
+  first="$(git -C "$case_dir/work" rev-parse HEAD)"
+
+  git -C "$case_dir/work" checkout --quiet -b fix/second master
+  printf 'second\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "fix(second): the second fix"
+  (cd "$case_dir/work" && ruby bin/changelog stamp --default-branch master > /dev/null)
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: stamp the changelog"
+  merge_branch "$case_dir/work" "fix/second"
+  second="$(git -C "$case_dir/work" rev-parse HEAD)"
+
+  step "the pipeline of the second merge runs first"
+  clone="$(pipeline_checkout "$case_dir" "$second" "second-first")"
+  out="$(run_release "$clone" "$case_dir" "$second")"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "1" "it fails rather than publishing out of order"
+  assert_has "$out" "an older stamped version is still waiting to be published: 0.1.1" "the pending version is named"
+  assert_has "$out" "process_mode" "the resource group setting is named"
+  assert_has "$out" "re-run" "it says a re-run will succeed"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 " "nothing was tagged"
+  assert_eq "$(ls "$case_dir/registry/gitlab")" "" "nothing was published"
+
+  step "oldest first: the pipeline of the first merge"
+  clone="$(pipeline_checkout "$case_dir" "$first" "first-run")"
+  out="$(run_release "$clone" "$case_dir" "$first")"
+  printf '%s\n' "$out"
+  assert_has "$out" "Pushed v0.1.1" "the first merge publishes 0.1.1"
+
+  step "then the pipeline of the second merge, re-run"
+  clone="$(pipeline_checkout "$case_dir" "$second" "second-rerun")"
+  out="$(run_release "$clone" "$case_dir" "$second")"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "0" "it succeeds now"
+  assert_has "$out" "Pushed v0.1.2" "the second merge publishes 0.1.2"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 v0.1.1 v0.1.2 " "origin carries all three tags"
+  assert_eq "$(ls "$case_dir/registry/rubygems" | tr '\n' ' ')" "0.1.1 0.1.2 " "both versions are published"
+}
+
+scenario_merge_title() {
+  banner "18. a merge titled feat over a branch holding only a fix"
+  local case_dir="$ROOT/mergetitle" out status
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+  merge_branch "$case_dir/work" "fix/missing-file" \
+    "Merge branch 'fix/missing-file' into 'master'
+
+feat: make the profiler better at everything"
+  step "the merge commit, subject and body"
+  git -C "$case_dir/work" log -1 --format='%B' | sed 's/^/  /'
+
+  out="$(run_release "$case_dir/work" "$case_dir")"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "0" "the job succeeds"
+  assert_has "$out" "compute 0.1.1" "the merge title does not raise the version"
+  assert_has "$out" "Pushed v0.1.1" "0.1.1 is published, as stamped"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 v0.1.1 " "no 0.2.0 was invented"
+}
+
+scenario_squash_merge() {
+  banner "19. a squash merge, whose single commit carries the merge request title"
+  local case_dir="$ROOT/squash" out status
+  make_fixture "$case_dir"
+  author_branch "$case_dir/work" "fix/missing-file" "fix(storage): survive a missing profile file"
+
+  step "squash: one commit on master, subject taken from the merge request title"
+  git -C "$case_dir/work" checkout --quiet master
+  git -C "$case_dir/work" merge --quiet --squash fix/missing-file
+  git -C "$case_dir/work" commit --quiet -m "feat: make the profiler better at everything"
+  git -C "$case_dir/work" push --quiet origin master
+  git -C "$case_dir/work" log -1 --format='  %s'
+
+  out="$(run_release "$case_dir/work" "$case_dir")"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "1" "the job fails rather than publishing a wrong number"
+  assert_has "$out" "disagree about the version" "the reason is explicit"
+  assert_has "$out" "says 0.1.1" "the stamped version is named"
+  assert_has "$out" "compute  0.2.0" "the squashed title is what computes 0.2.0"
+  assert_has "$out" "squash merge also lands" "the squash case is named in the message"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 " "nothing was tagged"
+  assert_eq "$(ls "$case_dir/registry/gitlab")" "" "nothing was published"
+}
+
+scenario_tooling_only() {
+  banner "20. a branch of tooling commits only"
+  local case_dir="$ROOT/tooling" out status
+  make_fixture "$case_dir"
+  git -C "$case_dir/work" checkout --quiet -b ci/tooling master
+  printf 'tooling\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "ci: add a lint job"
+  printf 'more tooling\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: write the contributor notes"
+
+  step "the branch check"
+  out="$(cd "$case_dir/work" && ruby bin/changelog check --base master 2>&1)"
+  printf '%s\n' "$out"
+  assert_has "$out" "nothing to require" "the check asks for no stamp"
+
+  merge_branch "$case_dir/work" "ci/tooling"
+  step "the release job on the merged commit"
+  out="$(run_release "$case_dir/work" "$case_dir")"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "0" "the job succeeds without doing anything"
+  assert_has "$out" "Nothing to publish since v0.1.0" "it says there is nothing to publish"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 " "no tag was added"
+  assert_eq "$(ls "$case_dir/registry/gitlab")" "" "nothing was published"
+  assert_eq "$(ls "$case_dir/registry/rubygems")" "" "nothing was published"
+}
+
+scenario_superfluous_stamp() {
+  banner "21. a stamped section with nothing publishable behind it"
+  local case_dir="$ROOT/superfluous" out status
+  make_fixture "$case_dir"
+  git -C "$case_dir/work" checkout --quiet -b ci/tooling master
+  printf 'tooling\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "ci: add a lint job"
+  ruby -e '
+    path = ARGV[0]
+    text = File.read(path)
+    File.write(path, text.sub("## [Unreleased]\n",
+      "## [Unreleased]\n\n## [0.1.1] - 2026-02-01\n\n<!-- stamped -->\n\n### Fixed\n\n- Something\n"))
+  ' "$case_dir/work/CHANGELOG.md"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: stamp for nothing"
+
+  out="$(cd "$case_dir/work" && ruby bin/changelog check --base master 2>&1)"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "1" "the check fails"
+  assert_has "$out" "no releasable commit, but CHANGELOG.md carries a stamped 0.1.1 section" "the reason is explicit"
+  assert_has "$out" "the next branch would take that number as its base" "it says why it matters"
+}
+
+# --- scenario 22: a version abandoned, and the repair ------------------------
+
+scenario_abandoned_version() {
+  banner "22. an abandoned version, and the branch that repairs the file"
+  local case_dir="$ROOT/abandoned" out status first second clone
+  make_fixture "$case_dir"
+
+  step "A is merged with a feature, stamped 0.2.0, and its pipeline never succeeds"
+  git -C "$case_dir/work" checkout --quiet -b feature/a master
+  printf 'a\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "feat(a): the feature of the first branch"
+  add_unreleased_entry "$case_dir/work/CHANGELOG.md" "Added" "- **A:** The feature"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: describe the feature"
+  (cd "$case_dir/work" && ruby bin/changelog stamp --default-branch master > /dev/null)
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: stamp the changelog"
+  merge_branch "$case_dir/work" "feature/a"
+  first="$(git -C "$case_dir/work" rev-parse HEAD)"
+  printf 'master top section: %s\n' "$(top_section "$case_dir/work/CHANGELOG.md")"
+
+  step "B is merged after it, stamped 0.2.1"
+  git -C "$case_dir/work" checkout --quiet -b fix/b master
+  printf 'b\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "fix(b): the fix of the second branch"
+  add_unreleased_entry "$case_dir/work/CHANGELOG.md" "Fixed" "- **B:** The fix"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: describe the fix"
+  (cd "$case_dir/work" && ruby bin/changelog stamp --default-branch master > /dev/null)
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: stamp the changelog"
+  merge_branch "$case_dir/work" "fix/b"
+  second="$(git -C "$case_dir/work" rev-parse HEAD)"
+  printf 'master top section: %s\n' "$(top_section "$case_dir/work/CHANGELOG.md")"
+  printf 'tags on origin:     %s\n' "$(tags_on_origin "$case_dir")"
+
+  step "the pipeline of B is stuck behind the abandoned 0.2.0"
+  clone="$(pipeline_checkout "$case_dir" "$second" "b-blocked")"
+  out="$(run_release "$clone" "$case_dir" "$second")"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "1" "B cannot publish"
+  assert_has "$out" "still waiting to be published: 0.2.0" "the abandoned version is named"
+  assert_has "$out" "This is the normal case" "fixing and re-running the older pipeline comes first"
+  assert_has "$out" "take its section out of CHANGELOG.md and renumber" "the repair is described"
+
+  step "the repair done wrong: the number is left as it was"
+  git -C "$case_dir/work" checkout --quiet -b chore/abandon-wrong master
+  ruby -e '
+    path = ARGV[0]
+    text = File.read(path)
+    text = text.sub(/^## \[0\.2\.0\][^\n]*\n.*?(?=^## \[0\.1\.0\])/m, "")
+    File.write(path, text)
+  ' "$case_dir/work/CHANGELOG.md"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: drop the abandoned section"
+  out="$(cd "$case_dir/work" && ruby bin/changelog check --base master 2>&1)"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "1" "the check refuses it"
+  assert_has "$out" "will publish 0.2.0" "it says which number is expected"
+  assert_has "$out" "Untagged right now: 0.2.1" "it says what is there instead"
+
+  step "the repair done right: 0.2.1 renumbered to 0.2.0"
+  git -C "$case_dir/work" checkout --quiet -b chore/abandon-0-2-0 master
+  ruby -e '
+    path = ARGV[0]
+    text = File.read(path)
+    text = text.sub(/^## \[0\.2\.0\][^\n]*\n.*?(?=^## \[0\.1\.0\])/m, "")
+    text = text.sub("## [0.2.1]", "## [0.2.0]")
+    File.write(path, text)
+  ' "$case_dir/work/CHANGELOG.md"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: drop the abandoned 0.2.0 and renumber"
+  sed -n '/## \[Unreleased\]/,/## \[0.1.0\]/p' "$case_dir/work/CHANGELOG.md"
+  out="$(cd "$case_dir/work" && ruby bin/changelog check --base master 2>&1)"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "0" "the check accepts it"
+  assert_has "$out" "0.2.0 is the only untagged section left" "it says why it accepts"
+
+  step "the repair is merged, and the release job publishes"
+  merge_branch "$case_dir/work" "chore/abandon-0-2-0"
+  out="$(run_release "$case_dir/work" "$case_dir")"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "0" "the job succeeds"
+  assert_has "$out" "Pushed v0.2.0" "0.2.0 is published"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 v0.2.0 " "origin carries 0.1.0 and 0.2.0, and no 0.2.1"
+  assert_eq "$(ls "$case_dir/registry/rubygems")" "0.2.0" "rubygems.org holds 0.2.0"
 }
 
 printf 'Dry run workspace: %s\n' "$ROOT"
 scenario_normal
+scenario_no_commit
 scenario_retry
-scenario_advanced
-scenario_refused
+scenario_tag_refused
 scenario_already_everywhere
 scenario_already_published_refusal
 scenario_gitlab_probe
 scenario_missing_assets
-scenario_untracked_changelog
+scenario_no_section
 scenario_coverage_after_release
 scenario_tag_published_during_branch
+scenario_stamp_fresh
+scenario_stamp_again
+scenario_check_without_stamp
+scenario_release_disagrees
+scenario_two_merges_stamp
+scenario_two_merges_order
+scenario_merge_title
+scenario_squash_merge
+scenario_tooling_only
+scenario_superfluous_stamp
+scenario_abandoned_version
 
 banner "summary"
 if [ "$FAILURES" -eq 0 ]; then

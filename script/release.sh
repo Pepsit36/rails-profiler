@@ -6,16 +6,25 @@
 # run against a simulated origin and simulated registries (see
 # script/release-dry-run.sh) without a GitLab runner.
 #
+# The CHANGELOG is stamped by the author, in the branch, before the merge. This
+# job never commits and never pushes a branch: it checks that the file agrees
+# with the version it computes, tags the merged commit, pushes that tag alone,
+# and publishes the gem.
+#
 # What it does, in order:
 #
-#   1. compute NEW_VERSION from the last tag and the conventional commit types
-#      (BREAKING CHANGE:/type!: major, feat: minor, fix: patch, nothing else);
-#   2. if the tag does not exist yet: stamp CHANGELOG.md, commit it alone, tag
-#      that commit, push commit and tag atomically, and only then build and
-#      push the gem;
-#   3. if the tag already exists: this is a re-run of a release whose gem push
-#      failed. Publish from the tag, one registry at a time, and only where the
-#      version is actually missing.
+#   1. fetch the tags, so the decision does not depend on when the runner cloned;
+#   2. if HEAD already carries the tag of the section at the top of the file,
+#      this is a re-run of a publication that did not complete: publish what is
+#      missing and stop. This comes first on purpose, before any version
+#      computation, because `git describe` would answer with that very tag and
+#      the job would conclude there was nothing to publish;
+#   3. refuse to go on if an older stamped section is still waiting for its own
+#      pipeline: that means the pipelines of this resource group ran out of order;
+#   4. compute the version with `bin/changelog version`, the one implementation,
+#      shared with the stamp and the branch check;
+#   5. refuse to publish if the file and the computation disagree;
+#   6. tag CI_COMMIT_SHA, push the tag alone, then build and push the gem.
 #
 # Never runs with `set -x`, never echoes $CI_JOB_TOKEN or $RUBYGEMS_API_KEY,
 # and pipes git output through `redact` so that no credential embedded in a
@@ -49,38 +58,23 @@ redact() { sed -e 's#://[^/@[:space:]]*@#://***@#g'; }
 
 # --- version computation ---------------------------------------------------
 
+# The version is not computed here: `bin/changelog version` is the one
+# implementation, shared with the stamp and the branch check, so the number the
+# author stamped and the number published can never come from two rules.
 compute_new_version() {
-  local last_tag base_version commits major minor patch
-  last_tag="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
-  if [ -z "$last_tag" ]; then
-    base_version="0.0.0"
-    commits="$(git log --format="%s%n%b")"
-  else
-    base_version="${last_tag#v}"
-    commits="$(git log "${last_tag}..HEAD" --format="%s%n%b")"
-  fi
+  local out rc
+  LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
 
-  LAST_TAG="$last_tag"
+  set +e
+  out="$(ruby bin/changelog version --since "$LAST_TAG")"
+  rc=$?
+  set -e
 
-  if [ -z "$commits" ]; then
-    log "No commits since last tag, skipping."
-    return 1
-  fi
-
-  major="$(echo "$base_version" | cut -d. -f1)"
-  minor="$(echo "$base_version" | cut -d. -f2)"
-  patch="$(echo "$base_version" | cut -d. -f3)"
-
-  if echo "$commits" | grep -qE "^BREAKING CHANGE:|^[a-z]+(\(.+\))?!:"; then
-    NEW_VERSION="$((major + 1)).0.0"
-  elif echo "$commits" | grep -qE "^feat(\(.+\))?:"; then
-    NEW_VERSION="${major}.$((minor + 1)).0"
-  elif echo "$commits" | grep -qE "^fix(\(.+\))?:"; then
-    NEW_VERSION="${major}.${minor}.$((patch + 1))"
-  else
-    log "No releasable commits (chore/docs/style/ci/test), skipping."
-    return 1
-  fi
+  case "$rc" in
+    0) NEW_VERSION="$out" ;;
+    3) log "Nothing to publish since ${LAST_TAG:-the start of the history}, skipping."; return 1 ;;
+    *) die "bin/changelog version failed with exit ${rc}" ;;
+  esac
 }
 
 tag_exists_on_remote() {
@@ -260,88 +254,71 @@ configure_git() {
   fi
 }
 
-advanced_branch_failure() {
-  printf 'ERROR: %s advanced during this pipeline.\n' "$TARGET_BRANCH" >&2
-  printf '  this pipeline ran on %s\n' "$1" >&2
-  printf '  origin/%s is now     %s\n' "$TARGET_BRANCH" "$2" >&2
-  printf 'Not rebasing: the release commit must sit on exactly the tree that was tested.\n' >&2
-  printf 'Nothing was published, no tag and no commit were pushed.\n' >&2
-  printf 'The next pipeline on %s will publish this change.\n' "$TARGET_BRANCH" >&2
-  exit 1
+# The version of the section at the top of CHANGELOG.md, the one the author
+# stamped in the branch.
+file_version() {
+  ruby -e '
+    text = File.read(ARGV[0])
+    match = text[/^##\s*\[(\d+\.\d+\.\d+)\]/, 1]
+    abort "no released section found in #{ARGV[0]}" if match.nil?
+    puts match
+  ' "$CHANGELOG_FILE"
 }
 
-push_refused_failure() {
-  printf 'ERROR: pushing the release commit and tag to %s was refused.\n' "$TARGET_BRANCH" >&2
-  printf 'No gem was published; the release is not done.\n' >&2
-  printf 'GitLab settings to check:\n' >&2
-  printf '  - Settings > CI/CD > Job token permissions > "Allow Git push requests to the repository"\n' >&2
-  printf '  - Settings > Repository > Protected branches > %s > "Allowed to push and merge"\n' "$TARGET_BRANCH" >&2
-  printf '    (the identity this job pushes with must be allowed there)\n' >&2
-  exit 1
+# Versions stamped in the file, below the top section, that carry no tag yet.
+pending_versions() {
+  ruby -e '
+    text = File.read(ARGV[0])
+    sections = text.scan(/^##\s*\[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^##\s|\z)/m)
+    sections.drop(1).each do |version, body|
+      next unless body.include?("<!-- stamped -->")
+      next if system("git", "rev-parse", "--verify", "--quiet", "refs/tags/v#{version}",
+                     out: File::NULL, err: File::NULL)
+
+      puts version
+    end
+  ' "$CHANGELOG_FILE"
 }
 
-push_release() {
-  local tag="$1" pipeline_sha="$2" out rc
+head_is_tagged_as() {
+  local tag="$1"
+  [ "$(git tag --points-at HEAD 2>/dev/null | grep -Fx "$tag" || true)" = "$tag" ]
+}
+
+push_tag() {
+  local tag="$1" out rc
 
   set +e
-  out="$(git push --atomic origin "HEAD:${TARGET_BRANCH}" "$tag" 2>&1)"
+  out="$(git push origin "refs/tags/${tag}" 2>&1)"
   rc=$?
   set -e
   printf '%s\n' "$out" | redact
 
   if [ "$rc" -eq 0 ]; then
-    log "Pushed the release commit and ${tag} to ${TARGET_BRANCH}."
+    log "Pushed ${tag}."
     return 0
   fi
 
-  if printf '%s' "$out" | grep -qiE 'non-fast-forward|fetch first|stale info'; then
-    advanced_branch_failure "$pipeline_sha" "unknown (the push itself came back as non fast-forward)"
-  fi
-
-  if printf '%s' "$out" \
-    | grep -qiE 'denied|forbidden|unauthorized|not allowed|403|401|protected branch|pre-receive hook declined|read-only|insufficient'; then
-    push_refused_failure
-  fi
-
-  printf 'ERROR: the push failed for an unrecognised reason (exit %s), see the output above.\n' "$rc" >&2
-  printf 'Nothing was published. Check both:\n' >&2
-  printf '  - Settings > CI/CD > Job token permissions > "Allow Git push requests to the repository"\n' >&2
-  printf '  - Settings > Repository > Protected branches > %s > "Allowed to push and merge"\n' "$TARGET_BRANCH" >&2
+  printf 'ERROR: pushing the tag %s was refused (exit %s).\n' "$tag" "$rc" >&2
+  printf 'No gem was published; the release is not done.\n' >&2
+  printf 'This job only ever pushes a tag, never a branch. If the refusal is about rights,\n' >&2
+  printf 'check Settings > CI/CD > Job token permissions > "Allow Git push requests to the\n' >&2
+  printf 'repository", and Settings > Repository > Protected tags for the v* pattern.\n' >&2
   exit 1
 }
 
 # --- the two paths ---------------------------------------------------------
 
-normal_release() {
-  local version="$1" tag="v$1" pipeline_sha remote_head gemfile
+publish_release() {
+  local version="$1" tag="v$1" gemfile
 
   require_rubygems_key
   require_built_assets
-  pipeline_sha="${CI_COMMIT_SHA:-$(git rev-parse HEAD)}"
-
   configure_git
 
-  # Fail before touching anything if the branch moved under us.
-  git fetch origin "$TARGET_BRANCH" 2>&1 | redact || die "cannot fetch origin/${TARGET_BRANCH}, refusing to release blind."
-  remote_head="$(git rev-parse FETCH_HEAD)"
-  if [ "$remote_head" != "$pipeline_sha" ]; then
-    advanced_branch_failure "$pipeline_sha" "$remote_head"
-  fi
-
-  log "Stamping ${CHANGELOG_FILE} for ${version}."
-  ruby bin/changelog release --version "$version" --since "${LAST_TAG}"
-
-  # Only CHANGELOG.md goes in: never version.rb, never app/assets/builds. The
-  # explicit add matters when the file is not tracked yet (the generator has
-  # just created it): `git commit -- <path>` alone fails on an untracked path,
-  # with a message that says nothing about the release.
-  git add -- "$CHANGELOG_FILE"
-  git commit -m "chore(release): ${tag} [skip ci]" -- "$CHANGELOG_FILE"
+  log "Tagging $(git rev-parse --short HEAD) as ${tag}."
   git tag "$tag"
-  log "Release commit $(git rev-parse --short HEAD) carries only: $(git show --format='' --name-only HEAD | tr '\n' ' ')"
-
-  # Commit and tag first, gem second.
-  push_release "$tag" "$pipeline_sha"
+  push_tag "$tag"
 
   set_source_version "$version"
   gemfile="$(build_gem "$version")"
@@ -350,15 +327,13 @@ normal_release() {
   log "Released ${tag}."
 }
 
-# The tag is already there, so a previous run of this job pushed the commit and
-# the tag but did not finish publishing. `git describe` from the pipeline SHA
-# cannot see that tag (it was placed on the release commit, a child of this
-# SHA), so NEW_VERSION lands on the same value: that is the case handled here,
-# and it must publish instead of skipping.
+# HEAD already carries the tag, so a previous run of this job tagged and then
+# failed to finish publishing. Nothing is tagged or committed again: each
+# registry is looked at on its own, and only the missing ones are pushed.
 resume_publish() {
   local version="$1" tag="v$1" gemfile on_gitlab=0 on_rubygems=0
 
-  log "Tag ${tag} already exists on origin: this is a re-run of a release whose publication did not complete."
+  log "${tag} is already on HEAD: this is a re-run of a release whose publication did not complete."
   log "Checking each registry separately."
 
   if registry_has_version gitlab "$version"; then on_gitlab=1; fi
@@ -372,11 +347,7 @@ resume_publish() {
   [ "$on_rubygems" -eq 1 ] || require_rubygems_key
   require_built_assets
 
-  log "Publishing ${version} from the tag ${tag} itself (the CHANGELOG and the history are left untouched)."
-  configure_git
-  git fetch --no-tags origin "refs/tags/${tag}:refs/tags/${tag}" 2>&1 | redact || true
-  git checkout --detach --force "refs/tags/${tag}" 2>&1 | redact
-
+  log "Publishing ${version} from ${tag}, which is this very commit. The history is left untouched."
   set_source_version "$version"
   gemfile="$(build_gem "$version")"
   publish_all "$version" "$gemfile"
@@ -384,17 +355,70 @@ resume_publish() {
   log "Finished publishing ${tag}."
 }
 
+out_of_order_failure() {
+  local pending="$1"
+  printf 'ERROR: an older stamped version is still waiting to be published: %s\n' "$pending" >&2
+  printf 'CHANGELOG.md carries it below the top section, and no tag matches it, so the\n' >&2
+  printf 'pipeline that should publish it has not run yet. Publishing this one first would\n' >&2
+  printf 'put the versions out of order, so nothing is tagged and nothing is published.\n' >&2
+  printf '\n' >&2
+  printf 'The release resource group must process its pipelines oldest first. Check\n' >&2
+  printf 'process_mode on the `release` resource group of this project; the default,\n' >&2
+  printf 'unordered, allows exactly this.\n' >&2
+  printf '\n' >&2
+  printf 'What to do, in order of likelihood:\n' >&2
+  printf '  1. the older pipeline simply has not run yet, or failed on something fixable such as\n' >&2
+  printf '     the right to push a tag: fix that, re-run the older pipeline, then re-run this one.\n' >&2
+  printf '     This is the normal case;\n' >&2
+  printf '  2. that version is abandoned, which is the exception. On a branch carrying no\n' >&2
+  printf '     publishable commit, take its section out of CHANGELOG.md and renumber the section\n' >&2
+  printf '     above it to the version this history will publish, so that exactly one untagged\n' >&2
+  printf '     section is left. `bin/changelog check` says which number that is, and refuses any\n' >&2
+  printf '     other. A section that carries a tag is never touched.\n' >&2
+  exit 1
+}
+
+disagreement_failure() {
+  local file_version="$1" computed="$2"
+  printf 'ERROR: CHANGELOG.md and the commits disagree about the version.\n' >&2
+  printf '  the top section of CHANGELOG.md says %s\n' "$file_version" >&2
+  printf '  the commits since the last tag compute  %s\n' "$computed" >&2
+  printf 'Nothing was tagged and nothing was published.\n' >&2
+  printf '\n' >&2
+  printf 'The version is stamped in the branch, before the merge. Run `bin/changelog stamp`\n' >&2
+  printf 'on the branch, commit CHANGELOG.md, and merge again. A squash merge also lands\n' >&2
+  printf 'here: the squashed commit carries the merge request title, which may not be the\n' >&2
+  printf 'type the branch commits had. This project merges with a merge commit.\n' >&2
+  exit 1
+}
+
 main() {
+  local file_version computed pending
+
+  # The pipeline may have been created before another one pushed its tag.
+  git fetch --tags --quiet origin 2>&1 | redact || log "WARNING: could not fetch the tags from origin."
+
+  file_version="$(file_version)"
+  log "CHANGELOG.md says ${file_version} at the top."
+
+  # Re-run of an incomplete publication, decided before any computation.
+  if head_is_tagged_as "v${file_version}"; then
+    resume_publish "$file_version"
+    return 0
+  fi
+
+  pending="$(pending_versions | head -1)"
+  [ -z "$pending" ] || out_of_order_failure "$pending"
+
   LAST_TAG=""
   NEW_VERSION=""
   compute_new_version || exit 0
-  log "Next version: ${NEW_VERSION} (last tag: ${LAST_TAG:-none})."
+  computed="$NEW_VERSION"
+  log "The commits since ${LAST_TAG:-the start of the history} compute ${computed}."
 
-  if tag_exists_on_remote "v${NEW_VERSION}"; then
-    resume_publish "$NEW_VERSION"
-  else
-    normal_release "$NEW_VERSION"
-  fi
+  [ "$file_version" = "$computed" ] || disagreement_failure "$file_version" "$computed"
+
+  publish_release "$computed"
 }
 
 if [ -n "$STUBS_FILE" ]; then

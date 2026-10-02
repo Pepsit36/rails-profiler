@@ -12,20 +12,34 @@
 #
 #   bin/changelog history                     rebuild CHANGELOG.md from every git tag
 #   bin/changelog unreleased [--since REF]    print the entry body for commits since REF
-#   bin/changelog release --version X.Y.Z     stamp [Unreleased] as a released section
+#   bin/changelog stamp [--date D]            give [Unreleased] the version this branch
+#                                             will publish, and reopen an empty one
 #   bin/changelog check [--base REF]          fail when releasable commits leave
 #                                             [Unreleased] untouched
 #   bin/changelog coverage                    fail when a commit of a tag interval is
 #                                             neither described nor explicitly excluded
+#   bin/changelog version [--since REF]       print the version the next publication will
+#                                             carry, exit 3 when there is nothing to publish
 #
-# Version numbers are never computed here: the `release` job owns that, from the
-# last tag and the conventional commit types, and passes the result in.
+# Version numbers are computed here, in one place, by `bin/changelog version`:
+# the branch stamp, the branch check and the `release` job all read the same
+# rule, so the number an author stamps and the number published cannot differ.
 
 require "date"
 
 CHANGELOG_FILE = "CHANGELOG.md"
 UNRELEASED_HEADING = "## [Unreleased]"
 NO_CHANGES = "_No notable changes._"
+
+# Written by `stamp` into the section it owns. It marks a section whose version
+# is not tagged yet, and tells `coverage` to count every non-merge commit of its
+# interval as covered: the GitLab Rebase button rewrites the sha of a branch, so
+# a sha written before the merge cannot be trusted, and the commit carrying the
+# stamp cannot cite its own sha anyway.
+STAMP_MARKER = "<!-- stamped -->"
+
+# What a branch is measured against, unless told otherwise.
+DEFAULT_BRANCH_REF = "origin/master"
 
 # Keep a Changelog section order.
 SECTION_ORDER = ["Added", "Changed", "Removed", "Fixed", "Security"].freeze
@@ -82,11 +96,12 @@ SCOPE_NAMES = {
 
 CONVENTIONAL_SUBJECT = /\A(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<bang>!)?:\s+(?<desc>.+)\z/
 
-# Same rule as the `release` job, applied to subjects and bodies alike:
-#   grep -qE "^BREAKING CHANGE:|^[a-z]+(\(.+\))?!:"
-#   grep -qE "^feat(\(.+\))?:"
-#   grep -qE "^fix(\(.+\))?:"
-RELEASABLE_LINE = /^(?:BREAKING CHANGE:|[a-z]+(?:\(.+\))?!:|feat(?:\(.+\))?:|fix(?:\(.+\))?:)/
+# The one place where a commit is read as publishable or not. Subjects and
+# bodies alike, as the `release` job has always done.
+BREAKING_LINE = /^(?:BREAKING CHANGE:|[a-z]+(?:\(.+\))?!:)/
+FEATURE_LINE = /^feat(?:\(.+\))?:/
+FIX_LINE = /^fix(?:\(.+\))?:/
+RELEASABLE_LINE = Regexp.union(BREAKING_LINE, FEATURE_LINE, FIX_LINE)
 
 # The release commit of a version belongs to the interval of its own tag, since
 # the tag is placed on it, and the job that writes it cannot cite its own sha
@@ -107,15 +122,17 @@ HEADER = <<~MD
   The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-  Released sections are written by the `release` CI job, which derives the version
-  from the last tag and the conventional commit types, stamps the `[Unreleased]`
-  section below and commits the result as `chore(release): vX.Y.Z [skip ci]`.
-  Add your own entries under `[Unreleased]`; do not edit released sections.
+  Write your entry under `[Unreleased]`, for a user of the gem. When your branch is
+  ready, run `bin/changelog stamp`: it works out the version the merge will publish
+  and turns `[Unreleased]` into `[X.Y.Z] - <date>`, reopening an empty one above.
+  Run it again after a rebase or a new commit, it corrects the number and folds the
+  new entries in. Never edit a section that already carries a tag.
 
-  Each bullet carries the short sha of the commit it describes, in an HTML comment
-  that stays invisible once rendered. Commits deliberately absent from a version are
-  listed in that version's `excluded:` comment with the reason. `bin/changelog
-  coverage` checks that every commit of every tag interval is in one or the other.
+  A section written by `stamp` carries `<!-- stamped -->`. In the older sections,
+  each bullet carries the short sha of the commit it describes, and commits left out
+  on purpose are listed in that version's `excluded:` comment with the reason; all of
+  it in HTML comments, invisible once rendered. `bin/changelog coverage` checks that
+  every commit of every tag interval is accounted for one way or the other.
 MD
 
 Commit = Struct.new(:sha, :subject, :body)
@@ -172,6 +189,129 @@ module Git
 
   def last_tag
     (try("describe", "--tags", "--abbrev=0") || "").strip
+  end
+
+  # Highest tag reachable from HEAD, which is what a version base needs. The
+  # release job keeps using `git describe` (the nearest ancestor); on a linear
+  # default branch the two agree.
+  def highest_reachable_tag
+    tags_merged_into_head.last
+  end
+
+  def tag_exists?(tag)
+    !(try("rev-parse", "--verify", "--quiet", "refs/tags/#{tag}") || "").strip.empty?
+  end
+
+  def merge_base(ref)
+    out = (try("merge-base", ref, "HEAD") || "").strip
+    out.empty? ? nil : out
+  end
+
+  def ref_exists?(ref)
+    !(try("rev-parse", "--verify", "--quiet", ref) || "").strip.empty?
+  end
+end
+
+# The single implementation of "which version does this publish". The release
+# job calls it through `bin/changelog version`, and `stamp` and `check` use it
+# directly, so the three can never drift apart.
+#
+# Merge commits are left out of the computation. A GitLab merge commit repeats
+# the merge request title in its body, so reading merges would let a title alone
+# decide the version: a request titled `feat:` whose commits are all fixes would
+# be stamped as a patch in the branch and computed as a minor at release time,
+# and the publication would be refused over a disagreement nobody wrote. It also
+# means a merge request title can no longer publish a version on its own.
+module Versioning
+  module_function
+
+  def bump_level(range)
+    text = Git.commits(range).map { |commit| "#{commit.subject}\n#{commit.body}" }.join("\n")
+    return :major if text.match?(BREAKING_LINE)
+    return :minor if text.match?(FEATURE_LINE)
+    return :patch if text.match?(FIX_LINE)
+
+    nil
+  end
+
+  def releasable?(commit)
+    "#{commit.subject}\n#{commit.body}".match?(RELEASABLE_LINE)
+  end
+
+  def next_version(base, level)
+    major, minor, patch = parts(base)
+    case level
+    when :major then "#{major + 1}.0.0"
+    when :minor then "#{major}.#{minor + 1}.0"
+    when :patch then "#{major}.#{minor}.#{patch + 1}"
+    end
+  end
+
+  def parts(version)
+    numbers = version.to_s.sub(/\Av/, "").split(".").map(&:to_i)
+    numbers += [0] * (3 - numbers.size) if numbers.size < 3
+    numbers.first(3)
+  end
+
+  def compare(one, other)
+    parts(one) <=> parts(other)
+  end
+
+  def highest(versions)
+    versions.compact.reject(&:empty?).max { |one, other| compare(one, other) }
+  end
+
+  # What the release job will publish after the merge: its own rule, the last tag
+  # and everything since it, merges left out. nil when it would publish nothing.
+  def release_version
+    tag = Git.last_tag
+    level = bump_level(tag.empty? ? nil : "#{tag}..HEAD")
+    return nil if level.nil?
+
+    next_version(tag.empty? ? "0.0.0" : tag, level)
+  end
+
+  # What a branch is about to publish.
+  #
+  #   base  the highest of the last tag reachable from HEAD and the versions the
+  #         file already carries outside the section this branch owns. The
+  #         second term is what handles a branch rebased onto another one whose
+  #         version is stamped but not tagged yet.
+  #   range the commits the branch adds on top of the default branch. Counting
+  #         from the last tag instead would fold in the commits of that other
+  #         branch and overstate the bump.
+  #   owned the section this branch stamped, if any: the top one, stamped, not
+  #         tagged, and different from the top section at the merge base.
+  def branch_plan(lines, default_branch)
+    headings = Sections.version_headings(lines)
+    base_ref = Git.ref_exists?(default_branch) ? default_branch : nil
+    merge_base = base_ref.nil? ? nil : Git.merge_base(base_ref)
+    owned = owned_section(headings, merge_base)
+    tag = Git.highest_reachable_tag
+
+    others = headings.reject { |heading| heading.equal?(owned) }
+    base = highest([tag.to_s.sub(/\Av/, ""), *others.map { |heading| heading[:version] }]) || "0.0.0"
+    range = merge_base.nil? ? (tag.to_s.empty? ? nil : "#{tag}..HEAD") : "#{merge_base}..HEAD"
+
+    {
+      headings: headings, owned: owned, base: base, range: range,
+      merge_base: merge_base, default_branch: base_ref, tag: tag
+    }
+  end
+
+  def owned_section(headings, merge_base)
+    top = headings.first
+    return nil if top.nil?
+    return nil unless top[:stamped]
+    return nil if Git.tag_exists?("v#{top[:version]}")
+    return top if merge_base.nil?
+
+    before = Sections.version_headings(
+      Sections.split(Git.try("show", "#{merge_base}:#{CHANGELOG_FILE}") || "")
+    ).first
+    return top if before.nil?
+
+    top[:version] == before[:version] ? nil : top
   end
 end
 
@@ -287,8 +427,11 @@ module Entries
   end
 
   # Entry body for a range, or nil when the range holds nothing worth listing.
-  def body(range)
+  # `references: false` drops the sha comments: a section stamped in a branch
+  # must not carry any, since the GitLab Rebase button rewrites them.
+  def body(range, references: true)
     found = sections(range)
+    found = found.transform_values { |bullets| bullets.map { |b| b.sub(/\s*<!--.*-->\s*\z/, "") } } unless references
     blocks = SECTION_ORDER.filter_map do |name|
       bullets = found[name]
       next if bullets.nil? || bullets.empty?
@@ -299,7 +442,44 @@ module Entries
   end
 
   def releasable?(commit)
-    "#{commit.subject}\n#{commit.body}".match?(RELEASABLE_LINE)
+    Versioning.releasable?(commit)
+  end
+
+  # Folds two Keep a Changelog bodies into one: the section a branch already
+  # stamped, and the new entries written under [Unreleased]. Subsections keep
+  # the Keep a Changelog order, bullets keep their order of appearance, and
+  # duplicates are dropped. Anything written outside a subsection is kept first.
+  def merge_bodies(existing, incoming)
+    preamble = []
+    bullets = {}
+
+    [existing, incoming].each do |text|
+      current = nil
+      text.to_s.lines.map(&:rstrip).each do |line|
+        next if line.strip.empty?
+        next if line.strip == STAMP_MARKER
+
+        if (match = /\A###\s+(\w+)/.match(line))
+          current = match[1]
+          bullets[current] ||= []
+        elsif current.nil?
+          preamble << line
+        else
+          bullets[current] << line
+        end
+      end
+    end
+
+    ordered = SECTION_ORDER + (bullets.keys - SECTION_ORDER)
+    blocks = ordered.filter_map do |name|
+      lines = bullets[name]
+      next if lines.nil? || lines.empty?
+
+      "### #{name}\n\n#{lines.uniq.join("\n")}\n"
+    end
+
+    out = preamble.uniq.empty? ? "" : "#{preamble.uniq.join("\n")}\n\n"
+    blocks.empty? ? "#{out}#{NO_CHANGES}\n" : "#{out}#{blocks.join("\n")}"
   end
 end
 
@@ -331,6 +511,26 @@ module Sections
     return nil if index.nil?
 
     lines[(index + 1)...section_end(lines, index)].join("\n")
+  end
+
+  VERSION_HEADING = /\A##\s*\[(?<version>\d+\.\d+\.\d+)\]/
+
+  # Every `## [X.Y.Z]` section, in file order.
+  def version_headings(lines)
+    lines.each_with_index.filter_map do |line, index|
+      match = VERSION_HEADING.match(line)
+      next if match.nil?
+
+      body = lines[(index + 1)...section_end(lines, index)].join("\n")
+      { index: index, version: match[:version], stamped: body.include?(STAMP_MARKER) }
+    end
+  end
+
+  # Ordered map of version to section body, newest first as the file is.
+  def section_bodies(lines)
+    version_headings(lines).to_h do |heading|
+      [heading[:version], lines[(heading[:index] + 1)...section_end(lines, heading[:index])].join("\n")]
+    end
   end
 
   def unreleased_body(lines)
@@ -456,13 +656,13 @@ module Commands
     0
   end
 
-  def release(options)
-    version = options[:version]
-    abort "bin/changelog release: --version X.Y.Z is required" if version.to_s.empty?
-
-    date = options[:date] || Date.today.to_s
+  # The author's gesture, once a branch is ready: give the top section the
+  # version this merge will publish, and reopen an empty [Unreleased] above it.
+  # Run again after a rebase or new commits, it corrects the number and the date
+  # and folds the new [Unreleased] entries into the section it owns.
+  def stamp(options)
     file = options[:file] || CHANGELOG_FILE
-    range = range_for(options)
+    default_branch = options[:default_branch] || DEFAULT_BRANCH_REF
 
     unless File.exist?(file)
       puts "#{file} does not exist, creating it."
@@ -470,77 +670,89 @@ module Commands
     end
 
     lines = Sections.split(File.read(file))
-    index = Sections.unreleased_index(lines)
+    plan = Versioning.branch_plan(lines, default_branch)
+    level = Versioning.bump_level(plan[:range])
 
-    if index.nil?
-      lines = stamp_without_unreleased(lines, version, date, range, file)
-    else
-      lines = stamp_unreleased(lines, index, version, date, range)
+    if level.nil?
+      puts "No releasable commit in #{range_label(plan[:range])}: nothing to stamp."
+      return 0
     end
 
+    version = Versioning.next_version(plan[:base], level)
+    date = options[:date] || Date.today.to_s
+    describe_plan(plan, version)
+
+    index = Sections.unreleased_index(lines)
+    lines = if index.nil?
+              stamp_without_unreleased(lines, plan, version, date, file)
+            else
+              stamp_section(lines, index, plan, version, date)
+            end
+
     File.write(file, lines.join("\n"))
-    puts "Stamped #{file}: [Unreleased] is now [#{version}] - #{date}, a fresh empty [Unreleased] is open above it."
+    puts "#{file} now carries `## [#{version}] - #{date}`, with an empty [Unreleased] above it."
     0
   end
 
-  # [Unreleased] exists: rename its heading, reopen an empty one above, and fall
-  # back to the commit subjects when the section was left empty.
-  def stamp_unreleased(lines, index, version, date, range)
+  def describe_plan(plan, version)
+    base = plan[:merge_base].nil? ? "the last tag #{plan[:tag]}" : "#{plan[:default_branch]} (#{plan[:merge_base][0, 8]})"
+    puts "Counting from #{base}: base #{plan[:base]}, publishing #{version}."
+    return if plan[:owned].nil?
+
+    previous = plan[:owned][:version]
+    puts "Correcting the section this branch already stamped: #{previous} becomes #{version}." if previous != version
+  end
+
+  # [Unreleased] exists. Its entries are folded into the section this branch
+  # owns, or start a new one, and [Unreleased] is reopened empty.
+  def stamp_section(lines, index, plan, version, date)
     stop = Sections.section_end(lines, index)
-    body = lines[(index + 1)...stop].join("\n")
+    incoming = lines[(index + 1)...stop].join("\n")
+    owned = plan[:owned]
 
-    if body.strip.empty?
-      body = Entries.body(range) || "#{NO_CHANGES}\n"
-      puts "The [Unreleased] section was empty: generating the #{version} entry from the commit subjects of #{range_label(range)}."
-      puts "--- generated entry ---"
-      puts body
-      puts "--- end of generated entry ---"
-      # The generated bullets already carry their own sha, so only the
-      # exclusions are missing.
-      comments = Entries.coverage_comments(range, version, covered: false)
-    else
-      puts "Reusing the #{body.strip.lines.count} line(s) already written under [Unreleased]."
-      body = "#{body.strip}\n"
-      comments = Entries.coverage_comments(range, version, covered: true)
+    if owned.nil?
+      body = entry_body(incoming, plan)
+      lines[index...stop] = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", STAMP_MARKER, "",
+                             *Sections.split(body)]
+      return lines
     end
 
-    unless comments.empty?
-      puts "Commit references written into the #{version} section, so that `bin/changelog coverage` stays true:"
-      puts comments
-    end
-
-    lines[index...stop] = section_lines(version, date, body, comments)
+    owned_stop = Sections.section_end(lines, owned[:index])
+    existing = lines[(owned[:index] + 1)...owned_stop].join("\n")
+    body = Entries.merge_bodies(existing, incoming)
+    lines[index...owned_stop] = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", STAMP_MARKER, "",
+                                 *Sections.split(body)]
     lines
   end
 
-  # `## [Unreleased]`, then the released section, then one blank line before
-  # whatever followed.
-  def section_lines(version, date, body, comments)
-    text = comments.empty? ? body : "#{body}\n#{comments}"
-    [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", *Sections.split(text.sub(/\n+\z/, "\n"))]
-  end
-
   # No [Unreleased] section at all: defined behaviour, documented and tested.
-  # Do not fail the release; insert a fresh empty [Unreleased] plus a generated
-  # section for this version, right after the preamble.
-  def stamp_without_unreleased(lines, version, date, range, file)
-    generated = Entries.body(range) || "#{NO_CHANGES}\n"
+  # One is inserted, and the version section is generated from the commits.
+  def stamp_without_unreleased(lines, plan, version, date, file)
     puts "WARNING: #{file} has no [Unreleased] section."
-    puts "Inserting one, and generating the #{version} entry from the commit subjects of #{range_label(range)}."
-    puts "--- generated entry ---"
-    puts generated
-    puts "--- end of generated entry ---"
-
-    comments = Entries.coverage_comments(range, version, covered: false)
+    body = entry_body("", plan)
     insert_at = Sections.first_version_index(lines) || lines.length
-    block = section_lines(version, date, generated, comments)
+    block = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", STAMP_MARKER, "", *Sections.split(body)]
     block << "" if insert_at == lines.length
     lines[insert_at, 0] = block
     lines
   end
 
+  # What goes under the new heading: what the author wrote, or a starting point
+  # taken from the commit subjects when nothing was written.
+  def entry_body(incoming, plan)
+    return "#{incoming.strip}\n" unless incoming.strip.empty?
+
+    generated = Entries.body(plan[:range], references: false) || "#{NO_CHANGES}\n"
+    puts "Nothing was written under [Unreleased], so the entry comes from the commit subjects."
+    puts "Read it and reword it for a user of the gem:"
+    puts generated
+    generated
+  end
+
+  # Run on every branch pipeline. The branch has to carry, in the top section of
+  # CHANGELOG.md, exactly the version its merge will publish.
   def check(options)
-    base = options[:base] || "origin/master"
+    base = options[:base] || DEFAULT_BRANCH_REF
     file = options[:file] || CHANGELOG_FILE
 
     merge_base = (Git.try("merge-base", base, "HEAD") || "").strip
@@ -550,29 +762,274 @@ module Commands
       return 1
     end
 
-    offenders = Git.commits("#{merge_base}..HEAD", merges: true).select { |commit| Entries.releasable?(commit) }
-    if offenders.empty?
+    lines = Sections.split(File.exist?(file) ? File.read(file) : "")
+    plan = Versioning.branch_plan(lines, base)
+    level = Versioning.bump_level("#{merge_base}..HEAD")
+    stamped = plan[:owned]
+
+    diff = section_diff(merge_base, file, lines)
+    tagged = (diff[:changed] + diff[:missing]).select { |version| Git.tag_exists?("v#{version}") }
+    return frozen_failure(file, tagged) unless tagged.empty?
+
+    if sections_touched?(diff)
+      return repair_verdict(file, lines, diff) if level.nil?
+
+      return conflict_failure(file, diff)
+    end
+
+    if level.nil?
+      return superfluous_stamp(stamped, file) unless stamped.nil?
+
       puts "changelog check: no releasable commit between #{merge_base[0, 8]} and HEAD, nothing to require."
       return 0
     end
 
-    before = Sections.unreleased_body(Sections.split(Git.try("show", "#{merge_base}:#{file}") || "")).to_s.strip
-    after = Sections.unreleased_body(Sections.split(File.exist?(file) ? File.read(file) : "")).to_s.strip
+    version = Versioning.next_version(plan[:base], level)
+    return stamp_missing(version, stamped, file, lines, plan) if stamped.nil? || stamped[:version] != version
 
-    if before == after
-      warn "changelog check: FAILED."
+    puts "changelog check: OK, this branch publishes #{version} and #{file} says so."
+    0
+  end
+
+  def superfluous_stamp(stamped, file)
+    warn "changelog check: FAILED."
+    warn ""
+    warn "This branch has no releasable commit, but #{file} carries a stamped #{stamped[:version]} section."
+    warn "The `release` job would publish nothing, and the next branch would take that number as its base."
+    warn "Remove the stamped section and put its entries back under `## [Unreleased]`."
+    1
+  end
+
+  def stamp_missing(version, stamped, file, lines, plan)
+    warn "changelog check: FAILED."
+    warn ""
+    warn stamp_missing_reason(version, stamped, file, lines, plan)
+    warn ""
+    warn "Run `bin/changelog stamp` and commit #{file}."
+    warn "It writes `## [#{version}] - <today>` and reopens an empty [Unreleased] above it."
+    1
+  end
+
+  # Three ways of not being stamped, and they do not read the same.
+  def stamp_missing_reason(version, stamped, file, lines, plan)
+    return "This branch publishes #{version}, but the top section of #{file} says #{stamped[:version]}." unless stamped.nil?
+
+    if Sections.unreleased_index(lines).nil?
+      "This branch publishes #{version}, but #{file} has no [Unreleased] section."
+    elsif inherited_stamp(plan)
+      "This branch publishes #{version}, but the top section of #{file} is " \
+        "#{inherited_stamp(plan)[:version]}, stamped by another branch. Yours is missing."
+    else
+      "This branch publishes #{version}, but [Unreleased] is still the top section of #{file}."
+    end
+  end
+
+  # The top section when it was stamped by another branch and not published yet.
+  # The marker stays in the file once the version is tagged, so a tagged section
+  # is a released one, not someone else's work in progress.
+  def inherited_stamp(plan)
+    top = plan[:headings].first
+    return nil if top.nil? || !top[:stamped]
+    return nil if Git.tag_exists?("v#{top[:version]}")
+
+    top
+  end
+
+  # How CHANGELOG.md changed against the merge base, section by section.
+  def section_diff(merge_base, file, lines)
+    base = Sections.section_bodies(Sections.split(Git.try("show", "#{merge_base}:#{file}") || ""))
+    head = Sections.section_bodies(lines)
+
+    {
+      base: base,
+      head: head,
+      changed: base.keys.select { |version| head.key?(version) && head[version].strip != base[version].strip },
+      missing: base.keys.reject { |version| head.key?(version) },
+      reordered: (base.keys & head.keys) != (head.keys & base.keys),
+      empty_base: base.empty?
+    }
+  end
+
+  # Bullet lines of a section body, which is what an entry is.
+  def entry_lines(body)
+    body.to_s.lines.map(&:strip).select { |line| line.start_with?("- ") }
+  end
+
+  def sections_touched?(diff)
+    !diff[:empty_base] && (!diff[:changed].empty? || !diff[:missing].empty? || diff[:reordered])
+  end
+
+  def untagged_sections(lines)
+    Sections.version_headings(lines).reject { |heading| Git.tag_exists?("v#{heading[:version]}") }
+  end
+
+  # A released entry is frozen, typo included. That is the rule of the file, and
+  # it has no exception: not a reword, not a reorder, not a removal.
+  def frozen_failure(file, tagged)
+    warn "changelog check: FAILED."
+    warn ""
+    tagged.each do |version|
+      warn "Section #{version} carries a tag: a published entry is frozen, typo included."
+    end
+    warn ""
+    warn "That is the rule of #{file}. If the wording is wrong, say so in the entry of a later"
+    warn "version; the published one stays as it was published."
+    1
+  end
+
+  # The branch brought its own commits and still moved what it inherited: that
+  # is what a badly resolved conflict looks like.
+  def conflict_failure(file, diff)
+    warn "changelog check: FAILED."
+    warn ""
+    diff[:changed].each do |version|
+      warn "Section #{version} was changed by this branch: it was stamped by another branch and merged before yours."
+    end
+    diff[:missing].each { |version| warn "Section #{version} is no longer in #{file}, and it was stamped by another branch." }
+    warn "The sections of #{file} are no longer in the order they were merged in." if diff[:reordered]
+    warn ""
+    warn "This is what a badly resolved conflict on #{file} looks like. Put your own entries back"
+    warn "under `## [Unreleased]`, leave every section below it exactly as it is, and run"
+    warn "`bin/changelog stamp` again."
+    1
+  end
+
+  # The order of the sections is the order the versions were merged in, and it is
+  # a record, not a layout choice. No branch reorders it, repair branch included,
+  # and that holds for the published sections too.
+  def reorder_failure(file)
+    warn "changelog check: FAILED."
+    warn ""
+    warn "The sections of #{file} are no longer in the order they were merged in."
+    warn ""
+    warn "That order is a record of what was published when, and a published entry is frozen,"
+    warn "its position included. Put the sections back in the order they had, newest first."
+    1
+  end
+
+  def repair_position_failure(file, expected, first)
+    warn "changelog check: FAILED."
+    warn ""
+    warn "#{expected} is the version this merge will publish, so it has to come at the top of #{file}."
+    warn "The first version section is #{first} instead."
+    warn ""
+    warn "The repair takes the abandoned sections out and renumbers the one that stays; it does"
+    warn "not move it."
+    1
+  end
+
+  # On a repair branch the surviving section keeps the body it had. The one
+  # latitude: it may take in the entries of the untagged sections this branch
+  # removed. Those commits stay in the history and ship in the gem, so their
+  # entry can legitimately join the version that publishes them.
+  def repair_body_failure(file, version, problem, lines_at_fault)
+    warn "changelog check: FAILED."
+    warn ""
+    case problem
+    when :invented
+      lines_at_fault.each do |line|
+        warn "In section #{version}: #{line}"
+      end
       warn ""
-      warn "These commits would be published by the `release` job:"
-      offenders.each { |commit| warn "  #{commit.sha[0, 8]} #{commit.subject}" }
+      warn "That entry was not in any of the sections waiting to be published, so this branch wrote"
+      warn "it. A repair branch does not write entries: it takes abandoned sections out and keeps"
+      warn "what was already there."
+    when :lost
+      lines_at_fault.each do |line|
+        warn "Gone from section #{version}: #{line}"
+      end
       warn ""
-      warn "but the [Unreleased] section of #{file} is unchanged since the merge base #{merge_base[0, 8]}."
-      warn "Describe the change under `## [Unreleased]` (### Added / ### Changed / ### Removed /"
-      warn "### Fixed / ### Security) and push again. `bin/changelog unreleased` prints a starting point."
-      return 1
+      warn "That entry described the version this merge will publish and is no longer there."
+      warn "A repair branch renumbers a section; it does not empty it."
+    else
+      warn "Section #{version} of #{file} does not descend from any section that was waiting to be"
+      warn "published. A repair branch renumbers one of those; it does not invent a section."
+    end
+    1
+  end
+
+  # The pending section the surviving one descends from: itself when it kept its
+  # number, otherwise the highest pending section, which is the one the gesture
+  # renumbers.
+  def repair_descent(diff, version)
+    # The gesture renumbers the top pending section, and that number is often
+    # the one an abandoned section had, so the number at HEAD says nothing about
+    # which section survived. As soon as a pending section was removed, the
+    # survivor descends from the highest of them.
+    pending = diff[:missing].reject { |other| Git.tag_exists?("v#{other}") }
+    return diff[:base][Versioning.highest(pending)] unless pending.empty?
+
+    diff[:base].key?(version) && !Git.tag_exists?("v#{version}") ? diff[:base][version] : nil
+  end
+
+  def repair_body_problem(diff, version, survivor_body)
+    allowed = diff[:base].reject { |other, _| Git.tag_exists?("v#{other}") }
+                         .values.flat_map { |body| entry_lines(body) }.uniq
+    kept = entry_lines(survivor_body)
+
+    invented = kept - allowed
+    return [:invented, invented] unless invented.empty?
+
+    descent = repair_descent(diff, version)
+    return [:unknown, []] if descent.nil?
+
+    lost = entry_lines(descent) - kept
+    return [:lost, lost] unless lost.empty?
+
+    nil
+  end
+
+  # A branch that brings no publishable commit of its own may take out or
+  # renumber the stamped sections that carry no tag: that is how the version of
+  # an abandoned merge request leaves the file. What it may not do is leave the
+  # file saying anything other than what the release job will publish.
+  def repair_verdict(file, lines, diff)
+    expected = Versioning.release_version
+    untagged = untagged_sections(lines)
+
+    if expected.nil?
+      return repair_failure(file, nil, untagged) unless untagged.empty?
+
+      puts "changelog check: #{diff[:missing].join(", ")} removed from #{file}, and nothing untagged is " \
+           "left. The release job will publish nothing after this merge, which agrees."
+      return 0
     end
 
-    puts "changelog check: OK, #{offenders.count} releasable commit(s) and the [Unreleased] section of #{file} was updated."
+    if untagged.size != 1 || untagged.first[:version] != expected
+      return repair_failure(file, expected, untagged)
+    end
+
+    first = Sections.version_headings(lines).first
+    return repair_position_failure(file, expected, first[:version]) if first[:version] != expected
+    return reorder_failure(file) if diff[:reordered]
+
+    problem, at_fault = repair_body_problem(diff, expected, Sections.section_bodies(lines)[expected])
+    return repair_body_failure(file, expected, problem, at_fault) unless problem.nil?
+
+    puts "changelog check: OK, #{file} was repaired: #{expected} is the only untagged section left, " \
+         "and it is what the release job will publish."
     0
+  end
+
+  def repair_failure(file, expected, untagged)
+    left = untagged.map { |heading| heading[:version] }
+    warn "changelog check: FAILED."
+    warn ""
+    warn "This branch brings no publishable commit, so it may take out or renumber the stamped"
+    warn "sections that carry no tag. The file does not line up with what will happen next."
+    warn ""
+    if expected.nil?
+      warn "After this merge the release job will publish nothing, so no untagged section should be"
+      warn "left in #{file}. Still there: #{left.join(", ")}."
+    else
+      warn "After this merge the release job will publish #{expected}, so #{file} must carry exactly"
+      warn "one untagged section, at the top, numbered #{expected}. Untagged right now: " \
+           "#{left.empty? ? "none" : left.join(", ")}."
+    end
+    warn ""
+    warn "Renumber the section the merge will publish, and take the abandoned ones out. A section"
+    warn "that carries a tag is never touched."
+    1
   end
 
   # Every non-merge commit of every tag interval has to be either described in
@@ -636,8 +1093,16 @@ module Commands
   end
 
   def check_interval(version, range, body)
-    refs = Coverage.parse(body)
     commits = Git.commits(range)
+
+    # A section written by `stamp` accounts for its whole interval. It carries
+    # no sha on purpose: the GitLab Rebase button would rewrite them, and the
+    # commit holding the stamp cannot cite itself.
+    if body.include?(STAMP_MARKER)
+      return { problems: [], commits: commits.size }
+    end
+
+    refs = Coverage.parse(body)
     in_interval = commits.map(&:sha)
     problems = []
 
@@ -680,6 +1145,36 @@ module Commands
     end
   end
 
+  # Prints the version the next publication will carry, and nothing else, so a
+  # shell can capture it. Exit 3 means "nothing to publish", which is not an
+  # error. Diagnostics go to standard error.
+  def version(options)
+    file = options[:file] || CHANGELOG_FILE
+
+    if options.key?(:since)
+      since = options[:since].to_s
+      since = Git.last_tag if since.empty?
+      base = options[:base] || (since.empty? ? "0.0.0" : since.sub(/\Av/, ""))
+      range = since.empty? ? nil : "#{since}..HEAD"
+    else
+      plan = Versioning.branch_plan(Sections.split(File.exist?(file) ? File.read(file) : ""),
+                                    options[:default_branch] || DEFAULT_BRANCH_REF)
+      base = options[:base] || plan[:base]
+      range = plan[:range]
+      warn "changelog version: #{plan[:default_branch] || "no default branch ref"} not found, " \
+           "counting from #{plan[:tag]}" if plan[:default_branch].nil?
+    end
+
+    level = Versioning.bump_level(range)
+    if level.nil?
+      warn "changelog version: no releasable commit in #{range_label(range)}."
+      return 3
+    end
+
+    puts Versioning.next_version(base, level)
+    0
+  end
+
   def range_for(options)
     since = options[:since].to_s
     since = Git.last_tag if since.empty?
@@ -701,6 +1196,7 @@ def parse_options(argv)
     when "--file" then options[:file] = argv.shift
     when "--since" then options[:since] = argv.shift
     when "--base" then options[:base] = argv.shift
+    when "--default-branch" then options[:default_branch] = argv.shift
     else abort "bin/changelog: unknown option #{flag}"
     end
   end
@@ -712,9 +1208,10 @@ def main(argv)
   case command
   when "history" then Commands.history(parse_options(argv))
   when "unreleased" then Commands.unreleased(parse_options(argv))
-  when "release" then Commands.release(parse_options(argv))
+  when "stamp" then Commands.stamp(parse_options(argv))
   when "check" then Commands.check(parse_options(argv))
   when "coverage" then Commands.coverage(parse_options(argv))
+  when "version" then Commands.version(parse_options(argv))
   when nil, "-h", "--help", "help"
     doc = File.read(__FILE__).lines.drop(3).take_while { |line| line.start_with?("#") }
     puts doc.map { |line| line.sub(/\A# ?/, "") }.join
