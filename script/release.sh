@@ -109,10 +109,30 @@ gem_present_rubygems() {
 
 gem_present_gitlab() {
   local version="$1" body
+  # package_version is what makes this reliable: the collection endpoint is
+  # capped at 100 entries per page and ordered by created_at ascending, so the
+  # canary preversions of this gem would otherwise fill page 1 and the version
+  # looked for would never appear.
   body="$(curl -s --header "JOB-TOKEN: ${CI_JOB_TOKEN:-}" \
-    "${CI_API_V4_URL:-}/projects/${CI_PROJECT_ID:-}/packages?package_type=rubygems&package_name=${GEM_NAME}&per_page=100" \
+    "${CI_API_V4_URL:-}/projects/${CI_PROJECT_ID:-}/packages?package_type=rubygems&package_name=${GEM_NAME}&package_version=${version}&per_page=100" \
     || echo "")"
-  if printf '%s' "$body" | grep -q "\"version\":\"${version}\""; then
+  # package_name is a fuzzy filter on GitLab's side, so the fields are compared
+  # exactly here instead of grepped (a grep would also read the dots of a
+  # version as wildcards). The body is parsed, never printed.
+  if printf '%s' "$body" | WANTED_NAME="$GEM_NAME" WANTED_VERSION="$version" ruby -rjson -e '
+        packages = begin
+          JSON.parse($stdin.read)
+        rescue JSON::ParserError
+          []
+        end
+        packages = [] unless packages.is_a?(Array)
+        found = packages.any? do |package|
+          package.is_a?(Hash) &&
+            package["name"] == ENV.fetch("WANTED_NAME") &&
+            package["version"] == ENV.fetch("WANTED_VERSION")
+        end
+        exit(found ? 0 : 1)
+      '; then
     log "  probe GitLab registry for ${GEM_NAME} ${version}: present"
     return 0
   fi
@@ -358,4 +378,8 @@ if [ -n "$STUBS_FILE" ]; then
   . "$STUBS_FILE"
 fi
 
-main
+# Test-only: lets a test source this file to exercise one function on its own.
+# The CI job never sets it.
+if [ -z "${RELEASE_SH_SOURCE_ONLY:-}" ]; then
+  main
+fi

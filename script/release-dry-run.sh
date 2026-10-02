@@ -17,7 +17,10 @@
 #   5. re-run while the version is present on both registries: exits 0 without
 #      republishing anything;
 #   6. a registry that refuses the push as already published: tolerated, but
-#      only because a second probe confirms the version is really there.
+#      only because a second probe confirms the version is really there;
+#   7. the real GitLab registry probe against a stand-in Packages API: a version
+#      that is not on page 1, and near misses on name and version;
+#   7b. near misses on name and version.
 #
 # Usage: script/release-dry-run.sh [work directory]
 
@@ -96,6 +99,67 @@ gem_push_rubygems() {
 STUBS
 }
 
+# --- a stand-in for the GitLab Packages API ---------------------------------
+
+# Simulates the two behaviours that matter: the collection endpoint is capped at
+# 100 entries per page and ordered by created_at ascending, so an old canary
+# preversion fills the page; and package_name is a fuzzy filter, so entries for
+# other packages come back too.
+write_fake_curl() {
+  cat > "$1" <<'CURL'
+#!/bin/sh
+url=""
+for arg in "$@"; do
+  case "$arg" in http*) url="$arg" ;;
+  esac
+done
+
+case "${FAKE_API_MODE:-}" in
+  paged)
+    if printf '%s' "$url" | grep -q 'package_version=0\.1\.1'; then
+      printf '[{"id":9,"name":"rails-profiler","version":"0.1.1","package_type":"rubygems"}]'
+    else
+      # page 1, created_at asc: 100 canary preversions, none of them 0.1.1
+      printf '['
+      i=1
+      while [ "$i" -le 100 ]; do
+        [ "$i" -gt 1 ] && printf ','
+        printf '{"id":%s,"name":"rails-profiler","version":"0.0.9.pre.c%s","package_type":"rubygems"}' "$i" "$i"
+        i=$((i + 1))
+      done
+      printf ']'
+    fi
+    ;;
+  fuzzy)
+    # Another package carries that version, and this package carries a version
+    # that only matches 0.1.1 if the dots are read as wildcards.
+    printf '[{"id":1,"name":"rails-profiler-extras","version":"0.1.1","package_type":"rubygems"},'
+    printf '{"id":2,"name":"rails-profiler","version":"0x1x1","package_type":"rubygems"}]'
+    ;;
+  *)
+    printf '[]'
+    ;;
+esac
+CURL
+  chmod +x "$1"
+}
+
+# Runs the real gem_present_gitlab on its own, against the fake API.
+probe_gitlab() {
+  local case_dir="$1" mode="$2"
+  (
+    cd "$case_dir" || exit 1
+    PATH="$case_dir/fakebin:$PATH" \
+    FAKE_API_MODE="$mode" \
+    RELEASE_SH_SOURCE_ONLY=1 \
+    CI_API_V4_URL="https://gitlab.example/api/v4" \
+    CI_PROJECT_ID=42 \
+    CI_JOB_TOKEN="dry-run-placeholder-not-a-secret" \
+      bash -c ". \"$REPO_ROOT/script/release.sh\"
+               if gem_present_gitlab 0.1.1; then echo RESULT=present; else echo RESULT=absent; fi" 2>&1
+  )
+}
+
 # --- fixture ----------------------------------------------------------------
 
 # Builds <case>/origin.git (bare master), <case>/work (clone at the pipeline
@@ -117,6 +181,10 @@ make_fixture() {
   cp "$REPO_ROOT/script/release.sh" "$work/script/release.sh"
   printf '# frozen_string_literal: true\n\nmodule Profiler\n  VERSION = "0.0.0"\nend\n' \
     > "$work/lib/profiler/version.rb"
+  # Stands in for the artifacts handed over by the `build` job (git ignored).
+  mkdir -p "$work/app/assets/builds"
+  printf 'console.log("built");\n' > "$work/app/assets/builds/profiler.js"
+  printf '.profiler{}\n' > "$work/app/assets/builds/profiler.css"
   cat > "$work/CHANGELOG.md" <<'MD'
 # Changelog
 
@@ -340,6 +408,25 @@ scenario_already_published_refusal() {
   assert_has "$out" "is published on both registries" "the release completes"
 }
 
+# --- scenario 7: the GitLab registry probe ----------------------------------
+
+scenario_gitlab_probe() {
+  banner "7. GitLab registry probe against a simulated Packages API"
+  local case_dir="$ROOT/probe" out
+  mkdir -p "$case_dir/fakebin"
+  write_fake_curl "$case_dir/fakebin/curl"
+
+  printf -- '--- 0.1.1 exists, but page 1 is full of older canary preversions ---\n'
+  out="$(probe_gitlab "$case_dir" paged)"
+  printf '%s\n' "$out"
+  assert_has "$out" "RESULT=present" "the probe finds a version that is not on page 1"
+
+  printf -- '--- only another package has 0.1.1, and this one has 0x1x1 ---\n'
+  out="$(probe_gitlab "$case_dir" fuzzy)"
+  printf '%s\n' "$out"
+  assert_has "$out" "RESULT=absent" "the probe does not take another package, or 0x1x1, for 0.1.1"
+}
+
 printf 'Dry run workspace: %s\n' "$ROOT"
 scenario_normal
 scenario_retry
@@ -347,6 +434,7 @@ scenario_advanced
 scenario_refused
 scenario_already_everywhere
 scenario_already_published_refusal
+scenario_gitlab_probe
 
 banner "summary"
 if [ "$FAILURES" -eq 0 ]; then
