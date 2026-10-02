@@ -21,8 +21,9 @@
 #   bin/changelog version [--since REF]       print the version the next publication will
 #                                             carry, exit 3 when there is nothing to publish
 #
-# Version numbers are never computed here: the `release` job owns that, from the
-# last tag and the conventional commit types, and passes the result in.
+# Version numbers are computed here, in one place, by `bin/changelog version`:
+# the branch stamp, the branch check and the `release` job all read the same
+# rule, so the number an author stamps and the number published cannot differ.
 
 require "date"
 
@@ -515,6 +516,13 @@ module Sections
     end
   end
 
+  # Ordered map of version to section body, newest first as the file is.
+  def section_bodies(lines)
+    version_headings(lines).to_h do |heading|
+      [heading[:version], lines[(heading[:index] + 1)...section_end(lines, heading[:index])].join("\n")]
+    end
+  end
+
   def unreleased_body(lines)
     index = unreleased_index(lines)
     return nil if index.nil?
@@ -745,6 +753,8 @@ module Commands
     end
 
     lines = Sections.split(File.exist?(file) ? File.read(file) : "")
+    return 1 unless inherited_sections_intact?(merge_base, file, lines)
+
     plan = Versioning.branch_plan(lines, base)
     level = Versioning.bump_level("#{merge_base}..HEAD")
     stamped = plan[:owned]
@@ -757,7 +767,7 @@ module Commands
     end
 
     version = Versioning.next_version(plan[:base], level)
-    return stamp_missing(version, stamped, file) if stamped.nil? || stamped[:version] != version
+    return stamp_missing(version, stamped, file, lines, plan) if stamped.nil? || stamped[:version] != version
 
     puts "changelog check: OK, this branch publishes #{version} and #{file} says so."
     0
@@ -772,18 +782,73 @@ module Commands
     1
   end
 
-  def stamp_missing(version, stamped, file)
+  def stamp_missing(version, stamped, file, lines, plan)
     warn "changelog check: FAILED."
     warn ""
-    if stamped.nil?
-      warn "This branch publishes #{version}, but [Unreleased] is still the top section of #{file}."
-    else
-      warn "This branch publishes #{version}, but the top section of #{file} says #{stamped[:version]}."
-    end
+    warn stamp_missing_reason(version, stamped, file, lines, plan)
     warn ""
     warn "Run `bin/changelog stamp` and commit #{file}."
     warn "It writes `## [#{version}] - <today>` and reopens an empty [Unreleased] above it."
     1
+  end
+
+  # Three ways of not being stamped, and they do not read the same.
+  def stamp_missing_reason(version, stamped, file, lines, plan)
+    return "This branch publishes #{version}, but the top section of #{file} says #{stamped[:version]}." unless stamped.nil?
+
+    if Sections.unreleased_index(lines).nil?
+      "This branch publishes #{version}, but #{file} has no [Unreleased] section."
+    elsif plan[:headings].first.to_h[:stamped]
+      "This branch publishes #{version}, but the top section of #{file} is " \
+        "#{plan[:headings].first[:version]}, stamped by another branch. Yours is missing."
+    else
+      "This branch publishes #{version}, but [Unreleased] is still the top section of #{file}."
+    end
+  end
+
+  # Sections a branch inherited are not its own. The rule of the file is that a
+  # released section is never edited; a section stamped by another branch and
+  # merged before this one is in the same position. Compared against the merge
+  # base, since that is what the branch started from.
+  def inherited_sections_intact?(merge_base, file, lines)
+    base = Sections.section_bodies(Sections.split(Git.try("show", "#{merge_base}:#{file}") || ""))
+    return true if base.empty?
+
+    head = Sections.section_bodies(lines)
+    changed = base.keys.select { |version| head.key?(version) && head[version].strip != base[version].strip }
+    missing = base.keys.reject { |version| head.key?(version) }
+    added = head.keys - base.keys
+    reordered = (base.keys & head.keys) != (head.keys & base.keys)
+    tagged_missing = missing.select { |version| Git.tag_exists?("v#{version}") }
+
+    unless changed.empty? && !reordered && tagged_missing.empty? && (missing.empty? || added.empty?)
+      return integrity_failure(file, changed, missing, added, reordered, tagged_missing)
+    end
+
+    unless missing.empty?
+      puts "changelog check: #{missing.join(", ")} removed from #{file}. Allowed: none of them carries a " \
+           "tag, and this branch adds no section of its own."
+    end
+    true
+  end
+
+  def integrity_failure(file, changed, missing, added, reordered, tagged_missing)
+    warn "changelog check: FAILED."
+    warn ""
+    changed.each { |version| warn "Section #{version} was changed by this branch, and it is not this branch's to change." }
+    tagged_missing.each { |version| warn "Section #{version} is no longer in #{file}, and it carries a tag." }
+    (missing - tagged_missing).each { |version| warn "Section #{version} is no longer in #{file}." }
+    warn "The sections of #{file} are no longer in the order they were merged in." if reordered
+    warn ""
+    warn "This is what a badly resolved conflict on #{file} looks like. Put your own entries back"
+    warn "under `## [Unreleased]`, leave every section below it exactly as it is, and run"
+    warn "`bin/changelog stamp` again."
+    unless (missing - tagged_missing).empty? || added.empty?
+      warn ""
+      warn "Removing a section that carries no tag is allowed, but only on a branch that adds none"
+      warn "of its own: that is how the section of an abandoned merge request is taken out."
+    end
+    false
   end
 
   # Every non-merge commit of every tag interval has to be either described in

@@ -79,7 +79,7 @@ release:
   stage: publish
   image: ruby:3.3
   needs: [build]
-  # One release at a time: the job pushes a commit and a tag to master.
+  # One release at a time: the job tags the merged commit and pushes that tag.
   resource_group: release
   variables:
     GIT_DEPTH: "0"

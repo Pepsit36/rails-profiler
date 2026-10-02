@@ -366,6 +366,9 @@ out_of_order_failure() {
   printf 'process_mode on the `release` resource group of this project; the default,\n' >&2
   printf 'unordered, allows exactly this. Once the older pipeline has published, re-run\n' >&2
   printf 'this job and it will succeed.\n' >&2
+  printf 'If that older pipeline cannot succeed, repair it and re-run it. If its merge request\n' >&2
+  printf 'was abandoned, take its section out of CHANGELOG.md on a branch of its own: the branch\n' >&2
+  printf 'check accepts that, as long as the branch stamps no section of its own.\n' >&2
   exit 1
 }
 

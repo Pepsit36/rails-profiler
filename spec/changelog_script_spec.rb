@@ -351,6 +351,225 @@ RSpec.describe "bin/changelog" do
     end
   end
 
+  describe "check, on the sections a branch inherited" do
+    # master carries a tagged 0.1.0 and an untagged 0.1.1 stamped by another
+    # branch; this branch is cut after that merge.
+    before do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ## [0.1.1] - 2026-02-02
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **Other:** Someone else's fix
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- 0000000 -->
+      MD
+      commit(dir, "chore(release): v0.1.0 [skip ci]")
+      git(dir, "tag", "v0.1.0")
+      git(dir, "update-ref", "refs/remotes/origin/master", "master")
+      git(dir, "checkout", "--quiet", "-b", "fix/mine")
+      commit(dir, "fix(mine): my own fix")
+    end
+
+    def write_sections(dir, body)
+      changelog(dir, "# Changelog\n\n#{body}")
+      commit(dir, "docs: resolve the changelog conflict")
+    end
+
+    it "fails when the branch dropped the section of another branch" do
+      write_sections(dir, <<~MD)
+        ## [Unreleased]
+
+        ## [0.1.2] - 2026-02-03
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **Mine:** My own fix
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- 0000000 -->
+      MD
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("0.1.1")
+      expect(err).to include("is no longer in CHANGELOG.md")
+    end
+
+    it "fails when the branch folded its entry into the section of another branch" do
+      write_sections(dir, <<~MD)
+        ## [Unreleased]
+
+        ## [0.1.1] - 2026-02-02
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **Other:** Someone else's fix
+        - **Mine:** My own fix
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- 0000000 -->
+      MD
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("0.1.1")
+      expect(err).to include("was changed by this branch")
+    end
+
+    it "passes when the branch left every inherited section alone" do
+      write_sections(dir, <<~MD)
+        ## [Unreleased]
+
+        ## [0.1.2] - 2026-02-03
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **Mine:** My own fix
+
+        ## [0.1.1] - 2026-02-02
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **Other:** Someone else's fix
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- 0000000 -->
+      MD
+
+      out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("this branch publishes 0.1.2")
+    end
+
+    it "fails when an inherited section was moved below a newer one" do
+      write_sections(dir, <<~MD)
+        ## [Unreleased]
+
+        ## [0.1.2] - 2026-02-03
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **Mine:** My own fix
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- 0000000 -->
+
+        ## [0.1.1] - 2026-02-02
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **Other:** Someone else's fix
+      MD
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("order")
+    end
+
+    it "accepts a branch whose only change is removing an untagged section" do
+      git(dir, "checkout", "--quiet", "-b", "chore/drop-abandoned", "master")
+      write_sections(dir, <<~MD)
+        ## [Unreleased]
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- 0000000 -->
+      MD
+
+      out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("0.1.1 removed")
+    end
+
+    it "refuses to drop a section that carries a tag" do
+      git(dir, "checkout", "--quiet", "-b", "chore/drop-released", "master")
+      write_sections(dir, <<~MD)
+        ## [Unreleased]
+
+        ## [0.1.1] - 2026-02-02
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **Other:** Someone else's fix
+      MD
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("0.1.0")
+      expect(err).to include("carries a tag")
+    end
+
+    it "names the inherited stamped section when the branch has not stamped its own" do
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("the top section of CHANGELOG.md is 0.1.1, stamped by another branch")
+    end
+  end
+
+  describe "check, when there is no Unreleased section at all" do
+    before do
+      changelog(dir, "# Changelog\n\n## [0.1.0] - 2026-01-01\n\n### Added\n\n- Add the profiler <!-- 0000000 -->\n")
+      commit(dir, "chore(release): v0.1.0 [skip ci]")
+      git(dir, "tag", "v0.1.0")
+      git(dir, "update-ref", "refs/remotes/origin/master", "master")
+      git(dir, "checkout", "--quiet", "-b", "fix/mine")
+      commit(dir, "fix(mine): my own fix")
+    end
+
+    it "says the file has no [Unreleased] section" do
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("has no [Unreleased] section")
+    end
+  end
+
   describe "coverage" do
     # v0.1.0 holds one feature and its release commit; v0.2.0 holds one fix, one
     # ci commit and its release commit.
