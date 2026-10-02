@@ -21,7 +21,8 @@
 #   7. the real GitLab registry probe against a stand-in Packages API: a version
 #      that is not on page 1, and near misses on name and version;
 #   7b. near misses on name and version;
-#   8. app/assets/builds missing or expired, on both paths.
+#   8. app/assets/builds missing or expired, on both paths;
+#   9. a release on a tree where CHANGELOG.md is not tracked yet.
 #
 # Usage: script/release-dry-run.sh [work directory]
 
@@ -471,6 +472,28 @@ scenario_missing_assets() {
   assert_eq "$(ls "$case_dir/registry/rubygems")" "" "no gem without assets was pushed"
 }
 
+# --- scenario 9: CHANGELOG.md not tracked yet -------------------------------
+
+scenario_untracked_changelog() {
+  banner "9. release on a tree where CHANGELOG.md is not tracked yet"
+  local case_dir="$ROOT/untracked" sha out status
+  sha="$(make_fixture "$case_dir")"
+  git -C "$case_dir/work" rm --quiet --cached CHANGELOG.md
+  rm -f "$case_dir/work/CHANGELOG.md"
+  git -C "$case_dir/work" commit --quiet -m "chore: drop the changelog"
+  git -C "$case_dir/work" push --quiet origin master
+  sha="$(git -C "$case_dir/work" rev-parse HEAD)"
+
+  out="$(run_release "$case_dir/work" "$case_dir" "$sha")"
+  status=$?
+  printf '%s\n' "$out"
+  printf -- '--- assertions ---\n'
+  assert_eq "$status" "0" "the job succeeds"
+  assert_has "$out" "CHANGELOG.md does not exist, creating it." "the generator creates the file"
+  assert_has "$out" "Pushed the release commit and v0.1.1 to master" "the new file is committed and pushed"
+  assert_eq "$(git -C "$case_dir/origin.git" show --format='' --name-only v0.1.1)" "CHANGELOG.md" "the release commit holds CHANGELOG.md alone"
+}
+
 printf 'Dry run workspace: %s\n' "$ROOT"
 scenario_normal
 scenario_retry
@@ -480,6 +503,7 @@ scenario_already_everywhere
 scenario_already_published_refusal
 scenario_gitlab_probe
 scenario_missing_assets
+scenario_untracked_changelog
 
 banner "summary"
 if [ "$FAILURES" -eq 0 ]; then
