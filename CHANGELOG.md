@@ -19,6 +19,19 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Instrumentation:** Pass the arguments of `Thread.new` on to its block while a profile is
+  being collected. The thread context patch called the caller's block with no arguments at all,
+  which on Ruby 3.4 and later breaks the Happy Eyeballs hostname resolution of `Socket.tcp`: a
+  TCP connection opened by hostname during a profiled request never resolved the name and waited
+  until it timed out, surfacing for example as an intermittent `Redis::CannotConnectError`, since
+  `redis-client` opens its connection with `Socket.tcp`. Keyword arguments were flattened into a
+  positional hash on the way as well, and are now kept as keyword arguments. Affects v0.22.1
+  through v0.30.4 on Ruby 3.4 and later; Ruby 3.3 and earlier resolve hostnames without a Ruby
+  thread and were never hit, and `TCPSocket.new` does not go through a Ruby `Thread.new` on 3.4
+  either, so it was never affected.
+
 ## [0.30.4] - 2026-07-01
 
 ### Fixed
