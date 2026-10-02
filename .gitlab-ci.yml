@@ -16,8 +16,10 @@ rspec:
   before_script:
     - bundle config set --local path vendor/bundle
 
-# Runs in the ordinary branch pipeline, next to rspec, on the branch prefixes that
-# become merge requests. Deliberately NOT a merge_request_event job: a job limited to
+# Runs in the ordinary branch pipeline, next to rspec, on every branch that is not
+# the default one. No prefix allowlist: feat/, refactor/, docs/ and chore/ branches
+# have already been merged here, and a prefix list silently exempts whatever it
+# forgot. Deliberately NOT a merge_request_event job: a job limited to
 # merge_request_event would create a merge request pipeline containing only itself,
 # which would show up green on the MR while rspec (a branch pipeline job) could be red.
 changelog:check:
@@ -26,7 +28,7 @@ changelog:check:
   variables:
     GIT_DEPTH: "0"
   rules:
-    - if: '$CI_COMMIT_BRANCH =~ /^(feature|bugfix|hotfix|fix|breaking)\// && $CI_PIPELINE_SOURCE != "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "merge_request_event"'
   script:
     # A branch pipeline does not bring master along, even with GIT_DEPTH: "0".
     - git fetch origin "+refs/heads/master:refs/remotes/origin/master"
