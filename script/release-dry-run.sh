@@ -20,7 +20,8 @@
 #      only because a second probe confirms the version is really there;
 #   7. the real GitLab registry probe against a stand-in Packages API: a version
 #      that is not on page 1, and near misses on name and version;
-#   7b. near misses on name and version.
+#   7b. near misses on name and version;
+#   8. app/assets/builds missing or expired, on both paths.
 #
 # Usage: script/release-dry-run.sh [work directory]
 
@@ -181,7 +182,9 @@ make_fixture() {
   cp "$REPO_ROOT/script/release.sh" "$work/script/release.sh"
   printf '# frozen_string_literal: true\n\nmodule Profiler\n  VERSION = "0.0.0"\nend\n' \
     > "$work/lib/profiler/version.rb"
-  # Stands in for the artifacts handed over by the `build` job (git ignored).
+  # Stands in for the artifacts handed over by the `build` job: git ignored
+  # here as in the real repository, so a fresh clone does not get them.
+  printf 'app/assets/builds/\n' > "$work/.gitignore"
   mkdir -p "$work/app/assets/builds"
   printf 'console.log("built");\n' > "$work/app/assets/builds/profiler.js"
   printf '.profiler{}\n' > "$work/app/assets/builds/profiler.css"
@@ -233,6 +236,10 @@ fresh_checkout() {
   git -C "$case_dir/$name" config user.email "ci@gitlab"
   git -C "$case_dir/$name" config user.name "GitLab CI"
   git -C "$case_dir/$name" checkout --quiet --detach "$sha"
+  # A re-run also gets the artifacts of the `build` job again, as long as they
+  # have not expired; scenario 8 is the one that takes them away.
+  mkdir -p "$case_dir/$name/app/assets/builds"
+  printf 'console.log("built");\n' > "$case_dir/$name/app/assets/builds/profiler.js"
   printf '%s\n' "$case_dir/$name"
 }
 
@@ -427,6 +434,43 @@ scenario_gitlab_probe() {
   assert_has "$out" "RESULT=absent" "the probe does not take another package, or 0x1x1, for 0.1.1"
 }
 
+# --- scenario 8: the compiled assets are missing ----------------------------
+
+scenario_missing_assets() {
+  banner "8. app/assets/builds missing or expired"
+  local case_dir="$ROOT/assets" sha out status rerun
+  sha="$(make_fixture "$case_dir")"
+
+  printf -- '--- normal path, no compiled assets at all ---\n'
+  rm -rf "$case_dir/work/app/assets/builds"
+  out="$(run_release "$case_dir/work" "$case_dir" "$sha")"
+  status=$?
+  printf '%s\n' "$out"
+  printf -- '--- assertions ---\n'
+  assert_eq "$status" "1" "the job fails"
+  assert_has "$out" "app/assets/builds is missing or empty" "the reason is explicit"
+  assert_has "$out" "they expired" "expired artifacts are named as a cause"
+  assert_has "$out" "Re-run the whole pipeline, not just this job" "the fix is spelled out"
+  assert_eq "$(git -C "$case_dir/origin.git" tag -l 'v0.1.1')" "" "nothing was tagged"
+  assert_eq "$(ls "$case_dir/registry/gitlab")" "" "nothing was published"
+
+  printf -- '--- re-run path, artifacts expired since the tag was pushed ---\n'
+  mkdir -p "$case_dir/work/app/assets/builds"
+  printf 'console.log("built");\n' > "$case_dir/work/app/assets/builds/profiler.js"
+  touch "$case_dir/registry/rubygems.down"
+  run_release "$case_dir/work" "$case_dir" "$sha" > /dev/null
+  rm -f "$case_dir/registry/rubygems.down"
+  rerun="$(fresh_checkout "$case_dir" "$sha" "rerun")"
+  rm -rf "$rerun/app/assets/builds"
+  out="$(run_release "$rerun" "$case_dir" "$sha")"
+  status=$?
+  printf '%s\n' "$out"
+  printf -- '--- assertions ---\n'
+  assert_eq "$status" "1" "the re-run fails too"
+  assert_has "$out" "app/assets/builds is missing or empty" "the same guard covers the re-run path"
+  assert_eq "$(ls "$case_dir/registry/rubygems")" "" "no gem without assets was pushed"
+}
+
 printf 'Dry run workspace: %s\n' "$ROOT"
 scenario_normal
 scenario_retry
@@ -435,6 +479,7 @@ scenario_refused
 scenario_already_everywhere
 scenario_already_published_refusal
 scenario_gitlab_probe
+scenario_missing_assets
 
 banner "summary"
 if [ "$FAILURES" -eq 0 ]; then

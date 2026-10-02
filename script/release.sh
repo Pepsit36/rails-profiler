@@ -27,6 +27,7 @@ GEM_NAME="rails-profiler"
 CHANGELOG_FILE="CHANGELOG.md"
 VERSION_FILE="lib/profiler/version.rb"
 GEMSPEC_FILE="profiler.gemspec"
+BUILT_ASSETS_DIR="app/assets/builds"
 TARGET_BRANCH="${CI_DEFAULT_BRANCH:-master}"
 
 # Test-only injection point: the file is sourced after every function below is
@@ -153,6 +154,23 @@ registry_has_version() {
 set_source_version() {
   sed -i "s/VERSION = .*/VERSION = \"$1\"/" "$VERSION_FILE"
   log "Set ${VERSION_FILE} to $1 for the build (never committed)."
+}
+
+# `gem build` happily produces a gem without any compiled JS or CSS, since
+# app/assets/builds is git ignored and only filled by the `build` job. On a
+# re-run those artifacts may have expired, so this is checked rather than
+# assumed, on both publication paths.
+require_built_assets() {
+  if [ ! -d "$BUILT_ASSETS_DIR" ] || [ -z "$(ls -A "$BUILT_ASSETS_DIR" 2>/dev/null)" ]; then
+    printf 'ERROR: %s is missing or empty.\n' "$BUILT_ASSETS_DIR" >&2
+    printf 'Refusing to build a gem without its compiled JS and CSS.\n' >&2
+    printf 'The artifacts of the `build` job are not here: either they were never produced,\n' >&2
+    printf 'or they expired (artifacts have a lifetime, a re-run of an old pipeline outlives them).\n' >&2
+    printf 'Re-run the whole pipeline, not just this job, so that `build` runs again and hands\n' >&2
+    printf 'its artifacts over to this one.\n' >&2
+    exit 1
+  fi
+  log "Found $(find "$BUILT_ASSETS_DIR" -type f | wc -l) compiled asset file(s) in ${BUILT_ASSETS_DIR}."
 }
 
 # Prints the path of the built gem on stdout.
@@ -298,6 +316,7 @@ normal_release() {
   local version="$1" tag="v$1" pipeline_sha remote_head gemfile
 
   require_rubygems_key
+  require_built_assets
   pipeline_sha="${CI_COMMIT_SHA:-$(git rev-parse HEAD)}"
 
   configure_git
@@ -347,6 +366,7 @@ resume_publish() {
   fi
 
   [ "$on_rubygems" -eq 1 ] || require_rubygems_key
+  require_built_assets
 
   log "Publishing ${version} from the tag ${tag} itself (the CHANGELOG and the history are left untouched)."
   configure_git

@@ -42,7 +42,9 @@ build:
   artifacts:
     paths:
       - app/assets/builds/
-    expire_in: 1h
+    # Long enough that re-running a release job days later still finds them:
+    # the release refuses to build a gem without compiled assets.
+    expire_in: 1 week
 
 canary:
   stage: publish
