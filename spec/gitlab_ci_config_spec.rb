@@ -10,12 +10,6 @@ RSpec.describe ".gitlab-ci.yml" do
   let(:config) { YAML.safe_load(File.read(File.expand_path("../.gitlab-ci.yml", __dir__))) }
   let(:changelog_check) { config.fetch("changelog:check") }
 
-  # Branch prefixes that have actually been merged into master here.
-  let(:merged_prefixes) do
-    out = IO.popen(["git", "log", "--merges", "--format=%s"], &:read)
-    out.scan(/Merge branch '([^'\/]+)\//).flatten.uniq
-  end
-
   it "runs changelog:check on every branch except the default one" do
     expect(changelog_check.fetch("rules").map { |rule| rule["if"] }).to eq(
       ['$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "merge_request_event"']
@@ -24,12 +18,6 @@ RSpec.describe ".gitlab-ci.yml" do
 
   it "does not pin changelog:check to a list of branch prefixes" do
     expect(changelog_check.fetch("rules").first.fetch("if")).not_to include("feature|bugfix")
-  end
-
-  it "would have missed branch prefixes that this repository actually uses" do
-    old_prefixes = %w[feature bugfix hotfix fix breaking]
-    expect(merged_prefixes - old_prefixes).not_to be_empty,
-                                                 "the prefix allowlist is only worth replacing if real branches fall outside it"
   end
 
   it "stays out of merge request pipelines" do

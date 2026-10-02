@@ -20,7 +20,6 @@
 #      only because a second probe confirms the version is really there;
 #   7. the real GitLab registry probe against a stand-in Packages API: a version
 #      that is not on page 1, and near misses on name and version;
-#   7b. near misses on name and version;
 #   8. app/assets/builds missing or expired, on both paths;
 #   9. a release on a tree where CHANGELOG.md is not tracked yet.
 #
