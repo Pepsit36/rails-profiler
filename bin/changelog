@@ -121,15 +121,17 @@ HEADER = <<~MD
   The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-  Released sections are written by the `release` CI job, which derives the version
-  from the last tag and the conventional commit types, stamps the `[Unreleased]`
-  section below and commits the result as `chore(release): vX.Y.Z [skip ci]`.
-  Add your own entries under `[Unreleased]`; do not edit released sections.
+  Write your entry under `[Unreleased]`, for a user of the gem. When your branch is
+  ready, run `bin/changelog stamp`: it works out the version the merge will publish
+  and turns `[Unreleased]` into `[X.Y.Z] - <date>`, reopening an empty one above.
+  Run it again after a rebase or a new commit, it corrects the number and folds the
+  new entries in. Never edit a section that already carries a tag.
 
-  Each bullet carries the short sha of the commit it describes, in an HTML comment
-  that stays invisible once rendered. Commits deliberately absent from a version are
-  listed in that version's `excluded:` comment with the reason. `bin/changelog
-  coverage` checks that every commit of every tag interval is in one or the other.
+  A section written by `stamp` carries `<!-- stamped -->`. In the older sections,
+  each bullet carries the short sha of the commit it describes, and commits left out
+  on purpose are listed in that version's `excluded:` comment with the reason; all of
+  it in HTML comments, invisible once rendered. `bin/changelog coverage` checks that
+  every commit of every tag interval is accounted for one way or the other.
 MD
 
 Commit = Struct.new(:sha, :subject, :body)
