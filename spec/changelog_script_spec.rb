@@ -112,12 +112,12 @@ RSpec.describe "bin/changelog" do
       expect(status).to be_success, "stderr: #{err}"
       expect(out).to include("The [Unreleased] section was empty")
       expect(out).to include("--- generated entry ---")
-      expect(out).to include("- **storage**: survive a missing profile file")
+      expect(out).to include("- **Storage:** Survive a missing profile file")
 
       text = File.read(File.join(dir, "CHANGELOG.md"))
       expect(unreleased_section(text).strip).to be_empty
       expect(section_for(text, "0.1.1")).to include("### Fixed")
-      expect(section_for(text, "0.1.1")).to include("- **storage**: survive a missing profile file")
+      expect(section_for(text, "0.1.1")).to include("- **Storage:** Survive a missing profile file")
       # ci: never reaches the changelog.
       expect(text).not_to include("tighten the pipeline")
     end
@@ -139,7 +139,7 @@ RSpec.describe "bin/changelog" do
 
       text = File.read(File.join(dir, "CHANGELOG.md"))
       expect(text).to match(/\A# Changelog\n\n## \[Unreleased\]\n\n## \[0\.2\.0\] - 2026-02-05\n/)
-      expect(section_for(text, "0.2.0")).to include("- **api**: expose a profiles endpoint")
+      expect(section_for(text, "0.2.0")).to include("- **API:** Expose a profiles endpoint")
       expect(text).to include("## [0.1.0] - 2026-01-01")
     end
   end
@@ -160,7 +160,71 @@ RSpec.describe "bin/changelog" do
       text = File.read(File.join(dir, "CHANGELOG.md"))
       expect(text).to start_with("# Changelog\n")
       expect(text).to include("Keep a Changelog")
-      expect(section_for(text, "0.1.1")).to include("- stop leaking a thread local")
+      expect(section_for(text, "0.1.1")).to include("- Stop leaking a thread local")
+    end
+  end
+
+  describe "release, and the coverage of the section it stamps" do
+    before do
+      commit(dir, "chore(release): v0.1.0 [skip ci]")
+      git(dir, "tag", "v0.1.0")
+      commit(dir, "fix(storage): survive a missing profile file")
+      @fix = short_sha(dir)
+      commit(dir, "ci: tighten the pipeline")
+      @ci = short_sha(dir)
+    end
+
+    it "writes covered and excluded references under a section written by hand" do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ### Fixed
+
+        - **Storage:** A missing profile file no longer breaks the profile list
+
+        ## [0.1.0] - 2026-01-01
+
+        _Nothing to report._
+      MD
+
+      out, err, status = run(dir, "release", "--version", "0.1.1", "--date", "2026-02-07", "--since", "v0.1.0")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("Commit references written into the 0.1.1 section")
+
+      section = section_for(File.read(File.join(dir, "CHANGELOG.md")), "0.1.1")
+      expect(section).to include("<!-- covered: #{@fix} -->")
+      expect(section).to include("#{@ci} pipeline only")
+    end
+
+    it "leaves the stamped file complete for the coverage check" do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ### Fixed
+
+        - **Storage:** A missing profile file no longer breaks the profile list
+
+        ## [0.1.0] - 2026-01-01
+
+        _Nothing to report._
+      MD
+      _out, _err, status = run(dir, "release", "--version", "0.1.1", "--date", "2026-02-07", "--since", "v0.1.0")
+      expect(status).to be_success
+
+      # What the release job does next: commit CHANGELOG.md alone, tag it.
+      git(dir, "add", "CHANGELOG.md")
+      git(dir, "commit", "--quiet", "-m", "chore(release): v0.1.1 [skip ci]")
+      git(dir, "tag", "v0.1.1")
+
+      out, err, status = run(dir, "coverage")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("changelog coverage: OK")
     end
   end
 
@@ -459,8 +523,8 @@ RSpec.describe "bin/changelog" do
       expect(status).to be_success, "stderr: #{err}"
       expect(out).to match(/## \[Unreleased\]\n\n## \[0\.1\.1\] - \d{4}-\d{2}-\d{2}/)
       expect(out.index("## [0.1.1]")).to be < out.index("## [0.1.0]")
-      expect(section_for(out, "0.1.1")).to include("- **ui**: align the toolbar")
-      expect(section_for(out, "0.1.0")).to include("- add the profiler")
+      expect(section_for(out, "0.1.1")).to include("- **UI:** Align the toolbar")
+      expect(section_for(out, "0.1.0")).to include("- Add the profiler")
       expect(out).not_to include("reformat")
     end
 
@@ -472,7 +536,7 @@ RSpec.describe "bin/changelog" do
 
       expect(status).to be_success
       expect(section_for(out, "0.2.0")).to include("### Changed")
-      expect(section_for(out, "0.2.0")).to include("- **Breaking:** **deps**: drop Ruby 3.0 support")
+      expect(section_for(out, "0.2.0")).to include("- **Breaking:** **Deps:** Drop Ruby 3.0 support")
       expect(section_for(out, "0.2.0")).not_to include("_No notable changes._")
     end
 
@@ -483,7 +547,7 @@ RSpec.describe "bin/changelog" do
       out, _err, status = run(dir, "history")
 
       expect(status).to be_success
-      expect(section_for(out, "0.2.0")).to include("- **Breaking:** rework the storage layout")
+      expect(section_for(out, "0.2.0")).to include("- **Breaking:** Rework the storage layout")
     end
 
     it "puts a breaking feature under Changed rather than Added" do
