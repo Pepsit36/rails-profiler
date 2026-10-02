@@ -331,7 +331,11 @@ normal_release() {
   log "Stamping ${CHANGELOG_FILE} for ${version}."
   ruby bin/changelog release --version "$version" --since "${LAST_TAG}"
 
-  # Only CHANGELOG.md goes in: never version.rb, never app/assets/builds.
+  # Only CHANGELOG.md goes in: never version.rb, never app/assets/builds. The
+  # explicit add matters when the file is not tracked yet (the generator has
+  # just created it): `git commit -- <path>` alone fails on an untracked path,
+  # with a message that says nothing about the release.
+  git add -- "$CHANGELOG_FILE"
   git commit -m "chore(release): ${tag} [skip ci]" -- "$CHANGELOG_FILE"
   git tag "$tag"
   log "Release commit $(git rev-parse --short HEAD) carries only: $(git show --format='' --name-only HEAD | tr '\n' ' ')"
