@@ -255,6 +255,39 @@ RSpec.describe "bin/changelog" do
       expect(out).not_to include("reformat")
     end
 
+    it "lists a breaking change whose type is normally skipped" do
+      commit(dir, "chore(deps)!: drop Ruby 3.0 support")
+      git(dir, "tag", "v0.2.0")
+
+      out, _err, status = run(dir, "history")
+
+      expect(status).to be_success
+      expect(section_for(out, "0.2.0")).to include("### Changed")
+      expect(section_for(out, "0.2.0")).to include("- **Breaking:** **deps**: drop Ruby 3.0 support")
+      expect(section_for(out, "0.2.0")).not_to include("_No notable changes._")
+    end
+
+    it "lists a breaking change announced in a commit body" do
+      commit(dir, "chore: rework the storage layout\n\nBREAKING CHANGE: profiles stored by 0.1.x are no longer readable")
+      git(dir, "tag", "v0.2.0")
+
+      out, _err, status = run(dir, "history")
+
+      expect(status).to be_success
+      expect(section_for(out, "0.2.0")).to include("- **Breaking:** rework the storage layout")
+    end
+
+    it "puts a breaking feature under Changed rather than Added" do
+      commit(dir, "feat(api)!: drop the v1 profile endpoints")
+      git(dir, "tag", "v0.2.0")
+
+      out, _err, status = run(dir, "history")
+
+      expect(status).to be_success
+      expect(section_for(out, "0.2.0")).to include("### Changed")
+      expect(section_for(out, "0.2.0")).not_to include("### Added")
+    end
+
     it "marks a tag with nothing publishable" do
       commit(dir, "chore: tidy up")
       git(dir, "tag", "v0.1.2")

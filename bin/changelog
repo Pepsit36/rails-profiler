@@ -123,15 +123,20 @@ module Entries
   def bullet_for(commit)
     match = CONVENTIONAL_SUBJECT.match(commit.subject.strip)
     return nil if match.nil?
-    return nil if SKIPPED_TYPES.include?(match[:type])
 
-    section = TYPE_SECTIONS[match[:type]]
+    breaking = breaking?(commit, match)
+    # A breaking change publishes a major version whatever its type, so it has
+    # to be listed even when that type is normally skipped. Keep a Changelog has
+    # no section for it, and a breaking change is a change, so: Changed.
+    return nil if !breaking && SKIPPED_TYPES.include?(match[:type])
+
+    section = breaking ? "Changed" : TYPE_SECTIONS[match[:type]]
     return nil if section.nil?
 
     description = match[:desc].strip.sub(/\.\z/, "")
     scope = match[:scope].to_s.strip
     text = scope.empty? ? description : "**#{scope}**: #{description}"
-    text = "**Breaking:** #{text}" if breaking?(commit, match)
+    text = "**Breaking:** #{text}" if breaking
 
     { section: section, text: "- #{text}" }
   end
