@@ -96,6 +96,14 @@ inside a `<!-- stamped -->` section, which accounts for its whole interval.
 
 ## Tests
 
-- `bundle exec rspec` must pass. CI runs it on `ruby:3.3`.
+- `bundle exec rspec` must pass. CI runs it twice, on `ruby:3.3` and on `ruby:3.4`, in the
+  `rspec` and `rspec:ruby3.4` jobs. Both have to be green; a change is not done when only
+  one of them is.
+- The two Ruby versions are not interchangeable. The gem prepends modules to core classes,
+  `Thread#initialize` among them, and from Ruby 3.4 on the standard library itself calls
+  `Thread.new` with arguments, in the Happy Eyeballs hostname resolution of `Socket.tcp`.
+  A patch that mishandles those arguments passes the whole suite on 3.3 and breaks TCP
+  connections by hostname on 3.4. Anything touching such a patch needs a test that runs on
+  3.4, not only a reading of it.
 - `bash script/release-dry-run.sh` must pass after any change to `script/release.sh`,
   `bin/changelog` or the `release` job. It needs no network and no credential.
