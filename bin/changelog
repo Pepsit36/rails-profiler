@@ -17,6 +17,8 @@
 #                                             [Unreleased] untouched
 #   bin/changelog coverage                    fail when a commit of a tag interval is
 #                                             neither described nor explicitly excluded
+#   bin/changelog version [--since REF]       print the version the next publication will
+#                                             carry, exit 3 when there is nothing to publish
 #
 # Version numbers are never computed here: the `release` job owns that, from the
 # last tag and the conventional commit types, and passes the result in.
@@ -26,6 +28,16 @@ require "date"
 CHANGELOG_FILE = "CHANGELOG.md"
 UNRELEASED_HEADING = "## [Unreleased]"
 NO_CHANGES = "_No notable changes._"
+
+# Written by `stamp` into the section it owns. It marks a section whose version
+# is not tagged yet, and tells `coverage` to count every non-merge commit of its
+# interval as covered: the GitLab Rebase button rewrites the sha of a branch, so
+# a sha written before the merge cannot be trusted, and the commit carrying the
+# stamp cannot cite its own sha anyway.
+STAMP_MARKER = "<!-- stamped -->"
+
+# What a branch is measured against, unless told otherwise.
+DEFAULT_BRANCH_REF = "origin/master"
 
 # Keep a Changelog section order.
 SECTION_ORDER = ["Added", "Changed", "Removed", "Fixed", "Security"].freeze
@@ -82,11 +94,12 @@ SCOPE_NAMES = {
 
 CONVENTIONAL_SUBJECT = /\A(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<bang>!)?:\s+(?<desc>.+)\z/
 
-# Same rule as the `release` job, applied to subjects and bodies alike:
-#   grep -qE "^BREAKING CHANGE:|^[a-z]+(\(.+\))?!:"
-#   grep -qE "^feat(\(.+\))?:"
-#   grep -qE "^fix(\(.+\))?:"
-RELEASABLE_LINE = /^(?:BREAKING CHANGE:|[a-z]+(?:\(.+\))?!:|feat(?:\(.+\))?:|fix(?:\(.+\))?:)/
+# The one place where a commit is read as publishable or not. Subjects and
+# bodies alike, as the `release` job has always done.
+BREAKING_LINE = /^(?:BREAKING CHANGE:|[a-z]+(?:\(.+\))?!:)/
+FEATURE_LINE = /^feat(?:\(.+\))?:/
+FIX_LINE = /^fix(?:\(.+\))?:/
+RELEASABLE_LINE = Regexp.union(BREAKING_LINE, FEATURE_LINE, FIX_LINE)
 
 # The release commit of a version belongs to the interval of its own tag, since
 # the tag is placed on it, and the job that writes it cannot cite its own sha
@@ -172,6 +185,119 @@ module Git
 
   def last_tag
     (try("describe", "--tags", "--abbrev=0") || "").strip
+  end
+
+  # Highest tag reachable from HEAD, which is what a version base needs. The
+  # release job keeps using `git describe` (the nearest ancestor); on a linear
+  # default branch the two agree.
+  def highest_reachable_tag
+    tags_merged_into_head.last
+  end
+
+  def tag_exists?(tag)
+    !(try("rev-parse", "--verify", "--quiet", "refs/tags/#{tag}") || "").strip.empty?
+  end
+
+  def merge_base(ref)
+    out = (try("merge-base", ref, "HEAD") || "").strip
+    out.empty? ? nil : out
+  end
+
+  def ref_exists?(ref)
+    !(try("rev-parse", "--verify", "--quiet", ref) || "").strip.empty?
+  end
+end
+
+# The single implementation of "which version does this publish". The release
+# job calls it through `bin/changelog version`, and `stamp` and `check` use it
+# directly, so the three can never drift apart.
+#
+# Merge commits are left out of the computation. A GitLab merge commit repeats
+# the merge request title in its body, so reading merges would let a title alone
+# decide the version: a request titled `feat:` whose commits are all fixes would
+# be stamped as a patch in the branch and computed as a minor at release time,
+# and the publication would be refused over a disagreement nobody wrote. It also
+# means a merge request title can no longer publish a version on its own.
+module Versioning
+  module_function
+
+  def bump_level(range)
+    text = Git.commits(range).map { |commit| "#{commit.subject}\n#{commit.body}" }.join("\n")
+    return :major if text.match?(BREAKING_LINE)
+    return :minor if text.match?(FEATURE_LINE)
+    return :patch if text.match?(FIX_LINE)
+
+    nil
+  end
+
+  def releasable?(commit)
+    "#{commit.subject}\n#{commit.body}".match?(RELEASABLE_LINE)
+  end
+
+  def next_version(base, level)
+    major, minor, patch = parts(base)
+    case level
+    when :major then "#{major + 1}.0.0"
+    when :minor then "#{major}.#{minor + 1}.0"
+    when :patch then "#{major}.#{minor}.#{patch + 1}"
+    end
+  end
+
+  def parts(version)
+    numbers = version.to_s.sub(/\Av/, "").split(".").map(&:to_i)
+    numbers += [0] * (3 - numbers.size) if numbers.size < 3
+    numbers.first(3)
+  end
+
+  def compare(one, other)
+    parts(one) <=> parts(other)
+  end
+
+  def highest(versions)
+    versions.compact.reject(&:empty?).max { |one, other| compare(one, other) }
+  end
+
+  # What a branch is about to publish.
+  #
+  #   base  the highest of the last tag reachable from HEAD and the versions the
+  #         file already carries outside the section this branch owns. The
+  #         second term is what handles a branch rebased onto another one whose
+  #         version is stamped but not tagged yet.
+  #   range the commits the branch adds on top of the default branch. Counting
+  #         from the last tag instead would fold in the commits of that other
+  #         branch and overstate the bump.
+  #   owned the section this branch stamped, if any: the top one, stamped, not
+  #         tagged, and different from the top section at the merge base.
+  def branch_plan(lines, default_branch)
+    headings = Sections.version_headings(lines)
+    base_ref = Git.ref_exists?(default_branch) ? default_branch : nil
+    merge_base = base_ref.nil? ? nil : Git.merge_base(base_ref)
+    owned = owned_section(headings, merge_base)
+    tag = Git.highest_reachable_tag
+
+    others = headings.reject { |heading| heading.equal?(owned) }
+    base = highest([tag.to_s.sub(/\Av/, ""), *others.map { |heading| heading[:version] }]) || "0.0.0"
+    range = merge_base.nil? ? (tag.to_s.empty? ? nil : "#{tag}..HEAD") : "#{merge_base}..HEAD"
+
+    {
+      headings: headings, owned: owned, base: base, range: range,
+      merge_base: merge_base, default_branch: base_ref, tag: tag
+    }
+  end
+
+  def owned_section(headings, merge_base)
+    top = headings.first
+    return nil if top.nil?
+    return nil unless top[:stamped]
+    return nil if Git.tag_exists?("v#{top[:version]}")
+    return top if merge_base.nil?
+
+    before = Sections.version_headings(
+      Sections.split(Git.try("show", "#{merge_base}:#{CHANGELOG_FILE}") || "")
+    ).first
+    return top if before.nil?
+
+    top[:version] == before[:version] ? nil : top
   end
 end
 
@@ -299,7 +425,7 @@ module Entries
   end
 
   def releasable?(commit)
-    "#{commit.subject}\n#{commit.body}".match?(RELEASABLE_LINE)
+    Versioning.releasable?(commit)
   end
 end
 
@@ -331,6 +457,19 @@ module Sections
     return nil if index.nil?
 
     lines[(index + 1)...section_end(lines, index)].join("\n")
+  end
+
+  VERSION_HEADING = /\A##\s*\[(?<version>\d+\.\d+\.\d+)\]/
+
+  # Every `## [X.Y.Z]` section, in file order.
+  def version_headings(lines)
+    lines.each_with_index.filter_map do |line, index|
+      match = VERSION_HEADING.match(line)
+      next if match.nil?
+
+      body = lines[(index + 1)...section_end(lines, index)].join("\n")
+      { index: index, version: match[:version], stamped: body.include?(STAMP_MARKER) }
+    end
   end
 
   def unreleased_body(lines)
@@ -550,7 +689,7 @@ module Commands
       return 1
     end
 
-    offenders = Git.commits("#{merge_base}..HEAD", merges: true).select { |commit| Entries.releasable?(commit) }
+    offenders = Git.commits("#{merge_base}..HEAD").select { |commit| Entries.releasable?(commit) }
     if offenders.empty?
       puts "changelog check: no releasable commit between #{merge_base[0, 8]} and HEAD, nothing to require."
       return 0
@@ -680,6 +819,36 @@ module Commands
     end
   end
 
+  # Prints the version the next publication will carry, and nothing else, so a
+  # shell can capture it. Exit 3 means "nothing to publish", which is not an
+  # error. Diagnostics go to standard error.
+  def version(options)
+    file = options[:file] || CHANGELOG_FILE
+
+    if options.key?(:since)
+      since = options[:since].to_s
+      since = Git.last_tag if since.empty?
+      base = options[:base] || (since.empty? ? "0.0.0" : since.sub(/\Av/, ""))
+      range = since.empty? ? nil : "#{since}..HEAD"
+    else
+      plan = Versioning.branch_plan(Sections.split(File.exist?(file) ? File.read(file) : ""),
+                                    options[:default_branch] || DEFAULT_BRANCH_REF)
+      base = options[:base] || plan[:base]
+      range = plan[:range]
+      warn "changelog version: #{plan[:default_branch] || "no default branch ref"} not found, " \
+           "counting from #{plan[:tag]}" if plan[:default_branch].nil?
+    end
+
+    level = Versioning.bump_level(range)
+    if level.nil?
+      warn "changelog version: no releasable commit in #{range_label(range)}."
+      return 3
+    end
+
+    puts Versioning.next_version(base, level)
+    0
+  end
+
   def range_for(options)
     since = options[:since].to_s
     since = Git.last_tag if since.empty?
@@ -701,6 +870,7 @@ def parse_options(argv)
     when "--file" then options[:file] = argv.shift
     when "--since" then options[:since] = argv.shift
     when "--base" then options[:base] = argv.shift
+    when "--default-branch" then options[:default_branch] = argv.shift
     else abort "bin/changelog: unknown option #{flag}"
     end
   end
@@ -715,6 +885,7 @@ def main(argv)
   when "release" then Commands.release(parse_options(argv))
   when "check" then Commands.check(parse_options(argv))
   when "coverage" then Commands.coverage(parse_options(argv))
+  when "version" then Commands.version(parse_options(argv))
   when nil, "-h", "--help", "help"
     doc = File.read(__FILE__).lines.drop(3).take_while { |line| line.start_with?("#") }
     puts doc.map { |line| line.sub(/\A# ?/, "") }.join

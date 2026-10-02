@@ -303,6 +303,71 @@ RSpec.describe "bin/changelog" do
     end
   end
 
+  describe "version" do
+    before do
+      commit(dir, "chore(release): v0.1.0 [skip ci]")
+      git(dir, "tag", "v0.1.0")
+    end
+
+    def version_of(dir, *args)
+      out, err, status = run(dir, "version", *args)
+      [out.strip, err, status]
+    end
+
+    it "bumps the patch on a fix" do
+      commit(dir, "fix(ui): align the toolbar")
+
+      out, err, status = version_of(dir, "--since", "v0.1.0")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to eq("0.1.1")
+    end
+
+    it "bumps the minor on a feature and the major on a breaking change" do
+      commit(dir, "feat(api): expose a profiles endpoint")
+      expect(version_of(dir, "--since", "v0.1.0").first).to eq("0.2.0")
+
+      commit(dir, "chore(deps)!: drop Ruby 3.0 support")
+      expect(version_of(dir, "--since", "v0.1.0").first).to eq("1.0.0")
+    end
+
+    it "says nothing and exits 3 when no commit is publishable" do
+      commit(dir, "ci: add a lint job")
+
+      out, err, status = version_of(dir, "--since", "v0.1.0")
+
+      expect(status.exitstatus).to eq(3)
+      expect(out).to be_empty
+      expect(err).to include("no releasable commit")
+    end
+
+    it "ignores a merge commit, whatever its subject or body says" do
+      commit(dir, "fix(ui): align the toolbar")
+      git(dir, "checkout", "--quiet", "-b", "side")
+      commit(dir, "chore: a side change")
+      git(dir, "checkout", "--quiet", "master")
+      git(dir, "merge", "--quiet", "--no-ff", "-m",
+          "Merge branch 'side' into 'master'\n\nfeat: something the merge title claims", "side")
+
+      out, err, status = version_of(dir, "--since", "v0.1.0")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to eq("0.1.1")
+    end
+
+    it "takes the whole history when there is no tag" do
+      Dir.mktmpdir("changelog-spec-untagged") do |untagged|
+        init_repo(untagged)
+        commit(untagged, "feat: add the profiler")
+
+        out, _err, status = run(untagged, "version")
+
+        expect(status).to be_success
+        expect(out.strip).to eq("0.1.0")
+      end
+    end
+  end
+
   describe "coverage" do
     # v0.1.0 holds one feature and its release commit; v0.2.0 holds one fix, one
     # ci commit and its release commit.
