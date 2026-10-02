@@ -16,6 +16,28 @@ rspec:
   before_script:
     - bundle config set --local path vendor/bundle
 
+# Runs in the ordinary branch pipeline, next to rspec, on every branch that is not
+# the default one. No prefix allowlist: feat/, refactor/, docs/ and chore/ branches
+# have already been merged here, and a prefix list silently exempts whatever it
+# forgot. Deliberately NOT a merge_request_event job: a job limited to
+# merge_request_event would create a merge request pipeline containing only itself,
+# which would show up green on the MR while rspec (a branch pipeline job) could be red.
+changelog:check:
+  stage: test
+  image: ruby:3.3
+  variables:
+    GIT_DEPTH: "0"
+  rules:
+    - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "merge_request_event"'
+  script:
+    # A branch pipeline does not bring master along, even with GIT_DEPTH: "0".
+    - git fetch origin "+refs/heads/master:refs/remotes/origin/master"
+    - ruby bin/changelog check --base origin/master
+    # Needs every tag and the whole history, hence GIT_DEPTH: "0" above. It is
+    # deliberately not in the release job: an editorial gap must not stop a
+    # publication.
+    - ruby bin/changelog coverage
+
 build:
   stage: build
   image: node:22
@@ -26,7 +48,9 @@ build:
   artifacts:
     paths:
       - app/assets/builds/
-    expire_in: 1h
+    # Long enough that re-running a release job days later still finds them:
+    # the release refuses to build a gem without compiled assets.
+    expire_in: 1 week
 
 canary:
   stage: publish
@@ -55,56 +79,11 @@ release:
   stage: publish
   image: ruby:3.3
   needs: [build]
+  # One release at a time: the job tags the merged commit and pushes that tag.
+  resource_group: release
   variables:
     GIT_DEPTH: "0"
   rules:
     - if: '$CI_COMMIT_BRANCH == "master" && $CI_COMMIT_TAG == null'
   script:
-    - |
-      set -e
-      LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-      if [ -z "$LAST_TAG" ]; then
-        BASE_VERSION="0.0.0"
-        COMMITS=$(git log --format="%s%n%b")
-      else
-        BASE_VERSION="${LAST_TAG#v}"
-        COMMITS=$(git log "${LAST_TAG}..HEAD" --format="%s%n%b")
-      fi
-
-      if [ -z "$COMMITS" ]; then
-        echo "No commits since last tag, skipping."
-        exit 0
-      fi
-
-      MAJOR=$(echo "$BASE_VERSION" | cut -d. -f1)
-      MINOR=$(echo "$BASE_VERSION" | cut -d. -f2)
-      PATCH=$(echo "$BASE_VERSION" | cut -d. -f3)
-
-      if echo "$COMMITS" | grep -qE "^BREAKING CHANGE:|^[a-z]+(\(.+\))?!:"; then
-        NEW_VERSION="$((MAJOR + 1)).0.0"
-      elif echo "$COMMITS" | grep -qE "^feat(\(.+\))?:"; then
-        NEW_VERSION="${MAJOR}.$((MINOR + 1)).0"
-      elif echo "$COMMITS" | grep -qE "^fix(\(.+\))?:"; then
-        NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
-      else
-        echo "No releasable commits (chore/docs/style/ci/test), skipping."
-        exit 0
-      fi
-
-      if git ls-remote --tags origin | grep -q "refs/tags/v${NEW_VERSION}$"; then
-        echo "Tag v${NEW_VERSION} already exists, skipping."
-        exit 0
-      fi
-
-      [[ -n "$RUBYGEMS_API_KEY" ]] || (echo "Error: RUBYGEMS_API_KEY is not set" && exit 1)
-      sed -i "s/VERSION = .*/VERSION = \"${NEW_VERSION}\"/" lib/profiler/version.rb
-      gem build profiler.gemspec
-      mkdir -p ~/.gem && printf -- "---\n:gitlab: ${CI_JOB_TOKEN}\n" > ~/.gem/credentials && chmod 0600 ~/.gem/credentials
-      gem push *.gem --key gitlab --host "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/rubygems" --verbose
-      GEM_HOST_API_KEY="${RUBYGEMS_API_KEY}" gem push *.gem --host https://rubygems.org --verbose
-      git config user.email "ci@gitlab"
-      git config user.name "GitLab CI"
-      git remote set-url origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-      git tag "v${NEW_VERSION}"
-      git push origin "v${NEW_VERSION}"
-      echo "Released v${NEW_VERSION}."
+    - bash script/release.sh
