@@ -160,6 +160,16 @@ module Git
     (try("log", "-1", "--format=%cs", "#{tag}^{commit}") || "").strip
   end
 
+  # [full sha, nil] when the short sha names exactly one commit, otherwise
+  # [nil, :ambiguous | :unknown]. git says "short object ID ... is ambiguous" on
+  # stderr, which is why stderr is kept here rather than discarded.
+  def resolve_commit(sha)
+    out = IO.popen(["git", "rev-parse", "--verify", "#{sha}^{commit}"], err: [:child, :out], &:read)
+    return [out.strip, nil] if $?.success?
+
+    [nil, out.to_s.include?("ambiguous") ? :ambiguous : :unknown]
+  end
+
   def last_tag
     (try("describe", "--tags", "--abbrev=0") || "").strip
   end
@@ -336,6 +346,10 @@ end
 #     e27cdae pipeline only
 #   -->
 #
+# The first form is recognised strictly: a comment holding nothing but sha. Any
+# other unmarked comment is an editorial note and is ignored, so that writing
+# `<!-- TODO: reword -->` in a released section does not break the check.
+#
 # They live in CHANGELOG.md rather than in a file of their own on purpose: a
 # reference then travels with the text it belongs to, and the release job, which
 # is only ever allowed to commit CHANGELOG.md, can keep them up to date.
@@ -356,43 +370,48 @@ module Coverage
       lines = body.to_s.strip.lines.map(&:strip).reject(&:empty?)
       next if lines.empty?
 
-      kind, lines = kind_of(lines)
-      case kind
-      when :excluded
-        lines.each do |line|
-          sha, reason = line.split(/\s+/, 2)
-          if sha.to_s.match?(SHA) && !reason.to_s.strip.empty?
-            excluded[sha] = reason.strip
-          else
-            malformed << line
-          end
-        end
-      else
-        lines.join(" ").split(/\s+/).each do |token|
-          token.match?(SHA) ? referenced << token : malformed << token
-        end
+      if lines.first.start_with?("excluded:")
+        read_exclusions(strip_marker(lines, "excluded:"), excluded, malformed)
+      elsif lines.first.start_with?("covered:")
+        read_shas(strip_marker(lines, "covered:"), referenced, malformed)
+      elsif only_shas?(lines)
+        # The form used at the end of a bullet: nothing but sha.
+        referenced.concat(tokens(lines))
       end
+      # Anything else is an editorial comment, and is left alone on purpose.
     end
 
     Refs.new(referenced.uniq, excluded, malformed.uniq)
   end
 
-  # Strips a leading `excluded:` or `covered:` marker and says which it was.
-  def kind_of(lines)
-    first = lines.first
-    if first.start_with?("excluded:")
-      [:excluded, [first.sub("excluded:", "").strip, *lines.drop(1)].reject(&:empty?)]
-    elsif first.start_with?("covered:")
-      [:covered, [first.sub("covered:", "").strip, *lines.drop(1)].reject(&:empty?)]
-    else
-      [:covered, lines]
+  def read_exclusions(lines, excluded, malformed)
+    lines.each do |line|
+      sha, reason = line.split(/\s+/, 2)
+      if sha.to_s.match?(SHA) && !reason.to_s.strip.empty?
+        excluded[sha] = reason.strip
+      else
+        malformed << line
+      end
     end
   end
 
-  def resolve(sha)
-    out = Git.try("rev-parse", "--verify", "--quiet", "#{sha}^{commit}")
-    out.to_s.strip.empty? ? nil : out.strip
+  def read_shas(lines, referenced, malformed)
+    tokens(lines).each { |token| token.match?(SHA) ? referenced << token : malformed << token }
   end
+
+  def strip_marker(lines, marker)
+    [lines.first.sub(marker, "").strip, *lines.drop(1)].reject(&:empty?)
+  end
+
+  def tokens(lines)
+    lines.join(" ").split(/\s+/).reject(&:empty?)
+  end
+
+  def only_shas?(lines)
+    found = tokens(lines)
+    !found.empty? && found.all? { |token| token.match?(SHA) }
+  end
+
 end
 
 module Commands
@@ -612,7 +631,7 @@ module Commands
   def check_interval(version, range, body)
     refs = Coverage.parse(body)
     commits = Git.commits(range)
-    in_interval = commits.to_h { |commit| [commit.sha, commit.subject] }
+    in_interval = commits.map(&:sha)
     problems = []
 
     refs.malformed.each do |token|
@@ -620,29 +639,38 @@ module Commands
                   "or `<sha> <reason>` inside an excluded block"
     end
 
-    cited = {}
-    (refs.referenced + refs.excluded.keys).each do |sha|
-      full = Coverage.resolve(sha)
+    (refs.referenced & refs.excluded.keys).each do |sha|
+      problems << "#{sha} is both referenced and excluded: it cannot be described and left out at once"
+    end
+
+    accounted = []
+    (refs.referenced + refs.excluded.keys).uniq.each do |sha|
+      full, failure = Git.resolve_commit(sha)
       if full.nil?
-        problems << "#{sha} is referenced but is not a commit of this repository"
-      elsif !in_interval.key?(full)
+        problems << reference_failure(sha, failure)
+      elsif !in_interval.include?(full)
         problems << "#{sha} is referenced here but does not belong to #{range}"
       else
-        cited[full] = sha
+        accounted << full
       end
     end
 
-    excluded_full = refs.excluded.keys.filter_map { |sha| Coverage.resolve(sha) }
-
     commits.each do |commit|
-      next if cited.key?(commit.sha) && !excluded_full.include?(commit.sha)
-      next if excluded_full.include?(commit.sha)
+      next if accounted.include?(commit.sha)
       next if release_commit_subject?(commit.subject, version)
 
       problems << "#{commit.sha[0, 7]} #{commit.subject} is neither described nor excluded"
     end
 
-    { problems: problems, commits: commits.size }
+    { problems: problems.uniq, commits: commits.size }
+  end
+
+  def reference_failure(sha, failure)
+    if failure == :ambiguous
+      "#{sha} is referenced but is an ambiguous short sha, more than one object matches it"
+    else
+      "#{sha} is referenced but no commit of this repository matches it"
+    end
   end
 
   def range_for(options)
