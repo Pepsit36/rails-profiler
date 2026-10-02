@@ -1,0 +1,374 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Single changelog generator for this gem.
+#
+# Pure Ruby, standard library only, no extra gem: the `release` CI job runs it
+# from a plain `ruby:3.3` image, before (and independently of) `bundle install`.
+#
+# This is the only implementation of the "commit subjects to Keep a Changelog"
+# mapping. Both the reconstructed history and the per release stamping done by
+# CI go through it.
+#
+#   bin/changelog history                     rebuild CHANGELOG.md from every git tag
+#   bin/changelog unreleased [--since REF]    print the entry body for commits since REF
+#   bin/changelog release --version X.Y.Z     stamp [Unreleased] as a released section
+#   bin/changelog check [--base REF]          fail when releasable commits leave
+#                                             [Unreleased] untouched
+#
+# Version numbers are never computed here: the `release` job owns that, from the
+# last tag and the conventional commit types, and passes the result in.
+
+require "date"
+
+CHANGELOG_FILE = "CHANGELOG.md"
+UNRELEASED_HEADING = "## [Unreleased]"
+NO_CHANGES = "_No notable changes._"
+
+# Keep a Changelog section order.
+SECTION_ORDER = ["Added", "Changed", "Removed", "Fixed", "Security"].freeze
+
+# Conventional commit type to Keep a Changelog section.
+TYPE_SECTIONS = {
+  "feat" => "Added",
+  "fix" => "Fixed",
+  "perf" => "Changed",
+  "refactor" => "Changed",
+  "docs" => "Changed",
+  "build" => "Changed",
+  "deps" => "Changed",
+  "revert" => "Removed",
+  "security" => "Security"
+}.freeze
+
+# Types that never produce a changelog entry.
+SKIPPED_TYPES = %w[chore ci test style].freeze
+
+CONVENTIONAL_SUBJECT = /\A(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<bang>!)?:\s+(?<desc>.+)\z/
+
+# Same rule as the `release` job, applied to subjects and bodies alike:
+#   grep -qE "^BREAKING CHANGE:|^[a-z]+(\(.+\))?!:"
+#   grep -qE "^feat(\(.+\))?:"
+#   grep -qE "^fix(\(.+\))?:"
+RELEASABLE_LINE = /^(?:BREAKING CHANGE:|[a-z]+(?:\(.+\))?!:|feat(?:\(.+\))?:|fix(?:\(.+\))?:)/
+
+HEADER = <<~MD
+  # Changelog
+
+  All notable changes to this project are documented in this file.
+
+  The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+  and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+  Released sections are written by the `release` CI job, which derives the version
+  from the last tag and the conventional commit types, stamps the `[Unreleased]`
+  section below and commits the result as `chore(release): vX.Y.Z [skip ci]`.
+  Add your own entries under `[Unreleased]`; do not edit released sections.
+MD
+
+Commit = Struct.new(:sha, :subject, :body)
+
+module Git
+  module_function
+
+  # nil instead of an exception when git fails: every caller has a sane
+  # fallback (a missing file, an unknown ref, a repository without tags).
+  def try(*args)
+    out = IO.popen(["git", *args], err: File::NULL, &:read)
+    $?.success? ? out : nil
+  end
+
+  def commits(range, merges: false)
+    args = ["log", "--format=%H%x1f%s%x1f%b%x1e"]
+    args << "--no-merges" unless merges
+    args << range unless range.nil? || range.to_s.empty?
+    (try(*args) || "").split("\x1e").filter_map do |record|
+      record = record.sub(/\A\n+/, "")
+      next if record.empty?
+
+      sha, subject, body = record.split("\x1f", 3)
+      Commit.new(sha.to_s.strip, subject.to_s, body.to_s)
+    end
+  end
+
+  def tags
+    (try("tag", "--sort=v:refname") || "").split("\n").map(&:strip).reject(&:empty?)
+  end
+
+  def tagged_commit_date(tag)
+    (try("log", "-1", "--format=%cs", "#{tag}^{commit}") || "").strip
+  end
+
+  def last_tag
+    (try("describe", "--tags", "--abbrev=0") || "").strip
+  end
+end
+
+# Maps a commit range to Keep a Changelog sections.
+module Entries
+  module_function
+
+  def sections(range)
+    result = {}
+    Git.commits(range).each do |commit|
+      bullet = bullet_for(commit)
+      next if bullet.nil?
+
+      (result[bullet[:section]] ||= []) << bullet[:text]
+    end
+    result.each_value(&:uniq!)
+    result
+  end
+
+  def bullet_for(commit)
+    match = CONVENTIONAL_SUBJECT.match(commit.subject.strip)
+    return nil if match.nil?
+
+    breaking = breaking?(commit, match)
+    # A breaking change publishes a major version whatever its type, so it has
+    # to be listed even when that type is normally skipped. Keep a Changelog has
+    # no section for it, and a breaking change is a change, so: Changed.
+    return nil if !breaking && SKIPPED_TYPES.include?(match[:type])
+
+    section = breaking ? "Changed" : TYPE_SECTIONS[match[:type]]
+    return nil if section.nil?
+
+    description = match[:desc].strip.sub(/\.\z/, "")
+    scope = match[:scope].to_s.strip
+    text = scope.empty? ? description : "**#{scope}**: #{description}"
+    text = "**Breaking:** #{text}" if breaking
+
+    { section: section, text: "- #{text}" }
+  end
+
+  def breaking?(commit, match)
+    !match[:bang].nil? || commit.body.to_s.match?(/^BREAKING CHANGE:/)
+  end
+
+  # Entry body for a range, or nil when the range holds nothing worth listing.
+  def body(range)
+    found = sections(range)
+    blocks = SECTION_ORDER.filter_map do |name|
+      bullets = found[name]
+      next if bullets.nil? || bullets.empty?
+
+      "### #{name}\n\n#{bullets.join("\n")}\n"
+    end
+    blocks.empty? ? nil : blocks.join("\n")
+  end
+
+  def releasable?(commit)
+    "#{commit.subject}\n#{commit.body}".match?(RELEASABLE_LINE)
+  end
+end
+
+# Reads and rewrites the sections of a CHANGELOG.md.
+module Sections
+  module_function
+
+  def split(text)
+    text.to_s.split("\n", -1)
+  end
+
+  def unreleased_index(lines)
+    lines.index { |line| line =~ /\A##\s*\[unreleased\]/i }
+  end
+
+  def first_version_index(lines)
+    lines.index { |line| line =~ /\A##\s*\[/ }
+  end
+
+  # Index of the heading that closes the section opened at `from`.
+  def section_end(lines, from)
+    offset = lines[(from + 1)..].to_a.index { |line| line =~ /\A##\s/ }
+    offset.nil? ? lines.length : from + 1 + offset
+  end
+
+  def unreleased_body(lines)
+    index = unreleased_index(lines)
+    return nil if index.nil?
+
+    lines[(index + 1)...section_end(lines, index)].join("\n")
+  end
+end
+
+module Commands
+  module_function
+
+  def history(_options)
+    out = +HEADER
+    out << "\n#{UNRELEASED_HEADING}\n"
+
+    tags = Git.tags
+    head_body = tags.empty? ? Entries.body(nil) : Entries.body("#{tags.last}..HEAD")
+    out << "\n#{head_body}" unless head_body.nil?
+
+    previous = nil
+    released = tags.map do |tag|
+      range = previous.nil? ? tag : "#{previous}..#{tag}"
+      previous = tag
+      [tag, Git.tagged_commit_date(tag), Entries.body(range) || "#{NO_CHANGES}\n"]
+    end
+
+    released.reverse_each do |tag, date, body|
+      out << "\n## [#{tag.sub(/\Av/, "")}] - #{date}\n\n#{body}"
+    end
+
+    print out
+    0
+  end
+
+  def unreleased(options)
+    body = Entries.body(range_for(options))
+    print(body || "#{NO_CHANGES}\n")
+    0
+  end
+
+  def release(options)
+    version = options[:version]
+    abort "bin/changelog release: --version X.Y.Z is required" if version.to_s.empty?
+
+    date = options[:date] || Date.today.to_s
+    file = options[:file] || CHANGELOG_FILE
+    range = range_for(options)
+
+    unless File.exist?(file)
+      puts "#{file} does not exist, creating it."
+      File.write(file, "#{HEADER}\n#{UNRELEASED_HEADING}\n")
+    end
+
+    lines = Sections.split(File.read(file))
+    index = Sections.unreleased_index(lines)
+
+    if index.nil?
+      lines = stamp_without_unreleased(lines, version, date, range, file)
+    else
+      lines = stamp_unreleased(lines, index, version, date, range)
+    end
+
+    File.write(file, lines.join("\n"))
+    puts "Stamped #{file}: [Unreleased] is now [#{version}] - #{date}, a fresh empty [Unreleased] is open above it."
+    0
+  end
+
+  # [Unreleased] exists: rename its heading, reopen an empty one above, and fall
+  # back to the commit subjects when the section was left empty.
+  def stamp_unreleased(lines, index, version, date, range)
+    stop = Sections.section_end(lines, index)
+    body = lines[(index + 1)...stop].join("\n")
+
+    if body.strip.empty?
+      generated = Entries.body(range) || "#{NO_CHANGES}\n"
+      puts "The [Unreleased] section was empty: generating the #{version} entry from the commit subjects of #{range_label(range)}."
+      puts "--- generated entry ---"
+      puts generated
+      puts "--- end of generated entry ---"
+      lines[index...stop] = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", *Sections.split(generated)]
+    else
+      puts "Reusing the #{body.strip.lines.count} line(s) already written under [Unreleased]."
+      spacer = lines[index + 1].to_s.strip.empty? ? [] : [""]
+      lines[index..index] = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", *spacer]
+    end
+
+    lines
+  end
+
+  # No [Unreleased] section at all: defined behaviour, documented and tested.
+  # Do not fail the release; insert a fresh empty [Unreleased] plus a generated
+  # section for this version, right after the preamble.
+  def stamp_without_unreleased(lines, version, date, range, file)
+    generated = Entries.body(range) || "#{NO_CHANGES}\n"
+    puts "WARNING: #{file} has no [Unreleased] section."
+    puts "Inserting one, and generating the #{version} entry from the commit subjects of #{range_label(range)}."
+    puts "--- generated entry ---"
+    puts generated
+    puts "--- end of generated entry ---"
+
+    insert_at = Sections.first_version_index(lines) || lines.length
+    block = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", *Sections.split(generated)]
+    block << "" if insert_at == lines.length
+    lines[insert_at, 0] = block
+    lines
+  end
+
+  def check(options)
+    base = options[:base] || "origin/master"
+    file = options[:file] || CHANGELOG_FILE
+
+    merge_base = (Git.try("merge-base", base, "HEAD") || "").strip
+    if merge_base.empty?
+      warn "changelog check: no merge base between #{base} and HEAD."
+      warn "Fetch it first (git fetch origin #{base.sub(%r{\Aorigin/}, "")}) and make sure the clone is not shallow (GIT_DEPTH: \"0\")."
+      return 1
+    end
+
+    offenders = Git.commits("#{merge_base}..HEAD", merges: true).select { |commit| Entries.releasable?(commit) }
+    if offenders.empty?
+      puts "changelog check: no releasable commit between #{merge_base[0, 8]} and HEAD, nothing to require."
+      return 0
+    end
+
+    before = Sections.unreleased_body(Sections.split(Git.try("show", "#{merge_base}:#{file}") || "")).to_s.strip
+    after = Sections.unreleased_body(Sections.split(File.exist?(file) ? File.read(file) : "")).to_s.strip
+
+    if before == after
+      warn "changelog check: FAILED."
+      warn ""
+      warn "These commits would be published by the `release` job:"
+      offenders.each { |commit| warn "  #{commit.sha[0, 8]} #{commit.subject}" }
+      warn ""
+      warn "but the [Unreleased] section of #{file} is unchanged since the merge base #{merge_base[0, 8]}."
+      warn "Describe the change under `## [Unreleased]` (### Added / ### Changed / ### Removed /"
+      warn "### Fixed / ### Security) and push again. `bin/changelog unreleased` prints a starting point."
+      return 1
+    end
+
+    puts "changelog check: OK, #{offenders.count} releasable commit(s) and the [Unreleased] section of #{file} was updated."
+    0
+  end
+
+  def range_for(options)
+    since = options[:since].to_s
+    since = Git.last_tag if since.empty?
+    since.empty? ? nil : "#{since}..HEAD"
+  end
+
+  def range_label(range)
+    range.nil? ? "the whole history" : range
+  end
+end
+
+def parse_options(argv)
+  options = {}
+  until argv.empty?
+    flag = argv.shift
+    case flag
+    when "--version" then options[:version] = argv.shift
+    when "--date" then options[:date] = argv.shift
+    when "--file" then options[:file] = argv.shift
+    when "--since" then options[:since] = argv.shift
+    when "--base" then options[:base] = argv.shift
+    else abort "bin/changelog: unknown option #{flag}"
+    end
+  end
+  options
+end
+
+def main(argv)
+  command = argv.shift
+  case command
+  when "history" then Commands.history(parse_options(argv))
+  when "unreleased" then Commands.unreleased(parse_options(argv))
+  when "release" then Commands.release(parse_options(argv))
+  when "check" then Commands.check(parse_options(argv))
+  when nil, "-h", "--help", "help"
+    doc = File.read(__FILE__).lines.drop(3).take_while { |line| line.start_with?("#") }
+    puts doc.map { |line| line.sub(/\A# ?/, "") }.join
+    0
+  else
+    warn "bin/changelog: unknown command #{command}"
+    1
+  end
+end
+
+exit main(ARGV) if $PROGRAM_NAME == __FILE__
