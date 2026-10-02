@@ -15,6 +15,8 @@
 #   bin/changelog release --version X.Y.Z     stamp [Unreleased] as a released section
 #   bin/changelog check [--base REF]          fail when releasable commits leave
 #                                             [Unreleased] untouched
+#   bin/changelog coverage                    fail when a commit of a tag interval is
+#                                             neither described nor explicitly excluded
 #
 # Version numbers are never computed here: the `release` job owns that, from the
 # last tag and the conventional commit types, and passes the result in.
@@ -51,6 +53,17 @@ CONVENTIONAL_SUBJECT = /\A(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<bang>!)?:\s+
 #   grep -qE "^feat(\(.+\))?:"
 #   grep -qE "^fix(\(.+\))?:"
 RELEASABLE_LINE = /^(?:BREAKING CHANGE:|[a-z]+(?:\(.+\))?!:|feat(?:\(.+\))?:|fix(?:\(.+\))?:)/
+
+# The release commit of a version belongs to the interval of its own tag, since
+# the tag is placed on it, and the job that writes it cannot cite its own sha
+# while stamping. It is therefore recognised by its subject alone, narrowly:
+# the version in the subject has to be the version of the section it sits in.
+# Both wordings this repository has used are accepted.
+def release_commit_subject?(subject, version)
+  subject.strip.match?(
+    /\Achore\(release\): (?:bump version to )?v#{Regexp.escape(version)}(?: \[skip ci\])?\z/
+  )
+end
 
 HEADER = <<~MD
   # Changelog
@@ -184,11 +197,90 @@ module Sections
     offset.nil? ? lines.length : from + 1 + offset
   end
 
+  # Text of the `## [version]` section, heading excluded, or nil when absent.
+  def version_body(lines, version)
+    index = lines.index { |line| line =~ /\A##\s*\[#{Regexp.escape(version)}\]/ }
+    return nil if index.nil?
+
+    lines[(index + 1)...section_end(lines, index)].join("\n")
+  end
+
   def unreleased_body(lines)
     index = unreleased_index(lines)
     return nil if index.nil?
 
     lines[(index + 1)...section_end(lines, index)].join("\n")
+  end
+end
+
+# Reads the commit references CHANGELOG.md carries in HTML comments, and checks
+# every tag interval against them.
+#
+# Three forms, all invisible once rendered:
+#
+#   - **UI:** Always show the waterfall <!-- 32c6b6d -->
+#   <!-- covered: 5afd003 aef4c0c -->
+#   <!-- excluded:
+#     3ba06d1 release plumbing written by CI
+#     e27cdae pipeline only
+#   -->
+#
+# They live in CHANGELOG.md rather than in a file of their own on purpose: a
+# reference then travels with the text it belongs to, and the release job, which
+# is only ever allowed to commit CHANGELOG.md, can keep them up to date.
+module Coverage
+  module_function
+
+  COMMENT = /<!--(.*?)-->/m
+  SHA = /\A[0-9a-f]{7,40}\z/
+
+  Refs = Struct.new(:referenced, :excluded, :malformed)
+
+  def parse(section)
+    referenced = []
+    excluded = {}
+    malformed = []
+
+    section.to_s.scan(COMMENT).each do |(body)|
+      lines = body.to_s.strip.lines.map(&:strip).reject(&:empty?)
+      next if lines.empty?
+
+      kind, lines = kind_of(lines)
+      case kind
+      when :excluded
+        lines.each do |line|
+          sha, reason = line.split(/\s+/, 2)
+          if sha.to_s.match?(SHA) && !reason.to_s.strip.empty?
+            excluded[sha] = reason.strip
+          else
+            malformed << line
+          end
+        end
+      else
+        lines.join(" ").split(/\s+/).each do |token|
+          token.match?(SHA) ? referenced << token : malformed << token
+        end
+      end
+    end
+
+    Refs.new(referenced.uniq, excluded, malformed.uniq)
+  end
+
+  # Strips a leading `excluded:` or `covered:` marker and says which it was.
+  def kind_of(lines)
+    first = lines.first
+    if first.start_with?("excluded:")
+      [:excluded, [first.sub("excluded:", "").strip, *lines.drop(1)].reject(&:empty?)]
+    elsif first.start_with?("covered:")
+      [:covered, [first.sub("covered:", "").strip, *lines.drop(1)].reject(&:empty?)]
+    else
+      [:covered, lines]
+    end
+  end
+
+  def resolve(sha)
+    out = Git.try("rev-parse", "--verify", "--quiet", "#{sha}^{commit}")
+    out.to_s.strip.empty? ? nil : out.strip
   end
 end
 
@@ -327,6 +419,102 @@ module Commands
     0
   end
 
+  # Every non-merge commit of every tag interval has to be either described in
+  # the section of its version or listed as an explicit exclusion with a reason.
+  # [Unreleased] is out of scope: nothing is tagged there yet, and a commit
+  # cannot cite its own sha while it is being written.
+  def coverage(options)
+    file = options[:file] || CHANGELOG_FILE
+    unless File.exist?(file)
+      warn "changelog coverage: #{file} not found."
+      return 1
+    end
+
+    tags = Git.tags
+    if tags.empty?
+      warn "changelog coverage: no tag found in this repository."
+      warn "This check walks every tag interval, so it has nothing to compare and refuses to"
+      warn "pass silently. Fetch the tags first: GIT_DEPTH: \"0\" in CI, `git fetch --tags`"
+      warn "locally. A shallow clone without tags is the usual cause."
+      return 1
+    end
+
+    lines = Sections.split(File.read(file))
+    problems = []
+    checked = 0
+    previous = nil
+
+    tags.each do |tag|
+      range = previous.nil? ? tag : "#{previous}..#{tag}"
+      previous = tag
+      version = tag.sub(/\Av/, "")
+      body = Sections.version_body(lines, version)
+
+      if body.nil?
+        problems << ["#{version}", ["no `## [#{version}]` section in #{file}"]]
+        next
+      end
+
+      found = check_interval(version, range, body)
+      checked += found[:commits]
+      problems << [version, found[:problems]] unless found[:problems].empty?
+    end
+
+    if problems.empty?
+      puts "changelog coverage: OK, #{checked} commit(s) over #{tags.size} tag interval(s) are " \
+           "each described in their version or explicitly excluded."
+      return 0
+    end
+
+    warn "changelog coverage: FAILED."
+    warn ""
+    problems.each do |version, messages|
+      warn "## [#{version}]"
+      messages.each { |message| warn "  #{message}" }
+      warn ""
+    end
+    warn "Describe each commit in the section of its version and reference it with an HTML"
+    warn "comment at the end of its bullet (`<!-- abc1234 -->`), or list it in that section's"
+    warn "`<!-- excluded: ... -->` block with a reason."
+    1
+  end
+
+  def check_interval(version, range, body)
+    refs = Coverage.parse(body)
+    commits = Git.commits(range)
+    in_interval = commits.to_h { |commit| [commit.sha, commit.subject] }
+    problems = []
+
+    refs.malformed.each do |token|
+      problems << "malformed reference #{token.inspect}: expected a short sha, " \
+                  "or `<sha> <reason>` inside an excluded block"
+    end
+
+    cited = {}
+    (refs.referenced + refs.excluded.keys).each do |sha|
+      full = Coverage.resolve(sha)
+      if full.nil?
+        problems << "#{sha} is referenced but is not a commit of this repository"
+      elsif !in_interval.key?(full)
+        problems << "#{sha} is referenced here but does not belong to #{range}"
+      else
+        cited[full] = sha
+      end
+    end
+
+    excluded_full = refs.excluded.keys.filter_map { |sha| Coverage.resolve(sha) }
+
+    commits.each do |commit|
+      next if cited.key?(commit.sha) && !excluded_full.include?(commit.sha)
+      next if excluded_full.include?(commit.sha)
+      next if release_commit_subject?(commit.subject, version)
+
+      problems << "#{commit.sha[0, 7]} #{commit.subject} is neither described nor excluded"
+    end
+
+    { problems: problems, commits: commits.size }
+  end
+
   def range_for(options)
     since = options[:since].to_s
     since = Git.last_tag if since.empty?
@@ -361,6 +549,7 @@ def main(argv)
   when "unreleased" then Commands.unreleased(parse_options(argv))
   when "release" then Commands.release(parse_options(argv))
   when "check" then Commands.check(parse_options(argv))
+  when "coverage" then Commands.coverage(parse_options(argv))
   when nil, "-h", "--help", "help"
     doc = File.read(__FILE__).lines.drop(3).take_while { |line| line.start_with?("#") }
     puts doc.map { |line| line.sub(/\A# ?/, "") }.join
