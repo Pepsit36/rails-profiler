@@ -729,8 +729,10 @@ module Commands
     generated
   end
 
+  # Run on every branch pipeline. The branch has to carry, in the top section of
+  # CHANGELOG.md, exactly the version its merge will publish.
   def check(options)
-    base = options[:base] || "origin/master"
+    base = options[:base] || DEFAULT_BRANCH_REF
     file = options[:file] || CHANGELOG_FILE
 
     merge_base = (Git.try("merge-base", base, "HEAD") || "").strip
@@ -740,29 +742,46 @@ module Commands
       return 1
     end
 
-    offenders = Git.commits("#{merge_base}..HEAD").select { |commit| Entries.releasable?(commit) }
-    if offenders.empty?
+    lines = Sections.split(File.exist?(file) ? File.read(file) : "")
+    plan = Versioning.branch_plan(lines, base)
+    level = Versioning.bump_level("#{merge_base}..HEAD")
+    stamped = plan[:owned]
+
+    if level.nil?
+      return superfluous_stamp(stamped, file) unless stamped.nil?
+
       puts "changelog check: no releasable commit between #{merge_base[0, 8]} and HEAD, nothing to require."
       return 0
     end
 
-    before = Sections.unreleased_body(Sections.split(Git.try("show", "#{merge_base}:#{file}") || "")).to_s.strip
-    after = Sections.unreleased_body(Sections.split(File.exist?(file) ? File.read(file) : "")).to_s.strip
+    version = Versioning.next_version(plan[:base], level)
+    return stamp_missing(version, stamped, file) if stamped.nil? || stamped[:version] != version
 
-    if before == after
-      warn "changelog check: FAILED."
-      warn ""
-      warn "These commits would be published by the `release` job:"
-      offenders.each { |commit| warn "  #{commit.sha[0, 8]} #{commit.subject}" }
-      warn ""
-      warn "but the [Unreleased] section of #{file} is unchanged since the merge base #{merge_base[0, 8]}."
-      warn "Describe the change under `## [Unreleased]` (### Added / ### Changed / ### Removed /"
-      warn "### Fixed / ### Security) and push again. `bin/changelog unreleased` prints a starting point."
-      return 1
-    end
-
-    puts "changelog check: OK, #{offenders.count} releasable commit(s) and the [Unreleased] section of #{file} was updated."
+    puts "changelog check: OK, this branch publishes #{version} and #{file} says so."
     0
+  end
+
+  def superfluous_stamp(stamped, file)
+    warn "changelog check: FAILED."
+    warn ""
+    warn "This branch has no releasable commit, but #{file} carries a stamped #{stamped[:version]} section."
+    warn "The `release` job would publish nothing, and the next branch would take that number as its base."
+    warn "Remove the stamped section and put its entries back under `## [Unreleased]`."
+    1
+  end
+
+  def stamp_missing(version, stamped, file)
+    warn "changelog check: FAILED."
+    warn ""
+    if stamped.nil?
+      warn "This branch publishes #{version}, but [Unreleased] is still the top section of #{file}."
+    else
+      warn "This branch publishes #{version}, but the top section of #{file} says #{stamped[:version]}."
+    end
+    warn ""
+    warn "Run `bin/changelog stamp` and commit #{file}."
+    warn "It writes `## [#{version}] - <today>` and reopens an empty [Unreleased] above it."
+    1
   end
 
   # Every non-merge commit of every tag interval has to be either described in

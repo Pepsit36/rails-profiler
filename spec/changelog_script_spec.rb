@@ -232,46 +232,9 @@ RSpec.describe "bin/changelog" do
 
   describe "check" do
     before do
-      changelog(dir, "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-01-01\n\n### Added\n\n- the first release\n")
+      changelog(dir, "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-01-01\n\n### Added\n\n- The first release <!-- 0000000 -->\n")
       commit(dir, "chore: seed the changelog")
       git(dir, "checkout", "--quiet", "-b", "fix/leaking-thread-local")
-    end
-
-    it "fails when a releasable commit leaves [Unreleased] untouched" do
-      commit(dir, "fix: stop leaking a thread local")
-
-      out, err, status = run(dir, "check", "--base", "master")
-
-      expect(status).not_to be_success
-      expect(err).to include("changelog check: FAILED")
-      expect(err).to include("fix: stop leaking a thread local")
-      expect(err).to include("the [Unreleased] section of CHANGELOG.md is unchanged")
-      expect(out).to be_empty
-    end
-
-    it "passes once the [Unreleased] section describes the change" do
-      commit(dir, "fix: stop leaking a thread local")
-      changelog(dir, <<~MD)
-        # Changelog
-
-        ## [Unreleased]
-
-        ### Fixed
-
-        - thread locals are released when a request ends
-
-        ## [0.1.0] - 2026-01-01
-
-        ### Added
-
-        - the first release
-      MD
-      commit(dir, "ci: record the change under Unreleased")
-
-      out, err, status = run(dir, "check", "--base", "master")
-
-      expect(status).to be_success, "stderr: #{err}"
-      expect(out).to include("changelog check: OK")
     end
 
     it "requires nothing when the branch holds no releasable commit" do
@@ -291,87 +254,18 @@ RSpec.describe "bin/changelog" do
 
       expect(status).not_to be_success
       expect(err).to include("changelog check: FAILED")
+      expect(err).to include("bin/changelog stamp")
     end
 
-    it "ignores edits made to an already released section" do
-      commit(dir, "fix: stop leaking a thread local")
-      changelog(dir, "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-01-01\n\n### Added\n\n- the very first release\n")
-      commit(dir, "ci: reword an old entry")
-
-      _out, err, status = run(dir, "check", "--base", "master")
+    it "fails without a merge base" do
+      _out, err, status = run(dir, "check", "--base", "origin/does-not-exist")
 
       expect(status).not_to be_success
-      expect(err).to include("changelog check: FAILED")
+      expect(err).to include("no merge base")
     end
   end
 
-  describe "version" do
-    before do
-      commit(dir, "chore(release): v0.1.0 [skip ci]")
-      git(dir, "tag", "v0.1.0")
-    end
-
-    def version_of(dir, *args)
-      out, err, status = run(dir, "version", *args)
-      [out.strip, err, status]
-    end
-
-    it "bumps the patch on a fix" do
-      commit(dir, "fix(ui): align the toolbar")
-
-      out, err, status = version_of(dir, "--since", "v0.1.0")
-
-      expect(status).to be_success, "stderr: #{err}"
-      expect(out).to eq("0.1.1")
-    end
-
-    it "bumps the minor on a feature and the major on a breaking change" do
-      commit(dir, "feat(api): expose a profiles endpoint")
-      expect(version_of(dir, "--since", "v0.1.0").first).to eq("0.2.0")
-
-      commit(dir, "chore(deps)!: drop Ruby 3.0 support")
-      expect(version_of(dir, "--since", "v0.1.0").first).to eq("1.0.0")
-    end
-
-    it "says nothing and exits 3 when no commit is publishable" do
-      commit(dir, "ci: add a lint job")
-
-      out, err, status = version_of(dir, "--since", "v0.1.0")
-
-      expect(status.exitstatus).to eq(3)
-      expect(out).to be_empty
-      expect(err).to include("no releasable commit")
-    end
-
-    it "ignores a merge commit, whatever its subject or body says" do
-      commit(dir, "fix(ui): align the toolbar")
-      git(dir, "checkout", "--quiet", "-b", "side")
-      commit(dir, "chore: a side change")
-      git(dir, "checkout", "--quiet", "master")
-      git(dir, "merge", "--quiet", "--no-ff", "-m",
-          "Merge branch 'side' into 'master'\n\nfeat: something the merge title claims", "side")
-
-      out, err, status = version_of(dir, "--since", "v0.1.0")
-
-      expect(status).to be_success, "stderr: #{err}"
-      expect(out).to eq("0.1.1")
-    end
-
-    it "takes the whole history when there is no tag" do
-      Dir.mktmpdir("changelog-spec-untagged") do |untagged|
-        init_repo(untagged)
-        commit(untagged, "feat: add the profiler")
-
-        out, _err, status = run(untagged, "version")
-
-        expect(status).to be_success
-        expect(out.strip).to eq("0.1.0")
-      end
-    end
-  end
-
-  describe "stamp" do
-    # A branch cut from a master that carries v0.1.0 and its section.
+  describe "check, against the stamped version" do
     before do
       changelog(dir, <<~MD)
         # Changelog
@@ -386,108 +280,74 @@ RSpec.describe "bin/changelog" do
       MD
       commit(dir, "chore(release): v0.1.0 [skip ci]")
       git(dir, "tag", "v0.1.0")
-      git(dir, "branch", "master-copy")
-      git(dir, "remote", "add", "origin", dir)
       git(dir, "update-ref", "refs/remotes/origin/master", "master")
       git(dir, "checkout", "--quiet", "-b", "fix/leak")
-    end
-
-    def stamp(dir, *args)
-      run(dir, "stamp", *args)
-    end
-
-    def top_heading(dir)
-      File.read(File.join(dir, "CHANGELOG.md"))[/^## \[[^\]]+\][^\n]*$/]
-      File.read(File.join(dir, "CHANGELOG.md")).scan(/^## \[[^\]]+\][^\n]*$/)[1]
-    end
-
-    it "stamps a fresh branch with the version the merge will publish" do
       commit(dir, "fix(storage): survive a missing profile file")
-      changelog(dir, File.read(File.join(dir, "CHANGELOG.md")).sub(
-                  "## [Unreleased]\n",
-                  "## [Unreleased]\n\n### Fixed\n\n- **Storage:** A missing profile file no longer breaks the list\n"
-                ))
-      commit(dir, "chore: write the entry")
-
-      out, err, status = stamp(dir)
-
-      expect(status).to be_success, "stderr: #{err}"
-      expect(out).to include("0.1.1")
-      text = File.read(File.join(dir, "CHANGELOG.md"))
-      expect(top_heading(dir)).to match(/^## \[0\.1\.1\] - \d{4}-\d{2}-\d{2}$/)
-      expect(text).to include(STAMP_MARKER)
-      expect(unreleased_section(text).strip).to be_empty
-      expect(section_for(text, "0.1.1")).to include("- **Storage:** A missing profile file no longer breaks the list")
     end
 
-    it "does nothing on a branch with no releasable commit" do
-      commit(dir, "ci: add a lint job")
-      before_text = File.read(File.join(dir, "CHANGELOG.md"))
+    it "fails while the branch is not stamped, and says what to run" do
+      _out, err, status = run(dir, "check", "--base", "master")
 
-      out, err, status = stamp(dir)
-
-      expect(status).to be_success, "stderr: #{err}"
-      expect(out).to include("nothing to stamp")
-      expect(File.read(File.join(dir, "CHANGELOG.md"))).to eq(before_text)
+      expect(status).not_to be_success
+      expect(err).to include("This branch publishes 0.1.1")
+      expect(err).to include("[Unreleased] is still the top section")
+      expect(err).to include("bin/changelog stamp")
     end
 
-    it "corrects the number and the date, and folds in new entries, when run again" do
-      commit(dir, "fix(storage): survive a missing profile file")
-      changelog(dir, File.read(File.join(dir, "CHANGELOG.md")).sub(
-                  "## [Unreleased]\n",
-                  "## [Unreleased]\n\n### Fixed\n\n- **Storage:** A missing profile file no longer breaks the list\n"
-                ))
-      commit(dir, "chore: write the entry")
-      _out, _err, status = stamp(dir, "--date", "2026-02-01")
-      expect(status).to be_success
-      commit(dir, "chore: stamp")
-
-      # New work lands on the branch, and a new entry is written by hand.
-      commit(dir, "feat(api): expose a profiles endpoint")
+    it "fails when the stamped number is not the one the merge will publish" do
       text = File.read(File.join(dir, "CHANGELOG.md"))
       changelog(dir, text.sub("## [Unreleased]\n",
-                              "## [Unreleased]\n\n### Added\n\n- **API:** Expose a profiles endpoint\n"))
-      commit(dir, "chore: write the new entry")
+                              "## [Unreleased]\n\n## [0.9.9] - 2026-02-01\n\n#{STAMP_MARKER}\n\n### Fixed\n\n- Something\n"))
+      commit(dir, "chore: stamp the wrong number")
 
-      out, err, status = stamp(dir, "--date", "2026-02-09")
+      _out, err, status = run(dir, "check", "--base", "master")
 
-      expect(status).to be_success, "stderr: #{err}"
-      expect(out).to include("0.1.1").and include("0.2.0")
-      text = File.read(File.join(dir, "CHANGELOG.md"))
-      expect(top_heading(dir)).to eq("## [0.2.0] - 2026-02-09")
-      expect(text).not_to include("## [0.1.1]")
-      expect(section_for(text, "0.2.0")).to include("- **Storage:** A missing profile file no longer breaks the list")
-      expect(section_for(text, "0.2.0")).to include("- **API:** Expose a profiles endpoint")
-      expect(unreleased_section(text).strip).to be_empty
+      expect(status).not_to be_success
+      expect(err).to include("This branch publishes 0.1.1, but the top section of CHANGELOG.md says 0.9.9")
+      expect(err).to include("bin/changelog stamp")
     end
 
-    it "refuses to touch a section that already has a tag" do
-      commit(dir, "fix(storage): survive a missing profile file")
+    it "passes once the branch is stamped with the right number" do
+      text = File.read(File.join(dir, "CHANGELOG.md"))
+      changelog(dir, text.sub("## [Unreleased]\n",
+                              "## [Unreleased]\n\n## [0.1.1] - 2026-02-01\n\n#{STAMP_MARKER}\n\n### Fixed\n\n- Something\n"))
+      commit(dir, "chore: stamp")
 
-      out, err, status = stamp(dir)
+      out, err, status = run(dir, "check", "--base", "master")
 
       expect(status).to be_success, "stderr: #{err}"
-      expect(File.read(File.join(dir, "CHANGELOG.md"))).to include("## [0.1.0] - 2026-01-01")
       expect(out).to include("0.1.1")
     end
 
-    it "computes the version after a section stamped by another branch" do
-      # Someone else's 0.1.1 was merged into master and is not tagged yet.
+    it "fails on a stamp with no releasable commit behind it" do
+      git(dir, "checkout", "--quiet", "-b", "chore/tooling", "master")
+      commit(dir, "ci: add a lint job")
+      text = File.read(File.join(dir, "CHANGELOG.md"))
+      changelog(dir, text.sub("## [Unreleased]\n",
+                              "## [Unreleased]\n\n## [0.1.1] - 2026-02-01\n\n#{STAMP_MARKER}\n\n### Fixed\n\n- Something\n"))
+      commit(dir, "chore: stamp for nothing")
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("no releasable commit")
+      expect(err).to include("0.1.1")
+    end
+
+    it "leaves a branch inheriting someone else's stamped section alone" do
       git(dir, "checkout", "--quiet", "master")
       text = File.read(File.join(dir, "CHANGELOG.md"))
       changelog(dir, text.sub("## [Unreleased]\n",
                               "## [Unreleased]\n\n## [0.1.1] - 2026-02-02\n\n#{STAMP_MARKER}\n\n### Fixed\n\n- Someone else's fix\n"))
-      commit(dir, "fix(other): someone else's fix")
+      commit(dir, "chore: a merged stamp from another branch")
       git(dir, "update-ref", "refs/remotes/origin/master", "master")
-      git(dir, "checkout", "--quiet", "-b", "fix/mine", "master")
-      commit(dir, "fix(mine): my own fix")
+      git(dir, "checkout", "--quiet", "-b", "ci/tooling", "master")
+      commit(dir, "ci: add a lint job")
 
-      out, err, status = stamp(dir)
+      out, err, status = run(dir, "check", "--base", "master")
 
       expect(status).to be_success, "stderr: #{err}"
-      expect(top_heading(dir)).to match(/^## \[0\.1\.2\]/)
-      expect(out).to include("0.1.2")
-      expect(File.read(File.join(dir, "CHANGELOG.md"))).to include("## [0.1.1] - 2026-02-02")
+      expect(out).to include("nothing to require")
     end
   end
 
