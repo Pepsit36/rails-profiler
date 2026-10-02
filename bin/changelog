@@ -147,6 +147,15 @@ module Git
     (try("tag", "--sort=v:refname") || "").split("\n").map(&:strip).reject(&:empty?)
   end
 
+  # Tags reachable from HEAD only. A branch pipeline fetches master to compare
+  # against it, and git follows the tags of what it downloads, so a clone of a
+  # branch can hold tags published after that branch was cut. Those versions
+  # have no section in this branch's file, and should not be asked for one.
+  def tags_merged_into_head
+    (try("tag", "--sort=v:refname", "--merged", "HEAD") || "")
+      .split("\n").map(&:strip).reject(&:empty?)
+  end
+
   def tagged_commit_date(tag)
     (try("log", "-1", "--format=%cs", "#{tag}^{commit}") || "").strip
   end
@@ -551,9 +560,9 @@ module Commands
       return 1
     end
 
-    tags = Git.tags
+    tags = Git.tags_merged_into_head
     if tags.empty?
-      warn "changelog coverage: no tag found in this repository."
+      warn "changelog coverage: no tag reachable from HEAD in this repository."
       warn "This check walks every tag interval, so it has nothing to compare and refuses to"
       warn "pass silently. Fetch the tags first: GIT_DEPTH: \"0\" in CI, `git fetch --tags`"
       warn "locally. A shallow clone without tags is the usual cause."

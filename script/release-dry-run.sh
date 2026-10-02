@@ -23,7 +23,8 @@
 #   8. app/assets/builds missing or expired, on both paths;
 #   9. a release on a tree where CHANGELOG.md is not tracked yet;
 #  10. the coverage check right after a publication, plus a stale reference and
-#      a clone without tags.
+#      a clone without tags;
+#  11. a version published on master while a branch is open.
 #
 # Usage: script/release-dry-run.sh [work directory]
 
@@ -539,8 +540,45 @@ scenario_coverage_after_release() {
   printf '%s\n' "$out"
   printf -- '--- assertions ---\n'
   assert_eq "$status" "1" "coverage refuses to pass with no tag"
-  assert_has "$out" "no tag found in this repository" "the reason is explicit"
+  assert_has "$out" "no tag reachable from HEAD" "the reason is explicit"
   assert_has "$out" "GIT_DEPTH" "the usual cause is named"
+}
+
+# --- scenario 11: a version is published while a branch is open --------------
+
+scenario_tag_published_during_branch() {
+  banner "11. a version is published on master while a branch is open"
+  local case_dir="$ROOT/newtag" sha out status clone
+  sha="$(make_fixture "$case_dir")"
+
+  # A contributor branches off before the publication, and pushes.
+  git -C "$case_dir/work" checkout --quiet -b feature/later
+  git -C "$case_dir/work" push --quiet origin feature/later
+  git -C "$case_dir/work" checkout --quiet master
+
+  # master publishes 0.1.1 in the meantime.
+  run_release "$case_dir/work" "$case_dir" "$sha" > /dev/null
+  printf 'origin now carries: %s\n' "$(git -C "$case_dir/origin.git" tag -l | tr "\n" " ")"
+
+  # What the changelog:check job does on that branch, in order.
+  clone="$case_dir/branchclone"
+  git init --quiet "$clone"
+  git -C "$clone" remote add origin "$case_dir/origin.git"
+  git -C "$clone" fetch --quiet origin feature/later
+  git -C "$clone" checkout --quiet -B feature/later FETCH_HEAD
+  git -C "$clone" fetch --quiet origin "+refs/heads/master:refs/remotes/origin/master"
+
+  printf 'git tag:               %s\n' "$(git -C "$clone" tag -l | tr "\n" " ")"
+  printf 'git tag --merged HEAD: %s\n' "$(git -C "$clone" tag -l --merged HEAD | tr "\n" " ")"
+
+  out="$(cd "$clone" && ruby bin/changelog coverage 2>&1)"
+  status=$?
+  printf '%s\n' "$out"
+  printf -- '--- assertions ---\n'
+  assert_has "$(git -C "$clone" tag -l)" "v0.1.1" "the fetch of master brought the newer tag along"
+  assert_eq "$status" "0" "coverage passes on a branch that predates the publication"
+  assert_lacks "$out" "no \`## [0.1.1]\` section" "the branch is not blamed for a version it cannot know"
+  assert_has "$out" "changelog coverage: OK" "only the tags reachable from HEAD are walked"
 }
 
 printf 'Dry run workspace: %s\n' "$ROOT"
@@ -554,6 +592,7 @@ scenario_gitlab_probe
 scenario_missing_assets
 scenario_untracked_changelog
 scenario_coverage_after_release
+scenario_tag_published_during_branch
 
 banner "summary"
 if [ "$FAILURES" -eq 0 ]; then
