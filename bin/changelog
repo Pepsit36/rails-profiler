@@ -46,6 +46,37 @@ TYPE_SECTIONS = {
 # Types that never produce a changelog entry.
 SKIPPED_TYPES = %w[chore ci test style].freeze
 
+# Why a commit is absent from the changelog, by type. Written into the
+# `excluded:` block of a section so that the coverage check has a reason to
+# read, and the reader of a diff has one too.
+EXCLUSION_REASONS = {
+  "ci" => "pipeline only",
+  "test" => "tests only",
+  "style" => "formatting only, no visible change",
+  "chore" => "housekeeping, not user visible"
+}.freeze
+DEFAULT_EXCLUSION_REASON = "not a user visible change"
+
+# Readable names for the scopes this project uses, so that a bullet reads like a
+# sentence written by a person. Anything absent falls back to the scope itself
+# with its dashes turned into spaces and its first letter capitalised.
+SCOPE_NAMES = {
+  "api" => "API",
+  "ci" => "CI",
+  "cors" => "CORS",
+  "env" => "Env vars",
+  "env-vars" => "Env vars",
+  "gem" => "Packaging",
+  "gemspec" => "Packaging",
+  "http" => "HTTP",
+  "i18n" => "I18n",
+  "mcp" => "MCP",
+  "sse" => "SSE",
+  "sql" => "SQL",
+  "ui" => "UI",
+  "url" => "URL"
+}.freeze
+
 CONVENTIONAL_SUBJECT = /\A(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<bang>!)?:\s+(?<desc>.+)\z/
 
 # Same rule as the `release` job, applied to subjects and bodies alike:
@@ -146,12 +177,73 @@ module Entries
     section = breaking ? "Changed" : TYPE_SECTIONS[match[:type]]
     return nil if section.nil?
 
-    description = match[:desc].strip.sub(/\.\z/, "")
-    scope = match[:scope].to_s.strip
-    text = scope.empty? ? description : "**#{scope}**: #{description}"
+    description = sentence(match[:desc])
+    scope = pretty_scope(match[:scope])
+    text = scope.nil? ? description : "**#{scope}:** #{description}"
     text = "**Breaking:** #{text}" if breaking
 
-    { section: section, text: "- #{text}" }
+    { section: section, text: "- #{text} <!-- #{commit.sha[0, 7]} -->" }
+  end
+
+  # Full sentence, capitalised, without a trailing period: the style of the
+  # changelog Sebastien wrote by hand.
+  def sentence(description)
+    text = description.to_s.strip.sub(/\.\z/, "")
+    return text if text.empty?
+
+    text.sub(/\A(.)/) { Regexp.last_match(1).upcase }
+  end
+
+  def pretty_scope(scope)
+    scope = scope.to_s.strip
+    return nil if scope.empty?
+    return SCOPE_NAMES[scope] if SCOPE_NAMES.key?(scope)
+
+    scope.tr("-", " ").sub(/\A(.)/) { Regexp.last_match(1).upcase }
+  end
+
+  # Commits of a range that produce no bullet, with the reason why.
+  def exclusions(range, version)
+    Git.commits(range).filter_map do |commit|
+      next if bullet_for(commit)
+      next if release_commit_subject?(commit.subject, version)
+
+      match = CONVENTIONAL_SUBJECT.match(commit.subject.strip)
+      reason = if match.nil?
+                 "subject is not conventional"
+               else
+                 EXCLUSION_REASONS.fetch(match[:type], DEFAULT_EXCLUSION_REASON)
+               end
+      [commit.sha[0, 7], reason]
+    end
+  end
+
+  def exclusions_block(range, version)
+    entries = exclusions(range, version)
+    return nil if entries.empty?
+
+    lines = entries.map { |sha, reason| "  #{sha} #{reason}" }
+    "<!-- excluded:\n#{lines.join("\n")}\n-->\n"
+  end
+
+  # The HTML comments that make a section complete for `coverage`.
+  #
+  # `covered: true` is for a section whose text was written by hand: nobody can
+  # tell which bullet describes which commit, so every publishable commit of the
+  # interval is listed at the section level. The others are listed as exclusions
+  # with their reason. Together they account for every non-merge commit of the
+  # interval except its release commit, which is matched by its subject.
+  def coverage_comments(range, version, covered:)
+    out = +""
+
+    if covered
+      shas = Git.commits(range).filter_map { |commit| commit.sha[0, 7] if bullet_for(commit) }
+      out << "<!-- covered: #{shas.join(" ")} -->\n" unless shas.empty?
+    end
+
+    block = exclusions_block(range, version)
+    out << block unless block.nil?
+    out
   end
 
   def breaking?(commit, match)
@@ -299,11 +391,14 @@ module Commands
     released = tags.map do |tag|
       range = previous.nil? ? tag : "#{previous}..#{tag}"
       previous = tag
-      [tag, Git.tagged_commit_date(tag), Entries.body(range) || "#{NO_CHANGES}\n"]
+      version = tag.sub(/\Av/, "")
+      body = Entries.body(range) || "#{NO_CHANGES}\n"
+      comments = Entries.coverage_comments(range, version, covered: false)
+      [version, Git.tagged_commit_date(tag), comments.empty? ? body : "#{body}\n#{comments}"]
     end
 
-    released.reverse_each do |tag, date, body|
-      out << "\n## [#{tag.sub(/\Av/, "")}] - #{date}\n\n#{body}"
+    released.reverse_each do |version, date, body|
+      out << "\n## [#{version}] - #{date}\n\n#{body}"
     end
 
     print out
@@ -350,19 +445,34 @@ module Commands
     body = lines[(index + 1)...stop].join("\n")
 
     if body.strip.empty?
-      generated = Entries.body(range) || "#{NO_CHANGES}\n"
+      body = Entries.body(range) || "#{NO_CHANGES}\n"
       puts "The [Unreleased] section was empty: generating the #{version} entry from the commit subjects of #{range_label(range)}."
       puts "--- generated entry ---"
-      puts generated
+      puts body
       puts "--- end of generated entry ---"
-      lines[index...stop] = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", *Sections.split(generated)]
+      # The generated bullets already carry their own sha, so only the
+      # exclusions are missing.
+      comments = Entries.coverage_comments(range, version, covered: false)
     else
       puts "Reusing the #{body.strip.lines.count} line(s) already written under [Unreleased]."
-      spacer = lines[index + 1].to_s.strip.empty? ? [] : [""]
-      lines[index..index] = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", *spacer]
+      body = "#{body.strip}\n"
+      comments = Entries.coverage_comments(range, version, covered: true)
     end
 
+    unless comments.empty?
+      puts "Commit references written into the #{version} section, so that `bin/changelog coverage` stays true:"
+      puts comments
+    end
+
+    lines[index...stop] = section_lines(version, date, body, comments)
     lines
+  end
+
+  # `## [Unreleased]`, then the released section, then one blank line before
+  # whatever followed.
+  def section_lines(version, date, body, comments)
+    text = comments.empty? ? body : "#{body}\n#{comments}"
+    [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", *Sections.split(text.sub(/\n+\z/, "\n"))]
   end
 
   # No [Unreleased] section at all: defined behaviour, documented and tested.
@@ -376,8 +486,9 @@ module Commands
     puts generated
     puts "--- end of generated entry ---"
 
+    comments = Entries.coverage_comments(range, version, covered: false)
     insert_at = Sections.first_version_index(lines) || lines.length
-    block = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", *Sections.split(generated)]
+    block = section_lines(version, date, generated, comments)
     block << "" if insert_at == lines.length
     lines[insert_at, 0] = block
     lines
