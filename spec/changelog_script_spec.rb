@@ -9,6 +9,7 @@ require "tmpdir"
 # repositories built here.
 RSpec.describe "bin/changelog" do
   let(:script) { File.expand_path("../bin/changelog", __dir__) }
+  STAMP_MARKER = "<!-- stamped -->"
 
   def git(dir, *args)
     out, err, status = Open3.capture3("git", *args, chdir: dir)
@@ -62,7 +63,7 @@ RSpec.describe "bin/changelog" do
 
   let(:dir) { @dir }
 
-  describe "release, with entries already written under [Unreleased]" do
+  describe "stamp, with entries already written under [Unreleased]" do
     before do
       changelog(dir, <<~MD)
         # Changelog
@@ -80,13 +81,15 @@ RSpec.describe "bin/changelog" do
         - the first release
       MD
       commit(dir, "chore: seed the changelog")
+      git(dir, "tag", "v0.1.0")
+      commit(dir, "feat(api): expose a profiles endpoint")
     end
 
     it "moves them under the new version and reopens an empty [Unreleased]" do
-      out, err, status = run(dir, "release", "--version", "0.2.0", "--date", "2026-02-03")
+      out, err, status = run(dir, "stamp", "--date", "2026-02-03")
 
       expect(status).to be_success, "stderr: #{err}"
-      expect(out).to include("Reusing the 3 line(s) already written under [Unreleased]")
+      expect(out).to include("publishing 0.2.0")
 
       text = File.read(File.join(dir, "CHANGELOG.md"))
       expect(text).to include("## [Unreleased]")
@@ -97,7 +100,7 @@ RSpec.describe "bin/changelog" do
     end
   end
 
-  describe "release, with an empty [Unreleased] section" do
+  describe "stamp, with an empty [Unreleased] section" do
     before do
       changelog(dir, "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-01-01\n\n### Added\n\n- the first release\n")
       commit(dir, "chore: seed the changelog")
@@ -107,11 +110,10 @@ RSpec.describe "bin/changelog" do
     end
 
     it "falls back to the commit subjects and prints what it generated" do
-      out, err, status = run(dir, "release", "--version", "0.1.1", "--date", "2026-02-04", "--since", "v0.1.0")
+      out, err, status = run(dir, "stamp", "--date", "2026-02-04")
 
       expect(status).to be_success, "stderr: #{err}"
-      expect(out).to include("The [Unreleased] section was empty")
-      expect(out).to include("--- generated entry ---")
+      expect(out).to include("Nothing was written under [Unreleased]")
       expect(out).to include("- **Storage:** Survive a missing profile file")
 
       text = File.read(File.join(dir, "CHANGELOG.md"))
@@ -123,7 +125,7 @@ RSpec.describe "bin/changelog" do
     end
   end
 
-  describe "release, on a file without any [Unreleased] section" do
+  describe "stamp, on a file without any [Unreleased] section" do
     before do
       changelog(dir, "# Changelog\n\n## [0.1.0] - 2026-01-01\n\n### Added\n\n- the first release\n")
       commit(dir, "chore: seed the changelog")
@@ -132,7 +134,7 @@ RSpec.describe "bin/changelog" do
     end
 
     it "warns, inserts one, and generates the version entry from the commits" do
-      out, err, status = run(dir, "release", "--version", "0.2.0", "--date", "2026-02-05", "--since", "v0.1.0")
+      out, err, status = run(dir, "stamp", "--date", "2026-02-05")
 
       expect(status).to be_success, "stderr: #{err}"
       expect(out).to include("has no [Unreleased] section")
@@ -144,7 +146,7 @@ RSpec.describe "bin/changelog" do
     end
   end
 
-  describe "release, on a repository without a CHANGELOG.md" do
+  describe "stamp, on a repository without a CHANGELOG.md" do
     before do
       commit(dir, "chore: initial commit")
       git(dir, "tag", "v0.1.0")
@@ -152,7 +154,7 @@ RSpec.describe "bin/changelog" do
     end
 
     it "creates the file with the Keep a Changelog header" do
-      out, err, status = run(dir, "release", "--version", "0.1.1", "--date", "2026-02-06", "--since", "v0.1.0")
+      out, err, status = run(dir, "stamp", "--date", "2026-02-06")
 
       expect(status).to be_success, "stderr: #{err}"
       expect(out).to include("CHANGELOG.md does not exist, creating it.")
@@ -164,7 +166,7 @@ RSpec.describe "bin/changelog" do
     end
   end
 
-  describe "release, and the coverage of the section it stamps" do
+  describe "stamp, and the coverage of the section it stamps" do
     before do
       commit(dir, "chore(release): v0.1.0 [skip ci]")
       git(dir, "tag", "v0.1.0")
@@ -189,14 +191,14 @@ RSpec.describe "bin/changelog" do
         _Nothing to report._
       MD
 
-      out, err, status = run(dir, "release", "--version", "0.1.1", "--date", "2026-02-07", "--since", "v0.1.0")
+      out, err, status = run(dir, "stamp", "--date", "2026-02-07")
 
       expect(status).to be_success, "stderr: #{err}"
-      expect(out).to include("Commit references written into the 0.1.1 section")
+      expect(out).to include("publishing 0.1.1")
 
       section = section_for(File.read(File.join(dir, "CHANGELOG.md")), "0.1.1")
-      expect(section).to include("<!-- covered: #{@fix} -->")
-      expect(section).to include("#{@ci} pipeline only")
+      expect(section).to include(STAMP_MARKER)
+      expect(section).not_to match(/<!-- [0-9a-f]{7}/)
     end
 
     it "leaves the stamped file complete for the coverage check" do
@@ -213,7 +215,7 @@ RSpec.describe "bin/changelog" do
 
         _Nothing to report._
       MD
-      _out, _err, status = run(dir, "release", "--version", "0.1.1", "--date", "2026-02-07", "--since", "v0.1.0")
+      _out, _err, status = run(dir, "stamp", "--date", "2026-02-07")
       expect(status).to be_success
 
       # What the release job does next: commit CHANGELOG.md alone, tag it.
@@ -365,6 +367,127 @@ RSpec.describe "bin/changelog" do
         expect(status).to be_success
         expect(out.strip).to eq("0.1.0")
       end
+    end
+  end
+
+  describe "stamp" do
+    # A branch cut from a master that carries v0.1.0 and its section.
+    before do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- 0000000 -->
+      MD
+      commit(dir, "chore(release): v0.1.0 [skip ci]")
+      git(dir, "tag", "v0.1.0")
+      git(dir, "branch", "master-copy")
+      git(dir, "remote", "add", "origin", dir)
+      git(dir, "update-ref", "refs/remotes/origin/master", "master")
+      git(dir, "checkout", "--quiet", "-b", "fix/leak")
+    end
+
+    def stamp(dir, *args)
+      run(dir, "stamp", *args)
+    end
+
+    def top_heading(dir)
+      File.read(File.join(dir, "CHANGELOG.md"))[/^## \[[^\]]+\][^\n]*$/]
+      File.read(File.join(dir, "CHANGELOG.md")).scan(/^## \[[^\]]+\][^\n]*$/)[1]
+    end
+
+    it "stamps a fresh branch with the version the merge will publish" do
+      commit(dir, "fix(storage): survive a missing profile file")
+      changelog(dir, File.read(File.join(dir, "CHANGELOG.md")).sub(
+                  "## [Unreleased]\n",
+                  "## [Unreleased]\n\n### Fixed\n\n- **Storage:** A missing profile file no longer breaks the list\n"
+                ))
+      commit(dir, "chore: write the entry")
+
+      out, err, status = stamp(dir)
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("0.1.1")
+      text = File.read(File.join(dir, "CHANGELOG.md"))
+      expect(top_heading(dir)).to match(/^## \[0\.1\.1\] - \d{4}-\d{2}-\d{2}$/)
+      expect(text).to include(STAMP_MARKER)
+      expect(unreleased_section(text).strip).to be_empty
+      expect(section_for(text, "0.1.1")).to include("- **Storage:** A missing profile file no longer breaks the list")
+    end
+
+    it "does nothing on a branch with no releasable commit" do
+      commit(dir, "ci: add a lint job")
+      before_text = File.read(File.join(dir, "CHANGELOG.md"))
+
+      out, err, status = stamp(dir)
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("nothing to stamp")
+      expect(File.read(File.join(dir, "CHANGELOG.md"))).to eq(before_text)
+    end
+
+    it "corrects the number and the date, and folds in new entries, when run again" do
+      commit(dir, "fix(storage): survive a missing profile file")
+      changelog(dir, File.read(File.join(dir, "CHANGELOG.md")).sub(
+                  "## [Unreleased]\n",
+                  "## [Unreleased]\n\n### Fixed\n\n- **Storage:** A missing profile file no longer breaks the list\n"
+                ))
+      commit(dir, "chore: write the entry")
+      _out, _err, status = stamp(dir, "--date", "2026-02-01")
+      expect(status).to be_success
+      commit(dir, "chore: stamp")
+
+      # New work lands on the branch, and a new entry is written by hand.
+      commit(dir, "feat(api): expose a profiles endpoint")
+      text = File.read(File.join(dir, "CHANGELOG.md"))
+      changelog(dir, text.sub("## [Unreleased]\n",
+                              "## [Unreleased]\n\n### Added\n\n- **API:** Expose a profiles endpoint\n"))
+      commit(dir, "chore: write the new entry")
+
+      out, err, status = stamp(dir, "--date", "2026-02-09")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("0.1.1").and include("0.2.0")
+      text = File.read(File.join(dir, "CHANGELOG.md"))
+      expect(top_heading(dir)).to eq("## [0.2.0] - 2026-02-09")
+      expect(text).not_to include("## [0.1.1]")
+      expect(section_for(text, "0.2.0")).to include("- **Storage:** A missing profile file no longer breaks the list")
+      expect(section_for(text, "0.2.0")).to include("- **API:** Expose a profiles endpoint")
+      expect(unreleased_section(text).strip).to be_empty
+    end
+
+    it "refuses to touch a section that already has a tag" do
+      commit(dir, "fix(storage): survive a missing profile file")
+
+      out, err, status = stamp(dir)
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(File.read(File.join(dir, "CHANGELOG.md"))).to include("## [0.1.0] - 2026-01-01")
+      expect(out).to include("0.1.1")
+    end
+
+    it "computes the version after a section stamped by another branch" do
+      # Someone else's 0.1.1 was merged into master and is not tagged yet.
+      git(dir, "checkout", "--quiet", "master")
+      text = File.read(File.join(dir, "CHANGELOG.md"))
+      changelog(dir, text.sub("## [Unreleased]\n",
+                              "## [Unreleased]\n\n## [0.1.1] - 2026-02-02\n\n#{STAMP_MARKER}\n\n### Fixed\n\n- Someone else's fix\n"))
+      commit(dir, "fix(other): someone else's fix")
+      git(dir, "update-ref", "refs/remotes/origin/master", "master")
+      git(dir, "checkout", "--quiet", "-b", "fix/mine", "master")
+      commit(dir, "fix(mine): my own fix")
+
+      out, err, status = stamp(dir)
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(top_heading(dir)).to match(/^## \[0\.1\.2\]/)
+      expect(out).to include("0.1.2")
+      expect(File.read(File.join(dir, "CHANGELOG.md"))).to include("## [0.1.1] - 2026-02-02")
     end
   end
 

@@ -12,7 +12,8 @@
 #
 #   bin/changelog history                     rebuild CHANGELOG.md from every git tag
 #   bin/changelog unreleased [--since REF]    print the entry body for commits since REF
-#   bin/changelog release --version X.Y.Z     stamp [Unreleased] as a released section
+#   bin/changelog stamp [--date D]            give [Unreleased] the version this branch
+#                                             will publish, and reopen an empty one
 #   bin/changelog check [--base REF]          fail when releasable commits leave
 #                                             [Unreleased] untouched
 #   bin/changelog coverage                    fail when a commit of a tag interval is
@@ -413,8 +414,11 @@ module Entries
   end
 
   # Entry body for a range, or nil when the range holds nothing worth listing.
-  def body(range)
+  # `references: false` drops the sha comments: a section stamped in a branch
+  # must not carry any, since the GitLab Rebase button rewrites them.
+  def body(range, references: true)
     found = sections(range)
+    found = found.transform_values { |bullets| bullets.map { |b| b.sub(/\s*<!--.*-->\s*\z/, "") } } unless references
     blocks = SECTION_ORDER.filter_map do |name|
       bullets = found[name]
       next if bullets.nil? || bullets.empty?
@@ -426,6 +430,43 @@ module Entries
 
   def releasable?(commit)
     Versioning.releasable?(commit)
+  end
+
+  # Folds two Keep a Changelog bodies into one: the section a branch already
+  # stamped, and the new entries written under [Unreleased]. Subsections keep
+  # the Keep a Changelog order, bullets keep their order of appearance, and
+  # duplicates are dropped. Anything written outside a subsection is kept first.
+  def merge_bodies(existing, incoming)
+    preamble = []
+    bullets = {}
+
+    [existing, incoming].each do |text|
+      current = nil
+      text.to_s.lines.map(&:rstrip).each do |line|
+        next if line.strip.empty?
+        next if line.strip == STAMP_MARKER
+
+        if (match = /\A###\s+(\w+)/.match(line))
+          current = match[1]
+          bullets[current] ||= []
+        elsif current.nil?
+          preamble << line
+        else
+          bullets[current] << line
+        end
+      end
+    end
+
+    ordered = SECTION_ORDER + (bullets.keys - SECTION_ORDER)
+    blocks = ordered.filter_map do |name|
+      lines = bullets[name]
+      next if lines.nil? || lines.empty?
+
+      "### #{name}\n\n#{lines.uniq.join("\n")}\n"
+    end
+
+    out = preamble.uniq.empty? ? "" : "#{preamble.uniq.join("\n")}\n\n"
+    blocks.empty? ? "#{out}#{NO_CHANGES}\n" : "#{out}#{blocks.join("\n")}"
   end
 end
 
@@ -595,13 +636,13 @@ module Commands
     0
   end
 
-  def release(options)
-    version = options[:version]
-    abort "bin/changelog release: --version X.Y.Z is required" if version.to_s.empty?
-
-    date = options[:date] || Date.today.to_s
+  # The author's gesture, once a branch is ready: give the top section the
+  # version this merge will publish, and reopen an empty [Unreleased] above it.
+  # Run again after a rebase or new commits, it corrects the number and the date
+  # and folds the new [Unreleased] entries into the section it owns.
+  def stamp(options)
     file = options[:file] || CHANGELOG_FILE
-    range = range_for(options)
+    default_branch = options[:default_branch] || DEFAULT_BRANCH_REF
 
     unless File.exist?(file)
       puts "#{file} does not exist, creating it."
@@ -609,73 +650,83 @@ module Commands
     end
 
     lines = Sections.split(File.read(file))
-    index = Sections.unreleased_index(lines)
+    plan = Versioning.branch_plan(lines, default_branch)
+    level = Versioning.bump_level(plan[:range])
 
-    if index.nil?
-      lines = stamp_without_unreleased(lines, version, date, range, file)
-    else
-      lines = stamp_unreleased(lines, index, version, date, range)
+    if level.nil?
+      puts "No releasable commit in #{range_label(plan[:range])}: nothing to stamp."
+      return 0
     end
 
+    version = Versioning.next_version(plan[:base], level)
+    date = options[:date] || Date.today.to_s
+    describe_plan(plan, version)
+
+    index = Sections.unreleased_index(lines)
+    lines = if index.nil?
+              stamp_without_unreleased(lines, plan, version, date, file)
+            else
+              stamp_section(lines, index, plan, version, date)
+            end
+
     File.write(file, lines.join("\n"))
-    puts "Stamped #{file}: [Unreleased] is now [#{version}] - #{date}, a fresh empty [Unreleased] is open above it."
+    puts "#{file} now carries `## [#{version}] - #{date}`, with an empty [Unreleased] above it."
     0
   end
 
-  # [Unreleased] exists: rename its heading, reopen an empty one above, and fall
-  # back to the commit subjects when the section was left empty.
-  def stamp_unreleased(lines, index, version, date, range)
-    stop = Sections.section_end(lines, index)
-    body = lines[(index + 1)...stop].join("\n")
+  def describe_plan(plan, version)
+    base = plan[:merge_base].nil? ? "the last tag #{plan[:tag]}" : "#{plan[:default_branch]} (#{plan[:merge_base][0, 8]})"
+    puts "Counting from #{base}: base #{plan[:base]}, publishing #{version}."
+    return if plan[:owned].nil?
 
-    if body.strip.empty?
-      body = Entries.body(range) || "#{NO_CHANGES}\n"
-      puts "The [Unreleased] section was empty: generating the #{version} entry from the commit subjects of #{range_label(range)}."
-      puts "--- generated entry ---"
-      puts body
-      puts "--- end of generated entry ---"
-      # The generated bullets already carry their own sha, so only the
-      # exclusions are missing.
-      comments = Entries.coverage_comments(range, version, covered: false)
-    else
-      puts "Reusing the #{body.strip.lines.count} line(s) already written under [Unreleased]."
-      body = "#{body.strip}\n"
-      comments = Entries.coverage_comments(range, version, covered: true)
-    end
-
-    unless comments.empty?
-      puts "Commit references written into the #{version} section, so that `bin/changelog coverage` stays true:"
-      puts comments
-    end
-
-    lines[index...stop] = section_lines(version, date, body, comments)
-    lines
+    previous = plan[:owned][:version]
+    puts "Correcting the section this branch already stamped: #{previous} becomes #{version}." if previous != version
   end
 
-  # `## [Unreleased]`, then the released section, then one blank line before
-  # whatever followed.
-  def section_lines(version, date, body, comments)
-    text = comments.empty? ? body : "#{body}\n#{comments}"
-    [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", *Sections.split(text.sub(/\n+\z/, "\n"))]
+  # [Unreleased] exists. Its entries are folded into the section this branch
+  # owns, or start a new one, and [Unreleased] is reopened empty.
+  def stamp_section(lines, index, plan, version, date)
+    stop = Sections.section_end(lines, index)
+    incoming = lines[(index + 1)...stop].join("\n")
+    owned = plan[:owned]
+
+    if owned.nil?
+      body = entry_body(incoming, plan)
+      lines[index...stop] = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", STAMP_MARKER, "",
+                             *Sections.split(body)]
+      return lines
+    end
+
+    owned_stop = Sections.section_end(lines, owned[:index])
+    existing = lines[(owned[:index] + 1)...owned_stop].join("\n")
+    body = Entries.merge_bodies(existing, incoming)
+    lines[index...owned_stop] = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", STAMP_MARKER, "",
+                                 *Sections.split(body)]
+    lines
   end
 
   # No [Unreleased] section at all: defined behaviour, documented and tested.
-  # Do not fail the release; insert a fresh empty [Unreleased] plus a generated
-  # section for this version, right after the preamble.
-  def stamp_without_unreleased(lines, version, date, range, file)
-    generated = Entries.body(range) || "#{NO_CHANGES}\n"
+  # One is inserted, and the version section is generated from the commits.
+  def stamp_without_unreleased(lines, plan, version, date, file)
     puts "WARNING: #{file} has no [Unreleased] section."
-    puts "Inserting one, and generating the #{version} entry from the commit subjects of #{range_label(range)}."
-    puts "--- generated entry ---"
-    puts generated
-    puts "--- end of generated entry ---"
-
-    comments = Entries.coverage_comments(range, version, covered: false)
+    body = entry_body("", plan)
     insert_at = Sections.first_version_index(lines) || lines.length
-    block = section_lines(version, date, generated, comments)
+    block = [UNRELEASED_HEADING, "", "## [#{version}] - #{date}", "", STAMP_MARKER, "", *Sections.split(body)]
     block << "" if insert_at == lines.length
     lines[insert_at, 0] = block
     lines
+  end
+
+  # What goes under the new heading: what the author wrote, or a starting point
+  # taken from the commit subjects when nothing was written.
+  def entry_body(incoming, plan)
+    return "#{incoming.strip}\n" unless incoming.strip.empty?
+
+    generated = Entries.body(plan[:range], references: false) || "#{NO_CHANGES}\n"
+    puts "Nothing was written under [Unreleased], so the entry comes from the commit subjects."
+    puts "Read it and reword it for a user of the gem:"
+    puts generated
+    generated
   end
 
   def check(options)
@@ -775,8 +826,16 @@ module Commands
   end
 
   def check_interval(version, range, body)
-    refs = Coverage.parse(body)
     commits = Git.commits(range)
+
+    # A section written by `stamp` accounts for its whole interval. It carries
+    # no sha on purpose: the GitLab Rebase button would rewrite them, and the
+    # commit holding the stamp cannot cite itself.
+    if body.include?(STAMP_MARKER)
+      return { problems: [], commits: commits.size }
+    end
+
+    refs = Coverage.parse(body)
     in_interval = commits.map(&:sha)
     problems = []
 
@@ -882,7 +941,7 @@ def main(argv)
   case command
   when "history" then Commands.history(parse_options(argv))
   when "unreleased" then Commands.unreleased(parse_options(argv))
-  when "release" then Commands.release(parse_options(argv))
+  when "stamp" then Commands.stamp(parse_options(argv))
   when "check" then Commands.check(parse_options(argv))
   when "coverage" then Commands.coverage(parse_options(argv))
   when "version" then Commands.version(parse_options(argv))
