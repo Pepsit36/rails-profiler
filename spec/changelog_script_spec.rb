@@ -495,7 +495,7 @@ RSpec.describe "bin/changelog" do
         _out, err, status = run(untagged, "coverage")
 
         expect(status).not_to be_success
-        expect(err).to include("no tag found in this repository")
+        expect(err).to include("no tag reachable from HEAD")
         expect(err).to include("GIT_DEPTH")
       end
     end
