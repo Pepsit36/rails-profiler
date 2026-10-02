@@ -10,339 +10,377 @@ from the last tag and the conventional commit types, stamps the `[Unreleased]`
 section below and commits the result as `chore(release): vX.Y.Z [skip ci]`.
 Add your own entries under `[Unreleased]`; do not edit released sections.
 
+Each bullet carries the short sha of the commit it describes, in an HTML comment
+that stays invisible once rendered. Commits deliberately absent from a version are
+listed in that version's `excluded:` comment with the reason. `bin/changelog
+coverage` checks that every commit of every tag interval is in one or the other.
+
 ## [Unreleased]
 
 ## [0.30.4] - 2026-07-01
 
 ### Fixed
 
-- **cluster**: resolve profiles across slaves from master ProfilesController
+- **Cluster:** Resolve profiles across slaves from the master `ProfilesController` <!-- 57d379f -->
 
 ## [0.30.3] - 2026-06-29
 
 ### Fixed
 
-- wrap profile dashboards and TestRunnerPage with QueryClientProvider
+- Wrap the profile dashboards and `TestRunnerPage` with `QueryClientProvider` <!-- e5ad047 -->
 
 ## [0.30.2] - 2026-06-29
 
 ### Fixed
 
-- **middleware**: dup downstream headers before mutation
+- **Middleware:** Duplicate downstream headers before mutating them <!-- 01cea9c -->
 
 ## [0.30.1] - 2026-06-29
 
 ### Fixed
 
-- **cluster**: sentinel mismatch, profile list pagination, nil safety in MCP tools and HTTPS slave URLs
+- **Cluster:** Fix sentinel mismatch, profile list pagination, nil safety in MCP tools and HTTPS slave URLs <!-- a8a508b -->
 
 ## [0.30.0] - 2026-06-28
 
 ### Added
 
-- **cluster**: master/slave profiler clustering
+- **Cluster:** Add master/slave profiler clustering <!-- 8109047 -->
 
 ## [0.29.0] - 2026-06-28
 
 ### Added
 
-- **sse**: live profile updates via server-sent events
+- **SSE:** Push live profile updates over server-sent events <!-- ff431f6 -->
 
 ## [0.28.0] - 2026-06-06
 
 ### Added
 
-- **http**: add http_backtrace_depth config option
+- **HTTP:** Add the `http_backtrace_depth` configuration option <!-- e15864c -->
 
 ## [0.27.1] - 2026-06-06
 
 ### Changed
 
-- **api**: replace manual fetch() calls with orval-generated TanStack Query hooks
+- **API:** Replace manual `fetch()` calls with `orval` generated TanStack Query hooks <!-- cc3e2ca -->
 
 ### Fixed
 
-- **file-store**: prevent ENOENT errors on concurrent profile file deletion
+- **File store:** Prevent `ENOENT` errors on concurrent profile file deletion <!-- d1dd476 -->
 
 ## [0.27.0] - 2026-06-02
 
 ### Added
 
-- **mcp**: console profiling, mailer detail, logs/env/i18n sections and full documentation
+- **MCP:** Add console profiling, mailer detail, logs/env/i18n sections and full documentation <!-- 9f97a3f -->
 
 ## [0.26.0] - 2026-06-02
 
 ### Added
 
-- **test-profiler**: add run_tests MCP tool, track_tests config, specs and docs
-- **test-profiler**: enrich reporter, add SSE streaming, MCP tools and env safety
-- **test-profiler**: add test profiling, test runner UI and MCP tool
+- **Test profiler:** Add the `run_tests` MCP tool, the `track_tests` option, specs and docs <!-- 5c63fc0 -->
+- **Test profiler:** Enrich reporter, add SSE streaming, MCP tools and env safety <!-- 58b2d8b -->
+- **Test profiler:** Add test profiling, test runner UI and MCP tool <!-- 4c50149 -->
 
 ## [0.25.0] - 2026-06-01
 
 ### Added
 
-- **console**: add console profiling tab with IRB instrumentation
+- **Console:** Add a console profiling tab with IRB instrumentation <!-- c6ce1b7 -->
 
 ### Changed
 
-- document the console profiling tab and the env override behavior
+- **Docs:** Document the console profiling tab and the env override behaviour <!-- e4f6fe9 -->
 
-### Fixed
-
-- **spec**: update sidekiq and toolbar specs to match current implementation
+<!-- excluded:
+  e8941a4 specs only, no visible change
+-->
 
 ## [0.24.0] - 2026-06-01
 
 ### Added
 
-- **mcp**: add ENV variable management tools
+- **MCP:** Add tools to manage `ENV` variables <!-- 52f43ce -->
 
 ## [0.23.0] - 2026-05-27
 
 ### Added
 
-- **profile-list**: global clear-all button and auto-refresh on tab switch
+- **Profile list:** Add a global clear-all button and auto-refresh on tab switch <!-- b85fc97 -->
 
 ## [0.22.1] - 2026-05-26
 
 ### Fixed
 
-- **http**: propagate collector to child threads, add fire-and-forget support, fix deep backtrace capture
+- **HTTP:** Propagate collector to child threads, add fire-and-forget support, fix deep backtrace capture <!-- 8fd3f63 -->
 
 ## [0.22.0] - 2026-05-04
 
 ### Added
 
-- **mailer**: body preview, variables display, queued badge, and design alignment
-- **collector**: implement MailerCollector with ActionMailer tracking
+- **Mailer:** Add a body preview, a variables display, a queued badge and design alignment <!-- d016698 -->
+- **Collector:** Implement `MailerCollector`, tracking ActionMailer deliveries <!-- b1705c9 -->
+
+### Changed
+
+- **Toolbar:** Remove the emoji from the mailer toolbar item and the dashboard tab <!-- f18e615 -->
 
 ### Fixed
 
-- **mailer**: add Mailers tab to JobProfileDashboard
-- **mailer**: thread isolation and deliver_later mode detection
-- **mailer**: add MailerCollector to job profiler and align toolbar item design
-- **mailer**: handle Rails 7 encoded mail string in deliver.action_mailer payload
-- **mailer**: replace Thread.current.delete with read+nil for fiber-local vars
-- **version**: remove pre-release suffix to fix bundler resolution
-- **mailer**: address code review findings from MR !32
+- **Mailer:** Add the Mailers tab to `JobProfileDashboard` <!-- 05f0549 -->
+- **Mailer:** Fix thread isolation and `deliver_later` mode detection <!-- 35c9de3 -->
+- **Mailer:** Add `MailerCollector` to the job profiler and align the toolbar item design <!-- e566a77 -->
+- **Mailer:** Handle the Rails 7 encoded mail string in the `deliver.action_mailer` payload <!-- c5519ce -->
+- **Mailer:** Replace `Thread.current.delete` with a read and nil write for fiber local variables <!-- 2828c44 -->
+- **Version:** Remove the pre-release suffix, which broke Bundler resolution <!-- eba7e9f -->
+- **Mailer:** Address code review findings from MR !32 <!-- 655d090 -->
 
 ## [0.21.0] - 2026-05-02
 
 ### Added
 
-- **toolbar**: add collapse/expand toggle
+- **Toolbar:** Add a collapse/expand toggle <!-- 7bc637a -->
 
 ## [0.20.0] - 2026-05-01
 
 ### Added
 
-- **ui**: display gem version and warn on mismatch
+- **UI:** Display the gem version and warn on a mismatch <!-- a2509c2 -->
 
 ## [0.19.2] - 2026-04-24
 
 ### Fixed
 
-- **http**: capture RestClient body_stream, remove body size limits, show bodies in MCP
+- **HTTP:** Capture `RestClient` `body_stream`, remove body size limits, show bodies in MCP tool results <!-- 20654f5 -->
+
+<!-- excluded:
+  a9f2cd3 release plumbing, version placeholder reset
+-->
 
 ## [0.19.1] - 2026-04-17
 
 ### Fixed
 
-- **env-vars**: fix revert restoring wrong value, SQLite busy, middleware rescue and UI
+- **Env vars:** Fix revert restoring wrong value, SQLite busy errors, middleware rescue handling and UI refresh <!-- 33bd079 -->
+
+<!-- excluded:
+  9da240b pipeline only
+  09748d1 pipeline only
+  4e8500b pipeline only
+-->
 
 ## [0.19.0] - 2026-04-15
 
 ### Added
 
-- **env**: propagate env var overrides to Sidekiq workers
+- **Env:** Propagate env var overrides to Sidekiq workers <!-- c404799 -->
 
 ## [0.18.0] - 2026-04-14
 
 ### Changed
 
-- **ui**: extract shared tab utilities and redesign Request tab
+- **UI:** Extract shared tab utilities and redesign the Request tab <!-- 47e6269 -->
 
 ### Fixed
 
-- **http**: capture outbound request body passed as 2nd arg to http.request()
+- **HTTP:** Capture outbound request body passed as second argument to `http.request()` <!-- 2dda00f -->
 
 ## [0.17.0] - 2026-04-13
 
 ### Added
 
-- **dashboard**: add env tab to home page and env/job toolbar items
+- **Dashboard:** Add env tab on the home page and env/job toolbar items <!-- c623c40 -->
 
 ## [0.16.0] - 2026-04-13
 
 ### Added
 
-- **function-profiler**: add stackprof sampling mode with multi-clock and GC visibility
+- **Function profiler:** Add `stackprof` sampling mode with multi-clock support and GC visibility <!-- 5f461d9 -->
 
 ### Fixed
 
-- **function-profiler**: fix stackprof bugs, remove minimal mode, improve perf
+- **Function profiler:** Fix `stackprof` bugs, remove minimal mode, improve performance <!-- 8adc3ca -->
 
 ## [0.15.0] - 2026-04-11
 
 ### Added
 
-- **env**: add environment variables tab
+- **Env:** Add environment variables tab <!-- fa3bcec -->
 
 ## [0.14.0] - 2026-04-09
 
 ### Added
 
-- **profiler**: link jobs to their triggering request or parent job
+- **Profiler:** Link jobs to their triggering request or parent job <!-- 5d598f6 -->
 
 ## [0.13.0] - 2026-04-09
 
 ### Added
 
-- **ui**: always show waterfall above HTTP request list
-- **ui**: use SmartBodyPreview in RequestTab for copy/download on request and response bodies
-- **ui**: add copy/download on HTTP bodies, waterfall view, date sort, UX improvements
+- **UI:** Add copy/download buttons on HTTP bodies, waterfall view, date sort, and other UX improvements <!-- e7b430b -->
+- **UI:** Always show waterfall above the HTTP request list <!-- bec6cb0 -->
+- **UI:** Use `SmartBodyPreview` in RequestTab for copy/download on request and response bodies <!-- 439a9ac -->
 
 ### Fixed
 
-- **ui**: derive download extension from actual MIME type instead of body category
-- **ui**: move sortedJobs after filteredJobs to fix TDZ error
+- **UI:** Derive download file extension from actual MIME type instead of body category <!-- 987a65e -->
+- **UI:** Move `sortedJobs` after `filteredJobs` to fix TDZ error <!-- 235d492 -->
 
 ## [0.12.0] - 2026-04-09
 
 ### Added
 
-- **profiler**: add function-level profiling with flamegraph and stats table
+- **Profiler:** Add function-level profiling with flamegraph and stats table <!-- 2781cff -->
 
 ## [0.11.1] - 2026-04-09
 
 ### Added
 
-- **config**: add tmp_path option to centralize storage directory
+- **Config:** Add `tmp_path` option to centralize the storage directory <!-- d68a4c7 -->
 
 ### Fixed
 
-- **mcp**: decompress gzip+base64 bodies before returning to UI and MCP
+- **MCP:** Decompress gzip+base64 bodies before returning to UI and MCP tool results <!-- c551773 -->
 
 ## [0.11.0] - 2026-04-06
 
 ### Added
 
-- **ui**: add load-more pagination to profile list
+- **UI:** Add load-more pagination to the profile list <!-- ef49a2a -->
 
 ## [0.10.1] - 2026-04-06
 
 ### Changed
 
-- add full user documentation with UI guide, MCP guide, and screenshots
+- **Docs:** Add full user documentation, with a UI guide, an MCP guide and screenshots <!-- 2e34dc1 -->
 
 ## [0.10.0] - 2026-04-06
 
 ### Added
 
-- **middleware**: configurable CORS origins, CSP nonce support, body compression
+- **Middleware:** Add configurable CORS origins, CSP nonce support and body compression <!-- bb13049 -->
 
 ## [0.9.1] - 2026-04-06
 
-### Changed
+### Removed
 
-- **collectors**: remove PerformanceCollector in favor of FlameGraphCollector
+- **Collectors:** Remove `PerformanceCollector`, replaced by `FlameGraphCollector` <!-- fd03ac6 -->
 
 ## [0.9.0] - 2026-04-06
 
 ### Added
 
-- **profiler**: add Profiler.measure custom instrumentation API
+- **Profiler:** Add the `Profiler.measure` custom instrumentation API <!-- a3ab553 -->
 
 ## [0.8.0] - 2026-04-05
 
 ### Added
 
-- **ui**: sortable columns, quick filter presets, and flamegraph search
+- **UI:** Add sortable columns, quick filter presets and flamegraph search <!-- 5bfb511 -->
 
 ## [0.7.0] - 2026-04-05
 
 ### Added
 
-- **database**: N+1 visual detection and EXPLAIN ANALYZE integration
+- **Database:** Add N+1 visual detection and `EXPLAIN ANALYZE` integration <!-- af266fc -->
 
 ## [0.6.0] - 2026-04-05
 
 ### Added
 
-- **mcp**: reduce token usage with filtering, body file saving, and pagination
+- **MCP:** Reduce token usage with filtering, body file saving and pagination <!-- fa67dc8 -->
 
 ## [0.5.0] - 2026-04-04
 
 ### Added
 
-- **mcp**: outbound IDs, domain filter, datetimes, latest token, exceptions and copy helpers
+- **MCP:** Add outbound IDs, a domain filter, datetimes, a latest token, exceptions and copy helpers <!-- b36bc24 -->
 
 ## [0.4.0] - 2026-04-03
 
 ### Added
 
-- **collector**: add I18n panel to track translation lookups per request
+- **Collector:** Add an I18n panel tracking translation lookups per request <!-- ef4a672 -->
+
+<!-- excluded:
+  ad4fea1 pipeline only
+-->
 
 ## [0.3.0] - 2026-04-02
 
 ### Added
 
-- **collector**: add routes panel and enrich request collector
+- **Collector:** Add a routes panel and enrich the request collector <!-- febed69 -->
 
 ## [0.2.0] - 2026-03-29
 
 ### Added
 
-- **collector**: Logger/Logs panel - capture Rails.logger messages per request
-- publish gem to RubyGems.org
+- **Collector:** Add a Logs panel, capturing `Rails.logger` messages per request <!-- 3f1d906 -->
+- Publish the gem to RubyGems.org <!-- a63e6b4 -->
 
-### Fixed
-
-- publish to rubygems.org with `GEM_HOST_API_KEY` instead of a credentials file entry
+<!-- excluded:
+  17feea9 pipeline only, despite the fix: type
+  86fcb3f pipeline only
+  5891bfa pipeline only
+  81150a3 pipeline only
+-->
 
 ## [0.1.4] - 2026-03-29
 
 ### Added
 
-- **profiler**: capture full request/response and add MCP history clear
+- **Profiler:** Capture the full request and response, and add an MCP history clear <!-- 7d54262 -->
 
 ## [0.1.3] - 2026-03-29
 
-_No notable changes._
+### Changed
+
+- **Assets:** Migrate Sass `@import` to `@use`, which removes the build deprecation warnings <!-- a0ac9b5 -->
 
 ## [0.1.2] - 2026-03-25
 
-_No notable changes._
+This tag holds nothing but the release commit the pipeline wrote. The interval
+carries no change to the gem, so there is nothing to report for this version.
 
 ## [0.1.1] - 2026-03-25
 
 ### Added
 
-- **http**: decompress gzip/deflate response bodies before storing
-- **flamegraph**: add interactive flame graph tab
-- **config**: add .well-known and favicon.ico to default skip_paths
-- **storage**: add SQLite backend, blob store, and delete/clear APIs
-- **ui**: add filters to profile list action bar and fix badge colors
-- **http**: binary download, inline preview, and smart text formatting
-- rename HTTP tab, add outbound HTTP list, extend MCP coverage
-- **jobs**: add background job profiling for Sidekiq and ActiveJob
-- add outbound HTTP request collector
-- **mcp**: migrate to official Ruby SDK with HTTP transport
-- implement dashboard UI with tab system and design system
-- add AJAX and dump collectors, CORS middleware
-- initial gem implementation
+- **HTTP:** Decompress gzip and deflate response bodies before storing them <!-- f71a5c7 -->
+- **Flamegraph:** Add an interactive flame graph tab <!-- 63c4b67 -->
+- **Config:** Add `.well-known` and `favicon.ico` to the default `skip_paths` <!-- 1286447 -->
+- **Storage:** Add an SQLite backend, a blob store and delete/clear APIs <!-- 544015b -->
+- **UI:** Add filters to the profile list action bar and fix the badge colours <!-- 40d4081 -->
+- **HTTP:** Add binary download, inline preview and smart text formatting <!-- b09eab8 -->
+- Rename the HTTP tab, add the outbound HTTP list and extend MCP coverage <!-- 71bc537 -->
+- **Jobs:** Add background job profiling for Sidekiq and ActiveJob <!-- 27b87db -->
+- Add an outbound HTTP request collector <!-- e5f2ac9 -->
+- **MCP:** Migrate to the official Ruby SDK, over HTTP transport <!-- 3fc2d45 -->
+- Implement the dashboard UI, with a tab system and a design system <!-- beb83f7 -->
+- Add the AJAX and dump collectors, and the CORS middleware <!-- 08bad9f -->
+- First implementation of the gem <!-- 360c6fa -->
 
 ### Changed
 
-- update installation to use GitLab Package Registry
-- **assets**: serve all gem assets exclusively under /_profiler/
-- update README with correct installation and remove dashboard README
+- **Docs:** Document installation from the GitLab Package Registry <!-- 527c32b -->
+- **Assets:** Serve every gem asset exclusively under `/_profiler/` <!-- e8ae1ae -->
+- **Config:** Add `manifest.json` to the default `skip_paths` <!-- 350f16c -->
+- **Docs:** Correct the installation instructions in the README and remove the dashboard README <!-- e44c8a2 -->
 
 ### Fixed
 
-- **gemspec**: fix metadata, file glob, and exclude source assets
-- **gem**: switch to yarn build scripts and update dependencies
-- **gem**: fix http_collector require, collectors config override, and API-only asset serving
-- **gemspec**: exclude .gem build artifacts from files list
-- **profiler**: improve memory tracking and profile deserialization
+- **Packaging:** Fix the gemspec metadata and file glob, and exclude source assets <!-- 195b609 -->
+- **Packaging:** Switch to the yarn build scripts and update dependencies <!-- b62f2d8 -->
+- **Packaging:** Fix the `http_collector` require, the collectors option override and asset serving in API only applications <!-- 729f20f -->
+- **Packaging:** Exclude `.gem` build artifacts from the file list <!-- 9b97f60 -->
+- **Profiler:** Improve memory tracking and profile deserialisation <!-- a0af47e -->
+
+<!-- excluded:
+  d797be5 pipeline only
+  02d63c9 pipeline only
+  9f598d9 subject is not conventional, tooling only
+  7d1d823 tests only
+  c0d46e6 licence file, not a change to the gem
+-->

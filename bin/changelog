@@ -49,8 +49,11 @@ SKIPPED_TYPES = %w[chore ci test style].freeze
 # Why a commit is absent from the changelog, by type. Written into the
 # `excluded:` block of a section so that the coverage check has a reason to
 # read, and the reader of a diff has one too.
+# Keyed by type, or by "type(scope)" when the scope changes the reason.
 EXCLUSION_REASONS = {
   "ci" => "pipeline only",
+  "chore(ci)" => "pipeline only",
+  "chore(release)" => "release plumbing",
   "test" => "tests only",
   "style" => "formatting only, no visible change",
   "chore" => "housekeeping, not user visible"
@@ -108,6 +111,11 @@ HEADER = <<~MD
   from the last tag and the conventional commit types, stamps the `[Unreleased]`
   section below and commits the result as `chore(release): vX.Y.Z [skip ci]`.
   Add your own entries under `[Unreleased]`; do not edit released sections.
+
+  Each bullet carries the short sha of the commit it describes, in an HTML comment
+  that stays invisible once rendered. Commits deliberately absent from a version are
+  listed in that version's `excluded:` comment with the reason. `bin/changelog
+  coverage` checks that every commit of every tag interval is in one or the other.
 MD
 
 Commit = Struct.new(:sha, :subject, :body)
@@ -212,7 +220,9 @@ module Entries
       reason = if match.nil?
                  "subject is not conventional"
                else
-                 EXCLUSION_REASONS.fetch(match[:type], DEFAULT_EXCLUSION_REASON)
+                 scoped = "#{match[:type]}(#{match[:scope]})"
+                 EXCLUSION_REASONS[scoped] ||
+                   EXCLUSION_REASONS.fetch(match[:type], DEFAULT_EXCLUSION_REASON)
                end
       [commit.sha[0, 7], reason]
     end
