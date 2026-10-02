@@ -27,7 +27,8 @@
 #   18. a merge titled feat over a branch holding only a fix;
 #   19. a squash merge, whose single commit carries the merge request title;
 #   20. a branch of tooling commits only: nothing published, nothing tagged;
-#   21. a stamped section with nothing publishable behind it.
+#   21. a stamped section with nothing publishable behind it;
+#   22. an abandoned version, and the branch that repairs the file.
 #
 # Usage: script/release-dry-run.sh [work directory]
 
@@ -830,6 +831,104 @@ scenario_superfluous_stamp() {
   assert_has "$out" "the next branch would take that number as its base" "it says why it matters"
 }
 
+# --- scenario 22: a version abandoned, and the repair ------------------------
+
+scenario_abandoned_version() {
+  banner "22. an abandoned version, and the branch that repairs the file"
+  local case_dir="$ROOT/abandoned" out status first second clone
+  make_fixture "$case_dir"
+
+  step "A is merged with a feature, stamped 0.2.0, and its pipeline never succeeds"
+  git -C "$case_dir/work" checkout --quiet -b feature/a master
+  printf 'a\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "feat(a): the feature of the first branch"
+  add_unreleased_entry "$case_dir/work/CHANGELOG.md" "Added" "- **A:** The feature"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: describe the feature"
+  (cd "$case_dir/work" && ruby bin/changelog stamp --default-branch master > /dev/null)
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: stamp the changelog"
+  merge_branch "$case_dir/work" "feature/a"
+  first="$(git -C "$case_dir/work" rev-parse HEAD)"
+  printf 'master top section: %s\n' "$(top_section "$case_dir/work/CHANGELOG.md")"
+
+  step "B is merged after it, stamped 0.2.1"
+  git -C "$case_dir/work" checkout --quiet -b fix/b master
+  printf 'b\n' >> "$case_dir/work/touched.txt"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "fix(b): the fix of the second branch"
+  add_unreleased_entry "$case_dir/work/CHANGELOG.md" "Fixed" "- **B:** The fix"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: describe the fix"
+  (cd "$case_dir/work" && ruby bin/changelog stamp --default-branch master > /dev/null)
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: stamp the changelog"
+  merge_branch "$case_dir/work" "fix/b"
+  second="$(git -C "$case_dir/work" rev-parse HEAD)"
+  printf 'master top section: %s\n' "$(top_section "$case_dir/work/CHANGELOG.md")"
+  printf 'tags on origin:     %s\n' "$(tags_on_origin "$case_dir")"
+
+  step "the pipeline of B is stuck behind the abandoned 0.2.0"
+  clone="$(pipeline_checkout "$case_dir" "$second" "b-blocked")"
+  out="$(run_release "$clone" "$case_dir" "$second")"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "1" "B cannot publish"
+  assert_has "$out" "still waiting to be published: 0.2.0" "the abandoned version is named"
+  assert_has "$out" "This is the normal case" "fixing and re-running the older pipeline comes first"
+  assert_has "$out" "take its section out of CHANGELOG.md and renumber" "the repair is described"
+
+  step "the repair done wrong: the number is left as it was"
+  git -C "$case_dir/work" checkout --quiet -b chore/abandon-wrong master
+  ruby -e '
+    path = ARGV[0]
+    text = File.read(path)
+    text = text.sub(/^## \[0\.2\.0\][^\n]*\n.*?(?=^## \[0\.1\.0\])/m, "")
+    File.write(path, text)
+  ' "$case_dir/work/CHANGELOG.md"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: drop the abandoned section"
+  out="$(cd "$case_dir/work" && ruby bin/changelog check --base master 2>&1)"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "1" "the check refuses it"
+  assert_has "$out" "will publish 0.2.0" "it says which number is expected"
+  assert_has "$out" "Untagged right now: 0.2.1" "it says what is there instead"
+
+  step "the repair done right: 0.2.1 renumbered to 0.2.0"
+  git -C "$case_dir/work" checkout --quiet -b chore/abandon-0-2-0 master
+  ruby -e '
+    path = ARGV[0]
+    text = File.read(path)
+    text = text.sub(/^## \[0\.2\.0\][^\n]*\n.*?(?=^## \[0\.1\.0\])/m, "")
+    text = text.sub("## [0.2.1]", "## [0.2.0]")
+    File.write(path, text)
+  ' "$case_dir/work/CHANGELOG.md"
+  git -C "$case_dir/work" add --all
+  git -C "$case_dir/work" commit --quiet -m "docs: drop the abandoned 0.2.0 and renumber"
+  sed -n '/## \[Unreleased\]/,/## \[0.1.0\]/p' "$case_dir/work/CHANGELOG.md"
+  out="$(cd "$case_dir/work" && ruby bin/changelog check --base master 2>&1)"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "0" "the check accepts it"
+  assert_has "$out" "0.2.0 is the only untagged section left" "it says why it accepts"
+
+  step "the repair is merged, and the release job publishes"
+  merge_branch "$case_dir/work" "chore/abandon-0-2-0"
+  out="$(run_release "$case_dir/work" "$case_dir")"
+  status=$?
+  printf '%s\n' "$out"
+  step assertions
+  assert_eq "$status" "0" "the job succeeds"
+  assert_has "$out" "Pushed v0.2.0" "0.2.0 is published"
+  assert_eq "$(tags_on_origin "$case_dir")" "v0.1.0 v0.2.0 " "origin carries 0.1.0 and 0.2.0, and no 0.2.1"
+  assert_eq "$(ls "$case_dir/registry/rubygems")" "0.2.0" "rubygems.org holds 0.2.0"
+}
+
 printf 'Dry run workspace: %s\n' "$ROOT"
 scenario_normal
 scenario_no_commit
@@ -852,6 +951,7 @@ scenario_merge_title
 scenario_squash_merge
 scenario_tooling_only
 scenario_superfluous_stamp
+scenario_abandoned_version
 
 banner "summary"
 if [ "$FAILURES" -eq 0 ]; then
