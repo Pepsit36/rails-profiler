@@ -756,6 +756,213 @@ RSpec.describe "bin/changelog" do
     end
   end
 
+  describe "check, on a repair branch that goes too far" do
+    # v1.0.0 and v1.0.1 are published. A was merged, stamped 1.1.0, never
+    # tagged. B was merged after it, stamped 1.1.1.
+    before do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ## [1.0.1] - 2026-01-02
+
+        ### Fixed
+
+        - The second release <!-- 0000001 -->
+
+        ## [1.0.0] - 2026-01-01
+
+        ### Added
+
+        - The first release <!-- 0000000 -->
+      MD
+      commit(dir, "chore(release): v1.0.1 [skip ci]")
+      git(dir, "tag", "v1.0.0")
+      git(dir, "tag", "v1.0.1")
+
+      commit(dir, "feat(a): the feature of the first branch")
+      changelog(dir, File.read(File.join(dir, "CHANGELOG.md")).sub(
+                  "## [Unreleased]\n",
+                  "## [Unreleased]\n\n## [1.1.0] - 2026-02-01\n\n#{STAMP_MARKER}\n\n### Added\n\n- **A:** The feature\n"
+                ))
+      commit(dir, "docs: stamp 1.1.0")
+
+      commit(dir, "fix(b): the fix of the second branch")
+      changelog(dir, File.read(File.join(dir, "CHANGELOG.md")).sub(
+                  "## [Unreleased]\n",
+                  "## [Unreleased]\n\n## [1.1.1] - 2026-02-02\n\n#{STAMP_MARKER}\n\n### Fixed\n\n- **B:** The fix\n"
+                ))
+      commit(dir, "docs: stamp 1.1.1")
+      git(dir, "update-ref", "refs/remotes/origin/master", "master")
+      git(dir, "checkout", "--quiet", "-b", "chore/repair")
+    end
+
+    def repair(dir, body)
+      changelog(dir, "# Changelog\n\n#{body}")
+      commit(dir, "docs: repair the changelog")
+    end
+
+    let(:published) do
+      <<~MD
+        ## [1.0.1] - 2026-01-02
+
+        ### Fixed
+
+        - The second release <!-- 0000001 -->
+
+        ## [1.0.0] - 2026-01-01
+
+        ### Added
+
+        - The first release <!-- 0000000 -->
+      MD
+    end
+
+    it "refuses a branch that swapped two published sections" do
+      repair(dir, <<~MD)
+        ## [Unreleased]
+
+        ## [1.1.0] - 2026-02-03
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **B:** The fix
+
+        ## [1.0.0] - 2026-01-01
+
+        ### Added
+
+        - The first release <!-- 0000000 -->
+
+        ## [1.0.1] - 2026-01-02
+
+        ### Fixed
+
+        - The second release <!-- 0000001 -->
+      MD
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("order")
+    end
+
+    it "refuses the surviving section pushed below the published ones" do
+      repair(dir, <<~MD)
+        ## [Unreleased]
+
+        #{published}
+        ## [1.1.0] - 2026-02-03
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **B:** The fix
+      MD
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("1.1.0")
+      expect(err).to include("first version section")
+    end
+
+    it "refuses rewriting the entry of the section that stays" do
+      repair(dir, <<~MD)
+        ## [Unreleased]
+
+        ## [1.1.0] - 2026-02-03
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - Nothing worth mentioning
+
+        #{published}
+      MD
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("- Nothing worth mentioning")
+      expect(err).to include("was not in any of the sections")
+    end
+
+    it "accepts folding the entries of the section it took out" do
+      repair(dir, <<~MD)
+        ## [Unreleased]
+
+        ## [1.1.0] - 2026-02-03
+
+        #{STAMP_MARKER}
+
+        ### Added
+
+        - **A:** The feature
+
+        ### Fixed
+
+        - **B:** The fix
+
+        #{published}
+      MD
+
+      out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("1.1.0 is the only untagged section left")
+    end
+
+    it "refuses an entry nobody wrote" do
+      repair(dir, <<~MD)
+        ## [Unreleased]
+
+        ## [1.1.0] - 2026-02-03
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **B:** The fix
+        - **C:** Something nobody ever committed
+
+        #{published}
+      MD
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("Something nobody ever committed")
+    end
+
+    it "refuses dropping the entry of the version that will publish" do
+      repair(dir, <<~MD)
+        ## [Unreleased]
+
+        ## [1.1.0] - 2026-02-03
+
+        #{STAMP_MARKER}
+
+        ### Added
+
+        - **A:** The feature
+
+        #{published}
+      MD
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("- **B:** The fix")
+      expect(err).to include("is no longer there")
+    end
+  end
+
   describe "coverage" do
     # v0.1.0 holds one feature and its release commit; v0.2.0 holds one fix, one
     # ci commit and its release commit.
