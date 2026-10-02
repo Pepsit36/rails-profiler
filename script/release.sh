@@ -261,7 +261,7 @@ push_release() {
   fi
 
   if printf '%s' "$out" \
-    | grep -qiE 'denied|forbidden|unauthorized|403|401|protected branch|pre-receive hook declined|read-only|insufficient'; then
+    | grep -qiE 'denied|forbidden|unauthorized|not allowed|403|401|protected branch|pre-receive hook declined|read-only|insufficient'; then
     push_refused_failure
   fi
 
