@@ -32,6 +32,10 @@ RSpec.describe "bin/changelog" do
     git(dir, "commit", "--quiet", "-m", message)
   end
 
+  def short_sha(dir, ref = "HEAD")
+    git(dir, "rev-parse", "--short=7", ref).strip
+  end
+
   def changelog(dir, content)
     File.write(File.join(dir, "CHANGELOG.md"), content)
   end
@@ -108,12 +112,12 @@ RSpec.describe "bin/changelog" do
       expect(status).to be_success, "stderr: #{err}"
       expect(out).to include("The [Unreleased] section was empty")
       expect(out).to include("--- generated entry ---")
-      expect(out).to include("- **storage**: survive a missing profile file")
+      expect(out).to include("- **Storage:** Survive a missing profile file")
 
       text = File.read(File.join(dir, "CHANGELOG.md"))
       expect(unreleased_section(text).strip).to be_empty
       expect(section_for(text, "0.1.1")).to include("### Fixed")
-      expect(section_for(text, "0.1.1")).to include("- **storage**: survive a missing profile file")
+      expect(section_for(text, "0.1.1")).to include("- **Storage:** Survive a missing profile file")
       # ci: never reaches the changelog.
       expect(text).not_to include("tighten the pipeline")
     end
@@ -135,7 +139,7 @@ RSpec.describe "bin/changelog" do
 
       text = File.read(File.join(dir, "CHANGELOG.md"))
       expect(text).to match(/\A# Changelog\n\n## \[Unreleased\]\n\n## \[0\.2\.0\] - 2026-02-05\n/)
-      expect(section_for(text, "0.2.0")).to include("- **api**: expose a profiles endpoint")
+      expect(section_for(text, "0.2.0")).to include("- **API:** Expose a profiles endpoint")
       expect(text).to include("## [0.1.0] - 2026-01-01")
     end
   end
@@ -156,7 +160,71 @@ RSpec.describe "bin/changelog" do
       text = File.read(File.join(dir, "CHANGELOG.md"))
       expect(text).to start_with("# Changelog\n")
       expect(text).to include("Keep a Changelog")
-      expect(section_for(text, "0.1.1")).to include("- stop leaking a thread local")
+      expect(section_for(text, "0.1.1")).to include("- Stop leaking a thread local")
+    end
+  end
+
+  describe "release, and the coverage of the section it stamps" do
+    before do
+      commit(dir, "chore(release): v0.1.0 [skip ci]")
+      git(dir, "tag", "v0.1.0")
+      commit(dir, "fix(storage): survive a missing profile file")
+      @fix = short_sha(dir)
+      commit(dir, "ci: tighten the pipeline")
+      @ci = short_sha(dir)
+    end
+
+    it "writes covered and excluded references under a section written by hand" do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ### Fixed
+
+        - **Storage:** A missing profile file no longer breaks the profile list
+
+        ## [0.1.0] - 2026-01-01
+
+        _Nothing to report._
+      MD
+
+      out, err, status = run(dir, "release", "--version", "0.1.1", "--date", "2026-02-07", "--since", "v0.1.0")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("Commit references written into the 0.1.1 section")
+
+      section = section_for(File.read(File.join(dir, "CHANGELOG.md")), "0.1.1")
+      expect(section).to include("<!-- covered: #{@fix} -->")
+      expect(section).to include("#{@ci} pipeline only")
+    end
+
+    it "leaves the stamped file complete for the coverage check" do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ### Fixed
+
+        - **Storage:** A missing profile file no longer breaks the profile list
+
+        ## [0.1.0] - 2026-01-01
+
+        _Nothing to report._
+      MD
+      _out, _err, status = run(dir, "release", "--version", "0.1.1", "--date", "2026-02-07", "--since", "v0.1.0")
+      expect(status).to be_success
+
+      # What the release job does next: commit CHANGELOG.md alone, tag it.
+      git(dir, "add", "CHANGELOG.md")
+      git(dir, "commit", "--quiet", "-m", "chore(release): v0.1.1 [skip ci]")
+      git(dir, "tag", "v0.1.1")
+
+      out, err, status = run(dir, "coverage")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("changelog coverage: OK")
     end
   end
 
@@ -235,6 +303,257 @@ RSpec.describe "bin/changelog" do
     end
   end
 
+  describe "coverage" do
+    # v0.1.0 holds one feature and its release commit; v0.2.0 holds one fix, one
+    # ci commit and its release commit.
+    before do
+      commit(dir, "feat: add the profiler")
+      @feature = short_sha(dir)
+      commit(dir, "chore(release): v0.1.0 [skip ci]")
+      git(dir, "tag", "v0.1.0")
+      commit(dir, "fix(ui): align the toolbar")
+      @fix = short_sha(dir)
+      commit(dir, "ci: add a lint job")
+      @ci = short_sha(dir)
+      commit(dir, "chore(release): bump version to v0.2.0")
+      git(dir, "tag", "v0.2.0")
+    end
+
+    def complete_changelog(dir, extra: "")
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ## [0.2.0] - 2026-02-01
+
+        ### Fixed
+
+        - **UI:** Align the toolbar <!-- #{@fix} -->
+
+        <!-- excluded:
+          #{@ci} pipeline only
+        -->
+        #{extra}
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- #{@feature} -->
+      MD
+    end
+
+    it "passes when every commit is described or explicitly excluded" do
+      complete_changelog(dir)
+
+      out, err, status = run(dir, "coverage")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("changelog coverage: OK")
+      expect(out).to include("over 2 tag interval(s)")
+    end
+
+    it "accepts a section level covered block instead of per bullet references" do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [0.2.0] - 2026-02-01
+
+        ### Fixed
+
+        - **UI:** Align the toolbar
+
+        <!-- covered: #{@fix} -->
+        <!-- excluded:
+          #{@ci} pipeline only
+        -->
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler
+
+        <!-- covered: #{@feature} -->
+      MD
+
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).to be_success, "stderr: #{err}"
+    end
+
+    it "treats the release commit of a version as covered by its subject alone" do
+      complete_changelog(dir)
+
+      _out, err, status = run(dir, "coverage")
+
+      # Neither release commit is referenced anywhere, and both wordings pass.
+      expect(status).to be_success, "stderr: #{err}"
+      expect(err).not_to include("chore(release)")
+    end
+
+    it "does not take a release commit of another version for this one" do
+      commit(dir, "chore(release): v0.9.9 [skip ci]")
+      stray = short_sha(dir)
+      git(dir, "tag", "v0.3.0")
+      complete_changelog(dir, extra: "\n## [0.3.0] - 2026-03-01\n\n_Nothing._\n")
+
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).not_to be_success
+      expect(err).to include(stray)
+    end
+
+    it "ignores an editorial comment in a published section" do
+      complete_changelog(dir, extra: "\n<!-- TODO: reword this once the UI settles -->\n")
+
+      out, err, status = run(dir, "coverage")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("changelog coverage: OK")
+    end
+
+    it "fails on a sha that is both referenced and excluded" do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [0.2.0] - 2026-02-01
+
+        ### Fixed
+
+        - **UI:** Align the toolbar <!-- #{@fix} -->
+
+        <!-- excluded:
+          #{@fix} pipeline only
+          #{@ci} pipeline only
+        -->
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- #{@feature} -->
+      MD
+
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).not_to be_success
+      expect(err).to include("#{@fix} is both referenced and excluded")
+    end
+
+    it "tells an ambiguous reference from an unknown one" do
+      complete_changelog(dir, extra: "\n<!-- covered: 0123abc -->\n")
+
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).not_to be_success
+      expect(err).to include("0123abc is referenced but no commit of this repository matches it")
+    end
+
+    it "fails on a commit that is neither described nor excluded" do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [0.2.0] - 2026-02-01
+
+        ### Fixed
+
+        - **UI:** Align the toolbar <!-- #{@fix} -->
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- #{@feature} -->
+      MD
+
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).not_to be_success
+      expect(err).to include("changelog coverage: FAILED")
+      expect(err).to include("## [0.2.0]")
+      expect(err).to include("#{@ci} ci: add a lint job is neither described nor excluded")
+    end
+
+    it "fails on a reference that belongs to another interval" do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [0.2.0] - 2026-02-01
+
+        ### Fixed
+
+        - **UI:** Align the toolbar <!-- #{@fix} -->
+        - Add the profiler <!-- #{@feature} -->
+
+        <!-- excluded:
+          #{@ci} pipeline only
+        -->
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- #{@feature} -->
+      MD
+
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).not_to be_success
+      expect(err).to include("#{@feature} is referenced here but does not belong to v0.1.0..v0.2.0")
+    end
+
+    it "fails on an exclusion without a reason" do
+      complete_changelog(dir)
+      text = File.read(File.join(dir, "CHANGELOG.md")).sub("#{@ci} pipeline only", @ci)
+      File.write(File.join(dir, "CHANGELOG.md"), text)
+
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).not_to be_success
+      expect(err).to include("malformed reference")
+    end
+
+    it "fails on a reference to a commit that does not exist" do
+      complete_changelog(dir, extra: "\n<!-- covered: 0123abc -->\n")
+
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).not_to be_success
+      expect(err).to include("0123abc is referenced but no commit of this repository matches it")
+    end
+
+    it "fails on a missing version section" do
+      changelog(dir, "# Changelog\n\n## [0.1.0] - 2026-01-01\n\n- Add the profiler <!-- #{@feature} -->\n")
+
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).not_to be_success
+      expect(err).to include("no `## [0.2.0]` section in CHANGELOG.md")
+    end
+
+    it "refuses to pass on a repository without tags" do
+      Dir.mktmpdir("changelog-spec-untagged") do |untagged|
+        init_repo(untagged)
+        commit(untagged, "feat: add the profiler")
+        changelog(untagged, "# Changelog\n\n## [Unreleased]\n")
+
+        _out, err, status = run(untagged, "coverage")
+
+        expect(status).not_to be_success
+        expect(err).to include("no tag reachable from HEAD")
+        expect(err).to include("GIT_DEPTH")
+      end
+    end
+
+    it "fails when the file is missing" do
+      _out, err, status = run(dir, "coverage")
+
+      expect(status).not_to be_success
+      expect(err).to include("CHANGELOG.md not found")
+    end
+  end
+
   describe "history" do
     before do
       commit(dir, "feat: add the profiler")
@@ -250,8 +569,8 @@ RSpec.describe "bin/changelog" do
       expect(status).to be_success, "stderr: #{err}"
       expect(out).to match(/## \[Unreleased\]\n\n## \[0\.1\.1\] - \d{4}-\d{2}-\d{2}/)
       expect(out.index("## [0.1.1]")).to be < out.index("## [0.1.0]")
-      expect(section_for(out, "0.1.1")).to include("- **ui**: align the toolbar")
-      expect(section_for(out, "0.1.0")).to include("- add the profiler")
+      expect(section_for(out, "0.1.1")).to include("- **UI:** Align the toolbar")
+      expect(section_for(out, "0.1.0")).to include("- Add the profiler")
       expect(out).not_to include("reformat")
     end
 
@@ -263,7 +582,7 @@ RSpec.describe "bin/changelog" do
 
       expect(status).to be_success
       expect(section_for(out, "0.2.0")).to include("### Changed")
-      expect(section_for(out, "0.2.0")).to include("- **Breaking:** **deps**: drop Ruby 3.0 support")
+      expect(section_for(out, "0.2.0")).to include("- **Breaking:** **Deps:** Drop Ruby 3.0 support")
       expect(section_for(out, "0.2.0")).not_to include("_No notable changes._")
     end
 
@@ -274,7 +593,7 @@ RSpec.describe "bin/changelog" do
       out, _err, status = run(dir, "history")
 
       expect(status).to be_success
-      expect(section_for(out, "0.2.0")).to include("- **Breaking:** rework the storage layout")
+      expect(section_for(out, "0.2.0")).to include("- **Breaking:** Rework the storage layout")
     end
 
     it "puts a breaking feature under Changed rather than Added" do
@@ -286,6 +605,17 @@ RSpec.describe "bin/changelog" do
       expect(status).to be_success
       expect(section_for(out, "0.2.0")).to include("### Changed")
       expect(section_for(out, "0.2.0")).not_to include("### Added")
+    end
+
+    it "gives a scope-less docs commit the Docs scope the file uses" do
+      commit(dir, "docs: write the installation guide")
+      git(dir, "tag", "v0.2.0")
+
+      out, _err, status = run(dir, "history")
+
+      expect(status).to be_success
+      expect(section_for(out, "0.2.0")).to include("### Changed")
+      expect(section_for(out, "0.2.0")).to include("- **Docs:** Write the installation guide")
     end
 
     it "marks a tag with nothing publishable" do

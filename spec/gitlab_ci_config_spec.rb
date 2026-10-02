@@ -31,6 +31,16 @@ RSpec.describe ".gitlab-ci.yml" do
     expect(config.fetch("rspec").fetch("stage")).to eq("test")
   end
 
+  it "runs both changelog checks, and needs the full history for the second" do
+    expect(changelog_check.fetch("script")).to include("ruby bin/changelog check --base origin/master")
+    expect(changelog_check.fetch("script")).to include("ruby bin/changelog coverage")
+    expect(changelog_check.fetch("variables").fetch("GIT_DEPTH")).to eq("0")
+  end
+
+  it "keeps the coverage check out of the release job" do
+    expect(config.fetch("release").fetch("script").join(" ")).not_to include("coverage")
+  end
+
   it "leaves the canary rule untouched" do
     expect(config.fetch("canary").fetch("rules").first.fetch("if"))
       .to include('$CI_COMMIT_BRANCH =~ /^(feature|bugfix|hotfix|fix|breaking)\//')

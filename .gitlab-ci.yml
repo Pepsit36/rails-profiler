@@ -33,6 +33,10 @@ changelog:check:
     # A branch pipeline does not bring master along, even with GIT_DEPTH: "0".
     - git fetch origin "+refs/heads/master:refs/remotes/origin/master"
     - ruby bin/changelog check --base origin/master
+    # Needs every tag and the whole history, hence GIT_DEPTH: "0" above. It is
+    # deliberately not in the release job: an editorial gap must not stop a
+    # publication.
+    - ruby bin/changelog coverage
 
 build:
   stage: build
