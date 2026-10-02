@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.5] - 2026-10-02
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Instrumentation:** Pass the arguments of `Thread.new` on to its block while a profile is
