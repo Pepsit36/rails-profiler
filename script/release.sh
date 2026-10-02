@@ -364,11 +364,17 @@ out_of_order_failure() {
   printf '\n' >&2
   printf 'The release resource group must process its pipelines oldest first. Check\n' >&2
   printf 'process_mode on the `release` resource group of this project; the default,\n' >&2
-  printf 'unordered, allows exactly this. Once the older pipeline has published, re-run\n' >&2
-  printf 'this job and it will succeed.\n' >&2
-  printf 'If that older pipeline cannot succeed, repair it and re-run it. If its merge request\n' >&2
-  printf 'was abandoned, take its section out of CHANGELOG.md on a branch of its own: the branch\n' >&2
-  printf 'check accepts that, as long as the branch stamps no section of its own.\n' >&2
+  printf 'unordered, allows exactly this.\n' >&2
+  printf '\n' >&2
+  printf 'What to do, in order of likelihood:\n' >&2
+  printf '  1. the older pipeline simply has not run yet, or failed on something fixable such as\n' >&2
+  printf '     the right to push a tag: fix that, re-run the older pipeline, then re-run this one.\n' >&2
+  printf '     This is the normal case;\n' >&2
+  printf '  2. that version is abandoned, which is the exception. On a branch carrying no\n' >&2
+  printf '     publishable commit, take its section out of CHANGELOG.md and renumber the section\n' >&2
+  printf '     above it to the version this history will publish, so that exactly one untagged\n' >&2
+  printf '     section is left. `bin/changelog check` says which number that is, and refuses any\n' >&2
+  printf '     other. A section that carries a tag is never touched.\n' >&2
   exit 1
 }
 

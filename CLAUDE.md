@@ -44,12 +44,20 @@ Instructions for Claude, and any other agent, working in this repository.
 A section written by `stamp` carries `<!-- stamped -->` and no sha. The sha comments at the end of
 bullets belong to the older sections only: do not remove them, and never invent one.
 
+An entry that has been published is frozen, typo included: never reword, reorder or remove a
+section that carries a tag. If the wording is wrong, say so in the entry of a later version.
+
 Two open merge requests both touching `CHANGELOG.md` will conflict, every time. Resolve it by
 putting **your own** entries back under `## [Unreleased]`, leaving every section below it exactly
 as it was, then running `bin/changelog stamp` again, which gives your section the number that
 follows theirs. Never fold your entry into someone else's section and never drop it; the branch
 check compares the file with the merge base and fails if a section it inherited was changed,
 reordered or removed.
+
+One exception, for a version that is abandoned: a branch carrying **no** publishable commit may
+take an untagged section out and renumber the section above it. `bin/changelog check` then wants
+exactly one untagged section left, at the top, numbered as the release job will number it after
+the merge, and refuses any other number. Tagged sections stay out of it.
 
 `changelog:check` runs in the branch pipeline, on every branch except the default one. It fails
 when the branch has a publishable commit and the top section of `CHANGELOG.md` does not carry

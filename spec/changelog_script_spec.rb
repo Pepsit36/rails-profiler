@@ -570,6 +570,192 @@ RSpec.describe "bin/changelog" do
     end
   end
 
+  describe "check, once a stamped section has been tagged" do
+    # The normal state of the file after a publication: the top section carries
+    # both a tag and the marker stamp left behind.
+    before do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ## [0.1.1] - 2026-02-02
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **Other:** A published fix
+
+        ## [0.1.0] - 2026-01-01
+
+        ### Added
+
+        - Add the profiler <!-- 0000000 -->
+      MD
+      commit(dir, "chore(release): v0.1.1 [skip ci]")
+      git(dir, "tag", "v0.1.0")
+      git(dir, "tag", "v0.1.1")
+      git(dir, "update-ref", "refs/remotes/origin/master", "master")
+      git(dir, "checkout", "--quiet", "-b", "fix/mine")
+      commit(dir, "fix(mine): my own fix")
+    end
+
+    it "does not blame another branch for a section that is already released" do
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("This branch publishes 0.1.2, but [Unreleased] is still the top section")
+      expect(err).not_to include("stamped by another branch")
+    end
+
+    it "says a published entry is frozen when one is edited" do
+      text = File.read(File.join(dir, "CHANGELOG.md"))
+      changelog(dir, text.sub("- **Other:** A published fix", "- **Other:** A published fix, reworded"))
+      commit(dir, "docs: reword a released entry")
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("Section 0.1.1 carries a tag")
+      expect(err).to include("a published entry is frozen")
+    end
+  end
+
+  describe "check, on a branch repairing an abandoned version" do
+    # v1.0.0 is tagged. A was merged, stamped 1.1.0, and never tagged: its
+    # pipeline cannot succeed. B was merged after it, stamped 1.1.1.
+    before do
+      changelog(dir, "# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n### Added\n\n- The first release <!-- 0000000 -->\n")
+      commit(dir, "chore(release): v1.0.0 [skip ci]")
+      git(dir, "tag", "v1.0.0")
+
+      commit(dir, "feat(a): the feature of the first branch")
+      changelog(dir, File.read(File.join(dir, "CHANGELOG.md")).sub(
+                  "## [Unreleased]\n",
+                  "## [Unreleased]\n\n## [1.1.0] - 2026-02-01\n\n#{STAMP_MARKER}\n\n### Added\n\n- **A:** The feature\n"
+                ))
+      commit(dir, "docs: stamp 1.1.0")
+
+      commit(dir, "fix(b): the fix of the second branch")
+      changelog(dir, File.read(File.join(dir, "CHANGELOG.md")).sub(
+                  "## [Unreleased]\n",
+                  "## [Unreleased]\n\n## [1.1.1] - 2026-02-02\n\n#{STAMP_MARKER}\n\n### Fixed\n\n- **B:** The fix\n"
+                ))
+      commit(dir, "docs: stamp 1.1.1")
+      git(dir, "update-ref", "refs/remotes/origin/master", "master")
+      git(dir, "checkout", "--quiet", "-b", "chore/abandon-1-1-0")
+    end
+
+    def repair_with(dir, version)
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ## [#{version}] - 2026-02-03
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **B:** The fix
+
+        ## [1.0.0] - 2026-01-01
+
+        ### Added
+
+        - The first release <!-- 0000000 -->
+      MD
+      commit(dir, "docs: drop the abandoned 1.1.0 and renumber")
+    end
+
+    it "accepts dropping the abandoned section and renumbering the one above" do
+      # The release job will compute 1.1.0: a feature is still in the history.
+      repair_with(dir, "1.1.0")
+
+      out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).to be_success, "stderr: #{err}"
+      expect(out).to include("1.1.0")
+      expect(out).to include("what the release job will publish")
+    end
+
+    it "refuses the same repair with the wrong number" do
+      repair_with(dir, "1.1.1")
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("the release job will publish 1.1.0")
+      expect(err).to include("1.1.1")
+    end
+
+    it "refuses a repair that leaves two untagged sections" do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ## [1.1.1] - 2026-02-02
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **B:** The fix
+
+        ## [1.1.0] - 2026-02-01
+
+        #{STAMP_MARKER}
+
+        ### Added
+
+        - **A:** The feature, reworded
+
+        ## [1.0.0] - 2026-01-01
+
+        ### Added
+
+        - The first release <!-- 0000000 -->
+      MD
+      commit(dir, "docs: touch the abandoned section without removing it")
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("1.1.0")
+    end
+
+    it "still refuses to touch a tagged section on a repair branch" do
+      changelog(dir, <<~MD)
+        # Changelog
+
+        ## [Unreleased]
+
+        ## [1.1.0] - 2026-02-03
+
+        #{STAMP_MARKER}
+
+        ### Fixed
+
+        - **B:** The fix
+
+        ## [1.0.0] - 2026-01-01
+
+        ### Added
+
+        - The first release, reworded <!-- 0000000 -->
+      MD
+      commit(dir, "docs: a repair that also touches a released section")
+
+      _out, err, status = run(dir, "check", "--base", "master")
+
+      expect(status).not_to be_success
+      expect(err).to include("Section 1.0.0 carries a tag")
+    end
+  end
+
   describe "coverage" do
     # v0.1.0 holds one feature and its release commit; v0.2.0 holds one fix, one
     # ci commit and its release commit.

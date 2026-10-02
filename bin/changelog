@@ -261,6 +261,16 @@ module Versioning
     versions.compact.reject(&:empty?).max { |one, other| compare(one, other) }
   end
 
+  # What the release job will publish after the merge: its own rule, the last tag
+  # and everything since it, merges left out. nil when it would publish nothing.
+  def release_version
+    tag = Git.last_tag
+    level = bump_level(tag.empty? ? nil : "#{tag}..HEAD")
+    return nil if level.nil?
+
+    next_version(tag.empty? ? "0.0.0" : tag, level)
+  end
+
   # What a branch is about to publish.
   #
   #   base  the highest of the last tag reachable from HEAD and the versions the
@@ -753,11 +763,19 @@ module Commands
     end
 
     lines = Sections.split(File.exist?(file) ? File.read(file) : "")
-    return 1 unless inherited_sections_intact?(merge_base, file, lines)
-
     plan = Versioning.branch_plan(lines, base)
     level = Versioning.bump_level("#{merge_base}..HEAD")
     stamped = plan[:owned]
+
+    diff = section_diff(merge_base, file, lines)
+    tagged = (diff[:changed] + diff[:missing]).select { |version| Git.tag_exists?("v#{version}") }
+    return frozen_failure(file, tagged) unless tagged.empty?
+
+    if sections_touched?(diff)
+      return repair_verdict(file, lines, diff) if level.nil?
+
+      return conflict_failure(file, diff)
+    end
 
     if level.nil?
       return superfluous_stamp(stamped, file) unless stamped.nil?
@@ -798,57 +816,121 @@ module Commands
 
     if Sections.unreleased_index(lines).nil?
       "This branch publishes #{version}, but #{file} has no [Unreleased] section."
-    elsif plan[:headings].first.to_h[:stamped]
+    elsif inherited_stamp(plan)
       "This branch publishes #{version}, but the top section of #{file} is " \
-        "#{plan[:headings].first[:version]}, stamped by another branch. Yours is missing."
+        "#{inherited_stamp(plan)[:version]}, stamped by another branch. Yours is missing."
     else
       "This branch publishes #{version}, but [Unreleased] is still the top section of #{file}."
     end
   end
 
-  # Sections a branch inherited are not its own. The rule of the file is that a
-  # released section is never edited; a section stamped by another branch and
-  # merged before this one is in the same position. Compared against the merge
-  # base, since that is what the branch started from.
-  def inherited_sections_intact?(merge_base, file, lines)
-    base = Sections.section_bodies(Sections.split(Git.try("show", "#{merge_base}:#{file}") || ""))
-    return true if base.empty?
+  # The top section when it was stamped by another branch and not published yet.
+  # The marker stays in the file once the version is tagged, so a tagged section
+  # is a released one, not someone else's work in progress.
+  def inherited_stamp(plan)
+    top = plan[:headings].first
+    return nil if top.nil? || !top[:stamped]
+    return nil if Git.tag_exists?("v#{top[:version]}")
 
-    head = Sections.section_bodies(lines)
-    changed = base.keys.select { |version| head.key?(version) && head[version].strip != base[version].strip }
-    missing = base.keys.reject { |version| head.key?(version) }
-    added = head.keys - base.keys
-    reordered = (base.keys & head.keys) != (head.keys & base.keys)
-    tagged_missing = missing.select { |version| Git.tag_exists?("v#{version}") }
-
-    unless changed.empty? && !reordered && tagged_missing.empty? && (missing.empty? || added.empty?)
-      return integrity_failure(file, changed, missing, added, reordered, tagged_missing)
-    end
-
-    unless missing.empty?
-      puts "changelog check: #{missing.join(", ")} removed from #{file}. Allowed: none of them carries a " \
-           "tag, and this branch adds no section of its own."
-    end
-    true
+    top
   end
 
-  def integrity_failure(file, changed, missing, added, reordered, tagged_missing)
+  # How CHANGELOG.md changed against the merge base, section by section.
+  def section_diff(merge_base, file, lines)
+    base = Sections.section_bodies(Sections.split(Git.try("show", "#{merge_base}:#{file}") || ""))
+    head = Sections.section_bodies(lines)
+
+    {
+      changed: base.keys.select { |version| head.key?(version) && head[version].strip != base[version].strip },
+      missing: base.keys.reject { |version| head.key?(version) },
+      reordered: (base.keys & head.keys) != (head.keys & base.keys),
+      empty_base: base.empty?
+    }
+  end
+
+  def sections_touched?(diff)
+    !diff[:empty_base] && (!diff[:changed].empty? || !diff[:missing].empty? || diff[:reordered])
+  end
+
+  def untagged_sections(lines)
+    Sections.version_headings(lines).reject { |heading| Git.tag_exists?("v#{heading[:version]}") }
+  end
+
+  # A released entry is frozen, typo included. That is the rule of the file, and
+  # it has no exception: not a reword, not a reorder, not a removal.
+  def frozen_failure(file, tagged)
     warn "changelog check: FAILED."
     warn ""
-    changed.each { |version| warn "Section #{version} was changed by this branch, and it is not this branch's to change." }
-    tagged_missing.each { |version| warn "Section #{version} is no longer in #{file}, and it carries a tag." }
-    (missing - tagged_missing).each { |version| warn "Section #{version} is no longer in #{file}." }
-    warn "The sections of #{file} are no longer in the order they were merged in." if reordered
+    tagged.each do |version|
+      warn "Section #{version} carries a tag: a published entry is frozen, typo included."
+    end
+    warn ""
+    warn "That is the rule of #{file}. If the wording is wrong, say so in the entry of a later"
+    warn "version; the published one stays as it was published."
+    1
+  end
+
+  # The branch brought its own commits and still moved what it inherited: that
+  # is what a badly resolved conflict looks like.
+  def conflict_failure(file, diff)
+    warn "changelog check: FAILED."
+    warn ""
+    diff[:changed].each do |version|
+      warn "Section #{version} was changed by this branch: it was stamped by another branch and merged before yours."
+    end
+    diff[:missing].each { |version| warn "Section #{version} is no longer in #{file}, and it was stamped by another branch." }
+    warn "The sections of #{file} are no longer in the order they were merged in." if diff[:reordered]
     warn ""
     warn "This is what a badly resolved conflict on #{file} looks like. Put your own entries back"
     warn "under `## [Unreleased]`, leave every section below it exactly as it is, and run"
     warn "`bin/changelog stamp` again."
-    unless (missing - tagged_missing).empty? || added.empty?
-      warn ""
-      warn "Removing a section that carries no tag is allowed, but only on a branch that adds none"
-      warn "of its own: that is how the section of an abandoned merge request is taken out."
+    1
+  end
+
+  # A branch that brings no publishable commit of its own may take out or
+  # renumber the stamped sections that carry no tag: that is how the version of
+  # an abandoned merge request leaves the file. What it may not do is leave the
+  # file saying anything other than what the release job will publish.
+  def repair_verdict(file, lines, diff)
+    expected = Versioning.release_version
+    untagged = untagged_sections(lines)
+
+    if expected.nil?
+      return repair_failure(file, nil, untagged) unless untagged.empty?
+
+      puts "changelog check: #{diff[:missing].join(", ")} removed from #{file}, and nothing untagged is " \
+           "left. The release job will publish nothing after this merge, which agrees."
+      return 0
     end
-    false
+
+    if untagged.size != 1 || untagged.first[:version] != expected
+      return repair_failure(file, expected, untagged)
+    end
+
+    puts "changelog check: OK, #{file} was repaired: #{expected} is the only untagged section left, " \
+         "and it is what the release job will publish."
+    0
+  end
+
+  def repair_failure(file, expected, untagged)
+    left = untagged.map { |heading| heading[:version] }
+    warn "changelog check: FAILED."
+    warn ""
+    warn "This branch brings no publishable commit, so it may take out or renumber the stamped"
+    warn "sections that carry no tag. The file does not line up with what will happen next."
+    warn ""
+    if expected.nil?
+      warn "After this merge the release job will publish nothing, so no untagged section should be"
+      warn "left in #{file}. Still there: #{left.join(", ")}."
+    else
+      warn "After this merge the release job will publish #{expected}, so #{file} must carry exactly"
+      warn "one untagged section, at the top, numbered #{expected}. Untagged right now: " \
+           "#{left.empty? ? "none" : left.join(", ")}."
+    end
+    warn ""
+    warn "Renumber the section the merge will publish, and take the abandoned ones out. A section"
+    warn "that carries a tag is never touched."
+    1
   end
 
   # Every non-merge commit of every tag interval has to be either described in
