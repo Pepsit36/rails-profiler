@@ -841,11 +841,18 @@ module Commands
     head = Sections.section_bodies(lines)
 
     {
+      base: base,
+      head: head,
       changed: base.keys.select { |version| head.key?(version) && head[version].strip != base[version].strip },
       missing: base.keys.reject { |version| head.key?(version) },
       reordered: (base.keys & head.keys) != (head.keys & base.keys),
       empty_base: base.empty?
     }
+  end
+
+  # Bullet lines of a section body, which is what an entry is.
+  def entry_lines(body)
+    body.to_s.lines.map(&:strip).select { |line| line.start_with?("- ") }
   end
 
   def sections_touched?(diff)
@@ -887,6 +894,91 @@ module Commands
     1
   end
 
+  # The order of the sections is the order the versions were merged in, and it is
+  # a record, not a layout choice. No branch reorders it, repair branch included,
+  # and that holds for the published sections too.
+  def reorder_failure(file)
+    warn "changelog check: FAILED."
+    warn ""
+    warn "The sections of #{file} are no longer in the order they were merged in."
+    warn ""
+    warn "That order is a record of what was published when, and a published entry is frozen,"
+    warn "its position included. Put the sections back in the order they had, newest first."
+    1
+  end
+
+  def repair_position_failure(file, expected, first)
+    warn "changelog check: FAILED."
+    warn ""
+    warn "#{expected} is the version this merge will publish, so it has to come at the top of #{file}."
+    warn "The first version section is #{first} instead."
+    warn ""
+    warn "The repair takes the abandoned sections out and renumbers the one that stays; it does"
+    warn "not move it."
+    1
+  end
+
+  # On a repair branch the surviving section keeps the body it had. The one
+  # latitude: it may take in the entries of the untagged sections this branch
+  # removed. Those commits stay in the history and ship in the gem, so their
+  # entry can legitimately join the version that publishes them.
+  def repair_body_failure(file, version, problem, lines_at_fault)
+    warn "changelog check: FAILED."
+    warn ""
+    case problem
+    when :invented
+      lines_at_fault.each do |line|
+        warn "In section #{version}: #{line}"
+      end
+      warn ""
+      warn "That entry was not in any of the sections waiting to be published, so this branch wrote"
+      warn "it. A repair branch does not write entries: it takes abandoned sections out and keeps"
+      warn "what was already there."
+    when :lost
+      lines_at_fault.each do |line|
+        warn "Gone from section #{version}: #{line}"
+      end
+      warn ""
+      warn "That entry described the version this merge will publish and is no longer there."
+      warn "A repair branch renumbers a section; it does not empty it."
+    else
+      warn "Section #{version} of #{file} does not descend from any section that was waiting to be"
+      warn "published. A repair branch renumbers one of those; it does not invent a section."
+    end
+    1
+  end
+
+  # The pending section the surviving one descends from: itself when it kept its
+  # number, otherwise the highest pending section, which is the one the gesture
+  # renumbers.
+  def repair_descent(diff, version)
+    # The gesture renumbers the top pending section, and that number is often
+    # the one an abandoned section had, so the number at HEAD says nothing about
+    # which section survived. As soon as a pending section was removed, the
+    # survivor descends from the highest of them.
+    pending = diff[:missing].reject { |other| Git.tag_exists?("v#{other}") }
+    return diff[:base][Versioning.highest(pending)] unless pending.empty?
+
+    diff[:base].key?(version) && !Git.tag_exists?("v#{version}") ? diff[:base][version] : nil
+  end
+
+  def repair_body_problem(diff, version, survivor_body)
+    allowed = diff[:base].reject { |other, _| Git.tag_exists?("v#{other}") }
+                         .values.flat_map { |body| entry_lines(body) }.uniq
+    kept = entry_lines(survivor_body)
+
+    invented = kept - allowed
+    return [:invented, invented] unless invented.empty?
+
+    descent = repair_descent(diff, version)
+    return [:unknown, []] if descent.nil?
+
+    lost = entry_lines(descent) - kept
+    return [:lost, lost] unless lost.empty?
+
+    nil
+  end
+
   # A branch that brings no publishable commit of its own may take out or
   # renumber the stamped sections that carry no tag: that is how the version of
   # an abandoned merge request leaves the file. What it may not do is leave the
@@ -906,6 +998,13 @@ module Commands
     if untagged.size != 1 || untagged.first[:version] != expected
       return repair_failure(file, expected, untagged)
     end
+
+    first = Sections.version_headings(lines).first
+    return repair_position_failure(file, expected, first[:version]) if first[:version] != expected
+    return reorder_failure(file) if diff[:reordered]
+
+    problem, at_fault = repair_body_problem(diff, expected, Sections.section_bodies(lines)[expected])
+    return repair_body_failure(file, expected, problem, at_fault) unless problem.nil?
 
     puts "changelog check: OK, #{file} was repaired: #{expected} is the only untagged section left, " \
          "and it is what the release job will publish."

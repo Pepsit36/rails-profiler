@@ -56,8 +56,11 @@ reordered or removed.
 
 One exception, for a version that is abandoned: a branch carrying **no** publishable commit may
 take an untagged section out and renumber the section above it. `bin/changelog check` then wants
-exactly one untagged section left, at the top, numbered as the release job will number it after
-the merge, and refuses any other number. Tagged sections stay out of it.
+exactly one untagged section left, at the top of the file, numbered as the release job will number
+it after the merge, and refuses any other number. Taking a section out does not take its commits
+out: they stay in the history and ship in the version published next, so their entries can be
+folded into the section that stays, and that is the only change allowed to its body. Tagged
+sections stay out of it, their order included.
 
 `changelog:check` runs in the branch pipeline, on every branch except the default one. It fails
 when the branch has a publishable commit and the top section of `CHANGELOG.md` does not carry
