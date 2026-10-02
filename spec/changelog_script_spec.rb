@@ -607,6 +607,17 @@ RSpec.describe "bin/changelog" do
       expect(section_for(out, "0.2.0")).not_to include("### Added")
     end
 
+    it "gives a scope-less docs commit the Docs scope the file uses" do
+      commit(dir, "docs: write the installation guide")
+      git(dir, "tag", "v0.2.0")
+
+      out, _err, status = run(dir, "history")
+
+      expect(status).to be_success
+      expect(section_for(out, "0.2.0")).to include("### Changed")
+      expect(section_for(out, "0.2.0")).to include("- **Docs:** Write the installation guide")
+    end
+
     it "marks a tag with nothing publishable" do
       commit(dir, "chore: tidy up")
       git(dir, "tag", "v0.1.2")

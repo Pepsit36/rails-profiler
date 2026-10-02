@@ -205,7 +205,7 @@ module Entries
     return nil if section.nil?
 
     description = sentence(match[:desc])
-    scope = pretty_scope(match[:scope])
+    scope = pretty_scope(match[:scope]) || implicit_scope(match[:type])
     text = scope.nil? ? description : "**#{scope}:** #{description}"
     text = "**Breaking:** #{text}" if breaking
 
@@ -219,6 +219,13 @@ module Entries
     return text if text.empty?
 
     text.sub(/\A(.)/) { Regexp.last_match(1).upcase }
+  end
+
+  # A documentation commit rarely carries a scope, and the file gives every one
+  # of them the same **Docs:** heading, so it is filled in here rather than left
+  # to each author. No other type gets a scope it did not write.
+  def implicit_scope(type)
+    "Docs" if type == "docs"
   end
 
   def pretty_scope(scope)
