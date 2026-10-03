@@ -27,6 +27,13 @@ RSpec.describe Profiler::Instrumentation::ThreadContextPropagation do
       expect(Thread.new(1, 2, 3) { |a, b, c| [a, b, c] }.value).to eq([1, 2, 3])
     end
 
+    # The bare super path flattened a trailing keyword hash just as the wrapper did,
+    # because the signature, not the wrapper, is what loses the keyword-ness. So this
+    # held for every application loading the gem, on every Ruby, profile or no profile.
+    it "stays keyword arguments when no profile is being collected either" do
+      expect(Thread.new(1, key: 2) { |*args, **kwargs| [args, kwargs] }.value).to eq([[1], { key: 2 }])
+    end
+
     it "reaches a block that splats them" do
       with_profiling_context do
         expect(Thread.new(1, 2, 3) { |*args| args }.value).to eq([1, 2, 3])
@@ -95,6 +102,21 @@ RSpec.describe Profiler::Instrumentation::ThreadContextPropagation do
 
     after { server.close }
 
+    # Pinned rather than read off the runner: RUBY_TCP_NO_FAST_FALLBACK=1 turns Happy
+    # Eyeballs off while Socket still answers to tcp_fast_fallback, and the examples
+    # below would then pass, or fail, for a reason that has nothing to do with this
+    # patch. The version gate stays on respond_to?, which is what 3.3 lacks.
+    before do
+      next unless Socket.respond_to?(:tcp_fast_fallback)
+
+      @fast_fallback_was = Socket.tcp_fast_fallback
+      Socket.tcp_fast_fallback = true
+    end
+
+    after do
+      Socket.tcp_fast_fallback = @fast_fallback_was if Socket.respond_to?(:tcp_fast_fallback)
+    end
+
     it "connects to a local server addressed by hostname" do
       with_profiling_context do
         socket = Socket.tcp("localhost", port, resolv_timeout: resolv_timeout, connect_timeout: connect_timeout)
@@ -116,6 +138,10 @@ RSpec.describe Profiler::Instrumentation::ThreadContextPropagation do
       with_profiling_context do
         socket = Socket.tcp("localhost", port, resolv_timeout: resolv_timeout, connect_timeout: connect_timeout)
         socket.close
+      rescue SystemCallError, SocketError
+        # Whether the connection succeeds is the example above. This one only asks
+        # what Thread.new was called with, and says so even when the connect fails.
+        nil
       end
 
       expect(thread_arguments).to include([:ipv4, "localhost", port, anything])
