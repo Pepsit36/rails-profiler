@@ -25,7 +25,7 @@ RSpec.describe Profiler::LocalRequest do
   end
 
   describe ".denial_reason" do
-    # The Host check is skipped in the test environment, which the request specs load.
+    # The test environment, which the request specs load, also accepts the test hosts.
     before do
       if defined?(Rails) && Rails.respond_to?(:env)
         allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new("development"))
@@ -67,13 +67,42 @@ RSpec.describe Profiler::LocalRequest do
       expect(described_class.denial_reason(request(env))).to include("Host header")
     end
 
-    it "skips the Host check in the test environment, not the address checks" do
-      stub_const("Rails", double("Rails", env: ActiveSupport::EnvironmentInquirer.new("test")))
+    it "accepts the reserved test hosts in the test environment only, with the address checks" do
+      stub_const("Rails", double("Rails", env: ActiveSupport::EnvironmentInquirer.new("test"),
+                                          application: nil))
       host = { "REMOTE_ADDR" => "127.0.0.1", "HTTP_HOST" => "www.example.com" }
       remote = host.merge("REMOTE_ADDR" => "10.0.0.5")
+      evil = host.merge("HTTP_HOST" => "evil.com")
 
       expect(described_class.denial_reason(request(host))).to be_nil
       expect(described_class.denial_reason(request(remote))).to include("REMOTE_ADDR")
+      expect(described_class.denial_reason(request(evil))).to include("Host header")
+    end
+
+    # Only "host", "host:digits", "[ipv6]" and "[ipv6]:digits" lose their port; anything
+    # else is taken as is, so it is refused unless it is itself local.
+    it "refuses malformed forms with a port" do
+      ["127.0.0.1:abc", "[::1]10.0.0.5", "[::1]evil.com", "127.0.0.1:", "[::1"].each do |value|
+        env = { "REMOTE_ADDR" => "127.0.0.1", "HTTP_X_FORWARDED_FOR" => value }
+        expect(described_class.denial_reason(request(env))).to include("X-Forwarded-For"), value
+      end
+
+      ["localhost:evil.com", "[::1]evil.com", "localhost:3000:80", "127.0.0.1%evil.com"].each do |value|
+        env = { "REMOTE_ADDR" => "127.0.0.1", "HTTP_HOST" => value }
+        expect(described_class.denial_reason(request(env))).to include("Host header"), value
+      end
+    end
+
+    it "accepts well-formed forms with a port" do
+      ["127.0.0.1:5555", "[::1]:5556", "::1", "[::1]", "127.0.0.1"].each do |value|
+        env = { "REMOTE_ADDR" => "127.0.0.1", "HTTP_X_FORWARDED_FOR" => value }
+        expect(described_class.denial_reason(request(env))).to be_nil, value
+      end
+
+      ["localhost:3000", "[::1]:3000", "::1", "127.0.0.1:3000"].each do |value|
+        env = { "REMOTE_ADDR" => "127.0.0.1", "HTTP_HOST" => value }
+        expect(described_class.denial_reason(request(env))).to be_nil, value
+      end
     end
   end
 
