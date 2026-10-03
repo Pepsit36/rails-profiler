@@ -167,7 +167,7 @@ RSpec.describe "Profiler access control", type: :request do
   end
 
   describe "the default authorization mode" do
-    # The Host check is skipped in the test environment (see below).
+    # The test environment also accepts the reserved test hosts (see below).
     before { rails_env("development") }
 
     it "is :allow_local" do
@@ -260,6 +260,11 @@ RSpec.describe "Profiler access control", type: :request do
       expect(last_response.status).to eq(200)
     end
 
+    it "refuses the default test hosts outside the test environment" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_HOST" => "www.example.com")
+      expect(last_response.status).to eq(403)
+    end
+
     it "accepts a *.localhost name" do
       get "/_profiler/api/profiles", {}, local.merge("HTTP_HOST" => "myapp.localhost:3000")
       expect(last_response.status).to eq(200)
@@ -327,11 +332,29 @@ RSpec.describe "Profiler access control", type: :request do
   describe ":allow_local in the test environment" do
     before { rails_env("test") }
 
-    # The application's own request specs use Host www.example.com; DNS rebinding needs a
-    # browser visiting the server, which a test run does not have.
-    it "does not check the Host" do
-      get "/_profiler/api/profiles", {}, local.merge("HTTP_HOST" => "www.example.com")
-      expect(last_response.status).to eq(200)
+    # The application's own request specs use the default hosts of rack-test and of Rails
+    # integration tests, reserved names (RFC 2606) that no attacker can point at himself.
+    it "accepts the default test hosts" do
+      %w[www.example.com example.com example.org www.example.com:3000].each do |host|
+        get "/_profiler/api/profiles", {}, local.merge("HTTP_HOST" => host)
+        expect(last_response.status).to eq(200), host
+      end
+    end
+
+    it "still refuses any other Host, a server run in the test environment being reachable" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_HOST" => "evil.com")
+      expect(last_response.status).to eq(403)
+    end
+
+    it "still refuses a foreign X-Forwarded-Host" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_HOST" => "www.example.com",
+                                                     "HTTP_X_FORWARDED_HOST" => "evil.com")
+      expect(last_response.status).to eq(403)
+    end
+
+    it "still refuses a foreign host= in a Forwarded header" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_FORWARDED" => "for=127.0.0.1;host=evil.com")
+      expect(last_response.status).to eq(403)
     end
 
     it "captures the application's request specs" do

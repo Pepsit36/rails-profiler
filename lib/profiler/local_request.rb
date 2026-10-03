@@ -10,14 +10,16 @@ module Profiler
   # can only refuse it, when a local reverse proxy reports a remote client. The Host header
   # has to be a local name, or one the application allows in config.hosts, which defeats DNS
   # rebinding: a rebound page reaches 127.0.0.1 under the attacker's own domain name. The
-  # test environment skips that Host check: rebinding needs a browser visiting the server,
-  # and the application's own request specs send Host www.example.com.
+  # test environment also accepts the default hosts of rack-test and of Rails integration
+  # tests, reserved names (RFC 2606) that no attacker can point at a server of his own.
   module LocalRequest
     FORWARDING_HEADERS = {
       "HTTP_X_FORWARDED_FOR" => "X-Forwarded-For",
       "HTTP_X_REAL_IP" => "X-Real-IP",
       "HTTP_FORWARDED" => "Forwarded"
     }.freeze
+
+    TEST_HOSTS = %w[www.example.com example.com example.org].freeze
 
     @warned = false
     @warn_mutex = Mutex.new
@@ -39,7 +41,7 @@ module Profiler
           return "the #{name} header reports a non-local client (#{remote})" if remote
         end
 
-        host_denial_reason(request) unless test_environment?
+        host_denial_reason(request)
       end
 
       def local?(request)
@@ -74,7 +76,10 @@ module Profiler
       end
 
       def loopback_address?(value)
-        address = value.to_s.strip.delete_prefix("[").delete_suffix("]").sub(/%.*\z/, "")
+        address = value.to_s.strip
+        address = address[1..-2] if address.start_with?("[") && address.end_with?("]")
+        # Only an IPv6 address carries a zone identifier ("fe80::1%eth0").
+        address = address.sub(/%.*\z/, "") if address.include?(":")
         return false if address.empty?
 
         ip = IPAddr.new(address)
@@ -120,17 +125,13 @@ module Profiler
         end
       end
 
-      # "127.0.0.1:5555" -> "127.0.0.1", "[::1]:5555" -> "::1", "::1" -> "::1",
-      # "localhost:3000" -> "localhost". A bare IPv6 address has more than one colon.
+      # "127.0.0.1:5555" -> "127.0.0.1", "[::1]:5555" -> "::1", "localhost:3000" -> "localhost".
+      # Any other form, a bare IPv6 address included, is returned as is: a malformed value is
+      # then refused unless it is local by itself.
       def strip_port(value)
         value = value.to_s.strip
-        if value.start_with?("[")
-          value[1...(value.index("]") || value.length)]
-        elsif value.count(":") == 1
-          value.split(":", 2).first
-        else
-          value
-        end
+        match = value.match(/\A\[([^\]]+)\](?::\d+)?\z/) || value.match(/\A([^:]+)(?::\d+)?\z/)
+        match ? match[1] : value
       end
 
       def host_name(value)
@@ -141,6 +142,7 @@ module Profiler
         return false if host.empty?
         return true if host == "localhost" || host.end_with?(".localhost")
         return true if loopback_address?(host)
+        return true if test_environment? && TEST_HOSTS.include?(host)
 
         permitted_by_rails_hosts?(host)
       end
