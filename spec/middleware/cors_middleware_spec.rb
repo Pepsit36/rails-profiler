@@ -138,6 +138,23 @@ RSpec.describe Profiler::Middleware::CorsMiddleware do
     end
   end
 
+  describe "the profiler root without a trailing slash" do
+    it "gets the framing headers even when the application sends no X-Frame-Options" do
+      env = Rack::MockRequest.env_for("/_profiler")
+      _status, headers, _body = app.call(env)
+
+      expect(headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: devtools:")
+      expect(headers["X-Frame-Options"]).to eq("SAMEORIGIN")
+    end
+
+    it "does not take a lookalike path for the profiler" do
+      env = Rack::MockRequest.env_for("/_profilerfoo")
+      _status, headers, _body = app.call(env)
+
+      expect(headers).not_to have_key("Content-Security-Policy")
+    end
+  end
+
   describe "request on a non-profiler path" do
     it "passes through without CORS or framing headers" do
       Profiler.configuration.extension_cors_enabled = true

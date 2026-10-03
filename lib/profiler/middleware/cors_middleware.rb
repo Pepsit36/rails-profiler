@@ -10,7 +10,7 @@ module Profiler
       end
 
       def call(env)
-        return @app.call(env) unless env['PATH_INFO'].start_with?('/_profiler/')
+        return @app.call(env) unless profiler_path?(env['PATH_INFO'].to_s)
 
         cors = Profiler.configuration.extension_cors_enabled
 
@@ -33,6 +33,11 @@ module Profiler
       end
 
       private
+
+      # "/_profiler" itself is the dashboard URL; "/_profilerfoo" belongs to the application.
+      def profiler_path?(path)
+        path == '/_profiler' || path.start_with?('/_profiler/')
+      end
 
       def frame_ancestors
         sources = Array(Profiler.configuration.frame_ancestors).map(&:to_s).reject(&:empty?)
