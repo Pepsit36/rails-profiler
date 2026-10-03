@@ -199,8 +199,11 @@ module Profiler
         klass = Object.const_get(mailer_class)
         params = klass.instance_method(action).parameters
         params.each_with_index.each_with_object({}) do |((_, name), i), h|
-          value = serialize_assign(Profiler::Redaction.filter_value(args[i]))
-          h[name.to_s] = Profiler::Redaction.filter_named(name, value)
+          h[name.to_s] = if Profiler::Redaction.sensitive_key?(name)
+            Profiler::Redaction::MASK
+          else
+            serialize_assign(Profiler::Redaction.filter_named(name, Profiler::Redaction.filter_value(args[i])))
+          end
         end
       rescue StandardError
         {}

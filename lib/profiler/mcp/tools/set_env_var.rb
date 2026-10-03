@@ -12,7 +12,7 @@ module Profiler
           value = params["value"].to_s
 
           return [{ type: "text", text: "Error: key cannot be blank." }] if key.empty?
-          if value == Profiler::Redaction::MASK
+          if Profiler::Redaction.mask?(value)
             return [{ type: "text", text: "Error: #{Profiler::Redaction::MASK} is the mask the profiler shows " \
                                           "in place of a hidden value, not a value; #{key} was left unchanged." }]
           end
