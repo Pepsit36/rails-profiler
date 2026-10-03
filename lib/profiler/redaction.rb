@@ -70,7 +70,7 @@ module Profiler
 
         state = compiled
         masked = state[:plain].filter(hash)
-        state[:proc_filter] ? apply_procs_tree(masked, nil) : masked
+        state[:proc_filter] ? apply_procs_tree(masked, nil, hash, state[:procs]) : masked
       rescue StandardError => e
         report(e, "filtering a hash")
         hash.transform_values { MASK }
@@ -243,6 +243,7 @@ module Profiler
           filter: ActiveSupport::ParameterFilter.new(filters, mask: MASK),
           plain: ActiveSupport::ParameterFilter.new(plain, mask: MASK),
           proc_filter: procs.empty? ? nil : ActiveSupport::ParameterFilter.new(procs, mask: MASK),
+          procs: procs,
           keys: {}
         }.merge(text_matchers(filters))
       end
@@ -304,13 +305,29 @@ module Profiler
         MASK
       end
 
-      def apply_procs_tree(value, key)
+      # Walks a tree the non-proc filters have already masked and lets the
+      # procs rewrite each string leaf, once, as ParameterFilter does: a copy
+      # of the key and of the value, and the original params for a proc of
+      # arity 3. A leaf masked by the filter is the MASK object itself and is
+      # left alone, also as ParameterFilter does; a value that only reads
+      # "[FILTERED]" is a different object and still goes to the procs.
+      def apply_procs_tree(value, key, original, procs)
         case value
-        when Hash then value.each_with_object(value.class.new) { |(k, v), out| out[k] = apply_procs_tree(v, k) }
-        when Array then value.map { |v| apply_procs_tree(v, key) }
-        when String then key.nil? || value == MASK ? value : apply_procs([key.to_s], value)
+        when Hash then value.each_with_object(value.class.new) { |(k, v), out| out[k] = apply_procs_tree(v, k, original, procs) }
+        when Array then value.map { |v| apply_procs_tree(v, key, original, procs) }
+        when String then key.nil? || value.equal?(MASK) ? value : call_procs(procs, key, value, original)
         else value
         end
+      end
+
+      def call_procs(procs, key, value, original)
+        key = key.dup if key.duplicable?
+        value = value.dup
+        procs.each { |b| b.arity == 2 ? b.call(key, value) : b.call(key, value, original) }
+        value
+      rescue StandardError => e
+        report(e, "applying a filter_parameters proc")
+        MASK
       end
 
       def keep_override_field?(field, value)
