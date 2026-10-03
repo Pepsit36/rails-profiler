@@ -9,7 +9,9 @@ module Profiler
   # X-Real-IP, Forwarded, X-Forwarded-Host) can be forged, so they never grant access: they
   # can only refuse it, when a local reverse proxy reports a remote client. The Host header
   # has to be a local name, or one the application allows in config.hosts, which defeats DNS
-  # rebinding: a rebound page reaches 127.0.0.1 under the attacker's own domain name.
+  # rebinding: a rebound page reaches 127.0.0.1 under the attacker's own domain name. The
+  # test environment skips that Host check: rebinding needs a browser visiting the server,
+  # and the application's own request specs send Host www.example.com.
   module LocalRequest
     FORWARDING_HEADERS = {
       "HTTP_X_FORWARDED_FOR" => "X-Forwarded-For",
@@ -32,26 +34,12 @@ module Profiler
           value = request.get_header(key)
           next if value.nil? || value.empty?
 
-          addresses = key == "HTTP_FORWARDED" ? forwarded_for(value) : value.split(",")
-          remote = addresses.map(&:strip).find { |address| !loopback_address?(address) }
+          nodes = key == "HTTP_FORWARDED" ? forwarded_param(value, "for") : value.split(",")
+          remote = nodes.map { |node| strip_port(node) }.find { |address| !loopback_address?(address) }
           return "the #{name} header reports a non-local client (#{remote})" if remote
         end
 
-        # A request with no Host header does not come from a browser, so it cannot be a
-        # rebound page; REMOTE_ADDR alone decides.
-        raw_host = request.get_header("HTTP_HOST").to_s
-        unless raw_host.empty?
-          host = host_name(raw_host)
-          return "the Host header #{host.inspect} is not a local name" unless allowed_host?(host)
-        end
-
-        forwarded_host = request.get_header("HTTP_X_FORWARDED_HOST")
-        if forwarded_host && !forwarded_host.empty?
-          remote = forwarded_host.split(",").map { |h| host_name(h) }.find { |h| !allowed_host?(h) }
-          return "the X-Forwarded-Host header #{remote.inspect} is not a local name" if remote
-        end
-
-        nil
+        host_denial_reason(request) unless test_environment?
       end
 
       def local?(request)
@@ -67,11 +55,11 @@ module Profiler
           @warned = true
         end
 
-        message = "[Profiler] Request refused by authorization_mode :allow_local: #{reason}. " \
+        message = "[Profiler] Request refused or not profiled by authorization_mode :allow_local: #{reason}. " \
                   "The profiler only serves and captures requests made from this machine. " \
                   "If the application runs in Docker or behind a remote proxy, either set " \
                   "config.authorization_mode = :allow_authorized with a config.authorize_with block " \
-                  "that admits your network (see the Authorization section of the README), or set " \
+                  "that admits your network (see the Access control section of the README), or set " \
                   "config.authorization_mode = :allow_all, which offers no protection at all. " \
                   "This message is logged once per process."
         if defined?(Rails) && Rails.respond_to?(:logger) && Rails.logger
@@ -98,29 +86,55 @@ module Profiler
 
       private
 
-      # Values of the for= parameters of a Forwarded header (RFC 7239), port stripped.
-      def forwarded_for(value)
+      def host_denial_reason(request)
+        # A request with no Host header does not come from a browser, so it cannot be a
+        # rebound page; REMOTE_ADDR alone decides.
+        raw_host = request.get_header("HTTP_HOST").to_s
+        unless raw_host.empty?
+          host = host_name(raw_host)
+          return "the Host header #{host.inspect} is not a local name" unless allowed_host?(host)
+        end
+
+        forwarded_hosts = request.get_header("HTTP_X_FORWARDED_HOST").to_s.split(",")
+        remote = forwarded_hosts.map { |h| host_name(h) }.find { |h| !allowed_host?(h) }
+        return "the X-Forwarded-Host header #{remote.inspect} is not a local name" if remote
+
+        forwarded = request.get_header("HTTP_FORWARDED").to_s
+        remote = forwarded_param(forwarded, "host").map { |h| host_name(h) }.find { |h| !allowed_host?(h) }
+        return "the Forwarded header names a non-local host (#{remote.inspect})" if remote
+
+        nil
+      end
+
+      def test_environment?
+        defined?(Rails) && Rails.respond_to?(:env) && Rails.env.test?
+      end
+
+      # Values of one parameter (for=, host=) of a Forwarded header (RFC 7239), quotes removed.
+      def forwarded_param(value, param)
         value.split(/[,;]/).filter_map do |pair|
           name, node = pair.split("=", 2)
-          next unless name.to_s.strip.casecmp?("for")
+          next unless name.to_s.strip.casecmp?(param)
 
-          node = node.to_s.strip.delete_prefix('"').delete_suffix('"')
-          if node.start_with?("[")
-            node[1...(node.index("]") || node.length)]
-          else
-            node.sub(/:\d+\z/, "")
-          end
+          node.to_s.strip.delete_prefix('"').delete_suffix('"')
+        end
+      end
+
+      # "127.0.0.1:5555" -> "127.0.0.1", "[::1]:5555" -> "::1", "::1" -> "::1",
+      # "localhost:3000" -> "localhost". A bare IPv6 address has more than one colon.
+      def strip_port(value)
+        value = value.to_s.strip
+        if value.start_with?("[")
+          value[1...(value.index("]") || value.length)]
+        elsif value.count(":") == 1
+          value.split(":", 2).first
+        else
+          value
         end
       end
 
       def host_name(value)
-        value = value.to_s.strip.downcase
-        name = if value.start_with?("[")
-                 value[1...(value.index("]") || value.length)]
-               else
-                 value.sub(/:\d*\z/, "")
-               end
-        name.to_s.chomp(".")
+        strip_port(value).downcase.chomp(".")
       end
 
       def allowed_host?(host)

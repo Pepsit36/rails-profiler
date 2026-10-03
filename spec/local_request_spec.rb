@@ -25,6 +25,13 @@ RSpec.describe Profiler::LocalRequest do
   end
 
   describe ".denial_reason" do
+    # The Host check is skipped in the test environment, which the request specs load.
+    before do
+      if defined?(Rails) && Rails.respond_to?(:env)
+        allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new("development"))
+      end
+    end
+
     it "works on a plain Rack::Request" do
       env = { "REMOTE_ADDR" => "127.0.0.1", "HTTP_HOST" => "localhost:3000" }
       expect(described_class.denial_reason(request(env))).to be_nil
@@ -58,6 +65,15 @@ RSpec.describe Profiler::LocalRequest do
     it "refuses a lookalike of localhost" do
       env = { "REMOTE_ADDR" => "127.0.0.1", "HTTP_HOST" => "localhost.evil.example" }
       expect(described_class.denial_reason(request(env))).to include("Host header")
+    end
+
+    it "skips the Host check in the test environment, not the address checks" do
+      stub_const("Rails", double("Rails", env: ActiveSupport::EnvironmentInquirer.new("test")))
+      host = { "REMOTE_ADDR" => "127.0.0.1", "HTTP_HOST" => "www.example.com" }
+      remote = host.merge("REMOTE_ADDR" => "10.0.0.5")
+
+      expect(described_class.denial_reason(request(host))).to be_nil
+      expect(described_class.denial_reason(request(remote))).to include("REMOTE_ADDR")
     end
   end
 
