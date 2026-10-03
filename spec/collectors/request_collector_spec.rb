@@ -63,6 +63,8 @@ RSpec.describe Profiler::Collectors::RequestCollector do
 
         rails_app = double("rails_app")
         allow(rails_app).to receive(:routes).and_return(routes_double)
+        # Read by the redaction filter, which also masks route params.
+        allow(rails_app).to receive(:config).and_return(double("config", filter_parameters: []))
         stub_const("Rails", double("Rails", application: rails_app, respond_to?: true))
 
         collector.collect

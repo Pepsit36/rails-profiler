@@ -91,7 +91,7 @@ module Profiler
         {
           route_name:        route_name ? "#{route_name}_path" : nil,
           route_pattern:     matched_route&.path&.spec&.to_s&.sub(/\(\.:format\)$/, ""),
-          route_params:      route_params,
+          route_params:      Profiler::Redaction.filter_hash(route_params),
           controller_action: controller_action
         }
       rescue StandardError

@@ -19,6 +19,13 @@ module Profiler
 
         value = params[:value]
 
+        if value.to_s == Profiler::Redaction::MASK
+          render json: { error: "#{Profiler::Redaction::MASK} is the mask the profiler shows in place of a " \
+                                "hidden value, not a value; #{key} was left unchanged" },
+                 status: :unprocessable_entity
+          return
+        end
+
         if value.nil? || value.to_s.empty?
           Profiler.env_override_store.delete(key)
           ENV.delete(key)

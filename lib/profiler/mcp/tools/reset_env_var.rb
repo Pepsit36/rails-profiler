@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../slave_support"
+require_relative "../../redaction"
 
 require "uri"
 
@@ -26,7 +27,7 @@ module Profiler
           original = overrides[key]["original"]
           Profiler.env_override_store.reset(key)
 
-          restored = original || "(unset)"
+          restored = original.nil? ? "(unset)" : Profiler::Redaction.env_value(key, original)
           [{ type: "text", text: "Reset #{key} to original value: #{restored}" }]
         end
       end

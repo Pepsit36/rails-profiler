@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../slave_support"
+require_relative "../../redaction"
 
 module Profiler
   module MCP
@@ -11,6 +12,10 @@ module Profiler
           value = params["value"].to_s
 
           return [{ type: "text", text: "Error: key cannot be blank." }] if key.empty?
+          if value == Profiler::Redaction::MASK
+            return [{ type: "text", text: "Error: #{Profiler::Redaction::MASK} is the mask the profiler shows " \
+                                          "in place of a hidden value, not a value; #{key} was left unchanged." }]
+          end
 
           if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
             proxy.patch_json("/_profiler/api/env_vars", { key: key, value: value })

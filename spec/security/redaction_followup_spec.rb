@@ -167,6 +167,12 @@ RSpec.describe "Sensitive data redaction, review follow-up" do
       expect(JSON.parse(Profiler::Redaction.filter_body(raw, "application/json"))).to eq("password" => mask)
     end
 
+    it "still parses when a key holds a character that case-folds onto ASCII letters" do
+      raw = %({"pa\u017Fsword":"p","note":"\u00E9t\u00E9"})
+      expect(JSON.parse(Profiler::Redaction.filter_body(raw, "application/json")))
+        .to eq("pa\u017Fsword" => mask, "note" => "\u00E9t\u00E9")
+    end
+
     it "still parses when a regexp filter matches a key the pre-test found" do
       stub_const("Rails", fake_rails([/\Asession_id\z/]))
       expect(JSON.parse(Profiler::Redaction.filter_body('{"session_id":"s","a":1}', "application/json")))
