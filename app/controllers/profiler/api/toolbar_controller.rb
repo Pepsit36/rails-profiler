@@ -3,7 +3,6 @@
 module Profiler
   module Api
     class ToolbarController < Profiler::ApplicationController
-      skip_before_action :verify_authenticity_token
       skip_before_action :check_authorization
 
       def show

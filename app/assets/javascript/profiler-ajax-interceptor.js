@@ -59,7 +59,8 @@
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'X-Profiler-Request': '1'
       },
       body: body
     }).then(response => {

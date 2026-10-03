@@ -21,10 +21,14 @@ export async function apiFetch<T>(config: {
     ? '?' + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()
     : ''
 
+  // Every request carries this header: the profiler refuses a mutation without it, and a page
+  // on another origin cannot add it without a CORS preflight.
+  const baseHeaders: Record<string, string> = { 'X-Profiler-Request': '1', ...headers }
+
   const res = await fetch(url + qs, {
     method,
     signal,
-    headers: data !== undefined ? { 'Content-Type': 'application/json', ...headers } : headers,
+    headers: data !== undefined ? { 'Content-Type': 'application/json', ...baseHeaders } : baseHeaders,
     body: data !== undefined ? JSON.stringify(data) : undefined,
   })
 

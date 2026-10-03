@@ -1,0 +1,385 @@
+# frozen_string_literal: true
+
+require "spec_helper"
+require "stringio"
+require_relative "../support/rails_app"
+
+RSpec.describe "Profiler access control", type: :request do
+  include Rack::Test::Methods
+
+  let(:local) { { "REMOTE_ADDR" => "127.0.0.1", "HTTP_HOST" => "localhost" } }
+  let(:remote) { { "REMOTE_ADDR" => "10.0.0.5", "HTTP_HOST" => "localhost" } }
+  let(:profiler_header) { { "HTTP_X_PROFILER_REQUEST" => "1" } }
+
+  def app
+    Rails.application
+  end
+
+  def default_host
+    "localhost"
+  end
+
+  def json
+    JSON.parse(last_response.body)
+  end
+
+  let(:storage) { Profiler::Storage::MemoryStore.new }
+
+  before do
+    Profiler.configure do |config|
+      config.enabled = true
+      config.collectors = []
+      config.track_http = false
+    end
+    Profiler.instance_variable_set(:@storage, storage)
+    Profiler::LocalRequest.reset_warning!
+  end
+
+  def refuse_everything
+    Profiler.configure do |config|
+      config.authorization_mode = :allow_authorized
+      config.authorize_with { |_request| false }
+    end
+  end
+
+  describe "an unauthorized request" do
+    before { refuse_everything }
+
+    it "is refused on the UI" do
+      get "/_profiler/", {}, local
+      expect(last_response.status).to eq(403)
+    end
+
+    it "is refused on a profile page" do
+      storage.save("tok", build_profile(token: "tok"))
+      get "/_profiler/profiles/tok", {}, local
+      expect(last_response.status).to eq(403)
+    end
+
+    it "is refused on the API listing, with a JSON error" do
+      storage.save("tok", build_profile(token: "tok"))
+      get "/_profiler/api/profiles", {}, local
+
+      expect(last_response.status).to eq(403)
+      expect(json["error"]).to match(/not authorized/i)
+      expect(last_response.body).not_to include("tok")
+    end
+
+    it "is refused on profile deletion, even with the forgery header" do
+      storage.save("tok", build_profile(token: "tok"))
+      delete "/_profiler/api/profiles/clear", {}, local.merge(profiler_header)
+
+      expect(last_response.status).to eq(403)
+      expect(storage.load("tok")).not_to be_nil
+    end
+
+    it "is refused on an ENV write" do
+      patch "/_profiler/api/env_vars", { key: "PROFILER_SPEC_VAR", value: "1" }, local.merge(profiler_header)
+
+      expect(last_response.status).to eq(403)
+      expect(ENV).not_to have_key("PROFILER_SPEC_VAR")
+    end
+
+    it "is refused on the SSE stream" do
+      expect(Profiler::SSE).not_to receive(:current)
+      get "/_profiler/api/events/tok", {}, local
+      expect(last_response.status).to eq(403)
+    end
+
+    it "is refused on the test runner page and API" do
+      get "/_profiler/test_runner", {}, local
+      expect(last_response.status).to eq(403)
+
+      get "/_profiler/api/test_runner/files", {}, local
+      expect(last_response.status).to eq(403)
+
+      expect(Profiler::TestRunner::Runner).not_to receive(:new) if defined?(Profiler::TestRunner::Runner)
+      post "/_profiler/api/test_runner/runs", { files: ["spec/x_spec.rb"] }, local.merge(profiler_header)
+      expect(last_response.status).to eq(403)
+    end
+
+    it "is refused on the toolbar" do
+      storage.save("tok", build_profile(token: "tok"))
+      get "/_profiler/api/toolbar/tok", {}, local
+      expect(last_response.status).to eq(403)
+    end
+
+    it "still gets the gem's static assets" do
+      path = Profiler::Engine.root.join("app", "assets", "builds", "profiler.css")
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(path).and_return("body {}")
+
+      get "/_profiler/assets/profiler.css", {}, local
+      expect(last_response.status).to eq(200)
+    end
+
+    # Walks every route of the engine, so that a controller added later without the
+    # check, or one that skips it, fails here.
+    it "is refused on every route of the engine except the static assets" do
+      routes = Profiler::Engine.routes.routes.select { |route| route.defaults[:controller] }
+      routes = routes.reject { |route| route.defaults[:controller] == "profiler/assets" }
+      expect(routes.size).to be > 30
+
+      allowed = routes.filter_map do |route|
+        verb = route.verb.to_s.split("|").first
+        verb = "GET" if verb.nil? || verb.empty?
+        path = "/_profiler" + route.path.spec.to_s.sub("(.:format)", "").gsub(/[:*]\w+/, "x")
+
+        custom_request(verb, path, {}, local.merge(profiler_header))
+        "#{verb} #{path} -> #{last_response.status}" unless last_response.status == 403
+      end
+
+      expect(allowed).to be_empty
+    end
+  end
+
+  describe "an authorized request" do
+    it "is accepted under :allow_all, from any address" do
+      Profiler.configuration.authorization_mode = :allow_all
+      get "/_profiler/api/profiles", {}, remote
+      expect(last_response.status).to eq(200)
+    end
+
+    it "is accepted under :allow_authorized when the block says so" do
+      Profiler.configure do |config|
+        config.authorization_mode = :allow_authorized
+        config.authorize_with { |request| request.get_header("REMOTE_ADDR") == "10.0.0.5" }
+      end
+      get "/_profiler/api/profiles", {}, remote
+      expect(last_response.status).to eq(200)
+    end
+
+    it "is refused under :allow_authorized without a block" do
+      Profiler.configuration.authorization_mode = :allow_authorized
+      get "/_profiler/api/profiles", {}, local
+      expect(last_response.status).to eq(403)
+    end
+
+    it "is accepted under :allow_local from this machine" do
+      Profiler.configuration.authorization_mode = :allow_local
+      get "/_profiler/api/profiles", {}, local
+      expect(last_response.status).to eq(200)
+    end
+  end
+
+  describe "the default authorization mode" do
+    it "is :allow_local" do
+      expect(Profiler.configuration.authorization_mode).to eq(:allow_local)
+    end
+
+    it "accepts a loopback IPv4 address" do
+      get "/_profiler/api/profiles", {}, local.merge("REMOTE_ADDR" => "127.0.0.42")
+      expect(last_response.status).to eq(200)
+    end
+
+    it "accepts a loopback IPv6 address" do
+      get "/_profiler/api/profiles", {}, { "REMOTE_ADDR" => "::1", "HTTP_HOST" => "[::1]:3000" }
+      expect(last_response.status).to eq(200)
+    end
+
+    it "accepts the UI from this machine" do
+      get "/_profiler/", {}, local
+      expect(last_response.status).to eq(200)
+    end
+
+    it "refuses a non-loopback address" do
+      get "/_profiler/api/profiles", {}, remote
+      expect(last_response.status).to eq(403)
+    end
+
+    it "refuses a Docker bridge address" do
+      get "/_profiler/api/profiles", {}, remote.merge("REMOTE_ADDR" => "172.17.0.1")
+      expect(last_response.status).to eq(403)
+    end
+
+    it "ignores an X-Forwarded-For that claims a loopback client" do
+      get "/_profiler/api/profiles", {}, remote.merge("HTTP_X_FORWARDED_FOR" => "127.0.0.1")
+      expect(last_response.status).to eq(403)
+    end
+
+    it "refuses a remote client relayed by a local proxy" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_X_FORWARDED_FOR" => "203.0.113.9, 127.0.0.1")
+      expect(last_response.status).to eq(403)
+    end
+
+    it "refuses a remote client named in a Forwarded header" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_FORWARDED" => 'for="203.0.113.9:4711";proto=http')
+      expect(last_response.status).to eq(403)
+    end
+
+    it "accepts a local client relayed by a local proxy" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_X_FORWARDED_FOR" => "127.0.0.1",
+                                                     "HTTP_FORWARDED" => 'for="[::1]:4711"')
+      expect(last_response.status).to eq(200)
+    end
+
+    it "refuses a DNS-rebound host" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_HOST" => "evil.example:3000")
+      expect(last_response.status).to eq(403)
+    end
+
+    it "refuses a rebound host that sends a local X-Forwarded-Host" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_HOST" => "evil.example", "HTTP_X_FORWARDED_HOST" => "localhost")
+      expect(last_response.status).to eq(403)
+    end
+
+    it "refuses a local host with a foreign X-Forwarded-Host" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_X_FORWARDED_HOST" => "evil.example")
+      expect(last_response.status).to eq(403)
+    end
+
+    it "accepts a *.localhost name" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_HOST" => "myapp.localhost:3000")
+      expect(last_response.status).to eq(200)
+    end
+
+    it "accepts a host the application lists in config.hosts" do
+      hosts = Rails.application.config.hosts
+      hosts << "myapp.test"
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_HOST" => "myapp.test")
+      expect(last_response.status).to eq(200)
+    ensure
+      hosts.delete("myapp.test")
+    end
+
+    describe "the warning" do
+      let(:log) { StringIO.new }
+
+      around do |example|
+        previous = Rails.logger
+        Rails.logger = Logger.new(log)
+        example.run
+      ensure
+        Rails.logger = previous
+      end
+
+      it "names the cause and both ways out, once per process" do
+        get "/_profiler/api/profiles", {}, remote
+        get "/_profiler/api/profiles", {}, remote.merge("REMOTE_ADDR" => "10.0.0.6")
+
+        warnings = log.string.lines.grep(/allow_local/)
+        expect(warnings.size).to eq(1)
+        expect(warnings.first).to include("REMOTE_ADDR 10.0.0.5 is not a loopback address")
+        expect(warnings.first).to include(":allow_authorized", "authorize_with", ":allow_all")
+      end
+
+      it "is logged when the middleware does not capture a non-local request" do
+        get "/hello", {}, remote
+
+        expect(last_response.status).to eq(200)
+        expect(last_response.headers).not_to have_key("X-Profiler-Token")
+        expect(storage.list).to be_empty
+        expect(log.string).to include("REMOTE_ADDR 10.0.0.5 is not a loopback address")
+      end
+
+      it "names a forwarding header" do
+        get "/_profiler/api/profiles", {}, local.merge("HTTP_X_FORWARDED_FOR" => "203.0.113.9")
+        expect(log.string).to include("X-Forwarded-For header reports a non-local client (203.0.113.9)")
+      end
+
+      it "names a non-local Host" do
+        get "/_profiler/api/profiles", {}, local.merge("HTTP_HOST" => "evil.example")
+        expect(log.string).to include('the Host header "evil.example" is not a local name')
+      end
+
+      it "is not logged for a local request" do
+        get "/hello", {}, local
+
+        expect(last_response.headers).to have_key("X-Profiler-Token")
+        expect(log.string).not_to include("allow_local")
+      end
+    end
+  end
+
+  describe "CORS" do
+    it "never answers Access-Control-Allow-Origin: * by default" do
+      get "/_profiler/api/profiles", {}, local.merge("HTTP_ORIGIN" => "https://evil.example")
+      expect(last_response.headers["Access-Control-Allow-Origin"]).to be_nil
+    end
+
+    it "is disabled by default" do
+      expect(Profiler.configuration.extension_cors_enabled).to be(false)
+      expect(Profiler.configuration.cors_allowed_origins).to eq([])
+    end
+  end
+
+  describe "forgery protection" do
+    before { storage.save("tok", build_profile(token: "tok")) }
+
+    it "refuses a JSON mutation without the header" do
+      delete "/_profiler/api/profiles/clear", {}, local.merge("CONTENT_TYPE" => "application/json")
+
+      expect(last_response.status).to eq(403)
+      expect(json["error"]).to include("X-Profiler-Request")
+      expect(storage.load("tok")).not_to be_nil
+    end
+
+    it "refuses a form POST turned into a DELETE by _method" do
+      post "/_profiler/api/profiles/clear", { "_method" => "delete" }, local
+
+      expect(last_response.status).to eq(403)
+      expect(storage.load("tok")).not_to be_nil
+    end
+
+    it "refuses a form POST turned into a PATCH of ENV by _method" do
+      post "/_profiler/api/env_vars", { "_method" => "patch", "key" => "PROFILER_SPEC_VAR", "value" => "1" }, local
+
+      expect(last_response.status).to eq(403)
+      expect(ENV).not_to have_key("PROFILER_SPEC_VAR")
+    end
+
+    it "refuses a plain form POST" do
+      post "/_profiler/api/ajax/link", { "parent_token" => "a", "child_token" => "tok" }, local
+
+      expect(last_response.status).to eq(403)
+      expect(storage.load("tok").parent_token).to be_nil
+    end
+
+    it "accepts a mutation carrying the header" do
+      delete "/_profiler/api/profiles/clear", {}, local.merge(profiler_header)
+
+      expect(last_response.status).to eq(204)
+      expect(storage.load("tok")).to be_nil
+    end
+
+    it "accepts a mutation carrying the Rails CSRF token" do
+      get "/_profiler/", {}, local
+      token = last_response.body[/<meta name="csrf-token" content="([^"]+)"/, 1]
+      expect(token).not_to be_nil
+
+      delete "/_profiler/api/profiles/clear", {}, local.merge("HTTP_X_CSRF_TOKEN" => token)
+      expect(last_response.status).to eq(204)
+    end
+
+    it "accepts a mutation without either when api_forgery_protection is off" do
+      Profiler.configuration.api_forgery_protection = false
+      post "/_profiler/api/profiles/clear", { "_method" => "delete" }, local
+
+      expect(last_response.status).to eq(204)
+    end
+  end
+
+  describe "framing" do
+    it "only lets the profiler itself, the extension and DevTools frame it" do
+      get "/_profiler/", {}, local
+
+      expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: devtools:")
+      expect(last_response.headers["X-Frame-Options"]).to eq("SAMEORIGIN")
+    end
+
+    it "keeps the same policy on the embedded profile page" do
+      storage.save("tok", build_profile(token: "tok"))
+      get "/_profiler/profiles/tok", { embed: "true" }, local
+
+      expect(last_response.status).to eq(200)
+      expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: devtools:")
+      expect(last_response.headers["X-Frame-Options"]).to eq("SAMEORIGIN")
+    end
+
+    it "keeps the policy on a refused request" do
+      get "/_profiler/api/profiles", {}, remote
+
+      expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: devtools:")
+    end
+  end
+end
