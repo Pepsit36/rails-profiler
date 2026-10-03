@@ -104,18 +104,25 @@ Profiler.configure do |config|
   # Defaults to true in test env, false elsewhere
   config.track_tests = Rails.env.test?
 
-  # CORS — restrict to specific origins (default: ['*'])
-  config.cors_allowed_origins = ['http://localhost:3001', 'https://myapp.dev']
+  # CORS for cross-origin clients (default: off, no origin; see "Access control")
+  config.extension_cors_enabled = false
+  config.cors_allowed_origins = []
 
   # MCP server for AI assistant integration
   config.mcp_enabled = true
   config.mcp_transport = :stdio  # or :http
 
-  # Authorization
-  config.authorization_mode = :allow_all  # or :allow_authorized
+  # Authorization (default: :allow_local; see "Access control")
+  config.authorization_mode = :allow_local  # or :allow_authorized, or :allow_all
   config.authorize_with do |request|
     request.session[:admin] == true
   end
+
+  # Forgery protection of the API (default: true; see "Access control")
+  config.api_forgery_protection = true
+
+  # Who may frame the profiler (default: itself, the Chrome extension and DevTools)
+  config.frame_ancestors = ["'self'", "chrome-extension:", "devtools:"]
 end
 ```
 
@@ -374,6 +381,93 @@ Profiler.configure do |config|
 end
 ```
 
+## Access control
+
+The profiler shows everything your application does: parameters, SQL, headers, logs, `ENV`, and
+it can change `ENV` and run your tests. Every page and endpoint under `/_profiler` (UI, API,
+server-sent events, test runner, toolbar) goes through the same check, and answers `403` when it
+fails. The gem's static JS and CSS are the only exception: they hold no application data. The
+same check decides which requests the profiler captures.
+
+### Authorization modes
+
+| `authorization_mode` | Who gets in |
+|---|---|
+| `:allow_local` (default) | Requests made from this machine only |
+| `:allow_authorized` | Requests for which your `authorize_with` block returns true (nobody without a block) |
+| `:allow_all` | **Everybody who can reach the application. No protection at all.** |
+
+`:allow_local` accepts a request when all of these hold:
+
+- `REMOTE_ADDR` is a loopback address (`127.0.0.0/8` or `::1`). `X-Forwarded-For` and the like are
+  never used to let a request in, since anyone can send them.
+- If a forwarding header is present (`X-Forwarded-For`, `X-Real-IP`, `Forwarded`), every address
+  in it is a loopback address too. This refuses a remote client relayed by a reverse proxy running
+  on the same machine, where `REMOTE_ADDR` is always `127.0.0.1`.
+- The `Host` header (and `X-Forwarded-Host`, when present) is `localhost`, a `*.localhost` name, a
+  loopback IP, or a host your application lists in `config.hosts`. This defeats DNS rebinding, where
+  a page from another site reaches `127.0.0.1` under its own domain name. Rails already refuses
+  such hosts in development through `config.hosts`; the profiler checks them itself because
+  `config.hosts` is empty in the other environments and often cleared in Docker setups.
+
+When `:allow_local` refuses a request, the profiler logs the cause once per process in
+`Rails.logger`.
+
+**Docker, a VM, or a remote proxy.** The browser's request then reaches Rails from the bridge or
+proxy address (for example `172.17.0.1`), which is not local: the profiler refuses it and stops
+capturing. Admit your own network explicitly:
+
+```ruby
+require "ipaddr"
+
+Profiler.configure do |config|
+  config.authorization_mode = :allow_authorized
+  docker = IPAddr.new("172.16.0.0/12")  # narrow it to your own network
+  config.authorize_with do |request|
+    docker.include?(request.get_header("REMOTE_ADDR"))
+  end
+end
+```
+
+Read `REMOTE_ADDR` there, not `request.remote_ip`, which trusts `X-Forwarded-For`. You can also go
+back to `config.authorization_mode = :allow_all`, the default before 0.30.6, which lets anybody who
+can reach the application read and change everything the profiler exposes.
+
+A cluster master and its slaves call each other's `/_profiler/api`: when they do not run on the
+same machine, each side has to admit the other's address the same way.
+
+### Forgery protection
+
+Requests that change something (`POST`, `PATCH`, `PUT`, `DELETE`, including a form `POST` turned
+into another verb by `_method`) must carry an `X-Profiler-Request` header, or Rails' CSRF token.
+The dashboard, the toolbar and the cluster send the header. A page on another site cannot add it
+without a CORS preflight, which the profiler does not grant. Your own scripts that call the API
+should send `X-Profiler-Request: 1`. To accept mutations without it, as before 0.30.6, set
+`config.api_forgery_protection = false`.
+
+### CORS
+
+CORS is off by default: no `Access-Control-Allow-Origin` header, so a page on another origin cannot
+read profiler responses. The Chrome extension does not need it. To let a known origin call the API,
+enable it and name that origin:
+
+```ruby
+config.extension_cors_enabled = true
+config.cors_allowed_origins = ["https://myapp.dev"]
+```
+
+`"*"` (the default before 0.30.6, with `extension_cors_enabled = true`) is still accepted, but never
+sent in answer to a request that carries a cookie or an `Authorization` header.
+
+### Framing
+
+Profiler pages may only be framed by the profiler itself and by the Chrome extension's DevTools
+panel (`Content-Security-Policy: frame-ancestors 'self' chrome-extension: devtools:`, plus
+`X-Frame-Options: SAMEORIGIN` for older browsers). Chrome checks every ancestor of a frame: the
+panel's page is a `chrome-extension:` page, itself shown inside the `devtools:` front end, so both
+are needed. To change the list, set `config.frame_ancestors`; the value before 0.30.6 was
+`["'self'", "http:", "https:"]`, which lets any website frame the profiler.
+
 ## Performance
 
 - Only active when enabled (development/test by default)
@@ -384,9 +478,10 @@ end
 ## Security
 
 - Disabled by default in production
-- Configurable authorization (`authorization_mode: :allow_authorized`)
+- Only requests from this machine get in by default (`authorization_mode: :allow_local`), on every page and endpoint; see [Access control](#access-control)
+- API mutations require the `X-Profiler-Request` header or a CSRF token
+- No CORS and no framing by other sites by default
 - Sensitive parameters sanitized automatically (password, token, secret)
-- CORS origins configurable (`cors_allowed_origins`)
 
 ## Development
 
