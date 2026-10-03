@@ -3,8 +3,6 @@
 module Profiler
   module Api
     class OutboundHttpController < ApplicationController
-      skip_before_action :verify_authenticity_token
-
       # GET /_profiler/api/outbound_http
       def index
         limit = (params[:limit] || 200).to_i

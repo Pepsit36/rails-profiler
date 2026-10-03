@@ -3,8 +3,6 @@
 module Profiler
   module Api
     class FunctionProfilingController < ApplicationController
-      skip_before_action :verify_authenticity_token
-
       def show
         render json: {
           enabled:    Profiler.function_profiling_enabled,

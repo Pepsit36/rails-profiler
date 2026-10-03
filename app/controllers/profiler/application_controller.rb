@@ -2,17 +2,44 @@
 
 module Profiler
   class ApplicationController < ActionController::Base
-    protect_from_forgery with: :exception
-
     layout "profiler/application"
 
     before_action :check_authorization
+    before_action :authorize_request
+    # Declared after the access checks, so that an unauthorized request gets its 403 first.
+    protect_from_forgery with: :exception
 
     private
 
     def check_authorization
       unless Profiler.configuration.enabled
         render plain: "Profiler is disabled", status: :forbidden
+      end
+    end
+
+    def authorize_request
+      return if Profiler.configuration.authorized?(request)
+
+      deny("Not authorized to access the profiler")
+    end
+
+    # Rails' token, or the header every profiler client sends. A third-party page cannot add a
+    # custom header without a CORS preflight, which is refused unless an origin was allowed.
+    def verified_request?
+      super ||
+        !Profiler.configuration.api_forgery_protection ||
+        request.headers[Profiler::FORGERY_PROTECTION_HEADER].present?
+    end
+
+    def handle_unverified_request
+      deny("Missing #{Profiler::FORGERY_PROTECTION_HEADER} header or CSRF token")
+    end
+
+    def deny(message)
+      if controller_path.start_with?("profiler/api/")
+        render json: { error: message }, status: :forbidden
+      else
+        render plain: message, status: :forbidden
       end
     end
 
