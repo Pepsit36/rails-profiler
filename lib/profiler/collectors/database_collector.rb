@@ -102,6 +102,9 @@ module Profiler
             bind
           end
         end
+      rescue StandardError
+        # Never let the profiler raise into the application's query.
+        binds.map { Profiler::Redaction::MASK }
       end
 
       def extract_backtrace
