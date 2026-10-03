@@ -34,6 +34,19 @@ RSpec.describe "Sensitive data redaction, second review follow-up" do
         .to eq("city" => "Orléans", "password" => mask)
     end
 
+    it "filters binary form, NDJSON and invalid UTF-8 bodies without masking them entirely" do
+      form = "name=Ren\xC3\xA9&password=x&raw=\xFF".b
+      expect(Profiler::Redaction.filter_body(form, "application/x-www-form-urlencoded").b)
+        .to eq("name=Ren\xC3\xA9&password=#{mask}&raw=\xFF".b)
+
+      ndjson = %({"name":"René"}\n{"token":"t"}\n).b
+      expect(Profiler::Redaction.filter_body(ndjson, "application/x-ndjson"))
+        .to eq(%({"name":"René"}\n{"token":"#{mask}"}\n))
+
+      invalid = %({"password":"\xFF"}).b
+      expect(Profiler::Redaction.filter_body(invalid, "application/json")).not_to include("\xFF".b)
+    end
+
     it "keeps an accented outbound JSON body" do
       processed = Profiler::Instrumentation::NetHttpInstrumentation.process_body('{"city":"Orléans"}'.b, "application/json")
       expect(processed[:body]).to eq('{"city":"Orléans"}')

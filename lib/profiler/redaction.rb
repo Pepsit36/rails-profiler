@@ -18,7 +18,8 @@ module Profiler
   #
   # It never raises: it runs inside notification subscribers and the Net::HTTP
   # patch, where an exception would reach the application. When the filter
-  # fails (a proc that does not expect a value, say), the value is masked.
+  # fails (a proc that does not expect a value, say), the value is masked and
+  # the failure is logged once per error class, without the value.
   module Redaction
     MASK = "[FILTERED]"
 
@@ -33,19 +34,21 @@ module Profiler
     FORM_TYPE = "application/x-www-form-urlencoded"
     MULTIPART_TYPE = %r{\Amultipart/}i
 
-    # A JSON object key, escapes included, as it appears in the raw text.
-    JSON_KEY = /"((?:[^"\\]|\\.)*)"\s*:/m
-
     # The characters outside ASCII whose case folding yields ASCII letters
     # (Unicode CaseFolding.txt): with any of them, a case-insensitive regexp
     # can match an ASCII filter where a plain ASCII search cannot.
-    FOLDS_TO_ASCII = /[\u00DF\u0130\u0149\u017F\u01F0\u1E96-\u1E9A\u1E9E\u212A\uFB00-\uFB06]/
+    FOLDS_TO_ASCII = /[ßİŉſǰẖ-ẚẞKﬀ-ﬆ]/
+
+    # What makes a regexp filter unfit for a search of the whole body text:
+    # anchors, word boundaries and lookarounds can match a key on its own and
+    # fail on the same key inside the text.
+    CONTEXT_SENSITIVE_REGEXP = /\\[AzZbBG]|[\^$]|\(\?<?[=!]/
 
     # Bound on the memo of names already tested against the filter.
     KEY_CACHE_LIMIT = 10_000
 
-    # The value a name is tested with: procs in filter_parameters rewrite it
-    # in place, so it has to be a string, and a throwaway one.
+    # The value a name alone is tested with: procs in filter_parameters
+    # rewrite it in place, so it has to be a string, and a throwaway one.
     PROBE = "x"
 
     class << self
@@ -62,7 +65,8 @@ module Profiler
         return hash unless enabled? && hash.is_a?(Hash)
 
         parameter_filter.filter(hash)
-      rescue StandardError
+      rescue StandardError => e
+        report(e, "filtering a hash")
         hash.transform_values { MASK }
       end
 
@@ -76,19 +80,24 @@ module Profiler
         when Array then value.map { |v| filter_value(v) }
         else value
         end
-      rescue StandardError
+      rescue StandardError => e
+        report(e, "filtering a value")
         MASK
       end
 
-      # The value unchanged, or MASK when +name+ matches the filter.
+      # A value known by its name (SQL bind, mailer argument): MASK when the
+      # name matches the filter, else the value as the procs of
+      # filter_parameters rewrite it.
       def filter_named(name, value)
         return value unless enabled? && name
+        return MASK if sensitive_key?(name)
 
-        sensitive_key?(name) ? MASK : value
+        apply_procs([name.to_s], value)
       end
 
-      # Memoized per name: header, ENV, column and JSON key names come from a
-      # small set. A filter that raises makes the name sensitive.
+      # Whether the name alone matches the filter. Memoized per name: header,
+      # ENV, column and key names come from a small set. A filter that raises
+      # makes the name sensitive.
       def sensitive_key?(name)
         key = name.to_s
         state = compiled
@@ -98,7 +107,8 @@ module Profiler
         result = state[:filter].filter(key => +PROBE)[key] == MASK
         known[key] = result if known.size < KEY_CACHE_LIMIT
         result
-      rescue StandardError
+      rescue StandardError => e
+        report(e, "testing a name")
         true
       end
 
@@ -122,22 +132,27 @@ module Profiler
       # bodies are masked entirely, and every other type is kept as is: they
       # carry no key the filter can read, and masking HTML would hide the very
       # pages being profiled.
+      #
+      # Bodies usually arrive as binary strings (rack.input, Net::HTTP): they
+      # are read as UTF-8, or as bytes when they are not valid UTF-8.
       def filter_body(raw, content_type)
         return raw unless enabled? && raw.is_a?(String) && !raw.empty?
 
         mime = content_type.to_s.split(";").first.to_s.strip.downcase
+        text = readable(raw)
         if mime.match?(JSON_TYPES)
-          filter_json(raw, mime)
+          filter_json(text, mime)
         elsif mime.match?(NDJSON_TYPES)
-          raw.split("\n", -1).map { |line| line.strip.empty? ? line : filter_json(line, mime) }.join("\n")
+          text.split("\n", -1).map { |line| line.strip.empty? ? line : filter_json(line, mime) }.join("\n")
         elsif mime == FORM_TYPE
-          filter_query(raw)
+          filter_query(text)
         elsif mime.match?(MULTIPART_TYPE)
           "[FILTERED: #{mime} body, #{raw.bytesize} bytes]"
         else
           raw
         end
-      rescue StandardError
+      rescue StandardError => e
+        report(e, "filtering a #{mime} body")
         "[FILTERED: #{mime} body that could not be filtered, #{raw.bytesize} bytes]"
       end
 
@@ -146,7 +161,7 @@ module Profiler
       def filter_query(query)
         return query unless enabled? && query.is_a?(String) && !query.empty?
 
-        query.split("&", -1).map do |pair|
+        readable(query).split("&", -1).map do |pair|
           name, value = pair.split("=", 2)
           next pair if value.nil? || value.empty?
 
@@ -158,25 +173,31 @@ module Profiler
         end.join("&")
       end
 
+      # A URL, or a list of them as Rack 3 gives a repeated header.
       def filter_url(url)
-        return url unless enabled? && url.is_a?(String)
+        return url unless enabled?
+        return url.map { |u| filter_url(u) } if url.is_a?(Array)
+        return url unless url.is_a?(String)
 
-        rest, fragment = url.split("#", 2)
+        rest, fragment = readable(url).split("#", 2)
         base, query = rest.split("?", 2)
         return url if query.nil?
 
         "#{base}?#{filter_query(query)}#{"##{fragment}" if fragment}"
+      rescue StandardError => e
+        report(e, "filtering a URL")
+        MASK
       end
 
       # ENV as the profiler shows it: names kept, values masked unless the
       # name is in config.env_allowlist and does not match the filter.
       def env_snapshot(env = ENV.to_h)
         listed = env_allowlist_matcher
-        env.sort.to_h { |name, value| [name, env_visible?(name, listed) ? value : MASK] }
+        env.sort.to_h { |name, value| [name, env_visible?(name, listed) ? apply_procs([name], value) : MASK] }
       end
 
       def env_value(name, value)
-        env_visible?(name) ? value : MASK
+        env_visible?(name) ? apply_procs([name.to_s], value) : MASK
       end
 
       # ENV overrides with the same rule applied to their current and original
@@ -196,6 +217,12 @@ module Profiler
         listed.call(name.to_s) && !(enabled? && sensitive_key?(name))
       end
 
+      # Whether +value+, stripped, is the mask: a value exported while masked,
+      # which must never be written back as if it were the real one.
+      def mask?(value)
+        value.to_s.strip == MASK
+      end
+
       private
 
       def compiled
@@ -203,40 +230,57 @@ module Profiler
         state = @compiled
         return state if state && state[:filters] == filters
 
+        @reported = Set.new
         @compiled = {
           filters: filters,
           filter: ActiveSupport::ParameterFilter.new(filters, mask: MASK),
           keys: {}
-        }.merge(key_matchers(filters))
+        }.merge(text_matchers(filters))
       end
 
-      # What the JSON pre-test needs, built as ParameterFilter builds its own
-      # patterns: strings and symbols as one case-insensitive alternation,
-      # regexps as they are. Procs rewrite values whatever the key, and dotted
-      # filters match a key path: neither can be judged from key names, so
-      # they make the filters opaque.
-      def key_matchers(filters)
-        opaque = filters.any? { |f| f.respond_to?(:call) || f.to_s.include?(".") }
-        regexps, strings = filters.partition { |f| f.is_a?(Regexp) }
-        words = strings.empty? ? nil : Regexp.new(strings.map { |s| Regexp.escape(s.to_s) }.join("|"), Regexp::IGNORECASE)
+      # What the JSON pre-test needs: the string filters, downcased, for a
+      # plain search, and as one case-insensitive alternation as
+      # ParameterFilter builds it, for text outside ASCII; the regexp filters
+      # that can be searched for in the whole text. Procs rewrite values
+      # whatever the key, dotted filters match a key path, and other regexps
+      # depend on where the key ends: any of them makes the filters opaque,
+      # and every body is then parsed.
+      def text_matchers(filters)
+        procs = filters.any? { |f| f.respond_to?(:call) }
+        regexps, strings = filters.reject { |f| f.respond_to?(:call) }.partition { |f| f.is_a?(Regexp) }
+        opaque = procs ||
+                 filters.any? { |f| !f.respond_to?(:call) && f.to_s.include?(".") } ||
+                 regexps.any? { |r| r.source.match?(CONTEXT_SENSITIVE_REGEXP) } ||
+                 strings.any? { |s| !s.to_s.ascii_only? }
+        words = strings.map { |s| s.to_s.downcase }
         {
+          procs: procs,
           opaque: opaque,
-          # Searched with String#include? in the downcased text: several times
-          # faster than the case-insensitive alternation on a large body.
-          word_list: regexps.empty? && strings.all? { |s| s.to_s.ascii_only? } ? strings.map { |s| s.to_s.downcase } : nil,
-          any_key: Regexp.union([words, *regexps].compact)
+          words: words,
+          words_regexp: words.empty? ? nil : Regexp.new(words.map { |w| Regexp.escape(w) }.join("|"), Regexp::IGNORECASE),
+          regexps: regexps
         }
       end
 
       def filter_header(name, value)
-        if sensitive_header?(name)
-          MASK
-        elsif URL_HEADERS.include?(name.to_s.downcase)
-          filter_url(value)
-        else
-          value
-        end
-      rescue StandardError
+        return MASK if sensitive_header?(name)
+
+        value = filter_url(value) if URL_HEADERS.include?(name.to_s.downcase)
+        apply_procs([name.to_s, name.to_s.tr("-", "_")], value)
+      rescue StandardError => e
+        report(e, "filtering a header")
+        MASK
+      end
+
+      # The value as the procs of filter_parameters rewrite it under each of
+      # +names+. Nothing to do without procs: the names were already tested.
+      def apply_procs(names, value)
+        return value unless enabled? && compiled[:procs]
+
+        filter = parameter_filter
+        names.uniq.reduce(value) { |current, name| filter.filter(name => current)[name] }
+      rescue StandardError => e
+        report(e, "applying a filter_parameters proc")
         MASK
       end
 
@@ -270,35 +314,61 @@ module Profiler
         []
       end
 
-      def filter_json(raw, mime)
-        return raw unless json_needs_parse?(raw)
+      # The string as UTF-8 when it is valid UTF-8, else as bytes, so that
+      # string operations and regexps never meet an incompatible encoding.
+      def readable(string)
+        return string if string.encoding == Encoding::UTF_8 && string.valid_encoding?
 
-        parsed = JSON.parse(raw)
-        filtered = filter_value(parsed)
-        filtered == parsed ? raw : JSON.generate(filtered)
-      rescue JSON::ParserError
-        "[FILTERED: unparseable #{mime} body, #{raw.bytesize} bytes]"
+        utf8 = string.dup.force_encoding(Encoding::UTF_8)
+        utf8.valid_encoding? ? utf8 : string.b
       end
 
-      # A cheap pre-test that spares the parse of a body no key of which the
-      # filter can match. With only ASCII string filters, a body whose text
-      # contains none of them anywhere, in any case, is spared at once; this
-      # holds unless the text has a character that case-folds onto ASCII
-      # letters (FOLDS_TO_ASCII) or an escape. Otherwise each key is read from
-      # the raw text and tested as ParameterFilter would; a key written with
-      # an escape cannot be judged that way, so it sends the body to the
-      # parser, as procs and dotted filters do.
-      def json_needs_parse?(raw)
+      def filter_json(text, mime)
+        return text unless json_needs_parse?(text)
+
+        parsed = JSON.parse(text)
+        filtered = filter_value(parsed)
+        filtered == parsed ? text : JSON.generate(filtered)
+      rescue JSON::ParserError
+        "[FILTERED: unparseable #{mime} body, #{text.bytesize} bytes]"
+      end
+
+      # A cheap pre-test that spares the parse of a body in whose text no
+      # filter matches anywhere: no key of it can match either. Any match, in
+      # a key or in a value, sends the body to the parser, which also masks
+      # an unreadable body entirely. Text that is not valid UTF-8, holds an
+      # escape (a key can be written password) or, for a plain ASCII
+      # search, a character that case-folds onto ASCII letters is not judged
+      # here, nor is any body under opaque filters.
+      def json_needs_parse?(text)
         state = compiled
         return true if state[:opaque]
-        if (words = state[:word_list]) && !raw.include?("\\") && (raw.ascii_only? || !raw.match?(FOLDS_TO_ASCII))
-          text = raw.downcase(:ascii)
-          return false if words.none? { |word| text.include?(word) }
-        end
+        return true if text.encoding != Encoding::UTF_8 || text.include?("\\")
 
-        any_key = state[:any_key]
-        raw.scan(JSON_KEY) { |(key)| return true if key.include?("\\") || any_key.match?(key) }
-        false
+        state[:regexps].any? { |r| r.match?(text) } || words_in_text?(state, text)
+      end
+
+      def words_in_text?(state, text)
+        words = state[:words]
+        return false if words.empty?
+        return state[:words_regexp].match?(text) unless text.ascii_only? || !text.match?(FOLDS_TO_ASCII)
+
+        lowered = text.downcase(:ascii)
+        words.any? { |word| lowered.include?(word) }
+      end
+
+      # Logs a failure of the filter once per error class, with no value and
+      # no message: either could carry what was being masked.
+      def report(error, during)
+        reported = (@reported ||= Set.new)
+        return if reported.include?(error.class)
+
+        reported << error.class
+        message = "[Profiler] Redaction: #{error.class} while #{during}; the value was masked instead."
+        logger = ::Rails.logger if defined?(::Rails) && ::Rails.respond_to?(:logger)
+        logger ? logger.warn(message) : Kernel.warn(message)
+      rescue StandardError
+        nil
       end
     end
   end

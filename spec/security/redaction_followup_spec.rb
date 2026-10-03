@@ -155,9 +155,16 @@ RSpec.describe "Sensitive data redaction, review follow-up" do
         .to eq(%({"id":1,"token":"#{mask}"}\n{"id":2}\n))
     end
 
-    it "does not parse a JSON body none of whose keys the filter can match" do
-      raw = JSON.generate(data: [{ id: 1, title: "a" }, { id: 2, title: "b \\\"password\\\": x" }])
+    it "does not parse a JSON body in whose text no filter matches" do
+      raw = JSON.generate(data: [{ id: 1, title: "a" }, { id: 2, title: "b" }])
       expect(JSON).not_to receive(:parse)
+
+      expect(Profiler::Redaction.filter_body(raw, "application/json")).to equal(raw)
+    end
+
+    it "parses a body where a filtered word appears only in a value, and keeps it" do
+      raw = JSON.generate(id: 2, title: "reset your password")
+      expect(JSON).to receive(:parse).and_call_original
 
       expect(Profiler::Redaction.filter_body(raw, "application/json")).to equal(raw)
     end
