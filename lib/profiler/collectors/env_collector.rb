@@ -25,7 +25,7 @@ module Profiler
       end
 
       def collect
-        variables = ENV.to_h.sort.to_h
+        variables = Profiler::Redaction.env_snapshot
         store_data({ variables: variables, total: variables.size })
       end
 

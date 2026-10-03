@@ -2,6 +2,7 @@
 
 require_relative "../slave_support"
 require_relative "../../env_override_store"
+require_relative "../../redaction"
 
 module Profiler
   module MCP
@@ -19,8 +20,8 @@ module Profiler
           filter = params["filter"]&.downcase
 
           if include_all
-            vars = ENV.to_h.sort.to_h
-            overrides = Profiler.env_override_store.all_overrides
+            vars = Profiler::Redaction.env_snapshot
+            overrides = Profiler::Redaction.env_overrides(Profiler.env_override_store.all_overrides)
 
             vars = vars.select { |k, _| k.downcase.include?(filter) } if filter
 
@@ -39,7 +40,7 @@ module Profiler
             text += "|-----|--------------|------------|\n"
             text += rows.join("\n")
           else
-            overrides = Profiler.env_override_store.all_overrides
+            overrides = Profiler::Redaction.env_overrides(Profiler.env_override_store.all_overrides)
             overrides = overrides.select { |k, _| k.downcase.include?(filter) } if filter
 
             if overrides.empty?

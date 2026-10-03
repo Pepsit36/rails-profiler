@@ -4,6 +4,7 @@ require "base64"
 require "securerandom"
 require "json"
 require "zlib"
+require_relative "../redaction"
 
 module Profiler
   module Models
@@ -46,7 +47,7 @@ module Profiler
         @finished_at = Time.now
         @duration = ((@finished_at - @started_at) * 1000).round(2) # milliseconds
         @status = status
-        @response_headers = response_headers
+        @response_headers = Redaction.filter_headers(response_headers)
       end
 
       def add_collector_data(name, data)
@@ -161,7 +162,7 @@ module Profiler
         if binary_content_type?(content_type)
           { body: Base64.strict_encode64(raw.b), encoding: "base64" }
         else
-          text = raw.encode("UTF-8", invalid: :replace, undef: :replace)
+          text = Redaction.filter_body(raw, content_type).encode("UTF-8", invalid: :replace, undef: :replace)
           if compress_body?(text)
             { body: Base64.strict_encode64(Zlib::Deflate.deflate(text)), encoding: "gzip+base64" }
           else
@@ -189,10 +190,14 @@ module Profiler
         ct.to_s.match?(%r{image/(?!svg)|application/(?:pdf|octet-stream|zip)|audio/|video/})
       end
 
+      LEGACY_FILTERED_PARAMS = %w[password password_confirmation token secret].freeze
+
       def sanitize_params(params)
         return {} unless params
 
-        params.to_h.except("password", "password_confirmation", "token", "secret")
+        return params.to_h.except(*LEGACY_FILTERED_PARAMS) unless Redaction.enabled?
+
+        Redaction.filter_hash(params.to_h)
       end
 
       ALLOWED_HEADERS = %w[
@@ -206,6 +211,7 @@ module Profiler
         env.select { |k, _| k.start_with?("HTTP_") }
            .transform_keys { |k| k.sub(/^HTTP_/, "").split("_").map(&:capitalize).join("-") }
            .select { |k, _| ALLOWED_HEADERS.include?(k) }
+           .then { |headers| Redaction.filter_headers(headers) }
       end
     end
   end
