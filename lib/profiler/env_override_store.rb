@@ -21,7 +21,15 @@ module Profiler
     #   DELETED_SENTINEL  → ENV.delete(key)
     #   RESTORE_SENTINEL  → restore ENV[key] to "original" (cleaned up after apply!)
 
+    def initialize
+      # What ENV held in this process before set, delete or apply! changed a key. Where the
+      # overrides are blocked, a reset restores these and never the file's "original" values,
+      # which come from whatever machine wrote the file.
+      @process_originals = {}
+    end
+
     def set(key, value)
+      remember_process_original(key)
       overrides = load_overrides
       original = original_for(overrides, key)
       overrides[key] = { "value" => value.to_s, "original" => original }
@@ -31,6 +39,7 @@ module Profiler
     end
 
     def delete(key)
+      remember_process_original(key)
       overrides = load_overrides
       original = original_for(overrides, key)
       overrides[key] = { "value" => DELETED_SENTINEL, "original" => original }
@@ -50,7 +59,7 @@ module Profiler
       save_overrides(overrides)
 
       # Apply immediately to the current (web) process
-      original.nil? ? ENV.delete(key) : ENV[key] = original
+      restore_env(key, original, blocked: blocked_reason)
     rescue => e
       warn "[Profiler] EnvOverrideStore: failed to reset #{key}: #{e.message}"
     end
@@ -58,11 +67,12 @@ module Profiler
     def reset_all
       overrides = load_overrides
       restore_overrides = {}
+      blocked = blocked_reason
 
       overrides.each do |key, entry|
         original = entry.is_a?(Hash) ? entry["original"] : nil
         # Apply immediately to the current (web) process
-        original.nil? ? ENV.delete(key) : ENV[key] = original
+        restore_env(key, original, blocked: blocked)
         # Leave a RESTORE sentinel for Sidekiq workers to pick up
         restore_overrides[key] = { "value" => RESTORE_SENTINEL, "original" => original }
       end
@@ -89,7 +99,7 @@ module Profiler
       return apply! unless reason
       return if @boot_warning_logged
 
-      count = load_overrides.size
+      count = all_overrides.size
       return if count.zero?
 
       @boot_warning_logged = true
@@ -109,6 +119,8 @@ module Profiler
       overrides.each do |key, entry|
         value    = entry.is_a?(Hash) ? entry["value"]    : entry
         original = entry.is_a?(Hash) ? entry["original"] : nil
+
+        remember_process_original(key) unless value == RESTORE_SENTINEL
 
         case value
         when DELETED_SENTINEL
@@ -149,6 +161,22 @@ module Profiler
     end
 
     private
+
+    def remember_process_original(key)
+      @process_originals[key] = ENV[key] unless @process_originals.key?(key)
+    end
+
+    # Puts a reset key back to its original value. Where the overrides are blocked, only a key
+    # this process changed itself is touched, back to the value it had here; ENV is left alone
+    # for any other.
+    def restore_env(key, file_original, blocked:)
+      changed_here = @process_originals.key?(key)
+      process_original = @process_originals.delete(key)
+      return if blocked && !changed_here
+
+      original = blocked ? process_original : file_original
+      original.nil? ? ENV.delete(key) : ENV[key] = original
+    end
 
     def original_for(overrides, key)
       overrides.key?(key) ? overrides[key]["original"] : ENV[key]

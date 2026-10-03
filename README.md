@@ -205,7 +205,7 @@ Post.includes(:comments).limit(10).to_a
 
 Results appear in the **Console** tab at `/_profiler`. Each entry shows the expression, duration, SQL query count, and whether it raised an error.
 
-Env overrides set via the profiler UI or MCP tools are applied before each console evaluation — no need to restart the console to pick up changes.
+Env overrides set via the profiler UI or MCP tools are applied before each console evaluation, so there is no need to restart the console to pick up changes. They follow the rules of [Environment variable overrides](#environment-variable-overrides): never in production, and not while the profiler is disabled.
 
 To disable console profiling:
 
@@ -227,6 +227,10 @@ hold:
 - the profiler is enabled, as the application sets it (`config.enabled` in
   `config/initializers/profiler.rb`). Set `config.apply_env_overrides_when_disabled = true` to
   apply them while the profiler is disabled, as versions before 0.30.8 did.
+
+Where they are left out, resetting an override from the UI or MCP still updates the file, but
+puts back in `ENV` only a variable this process changed itself, to the value it had before; it
+never writes the "original" values the file carries, which come from the machine that wrote it.
 
 When the file holds overrides that are left out, the boot logs one warning to `Rails.logger` with
 the file, the number of overrides and the reason, never a name or a value.

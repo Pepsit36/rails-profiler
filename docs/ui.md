@@ -285,4 +285,4 @@ Column headers marked with ⇅ are sortable. The Expression column is filterable
 
 ### Env overrides
 
-Environment variable overrides set via the profiler UI or MCP tools are applied before each expression evaluation — changes take effect immediately in the open console without a restart.
+Environment variable overrides set via the profiler UI or MCP tools are applied before each expression evaluation, so changes take effect immediately in the open console without a restart. They are applied only outside production and while the profiler is enabled, unless `config.apply_env_overrides_when_disabled = true` (never in production); see "Environment variable overrides" in the README.
