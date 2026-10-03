@@ -86,6 +86,11 @@ Profiler.configure do |config|
   config.compress_bodies = true
   config.compress_body_threshold = 10.kilobytes
 
+  # Sensitive data (see "Sensitive data" under Security)
+  config.redact_sensitive_data = true
+  config.filter_parameters += [:iban]      # added to Rails' config.filter_parameters
+  config.env_allowlist += %w[APP_VERSION] # ENV variables whose values are shown
+
   # Outbound HTTP tracking
   config.track_http = true
   config.slow_http_threshold = 500  # ms
@@ -491,6 +496,8 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - Only active when enabled (development/test by default)
 - Expected overhead: < 5ms per request
 - Text bodies > 10 KB compressed automatically (gzip+base64)
+- Masking sensitive data adds about 1 ms to a typical profile, plus about 80 ms per megabyte of
+  JSON body
 - Automatic cleanup of old profiles
 
 ## Security
@@ -499,7 +506,57 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - Only requests from this machine get in by default (`authorization_mode: :allow_local`), on every page and endpoint; see [Access control](#access-control)
 - API mutations require the `X-Profiler-Request` header or a CSRF token
 - No CORS and no framing by other sites by default
-- Sensitive parameters sanitized automatically (password, token, secret)
+- Sensitive data masked before it is stored, using your `config.filter_parameters`; see [Sensitive data](#sensitive-data)
+
+### Sensitive data
+
+The profiler masks sensitive values with `[FILTERED]` **before** a profile is stored, with one
+filter built by `ActiveSupport::ParameterFilter` from your application's
+`Rails.application.config.filter_parameters` plus the profiler's own `config.filter_parameters`.
+Rails semantics apply: a symbol or string matches any key that contains it, case-insensitively, at
+any nesting depth (`password` masks `user[password]` and `PASSWORD`); a regexp is used as is.
+
+The profiler's own list defaults to
+`[:passw, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn, :cvv, :cvc]` (the
+Rails 7.1 template without `:email`), so an application with an empty or short
+`filter_parameters` is still covered, and the gem is covered outside Rails.
+
+What is masked:
+
+| Data | Rule |
+|---|---|
+| Request params | values of filtered keys, nested included |
+| Request and response bodies, incoming and outbound | JSON (`application/json`, `*+json`) and `application/x-www-form-urlencoded`: values of filtered keys; an unparseable JSON body and any `multipart/*` body: masked entirely; binary bodies and other text types (HTML, XML, plain text...) are kept as they are, the filter cannot read them |
+| Headers, incoming, response and outbound (Net::HTTP, so Faraday, RestClient, HTTParty...) | `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, and any header whose name matches the filter (`X-Api-Key` matches `_key`) |
+| Outbound URLs | values of filtered query string parameters |
+| `ENV` (Env tab, `/_profiler/api/env_vars`, MCP `list_env_vars` and `get_profile` env section) | values of variables outside `config.env_allowlist`, and of any variable whose name matches the filter; names stay listed |
+| SQL binds | values bound to a column whose name matches the filter, as Active Record does in its logs; EXPLAIN is then refused for that query, since it cannot be rebuilt |
+| Job arguments (Active Job, Sidekiq) | values of filtered keys inside hash arguments |
+| Mailer arguments (`assigns`) | arguments whose parameter name matches the filter |
+
+Not filtered, because the profiler cannot tell what they contain: log lines (Rails already filters
+its `Parameters:` line and request paths), console expressions and their results, `dump()`
+values, exception messages, SQL literals written into the query text, and positional job
+arguments that are plain strings. A masked `ENV` value exported from the Env tab is exported as
+`[FILTERED]`.
+
+`config.env_allowlist` defaults to `Profiler::Configuration::DEFAULT_ENV_ALLOWLIST` (`RAILS_ENV`,
+`RACK_ENV`, `PORT`, `LANG`, `TZ`, `PATH`, `RUBY_VERSION`, `BUNDLE_GEMFILE`...); it accepts
+strings and regexps.
+
+To restore the previous behaviour, all or part of it:
+
+```ruby
+Profiler.configure do |config|
+  config.redact_sensitive_data = false # no masking at all (params lose only password,
+                                       # password_confirmation, token and secret, as before)
+  config.env_allowlist = :all          # capture every ENV value
+  config.filter_parameters = []        # rely on Rails' config.filter_parameters alone
+end
+```
+
+With `env_allowlist = :all` and `redact_sensitive_data` left on, variables whose name matches the
+filter (`SECRET_KEY_BASE`, `DATABASE_PASSWORD`...) are still masked.
 
 ## Development
 

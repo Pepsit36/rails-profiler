@@ -2,6 +2,7 @@
 
 require_relative "models/profile"
 require_relative "current_context"
+require_relative "redaction"
 require_relative "collectors/job_collector"
 require_relative "collectors/database_collector"
 require_relative "collectors/cache_collector"
@@ -115,7 +116,7 @@ module Profiler
     def sanitize_arguments(args)
       return [] unless args
 
-      args.map do |arg|
+      Redaction.filter_value(args).map do |arg|
         case arg
         when String then arg.length > 200 ? "#{arg[0, 200]}..." : arg
         when Numeric, TrueClass, FalseClass, NilClass then arg

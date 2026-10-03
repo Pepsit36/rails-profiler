@@ -9,6 +9,22 @@ module Profiler
   FORGERY_PROTECTION_HEADER = "X-Profiler-Request"
 
   class Configuration
+    # Added to the application's own config.filter_parameters: the list of the
+    # Rails 7.1 application template, without :email.
+    DEFAULT_FILTER_PARAMETERS = %i[
+      passw secret token _key crypt salt certificate otp ssn cvv cvc
+    ].freeze
+
+    # ENV variables whose values the profiler shows; every other one is listed
+    # with its value masked.
+    DEFAULT_ENV_ALLOWLIST = %w[
+      RAILS_ENV RACK_ENV NODE_ENV RAILS_LOG_LEVEL RAILS_LOG_TO_STDOUT RAILS_SERVE_STATIC_FILES
+      RAILS_MAX_THREADS RAILS_MIN_THREADS WEB_CONCURRENCY PORT PIDFILE
+      LANG LANGUAGE LC_ALL LC_CTYPE TZ HOME PWD PATH SHELL USER HOSTNAME TERM
+      RUBY_VERSION RUBYOPT RUBY_YJIT_ENABLE MALLOC_ARENA_MAX
+      BUNDLE_GEMFILE BUNDLE_PATH BUNDLE_WITHOUT GEM_HOME GEM_PATH BOOTSNAP_CACHE_DIR
+    ].freeze
+
     attr_accessor :enabled, :storage_options, :collectors,
                   :skip_paths, :slow_query_threshold, :max_queries_warning,
                   :track_memory, :memory_warning_threshold,
@@ -22,6 +38,7 @@ module Profiler
                   :track_tests,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
                   :compress_bodies, :compress_body_threshold,
+                  :redact_sensitive_data, :filter_parameters, :env_allowlist,
                   :name, :master_url, :self_url,
                   :cluster_heartbeat_interval, :cluster_offline_threshold
 
@@ -67,6 +84,9 @@ module Profiler
       @mailer_skip_actions = []
       @compress_bodies = true
       @compress_body_threshold = 10 * 1024 # 10 KB
+      @redact_sensitive_data = true
+      @filter_parameters = DEFAULT_FILTER_PARAMETERS.dup
+      @env_allowlist = DEFAULT_ENV_ALLOWLIST.dup
       @tmp_path = nil
       @name = nil
       @master_url = nil

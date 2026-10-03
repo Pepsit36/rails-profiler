@@ -338,7 +338,9 @@ end
 ### Measures
 - Disabled by default in production
 - Configurable authorization
-- Parameter sanitization (passwords, tokens, secrets)
+- Sensitive data masked before storage by one filter (`Profiler::Redaction`) built on the
+  application's `config.filter_parameters`: params, bodies, headers, outbound HTTP, SQL binds, job
+  and mailer arguments, `ENV` (allowlist)
 - Token-based profile access
 - XSS protection in views
 - CSP-friendly (no eval, inline scripts use nonces)

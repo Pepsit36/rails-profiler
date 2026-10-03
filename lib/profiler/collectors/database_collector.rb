@@ -96,7 +96,8 @@ module Profiler
 
         binds.map do |bind|
           if bind.respond_to?(:value)
-            bind.value
+            name = bind.name if bind.respond_to?(:name)
+            Profiler::Redaction.filter_named(name, bind.value)
           else
             bind
           end

@@ -2,6 +2,7 @@
 
 require_relative "profiler/version"
 require_relative "profiler/configuration"
+require_relative "profiler/redaction"
 
 module Profiler
   class Error < StandardError; end
