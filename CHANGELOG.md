@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.6] - 2026-10-03
+
+<!-- stamped -->
+
 ### Security
 
 - **Access control:** Check `authorization_mode` on every page and endpoint of the profiler (UI,
