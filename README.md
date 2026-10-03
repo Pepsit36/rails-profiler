@@ -496,8 +496,10 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - Only active when enabled (development/test by default)
 - Expected overhead: < 5ms per request
 - Text bodies > 10 KB compressed automatically (gzip+base64)
-- Masking sensitive data adds about 1 ms to a typical profile, plus about 80 ms per megabyte of
-  JSON body
+- Masking sensitive data adds about 1 ms to a typical profile. A JSON body none of whose keys can
+  match the filter is not parsed: about 10 ms per megabyte for ASCII text, 60 ms when it holds
+  other characters; a body that has such a key is parsed and filtered, about 100 ms per megabyte,
+  in the request
 - Automatic cleanup of old profiles
 
 ## Security
@@ -514,31 +516,45 @@ The profiler masks sensitive values with `[FILTERED]` **before** a profile is st
 filter built by `ActiveSupport::ParameterFilter` from your application's
 `Rails.application.config.filter_parameters` plus the profiler's own `config.filter_parameters`.
 Rails semantics apply: a symbol or string matches any key that contains it, case-insensitively, at
-any nesting depth (`password` masks `user[password]` and `PASSWORD`); a regexp is used as is.
+any nesting depth (`password` masks `user[password]` and `PASSWORD`); a regexp is used as is; a
+proc rewrites the value. When the filter raises (a proc that expects a string and gets a number,
+say), the profiler masks the value rather than let the error reach your application.
 
 The profiler's own list defaults to
 `[:passw, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn, :cvv, :cvc]` (the
 Rails 7.1 template without `:email`), so an application with an empty or short
-`filter_parameters` is still covered, and the gem is covered outside Rails.
+`filter_parameters` is still covered, and the gem is covered outside Rails. To lighten it, assign
+a shorter list (`config.filter_parameters = %i[passw secret]`), or `[]` to rely on your
+application's list alone; an entry of your application's `config.filter_parameters` always
+applies, the profiler cannot take it out.
 
 What is masked:
 
 | Data | Rule |
 |---|---|
 | Request params | values of filtered keys, nested included |
-| Request and response bodies, incoming and outbound | JSON (`application/json`, `*+json`) and `application/x-www-form-urlencoded`: values of filtered keys; an unparseable JSON body and any `multipart/*` body: masked entirely; binary bodies and other text types (HTML, XML, plain text...) are kept as they are, the filter cannot read them |
-| Headers, incoming, response and outbound (Net::HTTP, so Faraday, RestClient, HTTParty...) | `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, and any header whose name matches the filter (`X-Api-Key` matches `_key`) |
+| Route params | values of filtered keys (the path itself is kept: `/confirm/abc` still shows `abc`) |
+| Request and response bodies, incoming and outbound | JSON (`application/json`, `text/json`, `*+json`), NDJSON (`*/x-ndjson`, line by line) and `application/x-www-form-urlencoded`: values of filtered keys; an unparseable JSON body and any `multipart/*` body: masked entirely; binary bodies and other text types (HTML, XML, plain text...) are kept as they are, the filter cannot read them |
+| Headers, incoming, response and outbound (Net::HTTP, so Faraday, RestClient, HTTParty...) | `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, and any header whose name matches the filter (`X-Api-Key` matches `_key`); the query string of `Referer`, `Location` and `Content-Location` goes through the filter (`reset_password_token=[FILTERED]`) |
 | Outbound URLs | values of filtered query string parameters |
 | `ENV` (Env tab, `/_profiler/api/env_vars`, MCP `list_env_vars` and `get_profile` env section) | values of variables outside `config.env_allowlist`, and of any variable whose name matches the filter; names stay listed |
 | SQL binds | values bound to a column whose name matches the filter, as Active Record does in its logs; EXPLAIN is then refused for that query, since it cannot be rebuilt |
 | Job arguments (Active Job, Sidekiq) | values of filtered keys inside hash arguments |
-| Mailer arguments (`assigns`) | arguments whose parameter name matches the filter |
+| Mailer arguments (`assigns`) | arguments whose parameter name matches the filter, and values of filtered keys inside hash arguments |
 
 Not filtered, because the profiler cannot tell what they contain: log lines (Rails already filters
 its `Parameters:` line and request paths), console expressions and their results, `dump()`
 values, exception messages, SQL literals written into the query text, and positional job
-arguments that are plain strings. A masked `ENV` value exported from the Env tab is exported as
-`[FILTERED]`.
+arguments that are plain strings. On MySQL, where Active Record does not use prepared statements by
+default (`prepared_statements: false`), bound values are written into the SQL text and are
+therefore not masked. Any other object (an Active Record model passed to a job or a mailer, say)
+is stored through its `inspect`: Active Record masks attributes there with its
+`filter_attributes`, which follow your application's `config.filter_parameters` only, not the
+profiler's own list.
+
+A masked `ENV` value exported from the Env tab is exported as `[FILTERED]`. The import skips such
+lines, and the server refuses `[FILTERED]` as a value (422 from `/_profiler/api/env_vars`, an
+error from the `set_env_var` MCP tool), so a round trip cannot overwrite the real value.
 
 `config.env_allowlist` defaults to `Profiler::Configuration::DEFAULT_ENV_ALLOWLIST` (`RAILS_ENV`,
 `RACK_ENV`, `PORT`, `LANG`, `TZ`, `PATH`, `RUBY_VERSION`, `BUNDLE_GEMFILE`...); it accepts

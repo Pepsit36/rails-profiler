@@ -19,6 +19,20 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Security
+
+- **Sensitive data:** The filter also reads the query string of `Referer`, `Location` and
+  `Content-Location` headers (a Devise `reset_password_token` no longer shows there), `text/json`
+  and `x-ndjson` bodies, hash arguments of mailers and route params. A proc in
+  `filter_parameters` no longer makes the profiler raise into the application (an `UPDATE` failed
+  with a 500): when the filter fails, the value is masked. The `reset_env_var` MCP tool no longer
+  prints the original value of a hidden variable, and `[FILTERED]` is refused as a value, by the
+  `env_vars` endpoint (422), the `set_env_var` MCP tool and the Env tab import, so re-importing an
+  export cannot overwrite a secret. A JSON body none of whose keys can match the filter is no
+  longer parsed, which takes a clean megabyte from about 110 ms to about 12 ms.
+- **Upgrade note:** Update every node of a cluster: a node still on an older version returns its
+  data in clear to the master.
+
 ## [0.30.6] - 2026-10-03
 
 <!-- stamped -->
