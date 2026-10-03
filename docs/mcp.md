@@ -159,6 +159,9 @@ Analyze SQL queries for N+1 patterns, duplicates, and slow queries. Use `"latest
 ### `explain_query`
 
 Run `EXPLAIN ANALYZE` on a specific query from a profile and return the execution plan.
+Only read-only statements (`SELECT`, `WITH ... SELECT`, `TABLE`, `VALUES`) are explained, in a
+transaction always rolled back; any other query returns an error. See
+[Explaining a query](../README.md#explaining-a-query).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|

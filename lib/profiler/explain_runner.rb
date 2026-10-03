@@ -1,9 +1,19 @@
 # frozen_string_literal: true
 
+require "profiler/sql_statement"
+
 module Profiler
   # Shared service for running EXPLAIN ANALYZE on a stored query.
   # Used by both the HTTP API controller and the MCP explain_query tool.
+  #
+  # Only read-only statements are explained: PostgreSQL's EXPLAIN ANALYZE runs the
+  # statement, so explaining a write would replay it. The probe itself runs in a
+  # transaction that is always rolled back, read-only on PostgreSQL, for what no
+  # reading of the statement can rule out (a function with a side effect).
   module ExplainRunner
+    # An ArgumentError, so callers answer it as a bad request (422, MCP error).
+    class UnsafeStatementError < ArgumentError; end
+
     # @param profile_token [String]
     # @param query_index   [Integer]
     # @return [Hash] { result:, format: "json"|"text", adapter: String }
@@ -35,11 +45,14 @@ module Profiler
 
       conn    = ActiveRecord::Base.connection
       adapter = conn.adapter_name.downcase
+      refusal = SqlStatement.read_only_refusal(sql, dialect: dialect_for(adapter))
+      raise UnsafeStatementError, refusal if refusal
+
       full_sql = reconstruct_sql(sql, binds, conn, adapter)
 
       explain_sql, format = build_explain_statement(full_sql, adapter)
 
-      rows = conn.exec_query(explain_sql, "EXPLAIN").to_a
+      rows = probe(conn, explain_sql, adapter)
 
       result = if format == "json"
         # PostgreSQL / MySQL return JSON in rows[0]["QUERY PLAN"] or rows[0]["EXPLAIN"]
@@ -55,22 +68,35 @@ module Profiler
     private
 
     def self.reconstruct_sql(sql, binds, conn, adapter)
-      return sql if binds.empty?
+      SqlStatement.substitute(sql, binds, dialect: dialect_for(adapter)) { |value| conn.quote(value) }
+    end
 
-      if adapter.include?("postgresql")
-        result = sql.dup
-        binds.each_with_index do |value, i|
-          result = result.gsub("$#{i + 1}", conn.quote(value))
-        end
-        result
-      else
-        # MySQL / SQLite: replace ? sequentially
-        result = sql.dup
-        binds.each do |value|
-          result = result.sub("?", conn.quote(value))
-        end
-        result
+    def self.dialect_for(adapter)
+      if adapter.include?("postgresql") then :postgresql
+      elsif adapter.include?("mysql") || adapter.include?("trilogy") then :mysql
+      else :sqlite
       end
+    end
+
+    # Never commits. Read-only on PostgreSQL only: MySQL refuses SET TRANSACTION once
+    # a transaction has begun, and neither MySQL's EXPLAIN nor SQLite's EXPLAIN QUERY
+    # PLAN runs the statement. The probe's own savepoint is what undoes READ ONLY
+    # inside a transaction the application already opened: when that transaction has
+    # run nothing yet, ActiveRecord skips the nested savepoint and rolls back with
+    # ROLLBACK AND CHAIN, which would carry READ ONLY over.
+    def self.probe(conn, explain_sql, adapter)
+      rows = nil
+      conn.transaction(requires_new: true) do
+        conn.execute("SAVEPOINT profiler_explain")
+        begin
+          conn.execute("SET TRANSACTION READ ONLY") if adapter.include?("postgresql")
+          rows = conn.exec_query(explain_sql, "EXPLAIN").to_a
+        ensure
+          conn.execute("ROLLBACK TO SAVEPOINT profiler_explain")
+        end
+        raise ActiveRecord::Rollback
+      end
+      rows
     end
 
     def self.build_explain_statement(sql, adapter)

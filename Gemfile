@@ -13,3 +13,6 @@ gem "redis", "~> 5.0", require: false
 gem "rack-test", "~> 2.0", require: false
 
 gem "stackprof", "~> 0.2.28", :require => false
+
+# A real database for the ExplainRunner specs (EXPLAIN QUERY PLAN, rolled-back probe).
+gem "sqlite3", ">= 1.4", require: false

@@ -139,7 +139,7 @@ module Profiler
           ),
           define_tool(
             name: "explain_query",
-            description: "Run EXPLAIN ANALYZE on a specific query from a profile. Returns the query execution plan with cost and row estimates. Only available in development/test environments.",
+            description: "Run EXPLAIN ANALYZE on a specific query from a profile. Returns the query execution plan with cost and row estimates. Only read-only statements (SELECT, WITH ... SELECT, TABLE, VALUES) are explained, in a transaction always rolled back; other queries return an error. Only available in development/test environments.",
             input_schema: {
               properties: {
                 token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },
