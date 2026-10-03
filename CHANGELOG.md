@@ -19,6 +19,20 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.5] - 2026-10-03
+
+<!-- stamped -->
+
+### Fixed
+
+- **Instrumentation:** Pass the arguments of `Thread.new` on to its block, and keep keyword
+  arguments as keywords. While a profile was being collected the block got none at all, which on
+  Ruby 3.4 broke the Happy Eyeballs hostname resolution of `Socket.tcp`: connections by hostname
+  timed out, for example as `Redis::CannotConnectError`. Keyword arguments were flattened at all
+  times, on every Ruby. Affects v0.22.1 through v0.30.4.
+- **Instrumentation:** Raise `ThreadError` on a `Thread.new` with no block during a profiled
+  request, as Ruby does.
+
 ## [0.30.4] - 2026-07-01
 
 ### Fixed
