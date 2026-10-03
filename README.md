@@ -496,10 +496,12 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - Only active when enabled (development/test by default)
 - Expected overhead: < 5ms per request
 - Text bodies > 10 KB compressed automatically (gzip+base64)
-- Masking sensitive data adds about 1 ms to a typical profile. A JSON body none of whose keys can
-  match the filter is not parsed: about 10 ms per megabyte for ASCII text, 60 ms when it holds
-  other characters; a body that has such a key is parsed and filtered, about 100 ms per megabyte,
-  in the request
+- Masking sensitive data adds well under 1 ms to a typical profile. A JSON body in whose text no
+  filter matches is not parsed: about 10 ms per megabyte for ASCII text, 50 ms when it holds other
+  characters. A body where a filter matches, in a key or only in a value (`"title": "reset your
+  password"`), is parsed and filtered: about 100 to 230 ms per megabyte depending on the machine,
+  in the request. Procs and regexps with anchors or lookarounds in `filter_parameters` send every
+  JSON body to the parser
 - Automatic cleanup of old profiles
 
 ## Security
@@ -517,8 +519,10 @@ filter built by `ActiveSupport::ParameterFilter` from your application's
 `Rails.application.config.filter_parameters` plus the profiler's own `config.filter_parameters`.
 Rails semantics apply: a symbol or string matches any key that contains it, case-insensitively, at
 any nesting depth (`password` masks `user[password]` and `PASSWORD`); a regexp is used as is; a
-proc rewrites the value. When the filter raises (a proc that expects a string and gets a number,
-say), the profiler masks the value rather than let the error reach your application.
+proc rewrites the value, in bodies and params as in named values (SQL binds, headers, `ENV`,
+mailer arguments). When the filter raises (a proc that expects a string and gets a number, say),
+the profiler masks the value rather than let the error reach your application, and logs the error
+class once, without the value.
 
 The profiler's own list defaults to
 `[:passw, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn, :cvv, :cvc]` (the
@@ -534,7 +538,7 @@ What is masked:
 |---|---|
 | Request params | values of filtered keys, nested included |
 | Route params | values of filtered keys (the path itself is kept: `/confirm/abc` still shows `abc`) |
-| Request and response bodies, incoming and outbound | JSON (`application/json`, `text/json`, `*+json`), NDJSON (`*/x-ndjson`, line by line) and `application/x-www-form-urlencoded`: values of filtered keys; an unparseable JSON body and any `multipart/*` body: masked entirely; binary bodies and other text types (HTML, XML, plain text...) are kept as they are, the filter cannot read them |
+| Request and response bodies, incoming and outbound | JSON (`application/json`, `text/json`, `*+json`), NDJSON (`*/x-ndjson`, line by line) and `application/x-www-form-urlencoded`: values of filtered keys; a JSON body that cannot be parsed and in whose text a filter matches (`{password: "x"}`), and any `multipart/*` body: masked entirely; binary bodies and other text types (HTML, XML, plain text...) are kept as they are, the filter cannot read them |
 | Headers, incoming, response and outbound (Net::HTTP, so Faraday, RestClient, HTTParty...) | `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, and any header whose name matches the filter (`X-Api-Key` matches `_key`); the query string of `Referer`, `Location` and `Content-Location` goes through the filter (`reset_password_token=[FILTERED]`) |
 | Outbound URLs | values of filtered query string parameters |
 | `ENV` (Env tab, `/_profiler/api/env_vars`, MCP `list_env_vars` and `get_profile` env section) | values of variables outside `config.env_allowlist`, and of any variable whose name matches the filter; names stay listed |
