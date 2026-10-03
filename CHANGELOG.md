@@ -32,7 +32,8 @@ every commit of every tag interval is accounted for one way or the other.
 - **Access control:** The new default `authorization_mode`, `:allow_local`, only lets in requests
   made from this machine: a loopback `REMOTE_ADDR`, no forwarding header naming a remote client, and
   a local `Host` (or one listed in `config.hosts`), against DNS rebinding; the test environment
-  skips the `Host` check, so the application's request specs are still captured. It also decides
+  also accepts the reserved hosts `www.example.com`, `example.com` and `example.org`, so the
+  application's request specs are still captured. It also decides
   which requests are captured, and logs the reason for a refusal once per process. The previous
   default, `:allow_all`, let anybody who could reach the application read and change everything.
 - **Access control:** API requests that change something (including a form `POST` turned into

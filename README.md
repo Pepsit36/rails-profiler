@@ -410,10 +410,12 @@ same check decides which requests the profiler captures.
   such hosts in development through `config.hosts`; the profiler checks them itself because
   `config.hosts` is empty in the other environments and often cleared in Docker setups.
 
-In the test environment, `:allow_local` does not check the `Host`: your application's request
-specs send `Host: www.example.com` and are still captured. DNS rebinding needs a browser visiting
-the server, which a test run does not have; `REMOTE_ADDR` and the forwarding headers are still
-checked.
+In the test environment, `:allow_local` also accepts `www.example.com`, `example.com` and
+`example.org`, the default hosts of rack-test and of Rails integration tests, so that your
+application's request specs are still captured. These names are reserved (RFC 2606): nobody can
+point them at a server of their own. Any other `Host` is still checked, as are `REMOTE_ADDR` and the
+forwarding headers, since a server started in the test environment (system tests, Cypress,
+`rails s -e test`) can be reached by a browser.
 
 `:allow_local` trusts the machine, not the person: anything that reaches Rails from the machine
 itself is local. That includes a relay that adds no forwarding header (`ssh -R`, `socat`,
