@@ -26,6 +26,7 @@ module Profiler
       # overrides are blocked, a reset restores these and never the file's "original" values,
       # which come from whatever machine wrote the file.
       @process_originals = {}
+      @process_originals_lock = Mutex.new
     end
 
     def set(key, value)
@@ -48,18 +49,19 @@ module Profiler
       warn "[Profiler] EnvOverrideStore: failed to delete #{key}: #{e.message}"
     end
 
+    # Returns whether ENV was written in this process.
     def reset(key)
       overrides = load_overrides
       entry = overrides[key]
-      return unless entry
 
-      original = entry["original"]
-      # Keep a RESTORE entry so Sidekiq workers pick it up on next job
-      overrides[key] = { "value" => RESTORE_SENTINEL, "original" => original }
-      save_overrides(overrides)
+      if entry
+        # Keep a RESTORE entry so Sidekiq workers pick it up on next job
+        overrides[key] = { "value" => RESTORE_SENTINEL, "original" => entry["original"] }
+        save_overrides(overrides)
+      end
 
       # Apply immediately to the current (web) process
-      restore_env(key, original, blocked: blocked_reason)
+      restore_env(key, entry, blocked: blocked_reason)
     rescue => e
       warn "[Profiler] EnvOverrideStore: failed to reset #{key}: #{e.message}"
     end
@@ -72,7 +74,7 @@ module Profiler
       overrides.each do |key, entry|
         original = entry.is_a?(Hash) ? entry["original"] : nil
         # Apply immediately to the current (web) process
-        restore_env(key, original, blocked: blocked)
+        restore_env(key, { "original" => original }, blocked: blocked)
         # Leave a RESTORE sentinel for Sidekiq workers to pick up
         restore_overrides[key] = { "value" => RESTORE_SENTINEL, "original" => original }
       end
@@ -163,19 +165,24 @@ module Profiler
     private
 
     def remember_process_original(key)
-      @process_originals[key] = ENV[key] unless @process_originals.key?(key)
+      @process_originals_lock.synchronize do
+        @process_originals[key] = ENV[key] unless @process_originals.key?(key)
+      end
     end
 
-    # Puts a reset key back to its original value. Where the overrides are blocked, only a key
-    # this process changed itself is touched, back to the value it had here; ENV is left alone
-    # for any other.
-    def restore_env(key, file_original, blocked:)
-      changed_here = @process_originals.key?(key)
-      process_original = @process_originals.delete(key)
-      return if blocked && !changed_here
+    # Puts a reset key back to its original value and returns whether ENV was written. Where the
+    # overrides are blocked, or the file has no entry for the key, only a key this process
+    # changed itself is touched, back to the value it had here; ENV is left alone for any other.
+    def restore_env(key, file_entry, blocked:)
+      changed_here, process_original = @process_originals_lock.synchronize do
+        [@process_originals.key?(key), @process_originals.delete(key)]
+      end
+      from_process = blocked || file_entry.nil?
+      return false if from_process && !changed_here
 
-      original = blocked ? process_original : file_original
+      original = from_process ? process_original : file_entry["original"]
       original.nil? ? ENV.delete(key) : ENV[key] = original
+      true
     end
 
     def original_for(overrides, key)

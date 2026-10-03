@@ -176,6 +176,21 @@ RSpec.describe Profiler::EnvOverrideStore do
         store.reset("PROFILER_UNIT_A")
         expect(ENV["PROFILER_UNIT_A"]).to eq("set-by-someone-else")
       end
+
+      it "reset restores a key this process changed even once its entry is gone from the file" do
+        store.set("PROFILER_UNIT_A", "changed-here")
+        ENV["PROFILER_UNIT_A"] = "changed-here"
+        FileUtils.rm_f(file)
+
+        expect(store.reset("PROFILER_UNIT_A")).to be(true)
+        expect(ENV["PROFILER_UNIT_A"]).to eq("deployed-a")
+      end
+
+      it "reset leaves a key alone when it has no entry and this process never changed it" do
+        FileUtils.rm_f(file)
+        expect(store.reset("PROFILER_UNIT_A")).to be(false)
+        expect(ENV["PROFILER_UNIT_A"]).to eq("deployed-a")
+      end
     end
 
     context "in production, with the profiler enabled" do

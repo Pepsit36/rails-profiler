@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "../slave_support"
-require_relative "../../redaction"
 
 require "uri"
 
@@ -24,11 +23,10 @@ module Profiler
             return [{ type: "text", text: "No active override for #{key}." }]
           end
 
-          original = overrides[key]["original"]
-          Profiler.env_override_store.reset(key)
+          restored = Profiler.env_override_store.reset(key)
 
-          restored = original.nil? ? "(unset)" : Profiler::Redaction.env_value(key, original)
-          [{ type: "text", text: "Reset #{key} to original value: #{restored}" }]
+          done = restored ? "original value restored" : "ENV left unchanged"
+          [{ type: "text", text: "Reset #{key}: override removed, #{done} in this process." }]
         end
       end
     end
