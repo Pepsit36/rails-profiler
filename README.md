@@ -520,7 +520,8 @@ filter built by `ActiveSupport::ParameterFilter` from your application's
 Rails semantics apply: a symbol or string matches any key that contains it, case-insensitively, at
 any nesting depth (`password` masks `user[password]` and `PASSWORD`); a regexp is used as is; a
 proc rewrites the value, in bodies and params as in named values (SQL binds, headers, `ENV`,
-mailer arguments). Procs see string values only, once each; any other object (an Active Record
+mailer arguments). Procs see string values only, once each, and a proc of arity 3 receives the original params as in
+Rails (for a named value, the single name and value); any other object (an Active Record
 model, say) is neither copied nor passed to them, and is stored through its `inspect`. When the filter raises (a proc that expects a string and gets a number, say),
 the profiler masks the value rather than let the error reach your application, and logs the error
 class once, without the value.
