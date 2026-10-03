@@ -9,6 +9,10 @@ module Profiler
       ].freeze
 
       def initialize(*args, &block)
+        # Ruby refuses a Thread with no block, and the wrapper below is a block, so
+        # without this the error would never come while a profile is being collected.
+        return super if block.nil?
+
         parent_context = PROPAGATED_KEYS.filter_map do |key|
           val = Thread.current[key]
           [key, val] unless val.nil?
