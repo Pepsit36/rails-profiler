@@ -19,7 +19,7 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
-## [0.30.5] - 2026-10-02
+## [0.30.5] - 2026-10-03
 
 <!-- stamped -->
 
