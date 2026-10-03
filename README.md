@@ -499,7 +499,7 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - Masking sensitive data adds well under 1 ms to a typical profile. A JSON body in whose text no
   filter matches is not parsed: about 10 ms per megabyte for ASCII text, 50 ms when it holds other
   characters. A body where a filter matches, in a key or only in a value (`"title": "reset your
-  password"`), is parsed and filtered: about 100 to 230 ms per megabyte depending on the machine,
+  password"`), is parsed and filtered: about 100 to 300 ms per megabyte depending on the machine,
   in the request. Procs and regexps with anchors or lookarounds in `filter_parameters` send every
   JSON body to the parser
 - Automatic cleanup of old profiles
@@ -520,7 +520,8 @@ filter built by `ActiveSupport::ParameterFilter` from your application's
 Rails semantics apply: a symbol or string matches any key that contains it, case-insensitively, at
 any nesting depth (`password` masks `user[password]` and `PASSWORD`); a regexp is used as is; a
 proc rewrites the value, in bodies and params as in named values (SQL binds, headers, `ENV`,
-mailer arguments). When the filter raises (a proc that expects a string and gets a number, say),
+mailer arguments). Procs see string values only, once each; any other object (an Active Record
+model, say) is neither copied nor passed to them, and is stored through its `inspect`. When the filter raises (a proc that expects a string and gets a number, say),
 the profiler masks the value rather than let the error reach your application, and logs the error
 class once, without the value.
 
