@@ -28,6 +28,11 @@ RSpec.describe "Persisted env overrides at boot" do
         config.logger = Logger.new(File.join(ENV.fetch("PROBE_ROOT"), "boot.log"))
       end
 
+      ran = []
+      Rails::Initializable::Initializer.prepend(Module.new do
+        define_method(:run) { |*args| ran << name.to_s; super(*args) }
+      end)
+
       ProbeApp.initialize!
       # A second call in the same process must not log a second warning.
       Profiler.env_override_store.apply_at_boot!(Rails.logger) if ENV["PROBE_CALL_TWICE"]
@@ -35,7 +40,9 @@ RSpec.describe "Persisted env overrides at boot" do
       puts JSON.generate(
         "applied" => ENV["SEC08_PROBE"],
         "deleted_kept" => ENV["SEC08_DELETED"],
-        "enabled" => Profiler.configuration.enabled
+        "enabled" => Profiler.configuration.enabled,
+        "ran" => ran,
+        "declared" => Profiler::Railtie.initializers.map { |i| i.name.to_s }
       )
     RUBY
   end
@@ -124,6 +131,26 @@ RSpec.describe "Persisted env overrides at boot" do
       expect(lines.first).to include("2 persisted environment overrides")
       expect(lines.first).to include("production")
       expect(result["log"]).not_to include(secret_value)
+    end
+  end
+
+  # An initializer declared without `after:` runs after the one declared before it. Declared
+  # below profiler.apply_env_overrides, it would run after the application's initializers too,
+  # and profiler.set_configs moved there would overwrite the application's `enabled`.
+  describe "initializer order" do
+    let(:result) do
+      boot(rails_env: "development", initializer: "Profiler.configure { |c| c.enabled = true }")
+    end
+
+    it "runs apply_env_overrides after every load_config_initializers, and every other gem initializer before" do
+      ran = result["ran"]
+      loads = ran.each_index.select { |i| ran[i] == "load_config_initializers" }
+      others = result["declared"] - ["profiler.apply_env_overrides"]
+
+      expect(result["declared"].last).to eq("profiler.apply_env_overrides")
+      expect(ran.index("profiler.apply_env_overrides")).to be > loads.max
+      expect(others.map { |name| ran.index(name) }).to all(be < loads.min)
+      expect(others.sort_by { |name| ran.index(name) }).to eq(others)
     end
   end
 

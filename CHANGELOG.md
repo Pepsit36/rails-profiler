@@ -39,6 +39,12 @@ every commit of every tag interval is accounted for one way or the other.
   an initializer of yours needs them, call `Profiler.env_override_store.apply!` at the end of
   `config/initializers/profiler.rb`; initializers loaded after it then see them, under the same
   rules.
+- **Env overrides:** Resetting one override, or all of them, from the Env tab or the MCP env
+  tools no longer writes into `ENV` the "original" values saved in `env_overrides.json` in
+  production, nor while the profiler is disabled: those values come from the machine that wrote
+  the file, so a reset could put a development value into a production variable, or delete it.
+  There, a reset restores only the variables the running process changed itself, to the values
+  they had before.
 
 ## [0.30.7] - 2026-10-04
 
