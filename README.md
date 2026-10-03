@@ -179,17 +179,25 @@ writing CTE (`WITH d AS (DELETE ... RETURNING id) SELECT ...`), `SELECT ... INTO
 `FOR UPDATE`, `FOR SHARE` and `LOCK IN SHARE MODE`. It can also refuse a read: an unquoted column
 named `share`, for example.
 
-The probe then runs in a transaction that is always rolled back, inside a savepoint of its own when
-the application already has one open:
+The probe then runs on a connection of its own, taken out of the pool and closed afterwards, in a
+transaction that is always rolled back. Nothing it does to its session outlives it, and the
+application's own connection and transaction are never touched. It needs one connection more than
+the request holds: with a pool of one, Explain waits for `checkout_timeout`, then fails.
 
-- **PostgreSQL:** also `SET TRANSACTION READ ONLY`, so a function with a side effect called from a
-  `SELECT` fails instead of writing (`nextval()` included).
-- **MySQL:** rolled back, not read-only. `EXPLAIN` without `ANALYZE` does not run the statement.
-- **SQLite:** rolled back. `EXPLAIN QUERY PLAN` does not run the statement.
+- **PostgreSQL:** the transaction is also `READ ONLY`, so a function with a side effect called from
+  a `SELECT` fails instead of writing (`nextval()` included), and limited by `SET LOCAL
+  statement_timeout = '30s'`, since `EXPLAIN ANALYZE` runs the query. The EXPLAIN goes by the
+  extended protocol, so the server itself refuses more than one statement.
+- **MySQL:** rolled back, not read-only, no timeout: `EXPLAIN` without `ANALYZE` plans the query
+  without running it. (`max_execution_time`, or `max_statement_time` on MariaDB, would only bound
+  a `SELECT` that runs.)
+- **SQLite:** rolled back. `EXPLAIN QUERY PLAN` does not run the statement. The probe's transaction
+  waits for a write transaction open on another connection, and fails with `database is locked`
+  after the busy timeout.
 
-What this does not cover: effects outside the transaction. A session-level advisory lock taken by
-`pg_advisory_lock()` in a `SELECT` survives the rollback and stays held by the connection, and so
-does anything a function does through `dblink` or on the file system.
+What this does not cover: effects outside the database. Anything a function called from a
+`SELECT` does through `dblink` or on the file system stays done. A session-level advisory lock taken
+by `pg_advisory_lock()` is released when the probe's connection closes.
 
 There is no setting to explain a write. To see the plan of a slow `UPDATE` or `DELETE` on
 PostgreSQL, run it yourself in `psql`, in a transaction you roll back, knowing that sequences still
