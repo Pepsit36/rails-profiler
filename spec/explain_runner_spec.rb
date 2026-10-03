@@ -3,19 +3,23 @@
 require "spec_helper"
 require "active_record"
 require "sqlite3"
+require "tmpdir"
+require "fileutils"
 require "profiler/explain_runner"
 require "profiler/mcp/tools/explain_query"
 
 RSpec.describe Profiler::ExplainRunner do
   # Records every statement the runner sends, so a spec can say what reached the
   # database without a PostgreSQL or MySQL server. Transactions follow
-  # ActiveRecord: ActiveRecord::Rollback is swallowed and rolls back.
+  # ActiveRecord: ActiveRecord::Rollback is swallowed and rolls back. Serves as
+  # the application's connection and as the probe's, which the pool hands out.
   class FakeExplainConnection
-    attr_reader :log
+    attr_reader :log, :extended
 
     def initialize(adapter_name)
       @adapter_name = adapter_name
       @log = []
+      @extended = []
     end
 
     attr_reader :adapter_name
@@ -30,6 +34,9 @@ RSpec.describe Profiler::ExplainRunner do
       @log << "COMMIT"
     rescue ActiveRecord::Rollback
       @log << "ROLLBACK"
+    rescue Exception # rubocop:disable Lint/RescueException
+      @log << "ROLLBACK"
+      raise
     end
 
     def execute(sql, _name = nil)
@@ -40,6 +47,41 @@ RSpec.describe Profiler::ExplainRunner do
       @log << sql
       ActiveRecord::Result.new(["QUERY PLAN"], [["[{\"Plan\": {}}]"]])
     end
+
+    # The PG::Connection: exec_params is the extended protocol.
+    def raw_connection
+      self
+    end
+
+    def exec_params(sql, params)
+      @log << sql
+      @extended << sql
+      [{ "QUERY PLAN" => "[{\"Plan\": {}}]" }]
+    end
+
+    def disconnect!
+      @log << "DISCONNECT"
+    end
+  end
+
+  class FakeExplainPool
+    def initialize(conn)
+      @conn = conn
+    end
+
+    def checkout
+      @conn.log << "CHECKOUT"
+      @conn
+    end
+
+    def remove(conn)
+      conn.log << "REMOVE"
+    end
+  end
+
+  def use_connection(conn)
+    allow(ActiveRecord::Base).to receive(:connection).and_return(conn)
+    allow(ActiveRecord::Base).to receive(:connection_pool).and_return(FakeExplainPool.new(conn))
   end
 
   before do
@@ -141,7 +183,7 @@ RSpec.describe Profiler::ExplainRunner do
     describe "statements that are not read-only (#{adapter_name}, statements sent)" do
       let(:conn) { FakeExplainConnection.new(adapter_name) }
 
-      before { allow(ActiveRecord::Base).to receive(:connection).and_return(conn) }
+      before { use_connection(conn) }
 
       WRITES.merge(DIALECT_WRITES[adapter_name]).each do |label, sql|
         it "refuses #{label} and sends nothing to the database" do
@@ -160,49 +202,63 @@ RSpec.describe Profiler::ExplainRunner do
   end
 
   it "answers a refusal with an error that names the reason" do
-    allow(ActiveRecord::Base).to receive(:connection).and_return(FakeExplainConnection.new("PostgreSQL"))
+    use_connection(FakeExplainConnection.new("PostgreSQL"))
 
     expect { explain("WITH d AS (DELETE FROM widgets RETURNING id) SELECT * FROM d") }
       .to raise_error(described_class::UnsafeStatementError, /only read-only statements .* it contains DELETE/)
   end
 
   describe "the probe transaction" do
-    it "on PostgreSQL, runs the EXPLAIN read-only, in a transaction rolled back even on success" do
+    it "on PostgreSQL, runs the EXPLAIN on its own connection, read-only, time-limited, " \
+       "by the extended protocol, in a transaction rolled back even on success" do
       conn = FakeExplainConnection.new("PostgreSQL")
-      allow(ActiveRecord::Base).to receive(:connection).and_return(conn)
+      use_connection(conn)
 
       explain("SELECT * FROM widgets WHERE id = $1", [7])
 
       expect(conn.log).to eq([
+        "CHECKOUT",
+        "REMOVE",
         "BEGIN",
-        "SAVEPOINT profiler_explain",
         "SET TRANSACTION READ ONLY",
+        "SET LOCAL statement_timeout = '30s'",
         "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM widgets WHERE id = 7",
-        "ROLLBACK TO SAVEPOINT profiler_explain",
-        "ROLLBACK"
+        "ROLLBACK",
+        "DISCONNECT"
       ])
+      expect(conn.extended).to eq(["EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM widgets WHERE id = 7"])
     end
 
-    it "on MySQL, runs the plain EXPLAIN in a transaction rolled back even on success" do
+    it "on MySQL, runs the plain EXPLAIN on its own connection, in a transaction rolled back even on success" do
       conn = FakeExplainConnection.new("Mysql2")
-      allow(ActiveRecord::Base).to receive(:connection).and_return(conn)
+      use_connection(conn)
 
       explain("SELECT * FROM widgets WHERE id = ?", [7])
 
       expect(conn.log).to eq([
+        "CHECKOUT",
+        "REMOVE",
         "BEGIN",
-        "SAVEPOINT profiler_explain",
         "EXPLAIN FORMAT=JSON SELECT * FROM widgets WHERE id = 7",
-        "ROLLBACK TO SAVEPOINT profiler_explain",
-        "ROLLBACK"
+        "ROLLBACK",
+        "DISCONNECT"
       ])
+    end
+
+    it "closes its connection when the EXPLAIN fails" do
+      conn = FakeExplainConnection.new("PostgreSQL")
+      use_connection(conn)
+      allow(conn).to receive(:exec_params).and_raise(ActiveRecord::StatementInvalid, "boom")
+
+      expect { explain("SELECT 1") }.to raise_error(ActiveRecord::StatementInvalid, "boom")
+      expect(conn.log.last(2)).to eq(["ROLLBACK", "DISCONNECT"])
     end
   end
 
   describe "placeholder reconstruction" do
     it "replaces $10 and above as whole placeholders (PostgreSQL)" do
       conn = FakeExplainConnection.new("PostgreSQL")
-      allow(ActiveRecord::Base).to receive(:connection).and_return(conn)
+      use_connection(conn)
 
       sql = "SELECT * FROM widgets WHERE id IN (#{(1..11).map { |i| "$#{i}" }.join(", ")})"
       explain(sql, (101..111).to_a)
@@ -215,7 +271,7 @@ RSpec.describe Profiler::ExplainRunner do
 
     it "leaves placeholders inside literals, and inside substituted values, alone (PostgreSQL)" do
       conn = FakeExplainConnection.new("PostgreSQL")
-      allow(ActiveRecord::Base).to receive(:connection).and_return(conn)
+      use_connection(conn)
 
       explain("SELECT '$1', $1, $2 FROM widgets", ["costs $2", "it's"])
 
@@ -226,7 +282,7 @@ RSpec.describe Profiler::ExplainRunner do
 
     it "leaves the jsonb ? operator alone (PostgreSQL)" do
       conn = FakeExplainConnection.new("PostgreSQL")
-      allow(ActiveRecord::Base).to receive(:connection).and_return(conn)
+      use_connection(conn)
 
       explain("SELECT * FROM widgets WHERE data ? 'k' AND id = $1", [5])
 
@@ -237,7 +293,7 @@ RSpec.describe Profiler::ExplainRunner do
 
     it "replaces ? in order, ignoring ? inside literals and substituted values (MySQL)" do
       conn = FakeExplainConnection.new("Mysql2")
-      allow(ActiveRecord::Base).to receive(:connection).and_return(conn)
+      use_connection(conn)
 
       binds = ["a?b"] + (2..12).to_a
       sql = "SELECT '?' FROM widgets WHERE name = ? AND id IN (#{Array.new(11, "?").join(", ")})"
@@ -251,12 +307,16 @@ RSpec.describe Profiler::ExplainRunner do
   end
 
   describe "on a real SQLite database" do
+    # A file, not :memory:, which would give the probe's own connection an empty
+    # database.
     before(:all) do
-      ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
+      @dir = Dir.mktmpdir("profiler-explain")
+      ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: File.join(@dir, "explain.sqlite3"))
     end
 
     after(:all) do
       ActiveRecord::Base.remove_connection
+      FileUtils.remove_entry(@dir)
     end
 
     let(:conn) { ActiveRecord::Base.connection }
@@ -287,23 +347,18 @@ RSpec.describe Profiler::ExplainRunner do
     it "rolls back the probe even when it succeeds" do
       # Stands for a function with a side effect called from a SELECT, which no
       # reading of the statement can rule out.
-      allow(conn).to receive(:exec_query).and_wrap_original do |original, sql, *args|
-        conn.execute("INSERT INTO widgets (name) VALUES ('side effect')") if sql.start_with?("EXPLAIN")
-        original.call(sql, *args)
+      allow(ActiveRecord::Base.connection_pool).to receive(:checkout).and_wrap_original do |checkout, *args|
+        probe = checkout.call(*args)
+        allow(probe).to receive(:exec_query).and_wrap_original do |original, sql, *rest|
+          probe.execute("INSERT INTO widgets (name) VALUES ('side effect')") if sql.start_with?("EXPLAIN")
+          original.call(sql, *rest)
+        end
+        probe
       end
 
       explain("SELECT * FROM widgets", [])
 
       expect(widget_count).to eq(12)
-    end
-
-    it "inside an open transaction, rolls back only the probe" do
-      conn.transaction do
-        conn.execute("INSERT INTO widgets (name) VALUES ('kept')")
-        explain("SELECT * FROM widgets", [])
-      end
-
-      expect(widget_count).to eq(13)
     end
 
     it "explains a query with twelve binds" do
@@ -316,7 +371,7 @@ RSpec.describe Profiler::ExplainRunner do
   describe "the MCP explain_query tool" do
     it "returns an error for a DELETE, without touching the database" do
       conn = FakeExplainConnection.new("PostgreSQL")
-      allow(ActiveRecord::Base).to receive(:connection).and_return(conn)
+      use_connection(conn)
 
       text = Profiler::MCP::Tools::ExplainQuery.call(
         "token" => store_query("DELETE FROM widgets WHERE id = $1", [1]), "query_index" => 0

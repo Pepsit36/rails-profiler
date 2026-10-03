@@ -7,12 +7,16 @@ module Profiler
   # Used by both the HTTP API controller and the MCP explain_query tool.
   #
   # Only read-only statements are explained: PostgreSQL's EXPLAIN ANALYZE runs the
-  # statement, so explaining a write would replay it. The probe itself runs in a
-  # transaction that is always rolled back, read-only on PostgreSQL, for what no
-  # reading of the statement can rule out (a function with a side effect).
+  # statement, so explaining a write would replay it. The probe itself runs, for
+  # what no reading of the statement can rule out (a function with a side effect),
+  # on a connection of its own that is closed afterwards, in a transaction that is
+  # always rolled back, read-only and time-limited on PostgreSQL.
   module ExplainRunner
     # An ArgumentError, so callers answer it as a bad request (422, MCP error).
     class UnsafeStatementError < ArgumentError; end
+
+    # PostgreSQL's EXPLAIN ANALYZE runs the query: a slow one is stopped after this.
+    PROBE_STATEMENT_TIMEOUT = "30s"
 
     # @param profile_token [String]
     # @param query_index   [Integer]
@@ -52,7 +56,7 @@ module Profiler
 
       explain_sql, format = build_explain_statement(full_sql, adapter)
 
-      rows = probe(conn, explain_sql, adapter)
+      rows = probe(explain_sql, adapter)
 
       result = if format == "json"
         # PostgreSQL / MySQL return JSON in rows[0]["QUERY PLAN"] or rows[0]["EXPLAIN"]
@@ -78,25 +82,34 @@ module Profiler
       end
     end
 
-    # Never commits. Read-only on PostgreSQL only: MySQL refuses SET TRANSACTION once
-    # a transaction has begun, and neither MySQL's EXPLAIN nor SQLite's EXPLAIN QUERY
-    # PLAN runs the statement. The probe's own savepoint is what undoes READ ONLY
-    # inside a transaction the application already opened: when that transaction has
-    # run nothing yet, ActiveRecord skips the nested savepoint and rolls back with
-    # ROLLBACK AND CHAIN, which would carry READ ONLY over.
-    def self.probe(conn, explain_sql, adapter)
-      rows = nil
-      conn.transaction(requires_new: true) do
-        conn.execute("SAVEPOINT profiler_explain")
-        begin
-          conn.execute("SET TRANSACTION READ ONLY") if adapter.include?("postgresql")
-          rows = conn.exec_query(explain_sql, "EXPLAIN").to_a
-        ensure
-          conn.execute("ROLLBACK TO SAVEPOINT profiler_explain")
+    # Runs on a connection taken out of the pool and closed afterwards, so that
+    # nothing the probe does to its session outlives it (an advisory lock, a
+    # setting, a LISTEN) and the application's own transaction is never touched.
+    # The transaction is always rolled back. On PostgreSQL it is also read-only and
+    # time-limited, and the EXPLAIN goes by the extended protocol, which refuses
+    # more than one statement: a COMMIT slipped in could not end the read-only
+    # transaction. Neither MySQL's EXPLAIN nor SQLite's EXPLAIN QUERY PLAN runs the
+    # statement.
+    def self.probe(explain_sql, adapter)
+      pool = ActiveRecord::Base.connection_pool
+      conn = pool.checkout
+      begin
+        pool.remove(conn)
+        rows = nil
+        conn.transaction do
+          if adapter.include?("postgresql")
+            conn.execute("SET TRANSACTION READ ONLY")
+            conn.execute("SET LOCAL statement_timeout = #{conn.quote(PROBE_STATEMENT_TIMEOUT)}")
+            rows = conn.raw_connection.exec_params(explain_sql, []).to_a
+          else
+            rows = conn.exec_query(explain_sql, "EXPLAIN").to_a
+          end
+          raise ActiveRecord::Rollback
         end
-        raise ActiveRecord::Rollback
+        rows
+      ensure
+        conn.disconnect!
       end
-      rows
     end
 
     def self.build_explain_statement(sql, adapter)
