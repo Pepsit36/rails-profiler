@@ -410,8 +410,18 @@ same check decides which requests the profiler captures.
   such hosts in development through `config.hosts`; the profiler checks them itself because
   `config.hosts` is empty in the other environments and often cleared in Docker setups.
 
-When `:allow_local` refuses a request, the profiler logs the cause once per process in
-`Rails.logger`.
+In the test environment, `:allow_local` does not check the `Host`: your application's request
+specs send `Host: www.example.com` and are still captured. DNS rebinding needs a browser visiting
+the server, which a test run does not have; `REMOTE_ADDR` and the forwarding headers are still
+checked.
+
+`:allow_local` trusts the machine, not the person: anything that reaches Rails from the machine
+itself is local. That includes a relay that adds no forwarding header (`ssh -R`, `socat`,
+`kubectl port-forward`), and a request the application itself makes to `localhost` on behalf of a
+user (server-side request forgery). Use `:allow_authorized` when such paths exist.
+
+When `:allow_local` refuses a request, or does not profile it, the profiler logs the cause once
+per process in `Rails.logger`.
 
 **Docker, a VM, or a remote proxy.** The browser's request then reaches Rails from the bridge or
 proxy address (for example `172.17.0.1`), which is not local: the profiler refuses it and stops
@@ -456,8 +466,12 @@ config.extension_cors_enabled = true
 config.cors_allowed_origins = ["https://myapp.dev"]
 ```
 
-`"*"` (the default before 0.30.6, with `extension_cors_enabled = true`) is still accepted, but never
-sent in answer to a request that carries a cookie or an `Authorization` header.
+`"*"` (the default before 0.30.6, with `extension_cors_enabled = true`) is still accepted, and it
+**reopens the profiler to every website you visit, as before 0.30.6**: any page open in your browser
+can then read the profiler's data and, since a preflight is granted, change it (delete profiles,
+write `ENV`, run tests). Under `:allow_local` the check rests on the address and the `Host`, not on
+a cookie, so it does not stop such a page. `"*"` is never sent in answer to a request carrying a
+cookie or an `Authorization` header, which only helps when `authorize_with` relies on them.
 
 ### Framing
 
@@ -465,7 +479,9 @@ Profiler pages may only be framed by the profiler itself and by the Chrome exten
 panel (`Content-Security-Policy: frame-ancestors 'self' chrome-extension: devtools:`, plus
 `X-Frame-Options: SAMEORIGIN` for older browsers). Chrome checks every ancestor of a frame: the
 panel's page is a `chrome-extension:` page, itself shown inside the `devtools:` front end, so both
-are needed. To change the list, set `config.frame_ancestors`; the value before 0.30.6 was
+are needed. `chrome-extension:` lets **any** installed extension frame the profiler; to admit only the profiler's
+own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension://<extension id>",
+"devtools:"]`. To change the list, set `config.frame_ancestors`; the value before 0.30.6 was
 `["'self'", "http:", "https:"]`, which lets any website frame the profiler.
 
 ## Performance
