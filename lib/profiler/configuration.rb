@@ -35,6 +35,7 @@ module Profiler
                   :track_http, :slow_http_threshold, :http_skip_hosts, :http_backtrace_depth,
                   :track_jobs,
                   :track_console,
+                  :apply_env_overrides_when_disabled,
                   :track_tests,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
                   :compress_bodies, :compress_body_threshold,
@@ -77,6 +78,7 @@ module Profiler
       @http_backtrace_depth = 40
       @track_jobs = true
       @track_console = true
+      @apply_env_overrides_when_disabled = false
       @track_tests = false
       @track_mailers = true
       @capture_mail_body = false

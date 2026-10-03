@@ -6,10 +6,6 @@ module Profiler
   class Railtie < Rails::Railtie
     config.profiler = ActiveSupport::OrderedOptions.new
 
-    initializer "profiler.apply_env_overrides" do
-      Profiler.env_override_store.apply!
-    end
-
     initializer "profiler.set_configs" do |app|
       # Set default configuration for Rails environment
       Profiler.configure do |config|
@@ -101,6 +97,13 @@ module Profiler
         require_relative "cluster/master_client"
         Profiler::Cluster::MasterClient.new.start
       end
+    end
+
+    # After the application's config/initializers, so that `enabled` is the application's own.
+    # Declared last: an initializer without `after:` runs after the one declared before it, so
+    # one declared below this one would move past the application's initializers too.
+    initializer "profiler.apply_env_overrides", after: :load_config_initializers do
+      Profiler.env_override_store.apply_at_boot!(Rails.logger)
     end
 
     console do
