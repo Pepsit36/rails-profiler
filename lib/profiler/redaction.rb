@@ -61,10 +61,16 @@ module Profiler
         compiled[:filter]
       end
 
+      # Keys are masked by the filters that are not procs; the procs then
+      # rewrite each string left, once, under its own key. Running the procs
+      # through ParameterFilter instead would dup every other value first,
+      # Active Record models included.
       def filter_hash(hash)
         return hash unless enabled? && hash.is_a?(Hash)
 
-        parameter_filter.filter(hash)
+        state = compiled
+        masked = state[:plain].filter(hash)
+        state[:proc_filter] ? apply_procs_tree(masked, nil) : masked
       rescue StandardError => e
         report(e, "filtering a hash")
         hash.transform_values { MASK }
@@ -104,7 +110,7 @@ module Profiler
         known = state[:keys]
         return known[key] if known.key?(key)
 
-        result = state[:filter].filter(key => +PROBE)[key] == MASK
+        result = state[:plain].filter(key => +PROBE)[key] == MASK
         known[key] = result if known.size < KEY_CACHE_LIMIT
         result
       rescue StandardError => e
@@ -231,9 +237,12 @@ module Profiler
         return state if state && state[:filters] == filters
 
         @reported = Set.new
+        procs, plain = filters.partition { |f| f.respond_to?(:call) }
         @compiled = {
           filters: filters,
           filter: ActiveSupport::ParameterFilter.new(filters, mask: MASK),
+          plain: ActiveSupport::ParameterFilter.new(plain, mask: MASK),
+          proc_filter: procs.empty? ? nil : ActiveSupport::ParameterFilter.new(procs, mask: MASK),
           keys: {}
         }.merge(text_matchers(filters))
       end
@@ -254,7 +263,6 @@ module Profiler
                  strings.any? { |s| !s.to_s.ascii_only? }
         words = strings.map { |s| s.to_s.downcase }
         {
-          procs: procs,
           opaque: opaque,
           words: words,
           words_regexp: words.empty? ? nil : Regexp.new(words.map { |w| Regexp.escape(w) }.join("|"), Regexp::IGNORECASE),
@@ -274,14 +282,35 @@ module Profiler
 
       # The value as the procs of filter_parameters rewrite it under each of
       # +names+. Nothing to do without procs: the names were already tested.
+      #
+      # Only strings: any other object would be duplicated for the procs,
+      # which runs the application's copy hooks; it is shown through its
+      # inspect, as before. The procs run once: under the first of +names+
+      # that changes the value, so that a proc which undoes itself (reverse!)
+      # is not applied twice.
       def apply_procs(names, value)
-        return value unless enabled? && compiled[:procs]
+        return value unless enabled? && value.is_a?(String)
 
-        filter = parameter_filter
-        names.uniq.reduce(value) { |current, name| filter.filter(name => current)[name] }
+        filter = compiled[:proc_filter]
+        return value unless filter
+
+        names.uniq.each do |name|
+          result = filter.filter(name => value)[name]
+          return result unless result == value
+        end
+        value
       rescue StandardError => e
         report(e, "applying a filter_parameters proc")
         MASK
+      end
+
+      def apply_procs_tree(value, key)
+        case value
+        when Hash then value.each_with_object(value.class.new) { |(k, v), out| out[k] = apply_procs_tree(v, k) }
+        when Array then value.map { |v| apply_procs_tree(v, key) }
+        when String then key.nil? || value == MASK ? value : apply_procs([key.to_s], value)
+        else value
+        end
       end
 
       def keep_override_field?(field, value)
@@ -329,7 +358,7 @@ module Profiler
         parsed = JSON.parse(text)
         filtered = filter_value(parsed)
         filtered == parsed ? text : JSON.generate(filtered)
-      rescue JSON::ParserError
+      rescue JSON::ParserError, JSON::GeneratorError
         "[FILTERED: unparseable #{mime} body, #{text.bytesize} bytes]"
       end
 

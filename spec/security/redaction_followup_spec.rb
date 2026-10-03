@@ -52,7 +52,9 @@ RSpec.describe "Sensitive data redaction, review follow-up" do
     it "fails closed when the filter itself raises" do
       stub_const("Rails", fake_rails([->(_k, _v) { raise "boom" }]))
 
-      expect(Profiler::Redaction.sensitive_key?("anything")).to be(true)
+      # Procs judge values, not names: the name passes, its value is masked.
+      expect(Profiler::Redaction.filter_named("anything", "1")).to eq(mask)
+      expect(Profiler::Redaction.filter_headers("X-Anything" => "1")).to eq("X-Anything" => mask)
       expect(Profiler::Redaction.filter_hash("a" => "1")).to eq("a" => mask)
       expect(Profiler::Redaction.filter_body('{"a":"1"}', "application/json")).not_to include('"1"')
     end
