@@ -8,6 +8,14 @@ module Profiler
     DELETED_SENTINEL = "__profiler_deleted__"
     RESTORE_SENTINEL = "__profiler_restore__"
 
+    # Why the persisted overrides are left out of ENV, as logged at boot.
+    BLOCKED_REASONS = {
+      production: "persisted overrides are never applied in production; " \
+                  "delete the file if it was deployed by mistake",
+      disabled: "the profiler is disabled; set " \
+                "config.apply_env_overrides_when_disabled = true to apply them anyway"
+    }.freeze
+
     # File format: { "KEY" => { "value" => "...", "original" => "..." } }
     # Sentinels for "value":
     #   DELETED_SENTINEL  → ENV.delete(key)
@@ -64,7 +72,37 @@ module Profiler
       warn "[Profiler] EnvOverrideStore: failed to reset all: #{e.message}"
     end
 
+    # Why the persisted overrides must not reach ENV in this process, or nil when they may.
+    def blocked_reason
+      return :production if defined?(Rails) && Rails.respond_to?(:env) && Rails.env.production?
+
+      config = Profiler.configuration
+      return :disabled unless config.enabled || config.apply_env_overrides_when_disabled
+
+      nil
+    end
+
+    # Applies the overrides at boot, or says once in the log why they are left out. The message
+    # carries the file and the number of keys only, never a key or a value.
+    def apply_at_boot!(logger)
+      reason = blocked_reason
+      return apply! unless reason
+      return if @boot_warning_logged
+
+      count = load_overrides.size
+      return if count.zero?
+
+      @boot_warning_logged = true
+      noun, verb = count == 1 ? %w[override was] : %w[overrides were]
+      logger&.warn("[Profiler] #{count} persisted environment #{noun} in #{override_file_path} " \
+                   "#{verb} not applied: #{BLOCKED_REASONS.fetch(reason)}.")
+    rescue => e
+      warn "[Profiler] EnvOverrideStore: failed to check overrides at boot: #{e.message}"
+    end
+
     def apply!
+      return if blocked_reason
+
       overrides = load_overrides
       restore_keys = []
 

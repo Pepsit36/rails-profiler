@@ -19,6 +19,27 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Security
+
+- **Env overrides:** Stop applying the environment variable overrides saved from the Env tab or
+  the MCP env tools in production, and while the profiler is disabled. They were written into
+  `ENV` at every boot whatever `enabled` said and whatever the environment, so an
+  `env_overrides.json` left under `tmp/` and shipped with a deployment changed the environment of
+  the production application, and an application with `config.enabled = false` still had them
+  applied without a word. Sidekiq jobs and console evaluations, which apply them again, follow the
+  same rules. When overrides are left out, the boot logs one warning to `Rails.logger` with the
+  file, the number of overrides and the reason, never a name or a value.
+- **Env overrides:** Apply them at boot once the application's `config/initializers` have run,
+  where `enabled` is decided, instead of before. An initializer of the application that reads
+  `ENV` while it runs no longer sees them; requests, jobs, eager loading and `after_initialize`
+  still do.
+
+  Upgrading: to apply the overrides while the profiler is disabled outside production, as before,
+  set `config.apply_env_overrides_when_disabled = true`. Nothing applies them in production. If
+  an initializer of yours needs them, call `Profiler.env_override_store.apply!` at the end of
+  `config/initializers/profiler.rb`; initializers loaded after it then see them, under the same
+  rules.
+
 ## [0.30.7] - 2026-10-04
 
 <!-- stamped -->
