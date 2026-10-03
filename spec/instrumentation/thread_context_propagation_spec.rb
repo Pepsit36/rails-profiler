@@ -85,6 +85,21 @@ RSpec.describe Profiler::Instrumentation::ThreadContextPropagation do
     end
   end
 
+  # Ruby refuses a Thread.new with no block. The patch used to hand the real
+  # initialize a wrapper of its own in that case, which is a block, so the thread
+  # started and the error never came, but only while a profile was being collected.
+  describe "Thread.new with no block" do
+    it "is refused while a profile is being collected" do
+      with_profiling_context do
+        expect { Thread.new }.to raise_error(ThreadError)
+      end
+    end
+
+    it "is refused when no profile is being collected" do
+      expect { Thread.new }.to raise_error(ThreadError)
+    end
+  end
+
   # Ruby 3.4 resolves the hostname of Socket.tcp in Ruby threads, for Happy
   # Eyeballs v2. socket.rb does
   #   Thread.new(*thread_args) { |*thread_args| resolve_hostname(*thread_args) }
