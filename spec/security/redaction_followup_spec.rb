@@ -83,7 +83,9 @@ RSpec.describe "Sensitive data redaction, review follow-up" do
       text = Profiler::MCP::Tools::ResetEnvVar.call("key" => "PROFILER_SPEC_SECRET_VAR").first[:text]
 
       expect(text).not_to include("planted-original-ffff")
-      expect(text).to include(mask)
+      # The message says what the reset did and carries no value, masked or not.
+      expect(text).not_to include(mask)
+      expect(text).to eq("Reset PROFILER_SPEC_SECRET_VAR: override removed, original value restored in this process.")
     end
 
     it "refuses to set a variable to the mask, so a re-imported export cannot overwrite a secret" do

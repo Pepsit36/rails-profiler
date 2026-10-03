@@ -45,6 +45,12 @@ every commit of every tag interval is accounted for one way or the other.
   the file, so a reset could put a development value into a production variable, or delete it.
   There, a reset restores only the variables the running process changed itself, to the values
   they had before.
+- **Env overrides:** In production, or with the profiler disabled, typing back in the Env tab the
+  original value the overrides file shows for a variable now records the running value first, so
+  a later reset puts it back instead of keeping the file's value. A reset also restores a variable
+  this process changed even when its entry has gone from the file. The `reset_env_var` MCP tool
+  now says whether the original value was restored in the process or `ENV` was left unchanged,
+  and no longer prints the value.
 
 ## [0.30.7] - 2026-10-04
 
