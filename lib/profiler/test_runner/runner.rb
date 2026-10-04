@@ -1,12 +1,25 @@
 # frozen_string_literal: true
 
+require "set"
 require_relative "run_store"
 require_relative "discovery"
 
 module Profiler
   module TestRunner
+    # Raised by Runner.start when the selection holds a file that is not a discovered test.
+    class InvalidFileError < ArgumentError; end
+
     class Runner
+      # "spec/models/user_spec.rb:12" or ":12:30": the line selection rspec and minitest accept.
+      LINE_SUFFIX = /\A(.+?)((?::\d+)+)\z/
+
+      @warn_mutex = Mutex.new
+      @warned = {}
+
+      # Every caller (the HTTP controller, the MCP run_tests tool) goes through here, so the
+      # selection is checked once, before any run is recorded or any process is started.
       def self.start(files:, framework:)
+        validate_files!(files, framework)
         run = Profiler::TestRunner.run_store.create(files: files, framework: framework)
         spawn_async(run)
         run
@@ -24,6 +37,77 @@ module Profiler
           # Process already exited
           false
         end
+      end
+
+      # Accepts only files listed by Discovery.files for the framework, compared by their
+      # canonical path (File.realpath, symbolic links resolved), so that a test run cannot be
+      # used to execute any other Ruby file of the application.
+      def self.validate_files!(files, framework)
+        files = Array(files)
+        raise InvalidFileError, "No files selected" if files.empty?
+
+        root = project_root
+        allowed = if Profiler.configuration.test_runner_allow_undiscovered_files
+                    warn_once(:undiscovered,
+                              "[Profiler] config.test_runner_allow_undiscovered_files is enabled: the test runner " \
+                              "runs any file under the Rails root, not only the discovered tests.")
+                    nil
+                  else
+                    discovered_real_paths(root, framework)
+                  end
+
+        refused = files.reject do |entry|
+          next false unless entry.is_a?(String) && !entry.empty?
+
+          path = entry[LINE_SUFFIX, 1] || entry
+          allowed ? allowed.include?(real_path(File.join(root, path))) : under_root?(root, File.join(root, path))
+        end
+        return if refused.empty?
+
+        message = allowed ? "Not a discovered test file" : "Not a file under the Rails root"
+        raise InvalidFileError, "#{message}: #{refused.map(&:to_s).join(", ")}"
+      end
+
+      def self.discovered_real_paths(root, framework)
+        real_root = real_path(root)
+        Discovery.files(framework: framework).flat_map { |dir| dir[:files] }.filter_map do |file|
+          path = real_path(File.join(root, file[:path]))
+          # A discovered symbolic link whose target leaves the project is not a project test.
+          path if path && real_root && path.start_with?("#{real_root}/")
+        end.to_set
+      end
+
+      def self.real_path(path)
+        File.realpath(path)
+      rescue SystemCallError
+        nil
+      end
+
+      def self.under_root?(root, path)
+        expanded = File.expand_path(path)
+        expanded == root || expanded.start_with?("#{root}/")
+      end
+
+      def self.project_root
+        defined?(Rails) ? Rails.root.to_s : Dir.pwd
+      end
+
+      def self.warn_once(key, message)
+        @warn_mutex.synchronize do
+          return if @warned[key]
+
+          @warned[key] = true
+        end
+
+        if defined?(Rails) && Rails.respond_to?(:logger) && Rails.logger
+          Rails.logger.warn(message)
+        else
+          warn(message)
+        end
+      end
+
+      def self.reset_warnings!
+        @warn_mutex.synchronize { @warned = {} }
       end
 
       private
@@ -69,7 +153,7 @@ module Profiler
       end
 
       def self.build_command(files, framework)
-        root = defined?(Rails) ? Rails.root.to_s : Dir.pwd
+        root = project_root
         absolute_files = files.map { |f| File.join(root, f) }
 
         case framework.to_sym
@@ -84,15 +168,40 @@ module Profiler
 
       BLOCKED_ENV_KEYS = %w[RAILS_ENV RACK_ENV DATABASE_URL SECRET_KEY_BASE].freeze
 
+      # Overrides of these variables make the test process load code other than the selected
+      # tests, or run another interpreter: they are not passed to it. The values the process
+      # inherited are kept; only the overrides set through the profiler are left out.
+      CODE_LOADING_ENV_KEYS = %w[
+        RUBYOPT RUBYLIB RUBYGEMS_GEMDEPS GEM_HOME GEM_PATH SPEC_OPTS TESTOPTS TEST
+        PATH HOME XDG_CONFIG_HOME NODE_OPTIONS
+      ].freeze
+      CODE_LOADING_ENV_PREFIXES = %w[BUNDLE_ BUNDLER_ LD_ DYLD_ RUBY_DEBUG_].freeze
+
+      def self.code_loading_env_key?(key)
+        name = key.to_s.upcase
+        CODE_LOADING_ENV_KEYS.include?(name) || CODE_LOADING_ENV_PREFIXES.any? { |prefix| name.start_with?(prefix) }
+      end
+
       def self.build_env
         base = ENV.to_h
+        left_out = []
 
         # Inject env var overrides configured in the profiler — skip blocked keys
         overrides = Profiler.env_override_store.all_overrides
         overrides.each do |key, entry|
           next if BLOCKED_ENV_KEYS.include?(key.upcase)
+          if code_loading_env_key?(key)
+            left_out << key
+            next
+          end
           value = entry.is_a?(Hash) ? entry["value"] : entry
           base[key] = value
+        end
+
+        unless left_out.empty?
+          warn_once([:env, left_out.sort],
+                    "[Profiler] Environment overrides not passed to the test runner, because they make it " \
+                    "load other code: #{left_out.sort.join(", ")}.")
         end
 
         # Ensure test environment regardless of overrides

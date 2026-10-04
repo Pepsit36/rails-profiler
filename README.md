@@ -113,6 +113,9 @@ Profiler.configure do |config|
   # Defaults to true in test env, false elsewhere
   config.track_tests = Rails.env.test?
 
+  # Test runner: only the discovered test files can be run (default: false; see "Test runner")
+  config.test_runner_allow_undiscovered_files = false
+
   # CORS for cross-origin clients (default: off, no origin; see "Access control")
   config.extension_cors_enabled = false
   config.cors_allowed_origins = []
@@ -333,6 +336,29 @@ After the suite runs, a summary is printed to stdout:
 ```
 
 Test profiles are stored like HTTP profiles and can be viewed in the dashboard at `/_profiler` or queried via the MCP tools `query_test_profiles`, `get_test_profile`, and `run_tests`.
+
+### Test runner
+
+The dashboard page `/_profiler/test_runner` and the MCP tool `run_tests` run your tests with
+`bundle exec rspec` (or `rails test`), in the `test` environment. They only run the files the
+profiler discovers, `spec/**/*_spec.rb` and `test/**/*_test.rb` under the Rails root, optionally
+with a line number (`spec/models/user_spec.rb:12`). Paths are compared after resolving symbolic
+links, so a link to any other file is refused, and so is a discovered link whose target leaves the
+Rails root. A refused selection answers `422` with the refused paths, or a tool error over MCP,
+and nothing is started.
+
+Environment overrides set from the profiler (the env vars page, the MCP tool `set_env_var`) reach
+the test process, except those that would make it load other code or run another interpreter:
+`RUBYOPT`, `RUBYLIB`, `RUBYGEMS_GEMDEPS`, `GEM_HOME`, `GEM_PATH`, `SPEC_OPTS`, `TESTOPTS`, `TEST`,
+`PATH`, `HOME`, `XDG_CONFIG_HOME`, `NODE_OPTIONS`, and every `BUNDLE_*`, `BUNDLER_*`, `LD_*`,
+`DYLD_*` and `RUBY_DEBUG_*` variable. Those overrides are left out, with a warning naming them
+once; the values the process inherited from your shell are kept.
+
+To run any file under the Rails root again, as the test runner did before:
+
+```ruby
+config.test_runner_allow_undiscovered_files = true
+```
 
 ### Cluster (Multi-instance)
 
@@ -596,6 +622,7 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - Disabled by default in production
 - Only requests from this machine get in by default (`authorization_mode: :allow_local`), on every page and endpoint; see [Access control](#access-control)
 - API mutations require the `X-Profiler-Request` header or a CSRF token
+- The test runner only runs discovered test files; see [Test runner](#test-runner)
 - No CORS and no framing by other sites by default
 - Sensitive data masked before it is stored, using your `config.filter_parameters`; see [Sensitive data](#sensitive-data)
 - Env overrides saved from the UI or MCP are never applied in production, nor while the profiler
