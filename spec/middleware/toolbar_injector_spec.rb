@@ -67,5 +67,31 @@ RSpec.describe Profiler::Middleware::ToolbarInjector do
         expect(result.join).to include("profiler-toolbar")
       end
     end
+
+    # The token and the nonce come from the gem and from Rails today; the injector escapes
+    # them anyway, as it writes into the application's own page.
+    context "with a token or a nonce carrying markup" do
+      let(:hostile) { %q{x'"></div></script><script>alert(1)</script>} }
+      let(:html) { "<html><body>hi</body></html>" }
+
+      before { Profiler.configure { |c| c.track_ajax = true } }
+
+      it "keeps the token inside its JavaScript string and its attribute" do
+        content = described_class.new([html], hostile).inject.join
+
+        expect(content).not_to include("<script>alert(1)")
+        expect(content).not_to include("></div></script>")
+        assignment = content[/window\.__PROFILER_PARENT_TOKEN__ = (.*);$/, 1]
+        expect(JSON.parse(assignment)).to eq(hostile)
+        expect(content).to include(%q{data-token="x&#39;&quot;&gt;&lt;/div&gt;&lt;/script&gt;})
+      end
+
+      it "keeps the nonce inside its attribute" do
+        content = described_class.new([html], token, hostile).inject.join
+
+        expect(content).not_to include("<script>alert(1)")
+        expect(content).to include(%q{nonce="x&#39;&quot;&gt;})
+      end
+    end
   end
 end

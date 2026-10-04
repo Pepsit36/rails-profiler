@@ -168,6 +168,53 @@ RSpec.describe "Profiler access control", type: :request do
     end
   end
 
+  describe "a disabled profiler" do
+    before { Profiler.configuration.enabled = false }
+
+    it "refuses the API listing" do
+      get "/_profiler/api/profiles", {}, local
+      expect(last_response.status).to eq(403)
+    end
+
+    it "refuses the toolbar, even for a profile left in storage" do
+      storage.save("tok", build_profile(token: "tok", headers: { "Cookie" => "session=secret" }))
+      get "/_profiler/api/toolbar/tok", {}, local
+
+      expect(last_response.status).to eq(403)
+      expect(last_response.body).not_to include("secret")
+    end
+
+    # Walks every route of the engine, so that a controller added later without the
+    # check, or one that skips it, fails here. Mounted Rack applications (the MCP HTTP
+    # transport) are left out until MR E of issue #42, which guards that mount, lands.
+    it "refuses every route of the engine except the static assets" do
+      routes = Profiler::Engine.routes.routes.select { |route| route.defaults[:controller] }
+      routes = routes.reject { |route| route.defaults[:controller] == "profiler/assets" }
+      expect(routes.size).to be > 30
+
+      allowed = routes.filter_map do |route|
+        verb = route.verb.to_s.split("|").first
+        verb = "GET" if verb.nil? || verb.empty?
+        path = "/_profiler" + route.path.spec.to_s.sub("(.:format)", "").gsub(/[:*]\w+/, "x")
+
+        custom_request(verb, path, {}, local.merge(profiler_header))
+        "#{verb} #{path} -> #{last_response.status}" unless last_response.status == 403
+      end
+
+      expect(allowed).to be_empty
+    end
+  end
+
+  describe "the toolbar of an enabled profiler" do
+    it "serves the profile to an authorized request" do
+      storage.save("tok", build_profile(token: "tok"))
+      get "/_profiler/api/toolbar/tok", {}, local
+
+      expect(last_response.status).to eq(200)
+      expect(json.dig("profile", "token")).to eq("tok")
+    end
+  end
+
   def rails_env(name)
     allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new(name))
   end
