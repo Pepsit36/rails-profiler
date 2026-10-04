@@ -11,6 +11,9 @@ module Profiler
     module Security
       SECRET_HEADER = "X-Profiler-Cluster-Secret"
       SECRET_ENV_KEY = "HTTP_X_PROFILER_CLUSTER_SECRET"
+      # A shorter secret, or a blank one, is treated as if none were configured.
+      MIN_SECRET_LENGTH = 32
+      API_PREFIX = "/_profiler/api/"
 
       class << self
         # Whether a secret has to be presented. False only with cluster_require_secret = false
@@ -21,14 +24,38 @@ module Profiler
         end
 
         def configured_secret?
-          !Profiler.configuration.cluster_secret.to_s.empty?
+          secret_problem.nil?
+        end
+
+        # Why the configured secret cannot be used, or nil when it can.
+        def secret_problem
+          secret = Profiler.configuration.cluster_secret.to_s
+          return "No config.cluster_secret is configured" if secret.strip.empty?
+          return nil if secret.strip.length >= MIN_SECRET_LENGTH
+
+          "config.cluster_secret is shorter than #{MIN_SECRET_LENGTH} characters, so it is ignored " \
+            "as if none were configured"
+        end
+
+        # Logged once at boot on a cluster node whose secret cannot be used, since every cluster
+        # request is then refused.
+        def warn_about_configuration(logger)
+          config = Profiler.configuration
+          return unless config.cluster_master? || config.slave?
+          return unless (problem = secret_problem) && secret_required?
+
+          logger.warn("[Profiler Cluster] #{problem}: registrations, heartbeats and proxied requests " \
+                      "are refused. Generate one with `ruby -rsecurerandom -e 'puts SecureRandom.hex(32)'` " \
+                      "and give the same value to every node.")
         end
 
         # Constant-time comparison of the secret a request carries with the configured one.
-        # Always false when no secret is configured.
+        # Always false when no usable secret is configured.
         def valid_secret?(presented)
+          return false unless configured_secret?
+
           expected = Profiler.configuration.cluster_secret.to_s
-          return false if expected.empty? || presented.to_s.empty?
+          return false if presented.to_s.empty?
 
           ActiveSupport::SecurityUtils.secure_compare(presented.to_s, expected)
         end
@@ -69,6 +96,47 @@ module Profiler
 
           "master_url #{url} uses plain HTTP to a host that is not a loopback address: HTTPS is required " \
             "(or set config.cluster_allow_insecure_http = true)"
+        end
+
+        # The URL as the registry keeps it: lower-case scheme and host, no default port, IPv6
+        # between brackets, path segments re-encoded, no trailing slash. Nil when not acceptable.
+        def normalized_url(url)
+          parts = normalize(url)
+          return nil unless parts
+
+          host = parts[:host].include?(":") ? "[#{parts[:host]}]" : parts[:host]
+          default_port = parts[:scheme] == "https" ? 443 : 80
+          port = parts[:port] == default_port ? "" : ":#{parts[:port]}"
+          path = parts[:segments].map { |segment| escape_segment(segment) }.join("/")
+          "#{parts[:scheme]}://#{host}#{port}#{path.empty? ? "" : "/#{path}"}"
+        end
+
+        # One path segment of a request to a slave, from a value that may come from a client (a
+        # proxied path, a profile token). "?", "#" and "%" are encoded, so they stay in the
+        # segment; ".", ".." and anything holding a "/" are refused, so the request cannot leave
+        # the slave's API.
+        def escape_segment(value)
+          segment = value.to_s
+          if segment.empty? || segment == "." || segment == ".." || segment.match?(%r{[/\\]})
+            raise Profiler::Error, "Refusing to send #{segment.inspect} as a path segment to a slave profiler"
+          end
+
+          URI.encode_www_form_component(segment).gsub("+", "%20")
+        end
+
+        # The final check on a path sent to a slave: under /_profiler/api/, with no dot or empty
+        # segment once decoded.
+        def api_path_denial(path)
+          raw = path.to_s.split("?", 2).first
+          return "#{path.inspect} is not under #{API_PREFIX}" unless raw.start_with?(API_PREFIX)
+
+          segments = raw.delete_prefix("/").split("/", -1)
+          decoded = segments.map { |segment| URI.decode_www_form_component(segment) }
+          return nil if decoded.none? { |segment| segment.empty? || segment == "." || segment == ".." || segment.include?("/") }
+
+          "#{path.inspect} holds an empty, \".\", \"..\" or encoded \"/\" path segment"
+        rescue ArgumentError
+          "#{path.inspect} is not a valid path"
         end
 
         # Scheme, host and port compared after normalization (case, default port, IPv6 brackets),

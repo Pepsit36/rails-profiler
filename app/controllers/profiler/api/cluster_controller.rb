@@ -19,7 +19,7 @@ module Profiler
           return render json: { error: reason }, status: :unprocessable_entity
         end
 
-        Profiler.slave_registry.register(name: name, url: url)
+        Profiler.slave_registry.register(name: name, url: Cluster::Security.normalized_url(url))
         render json: { ok: true, name: name }
       end
 
@@ -47,10 +47,10 @@ module Profiler
         return super unless secret_authenticated_action?
         return if Cluster::Security.request_secret_valid?(request)
 
-        if Cluster::Security.configured_secret?
-          deny("Missing or invalid #{Cluster::Security::SECRET_HEADER} header")
+        if (problem = Cluster::Security.secret_problem)
+          deny("#{problem} on this master: cluster requests are refused")
         else
-          deny("No config.cluster_secret is configured on this master: cluster requests are refused")
+          deny("Missing or invalid #{Cluster::Security::SECRET_HEADER} header")
         end
       end
 
