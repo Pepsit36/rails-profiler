@@ -77,16 +77,18 @@ module Profiler
     def dump(value, label = nil)
       return unless enabled?
 
+      # The slot exists only while a DumpCollector profiles this thread: outside of one, nobody
+      # would ever read the dump, and the thread would keep it for good.
+      dumps = Thread.current[:profiler_dumps]
+      return value unless dumps
+
       # Get caller location
       caller_location = caller_locations(1, 1).first
       file = caller_location.path
       line = caller_location.lineno
 
-      # Initialize dumps array if needed
-      Thread.current[:profiler_dumps] ||= []
-
       # Store the dump
-      Thread.current[:profiler_dumps] << {
+      dumps << {
         value: value,
         label: label,
         file: file,

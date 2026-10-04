@@ -19,6 +19,48 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.13] - 2026-10-04
+
+<!-- stamped -->
+
+### Fixed
+
+- **Middleware:** A request that raises below the profiler no longer runs your application a
+  second time, and no longer leaves the collectors installed. Until now the exception made the
+  profiler call the application again, duplicating its side effects (two emails sent, two
+  records written), and every SQL, view, cache, mailer and controller subscriber, the log sink on
+  `Rails.logger`, the StackProf sampler or the `TracePoint` of the function profiler stayed active
+  for the life of the process: memory and request time grew with each failed request until the
+  process was killed. Any exception between the profiler and `ShowExceptions` triggers it, for
+  example `ActionDispatch::RemoteIp::IpSpoofAttackError` on contradictory `Client-IP` and
+  `X-Forwarded-For` headers, and in tests every exception a controller raises. The exception now
+  goes on to the server unchanged, and the profile of the failed request is kept, with status 500
+  and the exception in the Exception tab.
+- **Collectors:** Collectors gain `unsubscribe`, which releases what `subscribe` installed and runs
+  after `collect` and on every error path, for requests, jobs, console commands and tests alike.
+  A collector that fails to subscribe no longer leaves the others installed: the work runs once,
+  unprofiled. A custom collector that subscribes to something should implement `unsubscribe`, as
+  the README example now does.
+- **Logs:** On Rails 7.0, the log collector no longer extends `Rails.logger` with a new module on
+  every request; one shared sink is attached once, and only records while a profile runs on the
+  thread.
+- **Collectors:** A job performed inline during a profiled request (`perform_now`, or the
+  `:inline` adapter) no longer takes the request's records with it. The job's collectors now hand
+  back the thread-local slots they borrow, so the request keeps its logs, dumps, outbound HTTP
+  calls and timeline events from before and after the job, and the job's profile gets only what
+  the job did. Until now the job erased the request's logs and dumps recorded before it, and the
+  request lost its HTTP calls and timeline events from after it.
+- **Middleware:** A request cut short by a timeout (`Timeout::ExitException`,
+  `Rack::Timeout::RequestTimeoutException`) keeps its profile too, with status 500. A request
+  stopped by a signal or by `exit` keeps none. An exception outside `StandardError` raised while
+  the collectors are being set up no longer leaves them installed.
+- **Function profiler:** In sampling (`lite`) mode, a request no longer stops the StackProf
+  sampler that a concurrent request started, nor takes its samples: its profile says the sampler
+  was busy instead.
+- **Dumps:** `Profiler.dump` called outside a profile that collects dumps (a request the profiler
+  skips, a test profile) no longer keeps the value on the thread. Nothing ever read those dumps,
+  and the thread held on to them, and to everything they referenced, for good.
+
 ## [0.30.12] - 2026-10-04
 
 <!-- stamped -->

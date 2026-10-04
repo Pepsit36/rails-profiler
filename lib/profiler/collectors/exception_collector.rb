@@ -43,9 +43,16 @@ module Profiler
       end
 
       def collect
-        ActiveSupport::Notifications.unsubscribe(@subscriber) if @subscriber
+        unsubscribe
 
         store_data(@exception_data || {})
+      end
+
+      def unsubscribe
+        return unless @subscriber
+
+        ActiveSupport::Notifications.unsubscribe(@subscriber)
+        @subscriber = nil
       end
 
       def has_data?

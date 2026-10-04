@@ -55,42 +55,66 @@ module Profiler
 
         mode  = Profiler.function_profiling_mode
         clock = Profiler.function_profiling_clock
-        Thread.current[:fn_profiler_mode]  = mode
-        Thread.current[:fn_profiler_clock] = clock
+        @subscribed = true
+        claim_thread_slot(:fn_profiler_mode, mode)
+        claim_thread_slot(:fn_profiler_clock, clock)
 
         if mode == "lite" && defined?(StackProf)
           # Always record wall + cpu at request level for the comparison stat
-          Thread.current[:fn_profiler_wall_start] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          Thread.current[:fn_profiler_cpu_start]  = Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID)
+          claim_thread_slot(:fn_profiler_wall_start, Process.clock_gettime(Process::CLOCK_MONOTONIC))
+          claim_thread_slot(:fn_profiler_cpu_start, Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID))
 
           sp_mode = case clock
                     when "cpu"    then :cpu
                     when "object" then :object
                     else               :wall
                     end
-          StackProf.start(mode: sp_mode, interval: 1000, raw: true)
+          # false when another request already runs the process-wide sampler: then it is not
+          # this collector's to stop on release.
+          @stackprof_started = StackProf.start(mode: sp_mode, interval: 1000, raw: true)
         else
           subscribe_tracepoint(mode)
         end
       end
 
       def collect
+        # Disabled: subscribe stored the "off" data, and there is no sampler of ours to read.
+        return unless @subscribed
+
         mode  = Thread.current[:fn_profiler_mode]  || Profiler.function_profiling_mode
         clock = Thread.current[:fn_profiler_clock] || Profiler.function_profiling_clock
-        Thread.current[:fn_profiler_mode]  = nil
-        Thread.current[:fn_profiler_clock] = nil
 
         if mode == "lite" && defined?(StackProf)
+          # The sampler is process-wide: when another request started it, its samples are not
+          # this request's to take, nor is it this collector's to stop.
+          return store_sampler_busy(mode, clock) unless @stackprof_started
+
           StackProf.stop
+          @stackprof_started = false
           result   = StackProf.results
           wall_ms  = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - (Thread.current[:fn_profiler_wall_start] || 0)) * 1000
           cpu_ms   = (Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID) - (Thread.current[:fn_profiler_cpu_start] || 0)) * 1000
-          Thread.current[:fn_profiler_wall_start] = nil
-          Thread.current[:fn_profiler_cpu_start]  = nil
           collect_stackprof(result, mode, clock, wall_ms, cpu_ms)
         else
           collect_tracepoint(mode)
         end
+      ensure
+        unsubscribe
+      end
+
+      def unsubscribe
+        if @stackprof_started
+          @stackprof_started = false
+          if StackProf.running?
+            StackProf.stop
+            StackProf.results # discards the samples and frees the sampler's buffers
+          end
+        end
+
+        @trace&.disable
+        @trace = nil
+
+        restore_thread_slots
       end
 
       def toolbar_summary
@@ -104,6 +128,12 @@ module Profiler
       private
 
       # ── StackProf (lite mode) ──────────────────────────────────────────────────
+
+      def store_sampler_busy(mode, clock)
+        store_data({ enabled: true, mode: mode, clock: clock, sampler_busy: true, max_frames: 0,
+                     frame_cap_reached: false, total_calls: 0, total_duration: 0,
+                     functions: [], root_calls: [] })
+      end
 
       def collect_stackprof(result, mode, clock, wall_ms, cpu_ms)
         unless result
@@ -261,10 +291,10 @@ module Profiler
         app_root   = app_root_path
         max_frames = Profiler.function_profiling_max_frames
 
-        Thread.current[:fn_profiler_stack] = []
-        Thread.current[:fn_profiler_roots] = []
-        Thread.current[:fn_profiler_count] = 0
-        Thread.current[:fn_profiler_depth] = Hash.new(0)
+        claim_thread_slot(:fn_profiler_stack, [])
+        claim_thread_slot(:fn_profiler_roots, [])
+        claim_thread_slot(:fn_profiler_count, 0)
+        claim_thread_slot(:fn_profiler_depth, Hash.new(0))
 
         @trace = TracePoint.new(:call, :return) do |tp|
           next unless tp.path&.start_with?(app_root)
@@ -335,11 +365,6 @@ module Profiler
             end
           end
         end
-
-        Thread.current[:fn_profiler_stack] = nil
-        Thread.current[:fn_profiler_roots] = nil
-        Thread.current[:fn_profiler_count] = nil
-        Thread.current[:fn_profiler_depth] = nil
 
         stats = {}
         aggregate(roots, stats)
