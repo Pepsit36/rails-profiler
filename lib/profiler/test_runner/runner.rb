@@ -169,7 +169,7 @@ module Profiler
         end
       end
 
-      BLOCKED_ENV_KEYS = %w[RAILS_ENV RACK_ENV DATABASE_URL SECRET_KEY_BASE].freeze
+      BLOCKED_ENV_KEYS = %w[RAILS_ENV RACK_ENV DATABASE_URL SECRET_KEY_BASE PROFILER_TEST_RUNNER_CHILD].freeze
 
       # Overrides of these variables make the test process, or the shell shims (rbenv, asdf) that
       # start it, load or run code other than the selected tests. It is a deny list, so it cannot
@@ -223,6 +223,9 @@ module Profiler
         # Ensure test environment regardless of overrides
         base["RAILS_ENV"] = "test"
         base["RACK_ENV"]  = "test"
+        # The test process boots the same application: its EnvOverrideStore#apply! must not
+        # replay the overrides left out above
+        base[EnvOverrideStore::TEST_RUNNER_CHILD_ENV] = "1"
 
         base
       end
