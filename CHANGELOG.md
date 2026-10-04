@@ -19,6 +19,11 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cluster:** A profile page served by the master now finds profiles held by a slave even before
+  the slave proxy has been used once.
+
 ### Security
 
 - **MCP:** The HTTP transport at `/_profiler/mcp` is routed only when `mcp_enabled` is true and
@@ -44,6 +49,13 @@ every commit of every tag interval is accounted for one way or the other.
   and for `master_url` (new `cluster_allow_insecure_http` to lift it), and the master no longer
   returns the body of a redirect. Anyone who could register used to make the master fetch any host
   and port it could reach and read the answer (server-side request forgery).
+- **Cluster:** A path, profile token or MCP argument sent to a slave can no longer leave the slave's
+  `/_profiler/api/`: `?`, `#` and `%` are encoded into the path segment, and a `.`, `..` or `/`
+  segment is refused before any request, on the slave proxy, the profile pages and the MCP tools.
+  An encoded `..` or `?` used to reach other paths of the slave.
+- **Cluster:** A `cluster_secret` shorter than 32 characters, or blank, is ignored as if none were
+  configured, with a warning at boot and an explicit error on registration. The master stores slave
+  URLs in their normalized form.
 - **Upgrading:** Nothing to do if you use neither the MCP HTTP endpoint nor the cluster. Otherwise,
   in `config/initializers/profiler.rb`:
   - MCP over HTTP: set `config.mcp_enabled = true` and `config.mcp_transport = :http`. An
@@ -51,9 +63,10 @@ every commit of every tag interval is accounted for one way or the other.
     must now set `:http`. The checks have no MCP-specific switch: `config.authorization_mode =
     :allow_all` lets anybody who can reach the application call every tool, and
     `config.api_forgery_protection = false` lets any website you visit make your browser call them.
-  - Cluster master: set `config.cluster_master = true`, `config.cluster_secret` (the same value on
-    every node, from the environment) and `config.cluster_allowed_slave_urls`. Slaves: set the same
-    `config.cluster_secret`, and use HTTPS URLs unless master and slave share the machine.
+  - Cluster master: set `config.cluster_master = true`, `config.cluster_secret` (at least 32
+    characters, the same value on every node, from the environment) and
+    `config.cluster_allowed_slave_urls`. Slaves: set the same `config.cluster_secret`, and use HTTPS
+    URLs unless master and slave share the machine.
   - To go back to the previous behavior: `config.cluster_require_secret = false` (with no
     `cluster_secret`) accepts registrations from any client `authorization_mode` lets in, as in
     0.30.6; `config.cluster_allowed_slave_urls = :any` accepts any slave URL, which reopens the
