@@ -57,8 +57,10 @@ every commit of every tag interval is accounted for one way or the other.
   configured, with a warning at boot and an explicit error on registration. The master stores slave
   URLs in their normalized form.
 - **Cluster:** The `cluster_secret` is masked by value in everything a profile captures (params,
-  bodies, headers in and out, URLs, `ENV`, SQL binds, job and mailer arguments), whatever name it
-  travels under and even with `redact_sensitive_data` off, on top of the masking by name.
+  bodies, headers in and out, URLs, `ENV`, SQL binds, job and mailer arguments, and the free text of
+  every collector: log lines, exception messages, dumps, SQL text, console expressions), and in the
+  output of the test runner, whatever name it travels under and even with `redact_sensitive_data`
+  off, on top of the masking by name.
 - **Upgrading:** Nothing to do if you use neither the MCP HTTP endpoint nor the cluster. Otherwise,
   in `config/initializers/profiler.rb`:
   - MCP over HTTP: set `config.mcp_enabled = true` and `config.mcp_transport = :http`. An

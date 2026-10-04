@@ -477,9 +477,9 @@ list_slaves  # → shows connected slaves and their status
   the check, is reached all the same. List only names whose DNS zone you control, or IP addresses.
 - **One secret for the whole cluster.** Every node holds the same secret, so whoever compromises one
   node, or reads its environment, can register slaves on the master and call every slave as the
-  master. Profiles mask it by value (see [Sensitive data](#sensitive-data)), but logs, console
-  results and exception messages do not: keep it out of them, and change it on every node if one
-  is exposed.
+  master. Profiles and test runs mask it by value (see [Sensitive data](#sensitive-data)), but
+  your own log files and error trackers do not: keep it out of them, and change it on every node if
+  one is exposed.
 - The proxy route itself is called by your browser, so it stays behind `authorization_mode` and the
   forgery protection, like the rest of `/_profiler`.
 
@@ -787,11 +787,15 @@ What is masked:
 | Job arguments (Active Job, Sidekiq) | values of filtered keys inside hash arguments |
 | Mailer arguments (`assigns`) | arguments whose parameter name matches the filter, and values of filtered keys inside hash arguments |
 
-The cluster's `cluster_secret` is also masked **by value**, wherever it appears in what the table
-above lists (params, bodies, headers, URLs, `ENV`, SQL binds, job and mailer arguments), whatever
-name it travels under, and even with `config.redact_sensitive_data = false`: a value equal to it
-becomes `[FILTERED]`, and a secret of 8 characters or more inside a longer string is replaced by
-`[FILTERED]`. The exceptions of the next paragraph apply to it as well.
+The cluster's `cluster_secret` is also masked **by value**, whatever name it travels under, and
+even with `config.redact_sensitive_data = false`: a value equal to it becomes `[FILTERED]`, and a
+secret of 8 characters or more inside a longer string is replaced by `[FILTERED]`. This covers what
+the table above lists (params, bodies, headers, URLs, `ENV`, SQL binds, job and mailer arguments),
+the data of every collector, free text included (log lines, exception messages, `dump()` values,
+SQL text, console expressions and results), and the output of the test runner. The exceptions of
+the next paragraph do not apply to it. What it does not cover: a `dump()` value that is neither a
+string, a hash nor an array (it is stored as the object gives it), a secret split across two
+chunks of test runner output, and anything the profiler does not store, such as your log files.
 
 Not filtered, because the profiler cannot tell what they contain: log lines (Rails already filters
 its `Parameters:` line and request paths), console expressions and their results, `dump()`
