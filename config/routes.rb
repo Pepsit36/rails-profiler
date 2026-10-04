@@ -3,7 +3,12 @@
 require "profiler/mcp/server"
 
 Profiler::Engine.routes.draw do
-  mount Profiler::MCP::Server.rack_app, at: "mcp"
+  # Read on each request rather than when the routes are drawn: the application's initializer
+  # may set these options after the engine routes are loaded. A route that does not match
+  # answers 404, as if it were not there.
+  constraints(->(_request) { Profiler.configuration.mcp_http_enabled? }) do
+    mount Profiler::MCP::Server.rack_app, at: "mcp"
+  end
 
   root to: "profiles#index"
 
