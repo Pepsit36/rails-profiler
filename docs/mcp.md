@@ -66,6 +66,9 @@ otherwise:
   profiler's own or one of `cors_allowed_origins`. MCP clients send JSON already; a page on another
   site cannot without a CORS preflight. `config.api_forgery_protection = false` turns this check off.
 
+MCP clients that run inside a web page are not supported: `cors_allowed_origins = ["*"]` applies to
+the API, not to the MCP endpoint, whose `Origin` must be the profiler's own or listed by name.
+
 A Claude Code entry for a local server:
 
 ```json

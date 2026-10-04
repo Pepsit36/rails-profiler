@@ -417,7 +417,9 @@ end
 ```
 
 Generate the secret once, for example with `ruby -rsecurerandom -e 'puts SecureRandom.hex(32)'`,
-and give it to every node through the environment, never in the repository.
+and give it to every node through the environment, never in the repository. A secret shorter than
+32 characters, or blank, is ignored as if none were configured: the node logs a warning at boot,
+and every cluster request is refused with a message saying why.
 
 The slave registers automatically at boot and sends periodic heartbeats.
 
@@ -467,6 +469,15 @@ list_slaves  # → shows connected slaves and their status
   `::1`, so that the secret and the profiles do not cross the network in clear.
 - **Redirects.** The master never follows a redirect from a slave: a `3xx` answer is reported as an
   error, without its body.
+- **Paths.** Whatever a client puts in a proxied path, a profile token or an MCP argument stays
+  inside one path segment under the slave's `/_profiler/api/`: `?`, `#` and `%` are encoded, and a
+  `.`, `..` or `/` segment is refused before any request is sent.
+- **What the allow list does not cover.** Entries are compared by name, not by the address the name
+  resolves to: a listed name whose DNS points at an internal address, or is rebound to one after
+  the check, is reached all the same. List only names whose DNS zone you control, or IP addresses.
+- **One secret for the whole cluster.** Every node holds the same secret, so whoever compromises one
+  node, or reads its environment, can register slaves on the master and call every slave as the
+  master. Keep the secret out of logs and profiles, and change it on every node if one is exposed.
 - The proxy route itself is called by your browser, so it stays behind `authorization_mode` and the
   forgery protection, like the rest of `/_profiler`.
 
@@ -497,7 +508,9 @@ set; otherwise `/_profiler/mcp` answers `404`. When it is routed, each request g
 checks as the rest of the profiler before the MCP server sees it: the profiler must be enabled, the
 request must pass `authorization_mode`, and, for forgery protection, a `POST` must carry
 `Content-Type: application/json` and any `Origin` header must be the profiler's own or one of
-`cors_allowed_origins`. MCP clients already send JSON; a page on another site cannot without a CORS
+`cors_allowed_origins`. MCP clients running inside a web page are not supported: a browser cannot
+pass these checks from another origin, and `cors_allowed_origins = ["*"]` opens the API to every
+origin, not the MCP endpoint. MCP clients already send JSON; a page on another site cannot without a CORS
 preflight, which the profiler does not grant. A refused request gets a `403` before any MCP
 handshake, so none of the tools (including the ones that write `ENV`, clear profiles or run tests)
 is reachable without passing these checks.
