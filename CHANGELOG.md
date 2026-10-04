@@ -70,6 +70,10 @@ every commit of every tag interval is accounted for one way or the other.
   it is left, and the output of the test runner is masked across the pieces it is read in, so the
   secret no longer comes back whole once they are joined. Only a secret the cluster accepts (32
   characters or more) is masked by value.
+- **Cluster:** The output of the test runner holds back an end that could start the secret until
+  the process has finished printing, a killed run included, and holds back nothing else, so
+  progress output is shown as it comes. Binary bodies stored in base64, incoming, response and
+  outbound, are masked on their raw bytes before they are encoded.
 - **Upgrading:** Nothing to do if you use neither the MCP HTTP endpoint nor the cluster. Otherwise,
   in `config/initializers/profiler.rb`:
   - MCP over HTTP: set `config.mcp_enabled = true` and `config.mcp_transport = :http`. An
