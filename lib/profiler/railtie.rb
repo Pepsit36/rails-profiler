@@ -90,16 +90,19 @@ module Profiler
 
       require_relative "job_profiler"
 
+      # This runs after the application's initializers: prepend, not add, keeps the profiler
+      # ahead of the middlewares and callbacks they install, so that a job's profile covers them.
+      # Sidekiq::Middleware::Chain#prepend is there from Sidekiq 3.3 (2014) to 8.1 at least.
       if defined?(Sidekiq)
         require_relative "instrumentation/sidekiq_middleware"
         Sidekiq.configure_server do |config|
           config.server_middleware do |chain|
-            chain.add Profiler::Instrumentation::SidekiqMiddleware
+            chain.prepend Profiler::Instrumentation::SidekiqMiddleware
           end
         end
         Sidekiq.configure_client do |config|
           config.client_middleware do |chain|
-            chain.add Profiler::Instrumentation::SidekiqClientMiddleware
+            chain.prepend Profiler::Instrumentation::SidekiqClientMiddleware
           end
         end
       end
