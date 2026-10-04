@@ -219,6 +219,54 @@ RSpec.describe Profiler::EnvOverrideStore do
     end
   end
 
+  # The web process, its threads and the Sidekiq processes all read, change and rewrite the same
+  # file: without a lock, two writers each save what they read and one change is lost.
+  describe "concurrent writes" do
+    let(:threads) { 9 }
+    let(:keys_per_thread) { 25 }
+
+    after do
+      threads.times { |t| keys_per_thread.times { |k| ENV.delete("PROFILER_UNIT_T#{t}_#{k}") } }
+    end
+
+    it "keeps every override set from concurrent threads, each with its own store" do
+      FileUtils.rm_f(File.join(tmp_dir, "env_overrides.json"))
+
+      Array.new(threads) do |t|
+        Thread.new do
+          own = described_class.new
+          keys_per_thread.times { |k| own.set("PROFILER_UNIT_T#{t}_#{k}", "v#{k}") }
+        end
+      end.each(&:join)
+
+      expect(store.all_overrides.size).to eq(threads * keys_per_thread)
+    end
+
+    it "keeps the other entries while concurrent threads reset and set" do
+      keys = Array.new(threads) { |t| "PROFILER_UNIT_T#{t}_0" }
+      keys.each { |key| store.set(key, "before") }
+
+      Array.new(threads) do |t|
+        Thread.new do
+          own = described_class.new
+          keys_per_thread.times do
+            own.reset(keys[t])
+            own.set(keys[t], "after")
+          end
+        end
+      end.each(&:join)
+
+      overrides = store.all_overrides
+      expect(overrides.keys).to include(*keys)
+      expect(keys.map { |key| overrides.dig(key, "value") }).to all(eq("after"))
+    end
+
+    it "leaves no temporary file behind" do
+      store.set("PROFILER_UNIT_T0_0", "v")
+      expect(Dir.children(tmp_dir)).to contain_exactly("env_overrides.json", "env_overrides.json.lock")
+    end
+  end
+
   describe "callers that re-apply the overrides at run time" do
     before { Profiler.instance_variable_set(:@env_override_store, store) }
 
