@@ -64,7 +64,9 @@ end
 the application's `config/initializers` have run: with `enabled = false` it inserts no middleware
 and installs no Sidekiq, ActiveJob, test or console instrumentation, and with `enabled = true` in
 production it gets all of them. The patch that carries the profiling context into new threads
-(`Thread#initialize`) is put in place when the gem is loaded, whatever `enabled` says.
+(`Thread#initialize`) is put in place when the gem is loaded, whatever `enabled` says. The engine
+routes the application mounts stay: while disabled, the API, the MCP mount and the cluster
+endpoints answer `403`, or `404` when the MCP HTTP transport or `cluster_master` is off.
 
 `enabled` is read once, at boot: setting it to true on a running process does not insert the
 middleware nor install the instrumentation. Options can also be set with `Profiler.configure` in
