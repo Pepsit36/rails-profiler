@@ -219,7 +219,7 @@ RSpec.describe "Profiler access control", type: :request do
         custom_request(verb, path, {}, local.merge(profiler_header))
         "#{verb} #{path} -> #{last_response.status}" unless last_response.status == 403
       end
-      allowed += %w[GET POST DELETE].filter_map do |verb|
+      allowed += %w[GET HEAD POST PUT PATCH DELETE OPTIONS].filter_map do |verb|
         custom_request(verb, "/_profiler/mcp", "{}", local.merge(mcp_headers))
         "#{verb} /_profiler/mcp -> #{last_response.status}" unless last_response.status == 403
       end
@@ -228,6 +228,18 @@ RSpec.describe "Profiler access control", type: :request do
     end
 
     it "does not route the MCP mount while its HTTP transport is off" do
+      with_rendered_errors do
+        post "/_profiler/mcp", "{}", local.merge(mcp_headers)
+      end
+
+      expect(last_response.status).to eq(404)
+    end
+
+    it "does not route the MCP mount with the stdio transport" do
+      Profiler.configure do |config|
+        config.mcp_enabled = true
+        config.mcp_transport = :stdio
+      end
       with_rendered_errors do
         post "/_profiler/mcp", "{}", local.merge(mcp_headers)
       end
