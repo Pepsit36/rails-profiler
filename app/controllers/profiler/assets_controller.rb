@@ -2,8 +2,11 @@
 
 module Profiler
   class AssetsController < ApplicationController
+    # The gem's own static JS and CSS: no application data, cached publicly. Every piece of
+    # data they display comes from the API, which keeps the authorization check.
     skip_before_action :verify_authenticity_token
     skip_before_action :check_authorization
+    skip_before_action :authorize_request
 
     def toolbar_js
       path = Profiler::Engine.root.join("app", "assets", "builds", "profiler-toolbar.js")

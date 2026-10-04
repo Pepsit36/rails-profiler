@@ -3,8 +3,6 @@
 module Profiler
   module Api
     class ProfilesController < ApplicationController
-      skip_before_action :verify_authenticity_token
-
       def index
         limit  = (params[:limit]  || 50).to_i
         offset = (params[:offset] || 0).to_i

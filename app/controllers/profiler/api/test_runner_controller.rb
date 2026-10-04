@@ -8,8 +8,6 @@ module Profiler
     class TestRunnerController < ApplicationController
       include ActionController::Live
 
-      skip_before_action :verify_authenticity_token
-
       def files
         framework = params[:framework]
         tree = Profiler::TestRunner::Discovery.files(framework: framework)

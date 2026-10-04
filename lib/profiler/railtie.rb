@@ -24,11 +24,10 @@ module Profiler
       if Profiler.configuration.enabled
         require_relative "middleware/profiler_middleware"
 
-        # Insert CORS middleware first if enabled
-        if Profiler.configuration.extension_cors_enabled
-          require_relative "middleware/cors_middleware"
-          app.middleware.insert_before 0, Profiler::Middleware::CorsMiddleware
-        end
+        # Always inserted: it sets the framing headers of every profiler response, and its
+        # CORS headers only when extension_cors_enabled is set.
+        require_relative "middleware/cors_middleware"
+        app.middleware.insert_before 0, Profiler::Middleware::CorsMiddleware
 
         app.middleware.insert_before 0, Profiler::Middleware::ProfilerMiddleware
       end

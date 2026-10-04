@@ -3,8 +3,6 @@
 module Profiler
   module Api
     class AjaxController < ApplicationController
-      skip_before_action :verify_authenticity_token, only: [:link]
-
       def link
         parent_token = params[:parent_token]
         child_token = params[:child_token]

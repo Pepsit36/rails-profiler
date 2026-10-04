@@ -5,8 +5,6 @@ require_relative "../../../../lib/profiler/cluster/slave_proxy"
 module Profiler
   module Api
     class SlaveProxyController < Profiler::ApplicationController
-      skip_before_action :verify_authenticity_token
-
       def forward
         proxy = Cluster::SlaveProxy.new(params[:slave_name])
         sub_path = params[:path].to_s
