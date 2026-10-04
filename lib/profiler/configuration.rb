@@ -112,6 +112,12 @@ module Profiler
       !slave?
     end
 
+    # Whether /_profiler/mcp is routed. The stdio transport (rake profiler:mcp) does not depend
+    # on it.
+    def mcp_http_enabled?
+      mcp_enabled && mcp_transport.to_s == "http" ? true : false
+    end
+
     def resolved_name
       @name || (defined?(Rails) ? Rails.application.class.module_parent_name.underscore : "profiler")
     end
