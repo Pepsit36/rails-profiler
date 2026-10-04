@@ -14,9 +14,7 @@ module Profiler
     private
 
     def check_authorization
-      unless Profiler.configuration.enabled
-        render plain: "Profiler is disabled", status: :forbidden
-      end
+      deny("Profiler is disabled") unless Profiler.configuration.enabled
     end
 
     def authorize_request
