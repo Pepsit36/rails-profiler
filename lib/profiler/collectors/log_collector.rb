@@ -9,15 +9,19 @@ module Profiler
       SEVERITY_LABELS = %w[DEBUG INFO WARN ERROR FATAL UNKNOWN].freeze
 
       # Records into the thread's buffer, which only exists while a LogCollector of this thread
-      # is subscribed: lines logged by other threads, or after release, are not kept.
+      # is subscribed: lines logged by other threads, or after release, are not kept. A logger
+      # bound to one collector's buffer records only while that buffer is the thread's current
+      # one, so a job performed inline during a request does not log twice into the job.
       class CaptureLogger < ::Logger
-        def initialize
+        def initialize(buffer = nil)
           super(File::NULL)
+          @buffer = buffer
         end
 
         def add(severity, message = nil, progname = nil)
           logs = Thread.current[:profiler_logs]
           return true unless logs
+          return true if @buffer && !logs.equal?(@buffer)
 
           msg = message || progname
           msg = yield if block_given? && msg.nil?
@@ -74,12 +78,11 @@ module Profiler
       end
 
       def subscribe
-        Thread.current[:profiler_logs] = []
-        @subscribed = true
+        @logs = claim_thread_slot(:profiler_logs, [])
 
         if defined?(Rails) && Rails.logger
           if Rails.logger.respond_to?(:broadcast_to)
-            @capture_logger = CaptureLogger.new
+            @capture_logger = CaptureLogger.new(@logs)
             @broadcaster = Rails.logger
             @broadcaster.broadcast_to(@capture_logger)
           elsif defined?(ActiveSupport::Logger) && ActiveSupport::Logger.respond_to?(:broadcast)
@@ -96,14 +99,11 @@ module Profiler
           @capture_logger = nil
           @broadcaster = nil
         end
-        return unless @subscribed
-
-        Thread.current[:profiler_logs] = nil
-        @subscribed = false
+        restore_thread_slots
       end
 
       def collect
-        logs = Thread.current[:profiler_logs] || []
+        logs = @logs || Thread.current[:profiler_logs] || []
         unsubscribe
 
         errors   = logs.count { |l| %w[ERROR FATAL].include?(l[:level]) }

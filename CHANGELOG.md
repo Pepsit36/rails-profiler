@@ -40,6 +40,19 @@ every commit of every tag interval is accounted for one way or the other.
 - **Logs:** On Rails 7.0, the log collector no longer extends `Rails.logger` with a new module on
   every request; one shared sink is attached once, and only records while a profile runs on the
   thread.
+- **Collectors:** A job performed inline during a profiled request (`perform_now`, or the
+  `:inline` adapter) no longer takes the request's records with it. The job's collectors now hand
+  back the thread-local slots they borrow, so the request keeps its logs, dumps, outbound HTTP
+  calls and timeline events from before and after the job, and the job's profile gets only what
+  the job did. Until now the job erased the request's logs and dumps recorded before it, and the
+  request lost its HTTP calls and timeline events from after it.
+- **Middleware:** A request cut short by a timeout (`Timeout::ExitException`,
+  `Rack::Timeout::RequestTimeoutException`) keeps its profile too, with status 500. A request
+  stopped by a signal or by `exit` keeps none. An exception outside `StandardError` raised while
+  the collectors are being set up no longer leaves them installed.
+- **Function profiler:** In sampling (`lite`) mode, a request no longer stops the StackProf
+  sampler that a concurrent request started, nor takes its samples: its profile says the sampler
+  was busy instead.
 
 ## [0.30.12] - 2026-10-04
 

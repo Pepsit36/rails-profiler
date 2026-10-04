@@ -45,7 +45,7 @@ module Profiler
         @subscriber_thread = Thread.current
 
         # Use a stack so multiple deliver_later calls in the same request are all tracked.
-        Thread.current[:profiler_pending_processes] ||= []
+        claim_thread_slot(:profiler_pending_processes, [])
 
         @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("process.action_mailer") do |_name, started, finished, _id, payload|
           next unless Thread.current.equal?(@subscriber_thread)
@@ -124,10 +124,7 @@ module Profiler
 
       def unsubscribe
         unsubscribe_notifications(@subscriptions)
-        return unless @subscriber_thread
-
-        Thread.current[:profiler_pending_processes] = nil
-        @subscriber_thread = nil
+        restore_thread_slots
       end
 
       def has_data?
