@@ -14,6 +14,11 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware do
     described_class.new(inner_app)
   end
 
+  # rack-test sends REMOTE_ADDR 127.0.0.1: a browser on this machine, as :allow_local expects.
+  def default_host
+    "localhost"
+  end
+
   before do
     Profiler.configure do |c|
       c.enabled = true

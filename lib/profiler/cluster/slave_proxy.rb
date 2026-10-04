@@ -86,6 +86,7 @@ module Profiler
       end
 
       def request(uri, req)
+        req[Profiler::FORGERY_PROTECTION_HEADER] = "1"
         resp = Net::HTTP.start(uri.hostname, uri.port,
                                open_timeout: @open_timeout, read_timeout: @read_timeout,
                                use_ssl: uri.scheme == "https") do |http|

@@ -1,13 +1,20 @@
 # frozen_string_literal: true
 
+require_relative "local_request"
+
 module Profiler
+  # Header the profiler's own clients send on every request. A page on another origin cannot
+  # add it without a CORS preflight, which the profiler does not grant by default, so its
+  # presence proves the request is not a cross-site forgery.
+  FORGERY_PROTECTION_HEADER = "X-Profiler-Request"
+
   class Configuration
     attr_accessor :enabled, :storage_options, :collectors,
                   :skip_paths, :slow_query_threshold, :max_queries_warning,
                   :track_memory, :memory_warning_threshold,
                   :mcp_enabled, :mcp_transport, :mcp_port,
                   :authorization_mode, :max_profiles, :extension_cors_enabled,
-                  :cors_allowed_origins,
+                  :cors_allowed_origins, :api_forgery_protection, :frame_ancestors,
                   :track_ajax, :ajax_skip_paths,
                   :track_http, :slow_http_threshold, :http_skip_hosts, :http_backtrace_depth,
                   :track_jobs,
@@ -35,11 +42,16 @@ module Profiler
       @mcp_enabled = false
       @mcp_transport = :stdio
       @mcp_port = 3001
-      @authorization_mode = :allow_all
+      @authorization_mode = :allow_local
       @authorize_block = nil
       @max_profiles = 100
-      @extension_cors_enabled = true
-      @cors_allowed_origins = ["*"]
+      @extension_cors_enabled = false
+      @cors_allowed_origins = []
+      @api_forgery_protection = true
+      # The Chrome extension shows the profiler in a DevTools panel: an iframe inside a
+      # chrome-extension:// page, itself inside the devtools://devtools front end. Chrome
+      # checks frame-ancestors against every ancestor, so both schemes are needed.
+      @frame_ancestors = ["'self'", "chrome-extension:", "devtools:"]
       @track_ajax = true
       @ajax_skip_paths = [/^\/_profiler/]
       @track_http = true
@@ -87,6 +99,12 @@ module Profiler
       case @authorization_mode
       when :allow_all
         true
+      when :allow_local
+        reason = LocalRequest.denial_reason(request)
+        return true if reason.nil?
+
+        LocalRequest.warn_once(reason)
+        false
       when :allow_authorized
         @authorize_block ? @authorize_block.call(request) : false
       else

@@ -19,6 +19,49 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.6] - 2026-10-03
+
+<!-- stamped -->
+
+### Security
+
+- **Access control:** Check `authorization_mode` on every page and endpoint of the profiler (UI,
+  API, server-sent events, test runner, toolbar), answering `403` otherwise. It used to decide only
+  which requests were captured: with `:allow_authorized` and a block that refused everybody, the API
+  still listed and deleted profiles and wrote `ENV`. The gem's static JS and CSS stay public.
+- **Access control:** The new default `authorization_mode`, `:allow_local`, only lets in requests
+  made from this machine: a loopback `REMOTE_ADDR`, no forwarding header naming a remote client, and
+  a local `Host` (or one listed in `config.hosts`), against DNS rebinding; the test environment
+  also accepts the reserved hosts `www.example.com`, `example.com` and `example.org`, so the
+  application's request specs are still captured. It also decides
+  which requests are captured, and logs the reason for a refusal once per process. The previous
+  default, `:allow_all`, let anybody who could reach the application read and change everything.
+- **Access control:** API requests that change something (including a form `POST` turned into
+  another verb by `_method`) must carry an `X-Profiler-Request` header or a CSRF token, so that a
+  page on another site can no longer trigger them, even when the application turns
+  `allow_forgery_protection` off. The dashboard, the toolbar and the cluster send the header.
+- **Access control:** CORS is off by default (`extension_cors_enabled = false`,
+  `cors_allowed_origins = []`), and `Access-Control-Allow-Origin: *` is never sent to a request
+  carrying a cookie or an `Authorization` header. It used to be `*` for everybody.
+- **Access control:** Profiler pages may only be framed by the profiler itself and by the Chrome
+  extension's DevTools panel (`frame-ancestors 'self' chrome-extension: devtools:`, configurable
+  with the new `frame_ancestors` option), and send `X-Frame-Options: SAMEORIGIN`. Any website could
+  frame them, and with `?embed=true` a profile page carried no framing protection at all.
+- **Upgrading:** Nothing to do when you browse the profiler from the machine that runs Rails. Each
+  previous behavior can be restored in `config/initializers/profiler.rb`:
+  - Docker, a VM or a remote proxy: admit your network with `config.authorization_mode =
+    :allow_authorized` and an `authorize_with` block reading `REMOTE_ADDR` (example in the README), or
+    go back to `config.authorization_mode = :allow_all`, which offers no protection.
+  - A cluster whose master and slaves run on different machines: each side admits the other's address
+    the same way.
+  - Your own scripts calling the API: send `X-Profiler-Request: 1`, or set
+    `config.api_forgery_protection = false`.
+  - Cross-origin clients: `config.extension_cors_enabled = true` and
+    `config.cors_allowed_origins = ["https://your.origin"]`. `["*"]` restores the behavior before
+    0.30.6 and reopens the profiler to every website you visit: under `:allow_local` or `:allow_all`,
+    any page open in your browser can read its data and change it.
+  - Framing by other sites: `config.frame_ancestors = ["'self'", "http:", "https:"]`.
+
 ## [0.30.5] - 2026-10-03
 
 <!-- stamped -->

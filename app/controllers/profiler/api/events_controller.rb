@@ -4,7 +4,6 @@ module Profiler
   module Api
     class EventsController < Profiler::ApplicationController
       include ActionController::Live
-      skip_before_action :verify_authenticity_token
 
       def subscribe
         response.headers["Content-Type"]      = "text/event-stream"

@@ -3,8 +3,6 @@
 module Profiler
   module Api
     class EnvVarsController < ApplicationController
-      skip_before_action :verify_authenticity_token
-
       def show
         variables = ENV.to_h.sort.to_h
         overrides = Profiler.env_override_store.all_overrides

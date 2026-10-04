@@ -3,8 +3,6 @@
 module Profiler
   module Api
     class ClusterController < Profiler::ApplicationController
-      skip_before_action :verify_authenticity_token
-
       def register
         name = params[:name].to_s
         url  = params[:url].to_s

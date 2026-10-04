@@ -2,8 +2,6 @@
 
 module Profiler
   class ProfilesController < ApplicationController
-    before_action :allow_iframe_embedding, only: [:show], if: -> { params[:embed] == "true" }
-
     def index
       limit = params[:limit]&.to_i || 50
       offset = params[:offset]&.to_i || 0
@@ -156,13 +154,6 @@ module Profiler
           end
         end
       end
-    end
-
-    def allow_iframe_embedding
-      response.headers.delete('X-Frame-Options')
-      # Don't set frame-ancestors CSP to allow Chrome extensions to embed
-      # Mark that CSP should not be set by middleware
-      request.env['profiler.skip_csp'] = true
     end
 
     def filter_profiles(profiles)

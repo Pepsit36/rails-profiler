@@ -24,7 +24,8 @@ module Profiler
         config = Profiler.configuration
         uri = URI("#{config.master_url}/_profiler/api/cluster/register")
         body = { name: config.resolved_name, url: config.self_url }.to_json
-        resp = Net::HTTP.post(uri, body, "Content-Type" => "application/json")
+        resp = Net::HTTP.post(uri, body, "Content-Type" => "application/json",
+                                          Profiler::FORGERY_PROTECTION_HEADER => "1")
         unless resp.code.to_i.between?(200, 299)
           raise "Master returned #{resp.code}: #{resp.body.to_s.slice(0, 200)}"
         end
@@ -36,7 +37,8 @@ module Profiler
         config = Profiler.configuration
         uri = URI("#{config.master_url}/_profiler/api/cluster/heartbeat")
         body = { name: config.resolved_name }.to_json
-        resp = Net::HTTP.post(uri, body, "Content-Type" => "application/json")
+        resp = Net::HTTP.post(uri, body, "Content-Type" => "application/json",
+                                          Profiler::FORGERY_PROTECTION_HEADER => "1")
         raise "Heartbeat rejected #{resp.code}" unless resp.code.to_i.between?(200, 299)
       end
 
