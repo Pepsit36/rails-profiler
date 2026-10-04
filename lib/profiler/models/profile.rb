@@ -9,7 +9,8 @@ require_relative "../redaction"
 module Profiler
   module Models
     class Profile
-      attr_accessor :token, :path, :method, :status, :duration, :memory,
+      attr_reader :path
+      attr_accessor :token, :method, :status, :duration, :memory,
                     :started_at, :finished_at, :params, :headers,
                     :response_headers, :collectors_data, :collectors_metadata,
                     :parent_token, :is_ajax, :profile_type,
@@ -50,8 +51,15 @@ module Profiler
         @response_headers = Redaction.filter_headers(response_headers)
       end
 
+      # Every collector stores its data here: logs, exception messages, dumps and SQL text are free
+      # text with no name to filter on, so the profiler's own credentials are masked by value.
       def add_collector_data(name, data)
-        @collectors_data[name.to_s] = data
+        @collectors_data[name.to_s] = Redaction.hide_credentials(data)
+      end
+
+      # The path is free text for a console profile: the expression typed.
+      def path=(value)
+        @path = Redaction.hide_credentials(value)
       end
 
       def collector_data(name)
