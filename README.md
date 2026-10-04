@@ -795,13 +795,16 @@ collector, free text included (log lines, exception messages, `dump()` values, S
 expressions and results), and the output of the test runner. Text the profiler shortens (flame
 graph names, I18n values, console expressions and results, mail bodies and assigns, job
 arguments) is masked before it is cut, so no prefix of the secret is left; the output of the test
-runner, read in pieces, is masked on the text joined across pieces, and its last bytes wait for
-the next piece, or the end of the run, before they are shown. The exceptions of the next paragraph
+runner, read in pieces, is masked on the text joined across pieces, and an end of a piece that
+could be the start of the secret waits for the next piece, or for the process to finish printing
+(after a kill too), before it is shown. Binary bodies stored in base64 (`application/octet-stream`,
+images, PDF, zip, audio, video) are masked on their raw bytes before they are encoded. The exceptions of the next paragraph
 do not apply to it. Only a secret the cluster accepts (32 characters or more) is masked: a shorter
 one is ignored by the cluster anyway, and masking a value such as `true` or `/` everywhere would
 hide the data being profiled. What it does not cover: a `dump()` value that is neither a string, a
-hash nor an array (it is stored as the object gives it), and anything the profiler does not store,
-such as your log files.
+hash nor an array (it is stored as the object gives it), a compressed or encoded format in which
+the secret does not appear as it is (zip, PNG, gzip, a PDF stream, base64 inside a body...), and
+anything the profiler does not store, such as your log files.
 
 Not filtered, because the profiler cannot tell what they contain: log lines (Rails already filters
 its `Parameters:` line and request paths), console expressions and their results, `dump()`
