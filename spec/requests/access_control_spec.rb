@@ -168,6 +168,123 @@ RSpec.describe "Profiler access control", type: :request do
     end
   end
 
+  describe "a disabled profiler" do
+    before { Profiler.configuration.enabled = false }
+
+    it "refuses the API listing, with a JSON error" do
+      get "/_profiler/api/profiles", {}, local
+
+      expect(last_response.status).to eq(403)
+      expect(last_response.media_type).to eq("application/json")
+      expect(json["error"]).to eq("Profiler is disabled")
+    end
+
+    it "refuses the UI, in plain text" do
+      get "/_profiler/", {}, local
+
+      expect(last_response.status).to eq(403)
+      expect(last_response.media_type).to eq("text/plain")
+      expect(last_response.body).to eq("Profiler is disabled")
+    end
+
+    it "refuses the toolbar, even for a profile left in storage" do
+      storage.save("tok", build_profile(token: "tok", headers: { "Cookie" => "session=secret" }))
+      get "/_profiler/api/toolbar/tok", {}, local
+
+      expect(last_response.status).to eq(403)
+      expect(last_response.body).not_to include("secret")
+    end
+
+    # Walks every route of the engine, the MCP mount and the routes behind a configuration
+    # switch included, so that a controller or a Rack application added later without the
+    # check, or one that skips it, fails here. Any other mount fails the example: a mounted
+    # Rack application skips every controller filter and needs its own guard.
+    it "refuses every route of the engine except the static assets" do
+      Profiler.configure do |config|
+        config.cluster_master = true
+        config.mcp_enabled = true
+        config.mcp_transport = :http
+      end
+      mounts, routes = Profiler::Engine.routes.routes.partition { |route| route.defaults[:controller].nil? }
+      expect(mounts.map { |route| route.path.spec.to_s }).to eq(["/mcp"])
+
+      routes = routes.reject { |route| route.defaults[:controller] == "profiler/assets" }
+      expect(routes.size).to be > 30
+
+      allowed = routes.filter_map do |route|
+        verb = route.verb.to_s.split("|").first
+        verb = "GET" if verb.nil? || verb.empty?
+        path = "/_profiler" + route.path.spec.to_s.sub("(.:format)", "").gsub(/[:*]\w+/, "x")
+
+        custom_request(verb, path, {}, local.merge(profiler_header))
+        "#{verb} #{path} -> #{last_response.status}" unless last_response.status == 403
+      end
+      allowed += %w[GET HEAD POST PUT PATCH DELETE OPTIONS].filter_map do |verb|
+        custom_request(verb, "/_profiler/mcp", "{}", local.merge(mcp_headers))
+        "#{verb} /_profiler/mcp -> #{last_response.status}" unless last_response.status == 403
+      end
+
+      expect(allowed).to be_empty
+    end
+
+    it "does not route the MCP mount while its HTTP transport is off" do
+      with_rendered_errors do
+        post "/_profiler/mcp", "{}", local.merge(mcp_headers)
+      end
+
+      expect(last_response.status).to eq(404)
+    end
+
+    it "does not route the MCP mount when mcp_enabled is off, even with the HTTP transport" do
+      Profiler.configure do |config|
+        config.mcp_enabled = false
+        config.mcp_transport = :http
+      end
+      with_rendered_errors do
+        post "/_profiler/mcp", "{}", local.merge(mcp_headers)
+      end
+
+      expect(last_response.status).to eq(404)
+    end
+
+    it "does not route the MCP mount with the stdio transport" do
+      Profiler.configure do |config|
+        config.mcp_enabled = true
+        config.mcp_transport = :stdio
+      end
+      with_rendered_errors do
+        post "/_profiler/mcp", "{}", local.merge(mcp_headers)
+      end
+
+      expect(last_response.status).to eq(404)
+    end
+  end
+
+  describe "the toolbar of an enabled profiler" do
+    it "serves the profile to an authorized request" do
+      storage.save("tok", build_profile(token: "tok"))
+      get "/_profiler/api/toolbar/tok", {}, local
+
+      expect(last_response.status).to eq(200)
+      expect(json.dig("profile", "token")).to eq("tok")
+    end
+  end
+
+  let(:mcp_headers) do
+    { "CONTENT_TYPE" => "application/json", "HTTP_ACCEPT" => "application/json, text/event-stream" }
+  end
+
+  # The spec application raises routing errors; render them as an application does, so that
+  # a route that is not there answers 404.
+  def with_rendered_errors
+    env_config = Rails.application.env_config
+    previous = env_config["action_dispatch.show_exceptions"]
+    env_config["action_dispatch.show_exceptions"] = :all
+    yield
+  ensure
+    env_config["action_dispatch.show_exceptions"] = previous
+  end
+
   def rails_env(name)
     allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new(name))
   end

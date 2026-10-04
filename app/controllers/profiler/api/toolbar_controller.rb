@@ -3,8 +3,6 @@
 module Profiler
   module Api
     class ToolbarController < Profiler::ApplicationController
-      skip_before_action :check_authorization
-
       def show
         profile = Profiler.storage.load(params[:token])
 

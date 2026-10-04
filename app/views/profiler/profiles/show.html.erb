@@ -1,4 +1,6 @@
 <div id="profiler-show" data-embedded="<%= @embedded %>"></div>
+<%# json_escape turns <, >, & and U+2028/U+2029 into \u escapes, so that no captured value can
+    close the element, whatever the application sets for escape_html_entities_in_json. %>
 <script type="application/json" id="profiler-show-data">
-  <%= @profile_data.to_json.html_safe %>
+  <%= raw json_escape(@profile_data.to_json) %>
 </script>
