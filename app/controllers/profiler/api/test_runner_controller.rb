@@ -27,17 +27,11 @@ module Profiler
           return render json: { error: "No files selected" }, status: :unprocessable_entity
         end
 
-        # Validate paths are within Rails root (prevent path traversal)
-        root = defined?(Rails) ? Rails.root.to_s : Dir.pwd
-        files.each do |f|
-          expanded = File.expand_path(File.join(root, f))
-          unless expanded.start_with?(root)
-            return render json: { error: "Invalid file path: #{f}" }, status: :unprocessable_entity
-          end
-        end
-
+        # Runner.start accepts only discovered test files
         run = Profiler::TestRunner::Runner.start(files: files, framework: framework)
         render json: run.to_h, status: :created
+      rescue Profiler::TestRunner::InvalidFileError => e
+        render json: { error: e.message }, status: :unprocessable_entity
       end
 
       def show

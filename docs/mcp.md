@@ -296,7 +296,7 @@ Run test files and wait for results. Synchronous — blocks until tests complete
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `files` | array | Relative paths to run (e.g. `["spec/models/user_spec.rb"]`). Omit to run all discovered tests. |
+| `files` | array | Relative paths of discovered test files to run, optionally with a line number (e.g. `["spec/models/user_spec.rb", "spec/models/post_spec.rb:12"]`). Omit to run all discovered tests. A file that is not a discovered test is refused with a tool error, and nothing runs. |
 | `framework` | string | `"rspec"` or `"minitest"`. Auto-detected if omitted. |
 | `timeout_seconds` | number | Max wait time in seconds (default: 120). |
 | `max_output` | number | Max characters of output returned (tail, default: 4000). |
@@ -379,6 +379,10 @@ List environment variables. By default shows only active overrides.
 ### `set_env_var`
 
 Set an environment variable and persist the override across app restarts.
+
+The override reaches the processes started by `run_tests`, except for variables that make them load
+other code (`RUBYOPT`, `SPEC_OPTS`, `BUNDLE_*`, `PATH`...; the full list is in the README, section
+"Test runner").
 
 | Parameter | Type | Description |
 |-----------|------|-------------|

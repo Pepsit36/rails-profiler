@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "mcp"
+
 require_relative "../slave_support"
 
 require_relative "../../test_runner/discovery"
@@ -41,7 +43,11 @@ module Profiler
           end
 
           run_started_at = Time.now
-          run = Profiler::TestRunner::Runner.start(files: files, framework: framework)
+          begin
+            run = Profiler::TestRunner::Runner.start(files: files, framework: framework)
+          rescue Profiler::TestRunner::InvalidFileError => e
+            return ::MCP::Tool::Response.new([{ type: "text", text: e.message }], error: true)
+          end
 
           output_pos = 0
           deadline   = Time.now + timeout_secs

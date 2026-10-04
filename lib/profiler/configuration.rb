@@ -36,7 +36,7 @@ module Profiler
                   :track_jobs,
                   :track_console,
                   :apply_env_overrides_when_disabled,
-                  :track_tests,
+                  :track_tests, :test_runner_allow_undiscovered_files,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
                   :compress_bodies, :compress_body_threshold,
                   :redact_sensitive_data, :filter_parameters, :env_allowlist,
@@ -80,6 +80,9 @@ module Profiler
       @track_console = true
       @apply_env_overrides_when_disabled = false
       @track_tests = false
+      # The test runner only runs the files listed by its discovery. true restores the
+      # previous behavior: any file under the Rails root.
+      @test_runner_allow_undiscovered_files = false
       @track_mailers = true
       @capture_mail_body = false
       @sanitize_mailer_recipients = false
