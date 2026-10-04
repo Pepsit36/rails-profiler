@@ -171,9 +171,20 @@ RSpec.describe "Profiler access control", type: :request do
   describe "a disabled profiler" do
     before { Profiler.configuration.enabled = false }
 
-    it "refuses the API listing" do
+    it "refuses the API listing, with a JSON error" do
       get "/_profiler/api/profiles", {}, local
+
       expect(last_response.status).to eq(403)
+      expect(last_response.media_type).to eq("application/json")
+      expect(json["error"]).to eq("Profiler is disabled")
+    end
+
+    it "refuses the UI, in plain text" do
+      get "/_profiler/", {}, local
+
+      expect(last_response.status).to eq(403)
+      expect(last_response.media_type).to eq("text/plain")
+      expect(last_response.body).to eq("Profiler is disabled")
     end
 
     it "refuses the toolbar, even for a profile left in storage" do
@@ -185,10 +196,13 @@ RSpec.describe "Profiler access control", type: :request do
     end
 
     # Walks every route of the engine, so that a controller added later without the
-    # check, or one that skips it, fails here. Mounted Rack applications (the MCP HTTP
-    # transport) are left out until MR E of issue #42, which guards that mount, lands.
+    # check, or one that skips it, fails here. The MCP HTTP transport, a mounted Rack
+    # application, is left out until MR E of issue #42, which guards that mount, lands;
+    # any other mount fails the example, a Rack application skipping every filter.
     it "refuses every route of the engine except the static assets" do
-      routes = Profiler::Engine.routes.routes.select { |route| route.defaults[:controller] }
+      mounts, routes = Profiler::Engine.routes.routes.partition { |route| route.defaults[:controller].nil? }
+      expect(mounts.map { |route| route.path.spec.to_s }).to eq(["/mcp"])
+
       routes = routes.reject { |route| route.defaults[:controller] == "profiler/assets" }
       expect(routes.size).to be > 30
 
