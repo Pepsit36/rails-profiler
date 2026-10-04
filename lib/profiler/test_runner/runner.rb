@@ -57,7 +57,7 @@ module Profiler
                   end
 
         refused = files.reject do |entry|
-          next false unless entry.is_a?(String) && !entry.empty?
+          next false unless entry.is_a?(String) && !entry.empty? && !entry.include?("\0")
 
           path = entry[LINE_SUFFIX, 1] || entry
           allowed ? allowed.include?(real_path(File.join(root, path))) : under_root?(root, File.join(root, path))
@@ -79,7 +79,7 @@ module Profiler
 
       def self.real_path(path)
         File.realpath(path)
-      rescue SystemCallError
+      rescue SystemCallError, ArgumentError
         nil
       end
 
@@ -168,30 +168,40 @@ module Profiler
 
       BLOCKED_ENV_KEYS = %w[RAILS_ENV RACK_ENV DATABASE_URL SECRET_KEY_BASE].freeze
 
-      # Overrides of these variables make the test process load code other than the selected
-      # tests, or run another interpreter: they are not passed to it. The values the process
-      # inherited are kept; only the overrides set through the profiler are left out.
+      # Overrides of these variables make the test process, or the shell shims (rbenv, asdf) that
+      # start it, load or run code other than the selected tests. It is a deny list, so it cannot
+      # be complete; a variable needed by the tests can be set in the shell that starts Rails.
       CODE_LOADING_ENV_KEYS = %w[
-        RUBYOPT RUBYLIB RUBYGEMS_GEMDEPS GEM_HOME GEM_PATH SPEC_OPTS TESTOPTS TEST
-        PATH HOME XDG_CONFIG_HOME NODE_OPTIONS
+        SPEC_OPTS TESTOPTS TEST PATH HOME XDG_CONFIG_HOME
+        SHELLOPTS BASHOPTS PS4 ENV CDPATH IFS
       ].freeze
-      CODE_LOADING_ENV_PREFIXES = %w[BUNDLE_ BUNDLER_ LD_ DYLD_ RUBY_DEBUG_].freeze
+      CODE_LOADING_ENV_PREFIXES = %w[
+        RUBY GEM BUNDLE_ BUNDLER_ LD_ DYLD_ BASH_ RBENV_ ASDF_ RVM_ CHRUBY GIT_ BOOTSNAP_
+        NODE_ PYTHON PERL5
+      ].freeze
+      ENV_NAME = /\A[A-Z_][A-Z0-9_]*\z/i
 
       def self.code_loading_env_key?(key)
         name = key.to_s.upcase
+        return true unless ENV_NAME.match?(name)
+
         CODE_LOADING_ENV_KEYS.include?(name) || CODE_LOADING_ENV_PREFIXES.any? { |prefix| name.start_with?(prefix) }
       end
 
+      # The overrides are already written into ENV of this process (by the env vars endpoint, the
+      # MCP tools and EnvOverrideStore#apply! at boot), so leaving one out means giving the test
+      # process the value from before the override. nil unsets the variable in the child, since
+      # IO.popen merges this hash into the inherited environment.
       def self.build_env
         base = ENV.to_h
         left_out = []
 
-        # Inject env var overrides configured in the profiler — skip blocked keys
         overrides = Profiler.env_override_store.all_overrides
         overrides.each do |key, entry|
-          next if BLOCKED_ENV_KEYS.include?(key.upcase)
-          if code_loading_env_key?(key)
-            left_out << key
+          blocked = BLOCKED_ENV_KEYS.include?(key.upcase)
+          if blocked || code_loading_env_key?(key)
+            base[key] = entry.is_a?(Hash) ? entry["original"] : nil
+            left_out << key unless blocked
             next
           end
           value = entry.is_a?(Hash) ? entry["value"] : entry
