@@ -25,7 +25,11 @@ module Profiler
       BUNDLE_GEMFILE BUNDLE_PATH BUNDLE_WITHOUT GEM_HOME GEM_PATH BOOTSNAP_CACHE_DIR
     ].freeze
 
-    attr_accessor :enabled, :storage_options, :collectors,
+    # Options whose default depends on the Rails environment: the railtie sets them only when
+    # the application has not assigned them itself (see #default).
+    RAILS_DEFAULTED = %i[enabled storage track_tests].freeze
+
+    attr_accessor :storage_options, :collectors,
                   :skip_paths, :slow_query_threshold, :max_queries_warning,
                   :track_memory, :memory_warning_threshold,
                   :mcp_enabled, :mcp_transport, :mcp_port,
@@ -36,7 +40,7 @@ module Profiler
                   :track_jobs,
                   :track_console,
                   :apply_env_overrides_when_disabled,
-                  :track_tests, :test_runner_allow_undiscovered_files,
+                  :test_runner_allow_undiscovered_files,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
                   :compress_bodies, :compress_body_threshold,
                   :redact_sensitive_data, :filter_parameters, :env_allowlist,
@@ -47,9 +51,10 @@ module Profiler
 
     attr_writer :tmp_path
 
-    attr_reader :authorize_block
+    attr_reader :authorize_block, :enabled, :track_tests
 
     def initialize
+      @assigned = []
       @enabled = false
       @storage = :memory
       @storage_options = {}
@@ -112,6 +117,26 @@ module Profiler
       @tmp_path || default_tmp_path
     end
 
+    def enabled=(value)
+      @assigned |= [:enabled]
+      @enabled = value
+    end
+
+    def track_tests=(value)
+      @assigned |= [:track_tests]
+      @track_tests = value
+    end
+
+    # Sets one of RAILS_DEFAULTED to value unless the application assigned it, in
+    # config/application.rb for instance, which runs before the railtie's initializers.
+    def default(option, value)
+      raise ArgumentError, "#{option} has no Rails default" unless RAILS_DEFAULTED.include?(option)
+      return if @assigned.include?(option)
+
+      public_send("#{option}=", value)
+      @assigned.delete(option)
+    end
+
     def slave?
       !master_url.nil? && !master_url.empty?
     end
@@ -162,6 +187,7 @@ module Profiler
     end
 
     def storage=(value)
+      @assigned |= [:storage]
       @storage = value
       @storage_backend = nil
     end

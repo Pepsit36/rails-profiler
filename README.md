@@ -60,6 +60,13 @@ end
 
 ## Configuration
 
+`enabled` defaults to true in development and test, false elsewhere. The profiler reads it once
+the application's `config/initializers` have run: with `enabled = false` it inserts no middleware
+and installs no instrumentation (Sidekiq, ActiveJob, test profiler, console), and with
+`enabled = true` in production it gets all of them. Options can also be set in
+`config/application.rb`, with `Profiler.configure` or `config.profiler.<option> = value`; the
+initializer has the last word.
+
 Create `config/initializers/profiler.rb`:
 
 ```ruby
@@ -733,7 +740,8 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 
 ## Performance
 
-- Only active when enabled (development/test by default)
+- Only active when enabled (development/test by default); when disabled, nothing is left in the
+  middleware stack and no instrumentation is installed
 - Expected overhead: < 5ms per request
 - Text bodies > 10 KB compressed automatically (gzip+base64)
 - Masking sensitive data adds well under 1 ms to a typical profile. A JSON body in whose text no
