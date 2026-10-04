@@ -381,8 +381,8 @@ List environment variables. By default shows only active overrides.
 Set an environment variable and persist the override across app restarts.
 
 The override reaches the processes started by `run_tests`, except for variables that make them load
-other code (`RUBYOPT`, `SPEC_OPTS`, `BUNDLE_*`, `PATH`...; the full list is in the README, section
-"Test runner").
+or run other code (`RUBYOPT`, `SPEC_OPTS`, `BUNDLE_*`, `PATH`, `BASH_ENV`...): those processes get
+the value from before the override. The full list is in the README, section "Test runner".
 
 | Parameter | Type | Description |
 |-----------|------|-------------|

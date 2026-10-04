@@ -348,11 +348,16 @@ Rails root. A refused selection answers `422` with the refused paths, or a tool 
 and nothing is started.
 
 Environment overrides set from the profiler (the env vars page, the MCP tool `set_env_var`) reach
-the test process, except those that would make it load other code or run another interpreter:
-`RUBYOPT`, `RUBYLIB`, `RUBYGEMS_GEMDEPS`, `GEM_HOME`, `GEM_PATH`, `SPEC_OPTS`, `TESTOPTS`, `TEST`,
-`PATH`, `HOME`, `XDG_CONFIG_HOME`, `NODE_OPTIONS`, and every `BUNDLE_*`, `BUNDLER_*`, `LD_*`,
-`DYLD_*` and `RUBY_DEBUG_*` variable. Those overrides are left out, with a warning naming them
-once; the values the process inherited from your shell are kept.
+the test process, except those that would make it, or the shell shims that start it (rbenv, asdf),
+load or run other code. For those, the test process gets the value the variable had before the
+override, or no value if it had none, and a warning names them once. They are: any name that is not
+made of letters, digits and `_`; every name starting with `RUBY`, `GEM`, `BUNDLE_`, `BUNDLER_`,
+`LD_`, `DYLD_`, `BASH_`, `RBENV_`, `ASDF_`, `RVM_`, `CHRUBY`, `GIT_`, `BOOTSNAP_`, `NODE_`, `PYTHON`
+or `PERL5`; and `SPEC_OPTS`, `TESTOPTS`, `TEST`, `PATH`, `HOME`, `XDG_CONFIG_HOME`, `SHELLOPTS`,
+`BASHOPTS`, `PS4`, `ENV`, `CDPATH` and `IFS`. `DATABASE_URL` and `SECRET_KEY_BASE` keep their
+value from before any override too, and `RAILS_ENV` and `RACK_ENV` are always `test`. This is a deny list, so it cannot
+be complete. When your tests need one of these variables, set it in the shell that starts Rails:
+the test process inherits it.
 
 To run any file under the Rails root again, as the test runner did before:
 

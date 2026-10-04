@@ -150,6 +150,16 @@ RSpec.describe Profiler::TestRunner::Runner do
       expect_refused(["--require=lib/tasks/not_a_test.rb"])
     end
 
+    it "refuses a path holding a null byte, with an InvalidFileError" do
+      expect_refused(["spec/fake_spec.rb\0.rb"])
+    end
+
+    it "refuses a path holding a null byte when undiscovered files are allowed" do
+      Profiler.configure { |c| c.test_runner_allow_undiscovered_files = true }
+      allow(described_class).to receive(:warn)
+      expect_refused(["lib/tasks/not_a_test.rb\0"], message: /Not a file under the Rails root/)
+    end
+
     it "refuses the whole selection when one file is not discovered" do
       expect_refused(["spec/fake_spec.rb", "lib/tasks/not_a_test.rb"])
     end
@@ -287,8 +297,10 @@ RSpec.describe Profiler::TestRunner::Runner do
       end
 
       before do
+        # The store records the value each variable had before its override.
+        with_originals = overrides.to_h { |key, entry| [key, entry.merge("original" => ENV[key])] }
         allow(Profiler).to receive(:env_override_store).and_return(
-          instance_double(Profiler::EnvOverrideStore, all_overrides: overrides)
+          instance_double(Profiler::EnvOverrideStore, all_overrides: with_originals)
         )
         allow(described_class).to receive(:warn)
       end

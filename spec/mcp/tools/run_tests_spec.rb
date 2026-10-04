@@ -191,6 +191,10 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
       expect_refused(["spec/models/helper_link.rb"])
     end
 
+    it "refuses a path holding a null byte with a tool error" do
+      expect_refused(["spec/fake_spec.rb\0"])
+    end
+
     it "reaches the MCP client as a tool error" do
       expect(Profiler::TestRunner::Runner).not_to receive(:spawn_async)
       server = Profiler::MCP::Server.new.instance_variable_get(:@server)

@@ -78,6 +78,25 @@ RSpec.describe "Test runner file selection", type: :request do
       expect(last_response.status).to eq(422)
     end
 
+    it "is refused with a 422 when the path holds a null byte" do
+      expect(Profiler::TestRunner::Runner).not_to receive(:spawn_async)
+
+      start_run(["spec/models/user_spec.rb\0"])
+
+      expect(last_response.status).to eq(422)
+    end
+
+    it "is refused with a 422 when sent for the other framework" do
+      write("test/models/user_test.rb")
+      expect(Profiler::TestRunner::Runner).not_to receive(:spawn_async)
+
+      start_run(["test/models/user_test.rb"], framework: "rspec")
+
+      expect(last_response.status).to eq(422)
+    ensure
+      FileUtils.rm_rf(File.join(root, "test"))
+    end
+
     it "is refused when the path leaves the Rails root" do
       expect(Profiler::TestRunner::Runner).not_to receive(:spawn_async)
 
