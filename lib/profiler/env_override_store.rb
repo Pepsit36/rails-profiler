@@ -107,7 +107,12 @@ module Profiler
       warn "[Profiler] EnvOverrideStore: failed to check overrides at boot: #{e.message}"
     end
 
+    # Set by the test runner in the environment of the test process, to which it already gave
+    # the admitted overrides only (TestRunner::Runner.build_env).
+    TEST_RUNNER_CHILD_ENV = "PROFILER_TEST_RUNNER_CHILD"
+
     def apply!
+      return if ENV[TEST_RUNNER_CHILD_ENV] == "1"
       return if blocked_reason
 
       overrides = load_overrides

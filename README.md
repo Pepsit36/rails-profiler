@@ -30,8 +30,11 @@ A comprehensive Rails profiler featuring a web debug toolbar, full profiling das
 Add to your `Gemfile`:
 
 ```ruby
-gem "rails-profiler"
+gem "rails-profiler", require: "profiler"
 ```
+
+The library is `profiler`, not `rails-profiler`: without `require: "profiler"`, Bundler loads
+nothing of the gem.
 
 Then run:
 
@@ -43,7 +46,7 @@ bundle install
 >
 > ```ruby
 > source "https://git.duplessy.eu/api/v4/projects/sebastien%2Frails-profiler-gem/packages/rubygems" do
->   gem "rails-profiler", "~> 0.1.0.pre"
+>   gem "rails-profiler", "~> 0.1.0.pre", require: "profiler"
 > end
 > ```
 
@@ -361,6 +364,14 @@ This is a deny list, so it cannot be complete. When your tests need one of these
 in the shell that starts Rails: the test process inherits it. Variables the application itself
 writes into `ENV` once loaded (`dotenv` for instance) do not reach the test process, which loads
 them on its own when your test setup does.
+
+The copy of the environment is taken once, when the gem is loaded. Two cases keep an older copy:
+
+- After a hot restart of Puma (`pumactl restart`, `SIGUSR2`), the new server inherits the
+  environment of the old one, overrides included, and copies that. Stop the server and start it
+  again from the shell.
+- Under Spring, the copy is taken when Spring preloads the application. Run `bin/spring stop`
+  after changing the shell environment.
 
 To run any file under the Rails root again, as the test runner did before:
 
