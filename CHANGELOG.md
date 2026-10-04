@@ -52,6 +52,14 @@ every commit of every tag interval is accounted for one way or the other.
   now says whether the original value was restored in the process or `ENV` was left unchanged,
   and no longer prints the value.
 
+### Fixed
+
+- **Env overrides:** Keep every override when several are set, deleted or reset at the same
+  time, from threads of the web process or from Sidekiq processes. Each writer read the file,
+  changed it and saved it over the others' changes, and a reader could see a half-written file as
+  no override at all. The file is now changed under a lock (`env_overrides.json.lock`, next to
+  it) and replaced in one step.
+
 ## [0.30.7] - 2026-10-04
 
 <!-- stamped -->
