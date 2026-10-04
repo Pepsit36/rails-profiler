@@ -43,10 +43,13 @@ every commit of every tag interval is accounted for one way or the other.
 - **Access control:** A disabled profiler now answers its API requests with a JSON error, like
   any other refusal of the API, instead of plain text.
 - **Toolbar:** The toolbar is now injected before the `</body>` that closes the page, looked for
-  outside comments, scripts, style sheets, `<textarea>` and `<title>`, instead of the first
-  `</body>` found. A `</body>` inside a script string of the page used to receive it, and the
-  toolbar's own `</script>` then turned the rest of that string into live markup. A page whose only
-  `</body>` sits in one of those, or that leaves one of them open, gets no toolbar.
+  outside comments, tags (a quoted attribute value) and the elements whose content is not markup
+  (`<script>`, `<style>`, `<textarea>`, `<title>`, `<xmp>`, `<iframe>`, `<noembed>`, `<noframes>`,
+  `<noscript>`), instead of the first `</body>` found. A `</body>` inside a script string of the
+  page used to receive it, and the toolbar's own `</script>` then turned the rest of that string
+  into live markup. A page whose only `</body>` sits in one of those, that leaves a comment, a tag,
+  a quoted value or one of those elements open, or that holds a `<plaintext>` or a double-escaped
+  script, gets no toolbar.
 
 ## [0.30.11] - 2026-10-04
 
