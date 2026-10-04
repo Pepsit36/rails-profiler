@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../../lib/profiler/cluster/security"
+
 module Profiler
   class ApplicationController < ActionController::Base
     layout "profiler/application"
@@ -18,6 +20,8 @@ module Profiler
     end
 
     def authorize_request
+      # Checked first, so that :allow_local does not log a refusal for the master's calls.
+      return if cluster_master_request?
       return if Profiler.configuration.authorized?(request)
 
       deny("Not authorized to access the profiler")
@@ -32,7 +36,14 @@ module Profiler
     # Rails' token, or the header every profiler client sends. A third-party page cannot add a
     # custom header without a CORS preflight, which is refused unless an origin was allowed.
     def verified_request?
-      super || request.headers[Profiler::FORGERY_PROTECTION_HEADER].present?
+      super || request.headers[Profiler::FORGERY_PROTECTION_HEADER].present? || cluster_master_request?
+    end
+
+    # On a slave, the master's proxied calls carry the shared secret, which stands for both the
+    # access guard and the forgery header. Never true on a node without master_url, or without
+    # a configured secret.
+    def cluster_master_request?
+      Profiler.configuration.slave? && Cluster::Security.request_secret_valid?(request)
     end
 
     def handle_unverified_request

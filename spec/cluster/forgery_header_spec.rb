@@ -12,6 +12,12 @@ RSpec.describe "Cluster requests and forgery protection" do
 
   describe Profiler::Cluster::SlaveProxy do
     before do
+      # A master that lets these slaves through: secret configured, URLs allowed.
+      Profiler.configure do |config|
+        config.cluster_secret = "spec-secret"
+        config.cluster_allowed_slave_urls = %w[http://payment:3001 http://trailing:3001]
+        config.cluster_allow_insecure_http = true
+      end
       Profiler.instance_variable_set(:@slave_registry, Profiler::Cluster::SlaveRegistry.new)
       Profiler.slave_registry.register(name: "payment", url: "http://payment:3001")
     end
@@ -32,6 +38,7 @@ RSpec.describe "Cluster requests and forgery protection" do
 
       expect(sent.map(&:method)).to eq(%w[GET POST PATCH DELETE])
       expect(sent.map { |req| req[Profiler::FORGERY_PROTECTION_HEADER] }).to all(eq("1"))
+      expect(sent.map { |req| req["X-Profiler-Cluster-Secret"] }).to all(eq("spec-secret"))
     end
   end
 
@@ -41,6 +48,8 @@ RSpec.describe "Cluster requests and forgery protection" do
         config.master_url = "http://master:3000"
         config.self_url = "http://slave:3001"
         config.name = "slave"
+        config.cluster_secret = "spec-secret"
+        config.cluster_allow_insecure_http = true
       end
     end
 
@@ -52,7 +61,24 @@ RSpec.describe "Cluster requests and forgery protection" do
       client.send(:heartbeat!)
 
       expect(Net::HTTP).to have_received(:post)
-        .with(anything, anything, hash_including(Profiler::FORGERY_PROTECTION_HEADER => "1")).twice
+        .with(anything, anything, hash_including(Profiler::FORGERY_PROTECTION_HEADER => "1",
+                                                 "X-Profiler-Cluster-Secret" => "spec-secret")).twice
+    end
+
+    it "sends nothing to a remote master over plain HTTP" do
+      Profiler.configuration.cluster_allow_insecure_http = false
+      allow(Net::HTTP).to receive(:post).and_return(ok)
+
+      expect { described_class.new.send(:register!) }.to raise_error(/HTTPS is required/)
+      expect(Net::HTTP).not_to have_received(:post)
+    end
+
+    it "sends nothing when no secret is configured" do
+      Profiler.configuration.cluster_secret = nil
+      allow(Net::HTTP).to receive(:post).and_return(ok)
+
+      expect { described_class.new.send(:heartbeat!) }.to raise_error(/cluster_secret/)
+      expect(Net::HTTP).not_to have_received(:post)
     end
   end
 end

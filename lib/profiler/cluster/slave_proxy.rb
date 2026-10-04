@@ -3,6 +3,7 @@
 require "net/http"
 require "json"
 require "uri"
+require_relative "security"
 
 module Profiler
   module Cluster
@@ -14,6 +15,15 @@ module Profiler
       def initialize(slave_name, open_timeout: nil, read_timeout: nil)
         entry = Profiler.slave_registry.find!(slave_name)
         raise Profiler::Error, "Slave profiler '#{slave_name}' is offline" if entry.status == "offline"
+
+        # Checked again on every use: the URL was registered earlier, under a configuration that
+        # may have changed since.
+        if (reason = Security.slave_url_denial(entry.url))
+          raise Profiler::Error, "Slave profiler '#{slave_name}' refused: #{reason}"
+        end
+        if Security.secret_required? && !Security.configured_secret?
+          raise Profiler::Error, "No config.cluster_secret is configured: requests to slave profilers are refused"
+        end
 
         @base_url = entry.url.to_s.chomp("/")
         @open_timeout = open_timeout || OPEN_TIMEOUT
@@ -87,12 +97,18 @@ module Profiler
 
       def request(uri, req)
         req[Profiler::FORGERY_PROTECTION_HEADER] = "1"
+        Security.outgoing_headers.each { |name, value| req[name] = value }
+        # Net::HTTP never follows a redirect; a 3xx is reported, without its body, rather than
+        # handed back as if the slave had answered.
         resp = Net::HTTP.start(uri.hostname, uri.port,
                                open_timeout: @open_timeout, read_timeout: @read_timeout,
                                use_ssl: uri.scheme == "https") do |http|
           http.request(req)
         end
         return {} if resp.code == "204"
+        if resp.code.to_s.start_with?("3")
+          raise Profiler::Error, "Slave profiler answered #{resp.code} (redirect not followed)"
+        end
 
         parse_response(resp)
       end

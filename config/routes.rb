@@ -57,14 +57,16 @@ Profiler::Engine.routes.draw do
     delete "test_runner/runs/:id",        to: "test_runner#destroy"
     get    "events/:token",               to: "events#subscribe",  as: :profile_events
 
-    # Cluster endpoints (master-side)
-    post "cluster/register",  to: "cluster#register"
-    post "cluster/heartbeat", to: "cluster#heartbeat"
-    get  "cluster/slaves",    to: "cluster#slaves"
+    # Cluster endpoints (master-side), routed only on a node with cluster_master set
+    constraints(->(_request) { Profiler.configuration.cluster_master? }) do
+      post "cluster/register",  to: "cluster#register"
+      post "cluster/heartbeat", to: "cluster#heartbeat"
+      get  "cluster/slaves",    to: "cluster#slaves"
 
-    # Slave proxy — must be last to avoid shadowing other api routes
-    scope "/slaves/:slave_name" do
-      match "*path", to: "slave_proxy#forward", via: :all
+      # Slave proxy: must be last to avoid shadowing other api routes
+      scope "/slaves/:slave_name" do
+        match "*path", to: "slave_proxy#forward", via: :all
+      end
     end
   end
 end

@@ -7,6 +7,12 @@ require "profiler/cluster/slave_registry"
 RSpec.describe Profiler::MCP::SlaveSupport do
   before do
     Profiler.configure { |c| c.storage = :memory }
+    # A master that lets these slaves through: secret configured, URLs allowed.
+    Profiler.configure do |config|
+      config.cluster_secret = "spec-secret"
+      config.cluster_allowed_slave_urls = %w[http://payment:3001 http://trailing:3001]
+      config.cluster_allow_insecure_http = true
+    end
     Profiler.instance_variable_set(:@storage, Profiler::Storage::MemoryStore.new)
     Profiler.instance_variable_set(:@slave_registry, Profiler::Cluster::SlaveRegistry.new)
     Profiler.slave_registry.register(name: "payment", url: "http://payment:3001")
