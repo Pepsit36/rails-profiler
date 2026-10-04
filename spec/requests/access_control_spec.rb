@@ -235,6 +235,18 @@ RSpec.describe "Profiler access control", type: :request do
       expect(last_response.status).to eq(404)
     end
 
+    it "does not route the MCP mount when mcp_enabled is off, even with the HTTP transport" do
+      Profiler.configure do |config|
+        config.mcp_enabled = false
+        config.mcp_transport = :http
+      end
+      with_rendered_errors do
+        post "/_profiler/mcp", "{}", local.merge(mcp_headers)
+      end
+
+      expect(last_response.status).to eq(404)
+    end
+
     it "does not route the MCP mount with the stdio transport" do
       Profiler.configure do |config|
         config.mcp_enabled = true
