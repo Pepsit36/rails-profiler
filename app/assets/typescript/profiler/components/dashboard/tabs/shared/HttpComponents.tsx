@@ -160,12 +160,13 @@ function categoryMime(category: BodyCategory): string {
   return map[category] || 'text/plain'
 }
 
-// The type a preview blob may carry: raster images and PDF, which run no script in the
-// profiler's origin. Anything else, SVG included, stays an untyped download.
+// The types a preview blob may carry: raster images and PDF, which run no script in the
+// profiler's origin. Anything else, SVG included, stays untyped (an <img> still sniffs it).
+const INERT_PREVIEW_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'application/pdf']
+
 function inertPreviewType(mime: string): string {
   const m = mime.toLowerCase()
-  if (m === 'application/pdf' || (m.startsWith('image/') && m !== 'image/svg+xml')) return m
-  return 'application/octet-stream'
+  return INERT_PREVIEW_TYPES.includes(m) ? m : 'application/octet-stream'
 }
 
 const PREVIEW_LIMIT = 500
