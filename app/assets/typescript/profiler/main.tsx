@@ -8,7 +8,6 @@ import { ConsoleProfileDashboard } from './components/dashboard/ConsoleProfileDa
 import { TestProfileDashboard } from './components/dashboard/TestProfileDashboard'
 import { TestRunnerPage } from './components/test-runner/TestRunnerPage'
 import { initTimeline } from './timeline'
-import { formatSQL } from './sql-formatter'
 import { themeManager, createThemeToggle } from './theme'
 
 const queryClient = new QueryClient({
@@ -89,10 +88,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (timeline) {
     initTimeline(timeline)
   }
-
-  document.querySelectorAll('pre[data-language="sql"]').forEach((block) => {
-    formatSQL(block as HTMLElement)
-  })
 })
 
-export { initTimeline, formatSQL, themeManager, createThemeToggle }
+export { initTimeline, themeManager, createThemeToggle }

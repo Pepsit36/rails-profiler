@@ -1,9 +1,31 @@
 # frozen_string_literal: true
 
+require "json"
+require "strscan"
+require "active_support/core_ext/string/output_safety"
+
 module Profiler
   module Middleware
     class ToolbarInjector
-      CLOSING_BODY_TAG = "</body>"
+      # The only characters HTML counts as white space between attributes (\s also takes \v).
+      WS = "[\\t\\n\\f\\r ]"
+      # Elements whose content the browser does not parse as markup: a </body> inside one of
+      # them is text, not the end of the page. Each maps to the end tag that closes it.
+      RAW_TEXT_ELEMENTS = %w[script style textarea title xmp iframe noembed noframes noscript]
+                          .to_h { |name| [name, %r{</#{name}(?=#{WS}|[/>])}i] }.freeze
+      # Never closed: whatever follows it is text.
+      PLAINTEXT = "plaintext"
+      # An attribute as the HTML tokenizer reads it: the name may start with = (or a quote),
+      # and a value only follows a name, after =. A quoted value may hold a > or a </body>.
+      ATTRIBUTE = %r{
+        [^\t\n\f\r\ />][^\t\n\f\r\ />=]*+
+        (?:#{WS}*+(?:=#{WS}*+(?:"[^"]*+"|'[^']*+'|[^\t\n\f\r\ >"'][^\t\n\f\r\ >]*+|(?=>))|(?!=)))
+      }x
+      # The rest of a tag, up to its >. A quoted value that is never closed fails the match,
+      # as does a tag without its >. Possessive, so that a failure costs no backtracking.
+      TAG_REST = %r{(?:#{WS}++|/|#{ATTRIBUTE})*+>}
+      # A whole start or end tag, read after its <: the slash and the name are captured.
+      TAG = %r{(/)?([a-z][^\t\n\f\r\ />]*+)#{TAG_REST}}i
 
       def initialize(body, token, nonce = nil)
         @body = body
@@ -13,9 +35,12 @@ module Profiler
 
       def inject
         content = extract_content(@body)
-        return @body unless content.include?(CLOSING_BODY_TAG)
+        # Bytes, so that a page that is not valid UTF-8 can still be scanned.
+        bytes = content.b
+        position = closing_body_position(bytes)
+        return @body unless position
 
-        injected_content = content.sub(CLOSING_BODY_TAG, toolbar_html + CLOSING_BODY_TAG)
+        injected_content = bytes.insert(position, toolbar_html.b).force_encoding(content.encoding)
 
         # Return as array for Rack compatibility
         [injected_content]
@@ -23,12 +48,70 @@ module Profiler
 
       private
 
+      # Byte offset of the </body> that closes the page: the last one outside comments, tags
+      # (an attribute value) and raw-text elements, where a page can carry the string
+      # "</body>" (a script building markup, a cached fragment in a final comment). nil when
+      # there is none, or when the page leaves a comment, a tag, a quoted value or a raw-text
+      # element open, or holds a <plaintext> or a double-escaped script: no toolbar rather than
+      # a toolbar in the wrong place.
+      def closing_body_position(bytes)
+        scanner = StringScanner.new(bytes)
+        position = nil
+
+        while scanner.skip_until(/</)
+          start = scanner.pos - 1
+
+          if scanner.skip(TAG)
+            name = scanner[2]
+            name = name.downcase if name.match?(/[A-Z]/)
+
+            if scanner[1]
+              position = start if name == "body"
+              next
+            end
+            return nil if name == PLAINTEXT
+            next unless (end_tag = RAW_TEXT_ELEMENTS[name])
+
+            text_start = scanner.pos
+            return nil unless scanner.skip_until(end_tag)
+            return nil if name == "script" && double_escaped?(bytes, text_start, scanner.pos - scanner.matched_size)
+            return nil unless scanner.skip(TAG_REST)
+          elsif scanner.match?(%r{/?[a-z]}i)
+            # A tag, or a quoted value in it, that is never closed.
+            return nil
+          elsif scanner.skip(/!--/)
+            # <!--> and <!---> are complete comments.
+            next if scanner.skip(/-?>/) || scanner.skip_until(/-->/)
+
+            return nil
+          elsif scanner.skip(/!\[CDATA\[/)
+            # A bogus comment up to the first > in HTML, a CDATA section up to ]]> in <svg> or
+            # <math>: go on only when both end at the same place.
+            return nil unless scanner.skip_until(/>/) && bytes.byteslice(scanner.pos - 3, 3) == "]]>"
+          elsif scanner.skip(%r{[!?/]})
+            # <!DOCTYPE>, <?xml ?>, </ not followed by a letter: a bogus comment, up to its >.
+            return nil unless scanner.skip_until(/>/)
+          end
+        end
+
+        position
+      end
+
+      # In a script, <!-- followed by <script enters a state where </script> does not close it.
+      # Only the script itself is searched, so that a page of many scripts is read in linear
+      # time.
+      def double_escaped?(bytes, from, to)
+        text = bytes.byteslice(from, to - from)
+        comment = text.index("<!--")
+        comment ? text.match?(%r{<script(?:#{WS}|[/>])}i, comment) : false
+      end
+
       def ajax_interceptor_script
         return "" unless Profiler.configuration.track_ajax
 
         <<~HTML
           <script#{nonce_attr}>
-            window.__PROFILER_PARENT_TOKEN__ = '#{@token}';
+            window.__PROFILER_PARENT_TOKEN__ = #{js_token};
           </script>
           <script#{nonce_attr}>
             #{ajax_interceptor_code}
@@ -63,15 +146,20 @@ module Profiler
         <<~HTML
           #{ajax_interceptor_script}
           <style>#{toolbar_styles}</style>
-          <div id="profiler-toolbar" class="profiler-root" data-token="#{@token}"></div>
+          <div id="profiler-toolbar" class="profiler-root" data-token="#{ERB::Util.html_escape(@token)}"></div>
           <button id="profiler-toolbar-toggle" class="profiler-root" title="Toggle profiler (Alt+P)"><span class="profiler-toggle-icon">&#9654;</span></button>
           <script#{nonce_attr}>(function(){var c=localStorage.getItem('profiler-toolbar-collapsed')==='true',t=localStorage.getItem('profiler-theme'),theme=t==='light'?'light':t==='dark'?'dark':(window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'),el=document.getElementById('profiler-toolbar'),tog=document.getElementById('profiler-toolbar-toggle');if(c){el.style.cssText='animation:none!important;transform:translateX(calc(100% + 44px))';tog.dataset.collapsed='true';}el.setAttribute('data-theme',theme);tog.setAttribute('data-theme',theme);})();</script>
           <script src="/_profiler/assets/profiler-toolbar.js" defer#{nonce_attr}></script>
         HTML
       end
 
+      # The token as a JavaScript string literal that cannot close the <script> element.
+      def js_token
+        ERB::Util.json_escape(@token.to_s.to_json)
+      end
+
       def nonce_attr
-        @nonce ? " nonce=\"#{@nonce}\"" : ""
+        @nonce ? " nonce=\"#{ERB::Util.html_escape(@nonce)}\"" : ""
       end
 
       # Thermal design system — self-contained CSS for the injected toolbar.

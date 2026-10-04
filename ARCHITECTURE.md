@@ -17,7 +17,7 @@ This document describes the architecture and implementation details of the Rails
 - Delegates toolbar injection to `ToolbarInjector`
 
 **ToolbarInjector** (`lib/profiler/middleware/toolbar_injector.rb`)
-- Injects the debug toolbar HTML before `</body>` tag
+- Injects the debug toolbar HTML before the `</body>` tag that closes the page, found outside scripts, style sheets and comments (no toolbar when there is none)
 - Only processes HTML responses (checks Content-Type)
 - Adds inline JavaScript to load toolbar data asynchronously
 - Includes minimal inline CSS for initial rendering
