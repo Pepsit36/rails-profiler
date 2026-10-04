@@ -14,7 +14,7 @@ RSpec.describe "Cluster requests and forgery protection" do
     before do
       # A master that lets these slaves through: secret configured, URLs allowed.
       Profiler.configure do |config|
-        config.cluster_secret = "spec-secret"
+        config.cluster_secret = "spec-secret-0123456789abcdefghijklmnop"
         config.cluster_allowed_slave_urls = %w[http://payment:3001 http://trailing:3001]
         config.cluster_allow_insecure_http = true
       end
@@ -38,7 +38,7 @@ RSpec.describe "Cluster requests and forgery protection" do
 
       expect(sent.map(&:method)).to eq(%w[GET POST PATCH DELETE])
       expect(sent.map { |req| req[Profiler::FORGERY_PROTECTION_HEADER] }).to all(eq("1"))
-      expect(sent.map { |req| req["X-Profiler-Cluster-Secret"] }).to all(eq("spec-secret"))
+      expect(sent.map { |req| req["X-Profiler-Cluster-Secret"] }).to all(eq("spec-secret-0123456789abcdefghijklmnop"))
     end
   end
 
@@ -48,7 +48,7 @@ RSpec.describe "Cluster requests and forgery protection" do
         config.master_url = "http://master:3000"
         config.self_url = "http://slave:3001"
         config.name = "slave"
-        config.cluster_secret = "spec-secret"
+        config.cluster_secret = "spec-secret-0123456789abcdefghijklmnop"
         config.cluster_allow_insecure_http = true
       end
     end
@@ -62,7 +62,7 @@ RSpec.describe "Cluster requests and forgery protection" do
 
       expect(Net::HTTP).to have_received(:post)
         .with(anything, anything, hash_including(Profiler::FORGERY_PROTECTION_HEADER => "1",
-                                                 "X-Profiler-Cluster-Secret" => "spec-secret")).twice
+                                                 "X-Profiler-Cluster-Secret" => "spec-secret-0123456789abcdefghijklmnop")).twice
     end
 
     it "sends nothing to a remote master over plain HTTP" do

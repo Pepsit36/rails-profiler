@@ -48,8 +48,8 @@ module Profiler
         if (reason = Security.master_url_denial(config.master_url))
           raise reason
         end
-        if Security.secret_required? && !Security.configured_secret?
-          raise "no config.cluster_secret is configured: the master refuses registration without it"
+        if Security.secret_required? && (problem = Security.secret_problem)
+          raise "#{problem}: the master refuses registration without a secret"
         end
 
         URI("#{config.master_url}/_profiler/api/cluster/#{action}")

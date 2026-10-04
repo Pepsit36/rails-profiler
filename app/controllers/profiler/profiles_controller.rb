@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../../lib/profiler/cluster/slave_proxy"
+
 module Profiler
   class ProfilesController < ApplicationController
     def index

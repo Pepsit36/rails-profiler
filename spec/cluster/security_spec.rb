@@ -98,11 +98,60 @@ RSpec.describe Profiler::Cluster::Security do
     end
 
     it "accepts the configured secret only" do
-      configure(cluster_secret: "abc")
+      secret = "k" * 32
+      configure(cluster_secret: secret)
 
-      expect(described_class.valid_secret?("abc")).to be(true)
-      expect(described_class.valid_secret?("abd")).to be(false)
-      expect(described_class.valid_secret?("abcd")).to be(false)
+      expect(described_class.valid_secret?(secret)).to be(true)
+      expect(described_class.valid_secret?("#{"k" * 31}j")).to be(false)
+      expect(described_class.valid_secret?("#{secret}k")).to be(false)
+    end
+
+    it "treats a secret shorter than 32 characters, or blank, as missing" do
+      configure(cluster_secret: "k" * 31)
+      expect(described_class.valid_secret?("k" * 31)).to be(false)
+      expect(described_class.configured_secret?).to be(false)
+      expect(described_class.outgoing_headers).to eq({})
+      expect(described_class.secret_problem).to match(/32 characters/)
+
+      configure(cluster_secret: "  #{" " * 40}\n")
+      expect(described_class.valid_secret?(Profiler.configuration.cluster_secret)).to be(false)
+      expect(described_class.secret_problem).to match(/No config.cluster_secret/)
+    end
+  end
+
+  describe ".warn_about_configuration" do
+    let(:logger) { instance_double(Logger, warn: nil) }
+
+    it "warns at boot about a weak secret on a cluster node" do
+      configure(cluster_master: true, cluster_secret: "short")
+      described_class.warn_about_configuration(logger)
+
+      expect(logger).to have_received(:warn).with(/32 characters/)
+    end
+
+    it "warns a slave with no secret" do
+      configure(master_url: "https://master.internal")
+      described_class.warn_about_configuration(logger)
+
+      expect(logger).to have_received(:warn).with(/cluster_secret/)
+    end
+
+    it "says nothing outside the cluster, or with a good secret" do
+      described_class.warn_about_configuration(logger)
+      configure(cluster_master: true, cluster_secret: "k" * 32)
+      described_class.warn_about_configuration(logger)
+
+      expect(logger).not_to have_received(:warn)
+    end
+  end
+
+  describe ".normalized_url" do
+    it "rebuilds the URL from its normalized parts" do
+      expect(described_class.normalized_url(" HTTPS://Payment.Internal:443/app/ ")).to eq("https://payment.internal/app")
+      expect(described_class.normalized_url("http://LOCALHOST:3001")).to eq("http://localhost:3001")
+      expect(described_class.normalized_url("https://[FD00::1]:8443/")).to eq("https://[fd00::1]:8443")
+      expect(described_class.normalized_url("https://a.internal/x%20y")).to eq("https://a.internal/x%20y")
+      expect(described_class.normalized_url("https://a.internal/../b")).to be_nil
     end
   end
 
@@ -110,7 +159,7 @@ RSpec.describe Profiler::Cluster::Security do
     it "is true by default, and whenever a secret is configured" do
       expect(described_class.secret_required?).to be(true)
 
-      configure(cluster_require_secret: false, cluster_secret: "abc")
+      configure(cluster_require_secret: false, cluster_secret: "k" * 32)
       expect(described_class.secret_required?).to be(true)
     end
 

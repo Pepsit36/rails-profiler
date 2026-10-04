@@ -6,13 +6,14 @@ require "webmock/rspec/matchers"
 require_relative "../support/rails_app"
 require "profiler/cluster/slave_registry"
 require "profiler/cluster/master_client"
+require "profiler/cluster/slave_proxy"
 
 RSpec.describe "Cluster endpoints", type: :request do
   include Rack::Test::Methods
   include WebMock::API
   include WebMock::Matchers
 
-  let(:secret) { "s3cret-shared-by-the-cluster" }
+  let(:secret) { "s3cret-shared-by-the-cluster-0123456789" }
   let(:local) { { "REMOTE_ADDR" => "127.0.0.1", "HTTP_HOST" => "localhost" } }
   let(:remote) { { "REMOTE_ADDR" => "10.0.0.5", "HTTP_HOST" => "master.internal" } }
   let(:json_headers) { { "CONTENT_TYPE" => "application/json" } }
@@ -146,6 +147,32 @@ RSpec.describe "Cluster endpoints", type: :request do
         expect(json["error"]).to match(/cluster_secret/)
       end
 
+      it "treats a secret shorter than 32 characters as missing, and says so" do
+        Profiler.configuration.cluster_secret = "a" * 31
+        register(name: "payment", url: "https://payment.internal",
+                 env: remote.merge("HTTP_X_PROFILER_CLUSTER_SECRET" => "a" * 31))
+
+        expect(last_response.status).to eq(403)
+        expect(json["error"]).to match(/32 characters/)
+        expect(Profiler.slave_registry.all).to be_empty
+      end
+
+      it "treats a blank secret as missing" do
+        Profiler.configuration.cluster_secret = " " * 40
+        register(name: "payment", url: "https://payment.internal",
+                 env: remote.merge("HTTP_X_PROFILER_CLUSTER_SECRET" => " " * 40))
+
+        expect(last_response.status).to eq(403)
+        expect(json["error"]).to match(/cluster_secret/)
+      end
+
+      it "stores the normalized URL" do
+        register(name: "payment", url: " HTTPS://Payment.Internal:443/ ", env: remote.merge(secret_header))
+
+        expect(last_response.status).to eq(200)
+        expect(Profiler.slave_registry.all.first[:url]).to eq("https://payment.internal")
+      end
+
       it "refuses a URL outside the allow list" do
         register(name: "evil", url: "https://169.254.169.254", env: remote.merge(secret_header))
 
@@ -249,6 +276,64 @@ RSpec.describe "Cluster endpoints", type: :request do
         get "/_profiler/api/slaves/payment/profiles", {}, remote.merge(secret_header)
 
         expect(last_response.status).to eq(403)
+      end
+    end
+
+    # Every request the master sends to a slave has to stay under the slave's /_profiler/api/:
+    # it carries the secret. Requests are captured as Net::HTTP builds them, before any
+    # normalization, so that a ".." or an injected query shows as it would on the wire.
+    describe "paths sent to a slave" do
+      let(:sent) { [] }
+
+      before do
+        Profiler.slave_registry.register(name: "payment", url: "https://payment.internal/app")
+        ok = instance_double(Net::HTTPResponse, code: "200", body: "{}")
+        http = double("http")
+        allow(http).to receive(:request) { |req| sent << req.path; ok }
+        allow(Net::HTTP).to receive(:start).and_yield(http)
+        Profiler.configuration.cluster_allowed_slave_urls = ["https://payment.internal/app"]
+      end
+
+      def escaped_prefix?(path)
+        path.start_with?("/app/_profiler/api/") &&
+          path.split("?").first.split("/").none? { |segment| %w[. ..].include?(URI.decode_www_form_component(segment)) }
+      end
+
+      it "refuses a dot segment in the proxied path" do
+        get "/_profiler/api/slaves/payment/%2E%2E/%2E%2E/admin", {}, local
+
+        expect(last_response.status).to eq(502)
+        expect(sent).to be_empty
+      end
+
+      it "does not let an encoded question mark in the proxied path become a query" do
+        get "/_profiler/api/slaves/payment/profiles/x%3Fall_types=1", {}, local
+
+        expect(sent.size).to eq(1)
+        expect(sent.first).to eq("/app/_profiler/api/profiles/x%3Fall_types%3D1")
+      end
+
+      it "keeps the query of the proxied request as a query" do
+        get "/_profiler/api/slaves/payment/profiles", { limit: "5" }, local
+        expect(sent).to eq(["/app/_profiler/api/profiles?limit=5"])
+      end
+
+      it "keeps the fan-out of a profile page under the API prefix" do
+        get "/_profiler/profiles/%2E%2E%2F%2E%2E%2Fadmin%3Fx=1", {}, local
+        get "/_profiler/profiles/abc%3Fall_types=1", {}, local
+
+        expect(sent).not_to be_empty
+        expect(sent).to all(satisfy { |path| escaped_prefix?(path) && !path.include?("?") })
+      end
+
+      it "keeps an MCP lookup by token under the API prefix" do
+        require "profiler/mcp/slave_support"
+        storage = Profiler::MCP::SlaveSupport.resolve_storage("slave" => "payment")
+
+        expect { storage.load("../../admin") }.to raise_error(Profiler::Error, /path segment/)
+        storage.load("x?all_types=1#frag")
+
+        expect(sent).to eq(["/app/_profiler/api/profiles/x%3Fall_types%3D1%23frag"])
       end
     end
 
