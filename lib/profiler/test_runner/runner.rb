@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "set"
+require_relative "../boot_env"
+require_relative "../env_override_store"
 require_relative "run_store"
 require_relative "discovery"
 
@@ -131,7 +133,8 @@ module Profiler
 
         Profiler::TestRunner.run_store.update(run.id, status: "running", started_at: Time.now)
 
-        IO.popen([env, *cmd, err: [:child, :out]], "r") do |io|
+        # unsetenv_others: the child gets exactly env, not the ENV of this process
+        IO.popen([env, *cmd, unsetenv_others: true, err: [:child, :out]], "r") do |io|
           Profiler::TestRunner.run_store.update(run.id, pid: io.pid)
 
           while (chunk = io.read(256))
@@ -172,12 +175,12 @@ module Profiler
       # start it, load or run code other than the selected tests. It is a deny list, so it cannot
       # be complete; a variable needed by the tests can be set in the shell that starts Rails.
       CODE_LOADING_ENV_KEYS = %w[
-        SPEC_OPTS TESTOPTS TEST PATH HOME XDG_CONFIG_HOME
+        SPEC_OPTS TESTOPTS TEST PATH HOME XDG_CONFIG_HOME GEMRC NODE_OPTIONS NODE_PATH
         SHELLOPTS BASHOPTS PS4 ENV CDPATH IFS
       ].freeze
       CODE_LOADING_ENV_PREFIXES = %w[
-        RUBY GEM BUNDLE_ BUNDLER_ LD_ DYLD_ BASH_ RBENV_ ASDF_ RVM_ CHRUBY GIT_ BOOTSNAP_
-        NODE_ PYTHON PERL5
+        RUBY GEM_ BUNDLE_ BUNDLER_ LD_ DYLD_ BASH_ RBENV_ ASDF_ RVM_ CHRUBY GIT_ BOOTSNAP_
+        PYTHON PERL5
       ].freeze
       ENV_NAME = /\A[A-Z_][A-Z0-9_]*\z/i
 
@@ -188,24 +191,27 @@ module Profiler
         CODE_LOADING_ENV_KEYS.include?(name) || CODE_LOADING_ENV_PREFIXES.any? { |prefix| name.start_with?(prefix) }
       end
 
-      # The overrides are already written into ENV of this process (by the env vars endpoint, the
-      # MCP tools and EnvOverrideStore#apply! at boot), so leaving one out means giving the test
-      # process the value from before the override. nil unsets the variable in the child, since
-      # IO.popen merges this hash into the inherited environment.
+      # Starts from the copy of ENV taken when the gem was loaded, not from ENV: the overrides are
+      # also written into ENV (by the env vars endpoint, the MCP tools and EnvOverrideStore#apply!),
+      # and one whose entry the store lost would pass unnoticed. Only the overrides read from the
+      # store and admitted are applied on top; a left-out or blocked key keeps its shell value.
       def self.build_env
-        base = ENV.to_h
+        base = Profiler::BOOT_ENV.dup
         left_out = []
 
         overrides = Profiler.env_override_store.all_overrides
         overrides.each do |key, entry|
           blocked = BLOCKED_ENV_KEYS.include?(key.upcase)
           if blocked || code_loading_env_key?(key)
-            base[key] = entry.is_a?(Hash) ? entry["original"] : nil
             left_out << key unless blocked
             next
           end
           value = entry.is_a?(Hash) ? entry["value"] : entry
-          base[key] = value
+          if value == EnvOverrideStore::DELETED_SENTINEL
+            base.delete(key)
+          else
+            base[key] = value
+          end
         end
 
         unless left_out.empty?

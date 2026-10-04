@@ -347,17 +347,20 @@ links, so a link to any other file is refused, and so is a discovered link whose
 Rails root. A refused selection answers `422` with the refused paths, or a tool error over MCP,
 and nothing is started.
 
-Environment overrides set from the profiler (the env vars page, the MCP tool `set_env_var`) reach
-the test process, except those that would make it, or the shell shims that start it (rbenv, asdf),
-load or run other code. For those, the test process gets the value the variable had before the
-override, or no value if it had none, and a warning names them once. They are: any name that is not
-made of letters, digits and `_`; every name starting with `RUBY`, `GEM`, `BUNDLE_`, `BUNDLER_`,
-`LD_`, `DYLD_`, `BASH_`, `RBENV_`, `ASDF_`, `RVM_`, `CHRUBY`, `GIT_`, `BOOTSNAP_`, `NODE_`, `PYTHON`
-or `PERL5`; and `SPEC_OPTS`, `TESTOPTS`, `TEST`, `PATH`, `HOME`, `XDG_CONFIG_HOME`, `SHELLOPTS`,
-`BASHOPTS`, `PS4`, `ENV`, `CDPATH` and `IFS`. `DATABASE_URL` and `SECRET_KEY_BASE` keep their
-value from before any override too, and `RAILS_ENV` and `RACK_ENV` are always `test`. This is a deny list, so it cannot
-be complete. When your tests need one of these variables, set it in the shell that starts Rails:
-the test process inherits it.
+The test process starts from the environment the shell gave Rails, copied when the gem is
+loaded, with the `test` environment. Environment overrides set from the profiler (the env vars
+page, the MCP tool `set_env_var`) are applied on top, except those that would make the test process,
+or the shell shims that start it (rbenv, asdf), load or run other code: for those, the test process
+keeps the shell value, or none, and a warning names them once. They are: any name that is not
+made of letters, digits and `_`; every name starting with `RUBY`, `GEM_`, `BUNDLE_`, `BUNDLER_`,
+`LD_`, `DYLD_`, `BASH_`, `RBENV_`, `ASDF_`, `RVM_`, `CHRUBY`, `GIT_`, `BOOTSNAP_`, `PYTHON` or
+`PERL5`; and `GEMRC`, `NODE_OPTIONS`, `NODE_PATH`, `SPEC_OPTS`, `TESTOPTS`, `TEST`, `PATH`, `HOME`,
+`XDG_CONFIG_HOME`, `SHELLOPTS`, `BASHOPTS`, `PS4`, `ENV`, `CDPATH` and `IFS`. `DATABASE_URL` and
+`SECRET_KEY_BASE` keep their shell value too, and `RAILS_ENV` and `RACK_ENV` are always `test`.
+This is a deny list, so it cannot be complete. When your tests need one of these variables, set it
+in the shell that starts Rails: the test process inherits it. Variables the application itself
+writes into `ENV` once loaded (`dotenv` for instance) do not reach the test process, which loads
+them on its own when your test setup does.
 
 To run any file under the Rails root again, as the test runner did before:
 
