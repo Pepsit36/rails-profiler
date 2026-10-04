@@ -1,12 +1,15 @@
 # frozen_string_literal: true
 
 require "json"
+require "strscan"
 require "active_support/core_ext/string/output_safety"
 
 module Profiler
   module Middleware
     class ToolbarInjector
-      CLOSING_BODY_TAG = "</body>"
+      # Elements whose content the browser does not parse as markup: a </body> inside one of
+      # them is text, not the end of the page.
+      RAW_TEXT_ELEMENTS = /(script|style|textarea|title)(?=[\s\/>])/i
 
       def initialize(body, token, nonce = nil)
         @body = body
@@ -16,17 +19,45 @@ module Profiler
 
       def inject
         content = extract_content(@body)
-        # The last </body>: an earlier one can sit in a script string of the page.
-        position = content.rindex(CLOSING_BODY_TAG)
+        # Bytes, so that a page that is not valid UTF-8 can still be scanned.
+        bytes = content.b
+        position = closing_body_position(bytes)
         return @body unless position
 
-        injected_content = content.dup.insert(position, toolbar_html)
+        injected_content = bytes.insert(position, toolbar_html.b).force_encoding(content.encoding)
 
         # Return as array for Rack compatibility
         [injected_content]
       end
 
       private
+
+      # Byte offset of the </body> that closes the page: the last one outside comments and
+      # raw-text elements, where a page can carry the string "</body>" (a script building
+      # markup, a cached fragment in a final comment). nil when there is none, or when a
+      # comment or a raw-text element is never closed: no toolbar rather than a toolbar in
+      # the wrong place.
+      def closing_body_position(bytes)
+        scanner = StringScanner.new(bytes)
+        position = nil
+
+        while scanner.skip_until(/<(?=!--|\/?[a-z])/i)
+          start = scanner.pos - 1
+
+          if scanner.skip(/!--/)
+            # <!--> and <!---> are complete comments.
+            next if scanner.skip(/-?>/) || scanner.skip_until(/-->/)
+
+            return nil
+          elsif scanner.skip(/\/body(?=[\s\/>])/i)
+            position = start
+          elsif (name = scanner.scan(RAW_TEXT_ELEMENTS))
+            return nil unless scanner.skip_until(%r{</#{name}(?=[\s/>])}i)
+          end
+        end
+
+        position
+      end
 
       def ajax_interceptor_script
         return "" unless Profiler.configuration.track_ajax

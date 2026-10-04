@@ -68,20 +68,87 @@ RSpec.describe Profiler::Middleware::ToolbarInjector do
       end
     end
 
-    # A page can carry "</body>" before its real closing tag, in a script string for
-    # instance; the toolbar's own </script> would then close that script and turn the rest
-    # of the string into live markup.
-    context "when </body> also appears earlier in the page" do
-      let(:html) do
-        %(<html><body><script>var tpl = "</body><img src=x onerror=alert(1)>";</script><p>end</p></body></html>)
+    # A page can carry "</body>" elsewhere than in its closing tag: in a script string, a
+    # style sheet or a comment, before or after the real one. Injected there, the toolbar's
+    # own </script> would close the page's script and turn the rest of its string into live
+    # markup, or the toolbar would sit in a comment.
+    describe "choosing the </body>" do
+      let(:alert) { %(</body><img src=x onerror=alert(1)>) }
+
+      def inject(html)
+        described_class.new([html], token).inject.join
       end
 
-      it "injects before the last </body> and leaves the earlier one alone" do
-        content = described_class.new([html], token).inject.join
+      def toolbar_before(content, marker)
+        position = content.index('<div id="profiler-toolbar"')
+        expect(position).not_to be_nil
+        expect(position).to be < content.index(marker)
+        position
+      end
 
-        expect(content).to start_with(%(<html><body><script>var tpl = "</body><img src=x onerror=alert(1)>";</script><p>end</p>))
-        expect(content.index("profiler-toolbar")).to be > content.index("<p>end</p>")
-        expect(content).to end_with("</body></html>")
+      it "skips one in a script string before the real one" do
+        html = %(<html><body><script>var tpl = "#{alert}";</script><p>end</p></body></html>)
+        content = inject(html)
+
+        expect(content).to start_with(%(<html><body><script>var tpl = "#{alert}";</script><p>end</p>))
+        expect(toolbar_before(content, "</body></html>")).to be > content.index("<p>end</p>")
+      end
+
+      it "skips one in a script placed after the real one" do
+        html = %(<html><body><p>end</p></body><script>var tpl = "#{alert}";</script></html>)
+        content = inject(html)
+
+        toolbar_before(content, %(</body><script>var tpl))
+        expect(content).to end_with(%(</body><script>var tpl = "#{alert}";</script></html>))
+        expect(content.scan("onerror").size).to eq(1)
+      end
+
+      it "skips one in a comment closing the page" do
+        html = %(<html><body><p>end</p></body></html>\n<!-- cached </body> -->)
+        content = inject(html)
+
+        toolbar_before(content, "</body></html>")
+        expect(content).to end_with(%(</body></html>\n<!-- cached </body> -->))
+      end
+
+      it "skips one in a style sheet" do
+        html = %(<html><head><style>/* </body> */ p { color: red }</style></head><body><p>end</p></body></html>)
+        content = inject(html)
+
+        expect(content).to start_with(%(<html><head><style>/* </body> */ p { color: red }</style></head><body><p>end</p>))
+        toolbar_before(content, "</body></html>")
+      end
+
+      it "leaves the page alone when the only </body> is in a script or a comment" do
+        html = %(<html><body><p>end</p><script>var tpl = "#{alert}";</script><!-- </body> -->)
+
+        expect(inject(html)).to eq(html)
+      end
+
+      it "leaves the page alone when a script or a comment is never closed" do
+        html = %(<html><body><p>end</p><script>var tpl = "</body>";)
+
+        expect(inject(html)).to eq(html)
+      end
+
+      it "accepts a closing tag in upper case or with spaces" do
+        content = inject(%(<html><body><p>end</p></BODY ></html>))
+
+        toolbar_before(content, "</BODY ></html>")
+      end
+
+      it "does not take a <scripts> element or a </bodyx> tag for what they are not" do
+        content = inject(%(<html><body><scripts></bodyx><p>end</p></body></html>))
+
+        expect(toolbar_before(content, "</body></html>")).to be > content.index("<p>end</p>")
+      end
+
+      it "handles a page that is not valid UTF-8" do
+        html = "<html><body><p>caf\xE9</p></body></html>".dup.force_encoding("UTF-8")
+        content = inject(html)
+
+        expect(content.b).to start_with("<html><body><p>caf\xE9</p>".b)
+        toolbar_before(content.b, "</body></html>".b)
       end
     end
 
