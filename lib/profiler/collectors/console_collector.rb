@@ -13,7 +13,7 @@ module Profiler
       end
 
       def set_return_value(value)
-        @return_value = value.inspect.slice(0, 10_000)
+        @return_value = Profiler::Redaction.truncate(value.inspect, 10_000, "")
         @return_value_captured = true
       rescue
         @return_value = "(uninspectable)"
@@ -50,7 +50,7 @@ module Profiler
       end
 
       def toolbar_summary
-        { text: @expression.to_s[0, 30], color: "blue" }
+        { text: Profiler::Redaction.truncate(@expression, 30, ""), color: "blue" }
       end
     end
   end

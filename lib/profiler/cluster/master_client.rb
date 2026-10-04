@@ -3,6 +3,7 @@
 require "net/http"
 require "json"
 require "uri"
+require_relative "security"
 
 module Profiler
   module Cluster
@@ -22,10 +23,9 @@ module Profiler
 
       def register!
         config = Profiler.configuration
-        uri = URI("#{config.master_url}/_profiler/api/cluster/register")
+        uri = master_uri("register")
         body = { name: config.resolved_name, url: config.self_url }.to_json
-        resp = Net::HTTP.post(uri, body, "Content-Type" => "application/json",
-                                          Profiler::FORGERY_PROTECTION_HEADER => "1")
+        resp = Net::HTTP.post(uri, body, request_headers)
         unless resp.code.to_i.between?(200, 299)
           raise "Master returned #{resp.code}: #{resp.body.to_s.slice(0, 200)}"
         end
@@ -35,11 +35,29 @@ module Profiler
 
       def heartbeat!
         config = Profiler.configuration
-        uri = URI("#{config.master_url}/_profiler/api/cluster/heartbeat")
+        uri = master_uri("heartbeat")
         body = { name: config.resolved_name }.to_json
-        resp = Net::HTTP.post(uri, body, "Content-Type" => "application/json",
-                                          Profiler::FORGERY_PROTECTION_HEADER => "1")
+        resp = Net::HTTP.post(uri, body, request_headers)
         raise "Heartbeat rejected #{resp.code}" unless resp.code.to_i.between?(200, 299)
+      end
+
+      # Refused before any request when the secret would cross the network in clear, or when
+      # there is no secret for the master to accept.
+      def master_uri(action)
+        config = Profiler.configuration
+        if (reason = Security.master_url_denial(config.master_url))
+          raise reason
+        end
+        if Security.secret_required? && (problem = Security.secret_problem)
+          raise "#{problem}: the master refuses registration without a secret"
+        end
+
+        URI("#{config.master_url}/_profiler/api/cluster/#{action}")
+      end
+
+      def request_headers
+        { "Content-Type" => "application/json", Profiler::FORGERY_PROTECTION_HEADER => "1" }
+          .merge(Security.outgoing_headers)
       end
 
       def start_heartbeat_thread

@@ -9,7 +9,8 @@ require_relative "../redaction"
 module Profiler
   module Models
     class Profile
-      attr_accessor :token, :path, :method, :status, :duration, :memory,
+      attr_reader :path
+      attr_accessor :token, :method, :status, :duration, :memory,
                     :started_at, :finished_at, :params, :headers,
                     :response_headers, :collectors_data, :collectors_metadata,
                     :parent_token, :is_ajax, :profile_type,
@@ -50,8 +51,15 @@ module Profiler
         @response_headers = Redaction.filter_headers(response_headers)
       end
 
+      # Every collector stores its data here: logs, exception messages, dumps and SQL text are free
+      # text with no name to filter on, so the profiler's own credentials are masked by value.
       def add_collector_data(name, data)
-        @collectors_data[name.to_s] = data
+        @collectors_data[name.to_s] = Redaction.hide_credentials(data)
+      end
+
+      # The path is free text for a console profile: the expression typed.
+      def path=(value)
+        @path = Redaction.hide_credentials(value)
       end
 
       def collector_data(name)
@@ -160,7 +168,9 @@ module Profiler
         return { body: nil, encoding: "text" } if raw.nil? || raw.empty?
 
         if binary_content_type?(content_type)
-          { body: Base64.strict_encode64(raw.b), encoding: "base64" }
+          # Masked on the raw bytes, before the encoding hides them from any later search. A
+          # compressed format (zip, png, gzip...) does not hold the secret as it is.
+          { body: Base64.strict_encode64(Redaction.hide_credentials(raw.b)), encoding: "base64" }
         else
           text = Redaction.filter_body(raw, content_type).encode("UTF-8", invalid: :replace, undef: :replace)
           if compress_body?(text)
@@ -195,7 +205,7 @@ module Profiler
       def sanitize_params(params)
         return {} unless params
 
-        return params.to_h.except(*LEGACY_FILTERED_PARAMS) unless Redaction.enabled?
+        return Redaction.hide_credentials(params.to_h.except(*LEGACY_FILTERED_PARAMS)) unless Redaction.enabled?
 
         Redaction.filter_hash(params.to_h)
       end

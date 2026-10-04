@@ -116,6 +116,12 @@ RSpec.describe "Profiler access control", type: :request do
     # Walks every route of the engine, so that a controller added later without the
     # check, or one that skips it, fails here.
     it "is refused on every route of the engine except the static assets" do
+      # Routes behind a configuration switch are walked too.
+      Profiler.configure do |config|
+        config.cluster_master = true
+        config.mcp_enabled = true
+        config.mcp_transport = :http
+      end
       routes = Profiler::Engine.routes.routes.select { |route| route.defaults[:controller] }
       routes = routes.reject { |route| route.defaults[:controller] == "profiler/assets" }
       expect(routes.size).to be > 30

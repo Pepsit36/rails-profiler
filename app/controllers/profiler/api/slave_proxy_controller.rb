@@ -7,8 +7,10 @@ module Profiler
     class SlaveProxyController < Profiler::ApplicationController
       def forward
         proxy = Cluster::SlaveProxy.new(params[:slave_name])
-        sub_path = params[:path].to_s
-        full_path = "/_profiler/api/#{sub_path}"
+        # Each segment is escaped: a decoded "?" or "#" stays in its segment, and a dot segment
+        # is refused, so the request stays under the slave's API.
+        segments = params[:path].to_s.split("/", -1).map { |segment| Cluster::Security.escape_segment(segment) }
+        full_path = "/_profiler/api/#{segments.join("/")}"
 
         result = case request.method
                  when "GET"

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../redaction"
+
 module Profiler
   module Collectors
     class BaseCollector

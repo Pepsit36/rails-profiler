@@ -224,12 +224,12 @@ module Profiler
         if mail.multipart?
           html_part = mail.parts.find { |p| p.content_type.to_s.start_with?("text/html") }
           text_part = mail.parts.find { |p| p.content_type.to_s.start_with?("text/plain") }
-          html = html_part&.body&.decoded&.then { |b| b[0, MAX_BODY_SIZE] }
-          text = text_part&.body&.decoded&.then { |b| b[0, MAX_BODY_SIZE] }
+          html = html_part&.body&.decoded&.then { |b| Profiler::Redaction.truncate(b, MAX_BODY_SIZE, "") }
+          text = text_part&.body&.decoded&.then { |b| Profiler::Redaction.truncate(b, MAX_BODY_SIZE, "") }
         elsif mail.content_type.to_s.start_with?("text/html")
-          html = mail.body.decoded[0, MAX_BODY_SIZE]
+          html = Profiler::Redaction.truncate(mail.body.decoded, MAX_BODY_SIZE, "")
         else
-          text = mail.body.decoded[0, MAX_BODY_SIZE]
+          text = Profiler::Redaction.truncate(mail.body.decoded, MAX_BODY_SIZE, "")
         end
         [html.nil? || html.empty? ? nil : html, text.nil? || text.empty? ? nil : text]
       rescue StandardError
@@ -240,7 +240,7 @@ module Profiler
         return "nil" if value.nil?
 
         inspected = value.inspect
-        inspected.length > 300 ? "#{inspected[0, 300]}…" : inspected
+        Profiler::Redaction.truncate(inspected, 300, "…")
       rescue StandardError
         value.to_s
       end

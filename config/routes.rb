@@ -3,7 +3,12 @@
 require "profiler/mcp/server"
 
 Profiler::Engine.routes.draw do
-  mount Profiler::MCP::Server.rack_app, at: "mcp"
+  # Read on each request rather than when the routes are drawn: the application's initializer
+  # may set these options after the engine routes are loaded. A route that does not match
+  # answers 404, as if it were not there.
+  constraints(->(_request) { Profiler.configuration.mcp_http_enabled? }) do
+    mount Profiler::MCP::Server.rack_app, at: "mcp"
+  end
 
   root to: "profiles#index"
 
@@ -52,14 +57,16 @@ Profiler::Engine.routes.draw do
     delete "test_runner/runs/:id",        to: "test_runner#destroy"
     get    "events/:token",               to: "events#subscribe",  as: :profile_events
 
-    # Cluster endpoints (master-side)
-    post "cluster/register",  to: "cluster#register"
-    post "cluster/heartbeat", to: "cluster#heartbeat"
-    get  "cluster/slaves",    to: "cluster#slaves"
+    # Cluster endpoints (master-side), routed only on a node with cluster_master set
+    constraints(->(_request) { Profiler.configuration.cluster_master? }) do
+      post "cluster/register",  to: "cluster#register"
+      post "cluster/heartbeat", to: "cluster#heartbeat"
+      get  "cluster/slaves",    to: "cluster#slaves"
 
-    # Slave proxy — must be last to avoid shadowing other api routes
-    scope "/slaves/:slave_name" do
-      match "*path", to: "slave_proxy#forward", via: :all
+      # Slave proxy: must be last to avoid shadowing other api routes
+      scope "/slaves/:slave_name" do
+        match "*path", to: "slave_proxy#forward", via: :all
+      end
     end
   end
 end

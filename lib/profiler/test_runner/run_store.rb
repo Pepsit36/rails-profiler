@@ -2,6 +2,7 @@
 
 require "concurrent"
 require "securerandom"
+require_relative "../redaction"
 
 module Profiler
   module TestRunner
@@ -24,6 +25,9 @@ module Profiler
       def initialize
         @runs  = Concurrent::Hash.new
         @locks = Concurrent::Hash.new
+        @held  = Concurrent::Hash.new
+        @output_finished = Concurrent::Hash.new
+        @held_lock = Mutex.new
       end
 
       def create(files:, framework:)
@@ -58,11 +62,38 @@ module Profiler
         run
       end
 
+      # Output is free text read back by the API, the SSE stream and run_tests, in the pieces it
+      # arrives in: the profiler's own credentials are masked by value, as in a profile. They
+      # are masked on the text joined with what was held back from the previous piece, and the
+      # last bytes that could start a credential wait for the next piece, so that none is ever
+      # shown cut in two. What is held back is released by finish_output, once the process has
+      # nothing more to print: a killed run still prints its summary after its status changed.
       def append_output(id, chunk)
         run = @runs[id]
         return unless run
 
-        run.output_lines.push(chunk)
+        @held_lock.synchronize do
+          text = Profiler::Redaction.hide_credentials(@held.fetch(id, "".b) + chunk.to_s.b)
+          holdback = @output_finished[id] ? 0 : Profiler::Redaction.held_back_bytes(text)
+          cut = text.bytesize - holdback
+          @held[id] = text.byteslice(cut, text.bytesize - cut)
+          shown = text.byteslice(0, cut).force_encoding(chunk.to_s.encoding)
+          run.output_lines.push(shown) unless shown.empty?
+        end
+        signal(id)
+      end
+
+      # The end of the output, told by the reader of the process once it read everything: the
+      # bytes held back are shown, and anything appended later is shown as it comes.
+      def finish_output(id)
+        run = @runs[id]
+        return unless run
+
+        @held_lock.synchronize do
+          @output_finished[id] = true
+          rest = @held.delete(id)
+          run.output_lines.push(rest) if rest && !rest.empty?
+        end
         signal(id)
       end
 
@@ -97,6 +128,12 @@ module Profiler
         lock[:mutex].synchronize { lock[:cond].broadcast }
       end
 
+      def forget_output(id)
+        @held.delete(id)
+        @output_finished.delete(id)
+        true
+      end
+
       def snapshot(run, position)
         lines = run.output_lines.dup
         {
@@ -109,7 +146,7 @@ module Profiler
 
       def cleanup_old_runs
         cutoff = Time.now - TTL
-        @runs.delete_if { |id, r| r.finished_at && r.finished_at < cutoff && @locks.delete(id) }
+        @runs.delete_if { |id, r| r.finished_at && r.finished_at < cutoff && @locks.delete(id) && forget_output(id) }
       end
     end
 

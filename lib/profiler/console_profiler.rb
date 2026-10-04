@@ -39,7 +39,7 @@ module Profiler
       profile = Models::Profile.new
       profile.profile_type = "console"
       profile.gem_version = Profiler::VERSION
-      profile.path = @expression.length > 200 ? "#{@expression[0, 200]}..." : @expression
+      profile.path = Redaction.truncate(@expression, 200)
       profile.method = "CONSOLE"
 
       console_collector = Collectors::ConsoleCollector.new(profile, expression: @expression)
