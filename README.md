@@ -169,20 +169,21 @@ The **Explain** button of the Database tab, the `POST /_profiler/api/explain` en
 put back. They run `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on PostgreSQL, `EXPLAIN FORMAT=JSON`
 on MySQL and `EXPLAIN QUERY PLAN` on SQLite.
 
-Only read-only statements are explained: those that start, after comments and parentheses, with
-`SELECT`, `WITH`, `TABLE` or `VALUES`, and contain none of `INSERT`, `UPDATE`, `DELETE`, `MERGE`,
-`TRUNCATE`, `DROP`, `ALTER`, `CREATE`, `INTO`, `LOCK` or `SHARE` outside literals, quoted
-identifiers and comments, in a single statement. Anything else is refused with a message saying
-why: a 422 from the endpoint, an error from the MCP tool. PostgreSQL's `EXPLAIN ANALYZE` runs the
-statement it explains, so explaining a `DELETE` would delete the rows again. This refuses a
-writing CTE (`WITH d AS (DELETE ... RETURNING id) SELECT ...`), `SELECT ... INTO`, `INTO OUTFILE`,
-`FOR UPDATE`, `FOR SHARE` and `LOCK IN SHARE MODE`. It can also refuse a read: an unquoted column
-named `share`, for example.
+A query whose bind values were masked when captured is refused first, since it cannot be rebuilt
+(see [Sensitive data](#sensitive-data)). Then only read-only statements are explained: those that
+start, after comments and parentheses, with `SELECT`, `WITH`, `TABLE` or `VALUES`, and contain none
+of `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE`, `DROP`, `ALTER`, `CREATE`, `INTO`, `LOCK` or
+`SHARE` outside literals, quoted identifiers and comments, in a single statement. Anything else is
+refused with a message saying why: a 422 from the endpoint, an error from the MCP tool. PostgreSQL's
+`EXPLAIN ANALYZE` runs the statement it explains, so explaining a `DELETE` would delete the rows
+again. This refuses a writing CTE (`WITH d AS (DELETE ... RETURNING id) SELECT ...`), `SELECT ...
+INTO`, `INTO OUTFILE`, `FOR UPDATE`, `FOR SHARE` and `LOCK IN SHARE MODE`. It can also refuse a
+read: an unquoted column named `share`, for example.
 
-The probe then runs on a connection of its own, taken out of the pool and closed afterwards, in a
-transaction that is always rolled back. Nothing it does to its session outlives it, and the
-application's own connection and transaction are never touched. It needs one connection more than
-the request holds: with a pool of one, Explain waits for `checkout_timeout`, then fails.
+The probe then runs on a connection of its own, closed afterwards, in a transaction that is always
+rolled back. Nothing it does to its session outlives it, and the application's own connection and
+transaction are never touched. The connection is opened from the database configuration, outside the
+pool: a pool of one, or a full one, does not keep Explain waiting.
 
 - **PostgreSQL:** the transaction is also `READ ONLY`, so a function with a side effect called from
   a `SELECT` fails instead of writing (`nextval()` included), and limited by `SET LOCAL

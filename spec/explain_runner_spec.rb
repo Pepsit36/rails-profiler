@@ -64,18 +64,19 @@ RSpec.describe Profiler::ExplainRunner do
     end
   end
 
+  # The pool's database configuration: the probe opens its connection from it.
   class FakeExplainPool
     def initialize(conn)
       @conn = conn
     end
 
-    def checkout
-      @conn.log << "CHECKOUT"
-      @conn
+    def db_config
+      self
     end
 
-    def remove(conn)
-      conn.log << "REMOVE"
+    def new_connection
+      @conn.log << "CONNECT"
+      @conn
     end
   end
 
@@ -217,8 +218,7 @@ RSpec.describe Profiler::ExplainRunner do
       explain("SELECT * FROM widgets WHERE id = $1", [7])
 
       expect(conn.log).to eq([
-        "CHECKOUT",
-        "REMOVE",
+        "CONNECT",
         "BEGIN",
         "SET TRANSACTION READ ONLY",
         "SET LOCAL statement_timeout = '30s'",
@@ -236,8 +236,7 @@ RSpec.describe Profiler::ExplainRunner do
       explain("SELECT * FROM widgets WHERE id = ?", [7])
 
       expect(conn.log).to eq([
-        "CHECKOUT",
-        "REMOVE",
+        "CONNECT",
         "BEGIN",
         "EXPLAIN FORMAT=JSON SELECT * FROM widgets WHERE id = 7",
         "ROLLBACK",
@@ -347,8 +346,8 @@ RSpec.describe Profiler::ExplainRunner do
     it "rolls back the probe even when it succeeds" do
       # Stands for a function with a side effect called from a SELECT, which no
       # reading of the statement can rule out.
-      allow(ActiveRecord::Base.connection_pool).to receive(:checkout).and_wrap_original do |checkout, *args|
-        probe = checkout.call(*args)
+      allow(described_class).to receive(:open_probe_connection).and_wrap_original do |open|
+        probe = open.call
         allow(probe).to receive(:exec_query).and_wrap_original do |original, sql, *rest|
           probe.execute("INSERT INTO widgets (name) VALUES ('side effect')") if sql.start_with?("EXPLAIN")
           original.call(sql, *rest)
@@ -358,6 +357,7 @@ RSpec.describe Profiler::ExplainRunner do
 
       explain("SELECT * FROM widgets", [])
 
+      expect(described_class).to have_received(:open_probe_connection)
       expect(widget_count).to eq(12)
     end
 

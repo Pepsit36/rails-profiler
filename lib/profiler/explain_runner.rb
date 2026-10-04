@@ -82,19 +82,18 @@ module Profiler
       end
     end
 
-    # Runs on a connection taken out of the pool and closed afterwards, so that
-    # nothing the probe does to its session outlives it (an advisory lock, a
-    # setting, a LISTEN) and the application's own transaction is never touched.
+    # Runs on a connection of its own, opened outside the pool and closed
+    # afterwards, so that nothing the probe does to its session outlives it (an
+    # advisory lock, a setting, a LISTEN), the application's own transaction is
+    # never touched, and a full pool does not keep Explain waiting.
     # The transaction is always rolled back. On PostgreSQL it is also read-only and
     # time-limited, and the EXPLAIN goes by the extended protocol, which refuses
     # more than one statement: a COMMIT slipped in could not end the read-only
     # transaction. Neither MySQL's EXPLAIN nor SQLite's EXPLAIN QUERY PLAN runs the
     # statement.
     def self.probe(explain_sql, adapter)
-      pool = ActiveRecord::Base.connection_pool
-      conn = pool.checkout
+      conn = open_probe_connection
       begin
-        pool.remove(conn)
         rows = nil
         conn.transaction do
           if adapter.include?("postgresql")
@@ -109,6 +108,15 @@ module Profiler
         rows
       ensure
         conn.disconnect!
+      end
+    end
+
+    def self.open_probe_connection
+      db_config = ActiveRecord::Base.connection_pool.db_config
+      if db_config.respond_to?(:new_connection) # Active Record 7.2 and later
+        db_config.new_connection
+      else
+        ActiveRecord::Base.public_send(db_config.adapter_method, db_config.configuration_hash)
       end
     end
 
