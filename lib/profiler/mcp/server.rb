@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "mcp"
+require_relative "http_guard"
 
 module Profiler
   module MCP
@@ -12,7 +13,9 @@ module Profiler
 
         def rack_app
           # Memoized at class level — survives route reloads in development
-          @rack_app ||= ->(env) { instance.http_transport.handle_request(Rack::Request.new(env)) }
+          @rack_app ||= lambda do |env|
+            HttpGuard.call(env) || instance.http_transport.handle_request(Rack::Request.new(env))
+          end
         end
       end
 

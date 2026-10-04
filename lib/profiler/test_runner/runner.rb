@@ -124,6 +124,7 @@ module Profiler
             finished_at: Time.now
           )
           Profiler::TestRunner.run_store.append_output(run.id, "\n[Profiler] Error: #{e.message}\n")
+          Profiler::TestRunner.run_store.finish_output(run.id)
         end
       end
 
@@ -137,10 +138,15 @@ module Profiler
         IO.popen([env, *cmd, unsetenv_others: true, err: [:child, :out]], "r") do |io|
           Profiler::TestRunner.run_store.update(run.id, pid: io.pid)
 
-          while (chunk = io.read(256))
-            break if chunk.empty?
+          begin
+            while (chunk = io.read(256))
+              break if chunk.empty?
 
-            Profiler::TestRunner.run_store.append_output(run.id, chunk)
+              Profiler::TestRunner.run_store.append_output(run.id, chunk)
+            end
+          ensure
+            # The process printed everything, killed or not: what was held back can be shown.
+            Profiler::TestRunner.run_store.finish_output(run.id)
           end
         end
 

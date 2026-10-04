@@ -41,7 +41,9 @@ module Profiler
                   :compress_bodies, :compress_body_threshold,
                   :redact_sensitive_data, :filter_parameters, :env_allowlist,
                   :name, :master_url, :self_url,
-                  :cluster_heartbeat_interval, :cluster_offline_threshold
+                  :cluster_heartbeat_interval, :cluster_offline_threshold,
+                  :cluster_master, :cluster_secret, :cluster_require_secret,
+                  :cluster_allowed_slave_urls, :cluster_allow_insecure_http
 
     attr_writer :tmp_path
 
@@ -98,6 +100,12 @@ module Profiler
       @self_url = nil
       @cluster_heartbeat_interval = 15
       @cluster_offline_threshold = 60
+      # Cluster security: see Profiler::Cluster::Security and the Cluster section of the README.
+      @cluster_master = false
+      @cluster_secret = nil
+      @cluster_require_secret = true
+      @cluster_allowed_slave_urls = []
+      @cluster_allow_insecure_http = false
     end
 
     def tmp_path
@@ -110,6 +118,18 @@ module Profiler
 
     def master?
       !slave?
+    end
+
+    # Whether this node serves the master-side cluster routes (register, heartbeat, slaves and
+    # the slave proxy). Read on each request by the route constraints.
+    def cluster_master?
+      cluster_master ? true : false
+    end
+
+    # Whether /_profiler/mcp is routed. The stdio transport (rake profiler:mcp) does not depend
+    # on it.
+    def mcp_http_enabled?
+      mcp_enabled && mcp_transport.to_s == "http" ? true : false
     end
 
     def resolved_name

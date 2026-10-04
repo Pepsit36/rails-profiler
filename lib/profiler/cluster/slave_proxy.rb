@@ -3,6 +3,7 @@
 require "net/http"
 require "json"
 require "uri"
+require_relative "security"
 
 module Profiler
   module Cluster
@@ -14,6 +15,15 @@ module Profiler
       def initialize(slave_name, open_timeout: nil, read_timeout: nil)
         entry = Profiler.slave_registry.find!(slave_name)
         raise Profiler::Error, "Slave profiler '#{slave_name}' is offline" if entry.status == "offline"
+
+        # Checked again on every use: the URL was registered earlier, under a configuration that
+        # may have changed since.
+        if (reason = Security.slave_url_denial(entry.url))
+          raise Profiler::Error, "Slave profiler '#{slave_name}' refused: #{reason}"
+        end
+        if Security.secret_required? && (problem = Security.secret_problem)
+          raise Profiler::Error, "#{problem}: requests to slave profilers are refused"
+        end
 
         @base_url = entry.url.to_s.chomp("/")
         @open_timeout = open_timeout || OPEN_TIMEOUT
@@ -30,7 +40,7 @@ module Profiler
       end
 
       def load(token)
-        data = get_json("/_profiler/api/profiles/#{token}")
+        data = get_json("/_profiler/api/profiles/#{Security.escape_segment(token)}")
         return nil unless data["token"] || data["profile"]
 
         raw = data["profile"] || data
@@ -69,7 +79,14 @@ module Profiler
 
       private
 
+      # Every request carries the secret, so its path must stay under the slave's API: values
+      # from clients are escaped by Security.escape_segment where they are interpolated, and
+      # this refuses whatever still reaches here with a dot segment.
       def build_uri(path, params = {})
+        if (reason = Security.api_path_denial(path))
+          raise Profiler::Error, "Refusing to send a request to a slave profiler: #{reason}"
+        end
+
         uri = URI("#{@base_url}#{path}")
         unless params.empty?
           uri.query = URI.encode_www_form(params.compact.transform_values(&:to_s))
@@ -87,12 +104,18 @@ module Profiler
 
       def request(uri, req)
         req[Profiler::FORGERY_PROTECTION_HEADER] = "1"
+        Security.outgoing_headers.each { |name, value| req[name] = value }
+        # Net::HTTP never follows a redirect; a 3xx is reported, without its body, rather than
+        # handed back as if the slave had answered.
         resp = Net::HTTP.start(uri.hostname, uri.port,
                                open_timeout: @open_timeout, read_timeout: @read_timeout,
                                use_ssl: uri.scheme == "https") do |http|
           http.request(req)
         end
         return {} if resp.code == "204"
+        if resp.code.to_s.start_with?("3")
+          raise Profiler::Error, "Slave profiler answered #{resp.code} (redirect not followed)"
+        end
 
         parse_response(resp)
       end
