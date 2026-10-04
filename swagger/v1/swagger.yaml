@@ -189,7 +189,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/ExplainResult"
         '422':
-          description: invalid request
+          description: invalid request, or a query that is not read-only (only SELECT,
+            WITH ... SELECT, TABLE and VALUES are explained)
           content:
             application/json:
               schema:
