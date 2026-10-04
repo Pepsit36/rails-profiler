@@ -788,14 +788,20 @@ What is masked:
 | Mailer arguments (`assigns`) | arguments whose parameter name matches the filter, and values of filtered keys inside hash arguments |
 
 The cluster's `cluster_secret` is also masked **by value**, whatever name it travels under, and
-even with `config.redact_sensitive_data = false`: a value equal to it becomes `[FILTERED]`, and a
-secret of 8 characters or more inside a longer string is replaced by `[FILTERED]`. This covers what
-the table above lists (params, bodies, headers, URLs, `ENV`, SQL binds, job and mailer arguments),
-the data of every collector, free text included (log lines, exception messages, `dump()` values,
-SQL text, console expressions and results), and the output of the test runner. The exceptions of
-the next paragraph do not apply to it. What it does not cover: a `dump()` value that is neither a
-string, a hash nor an array (it is stored as the object gives it), a secret split across two
-chunks of test runner output, and anything the profiler does not store, such as your log files.
+even with `config.redact_sensitive_data = false`: a value equal to it becomes `[FILTERED]`, and the
+secret inside a longer string is replaced by `[FILTERED]`. This covers what the table above lists
+(params, bodies, headers, URLs, `ENV`, SQL binds, job and mailer arguments), the data of every
+collector, free text included (log lines, exception messages, `dump()` values, SQL text, console
+expressions and results), and the output of the test runner. Text the profiler shortens (flame
+graph names, I18n values, console expressions and results, mail bodies and assigns, job
+arguments) is masked before it is cut, so no prefix of the secret is left; the output of the test
+runner, read in pieces, is masked on the text joined across pieces, and its last bytes wait for
+the next piece, or the end of the run, before they are shown. The exceptions of the next paragraph
+do not apply to it. Only a secret the cluster accepts (32 characters or more) is masked: a shorter
+one is ignored by the cluster anyway, and masking a value such as `true` or `/` everywhere would
+hide the data being profiled. What it does not cover: a `dump()` value that is neither a string, a
+hash nor an array (it is stored as the object gives it), and anything the profiler does not store,
+such as your log files.
 
 Not filtered, because the profiler cannot tell what they contain: log lines (Rails already filters
 its `Parameters:` line and request paths), console expressions and their results, `dump()`
