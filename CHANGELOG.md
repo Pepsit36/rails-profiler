@@ -19,6 +19,50 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.8] - 2026-10-04
+
+<!-- stamped -->
+
+### Fixed
+
+- **Env overrides:** Keep every override when several are set, deleted or reset at the same
+  time, from threads of the web process or from Sidekiq processes. Each writer read the file,
+  changed it and saved it over the others' changes, and a reader could see a half-written file as
+  no override at all. The file is now changed under a lock (`env_overrides.json.lock`, next to
+  it) and replaced in one step.
+
+### Security
+
+- **Env overrides:** Stop applying the environment variable overrides saved from the Env tab or
+  the MCP env tools in production, and while the profiler is disabled. They were written into
+  `ENV` at every boot whatever `enabled` said and whatever the environment, so an
+  `env_overrides.json` left under `tmp/` and shipped with a deployment changed the environment of
+  the production application, and an application with `config.enabled = false` still had them
+  applied without a word. Sidekiq jobs and console evaluations, which apply them again, follow the
+  same rules. When overrides are left out, the boot logs one warning to `Rails.logger` with the
+  file, the number of overrides and the reason, never a name or a value.
+- **Env overrides:** Apply them at boot once the application's `config/initializers` have run,
+  where `enabled` is decided, instead of before. An initializer of the application that reads
+  `ENV` while it runs no longer sees them; requests, jobs, eager loading and `after_initialize`
+  still do.
+- **Env overrides:** Resetting one override, or all of them, from the Env tab or the MCP env
+  tools no longer writes into `ENV` the "original" values saved in `env_overrides.json` in
+  production, nor while the profiler is disabled: those values come from the machine that wrote
+  the file, so a reset could put a development value into a production variable, or delete it.
+  There, a reset restores only the variables the running process changed itself, to the values
+  they had before.
+- **Env overrides:** In production, or with the profiler disabled, typing back in the Env tab the
+  original value the overrides file shows for a variable now records the running value first, so
+  a later reset puts it back instead of keeping the file's value. A reset also restores a variable
+  this process changed even when its entry has gone from the file. The `reset_env_var` MCP tool
+  now says whether the original value was restored in the process or `ENV` was left unchanged,
+  and no longer prints a value, masked or not.
+- **Upgrading:** to apply the env overrides while the profiler is disabled outside production,
+  as before, set `config.apply_env_overrides_when_disabled = true`. Nothing applies them in
+  production. If an initializer of yours needs them, call `Profiler.env_override_store.apply!` at
+  the end of `config/initializers/profiler.rb`; initializers loaded after it then see them, under
+  the same rules.
+
 ## [0.30.7] - 2026-10-04
 
 <!-- stamped -->
