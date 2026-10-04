@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../redaction"
+require_relative "lifecycle"
 
 module Profiler
   module Collectors
@@ -59,6 +60,13 @@ module Profiler
         # Override in subclasses to subscribe to ActiveSupport::Notifications
       end
 
+      # Releases whatever subscribe installed: notification subscribers, samplers, log sinks,
+      # thread-local slots. Called after collect, and on every path where collect never runs,
+      # so it has to be idempotent and safe when subscribe failed part way or never ran.
+      def unsubscribe
+        # Override in subclasses that install something in subscribe
+      end
+
       def collect
         # Override in subclasses to collect data
       end
@@ -88,6 +96,27 @@ module Profiler
       def store_data(data)
         @data = data
         @profile.add_collector_data(name, data)
+      end
+
+      # Thread-local slots follow a stack: subscribe takes one over and remembers what it held,
+      # unsubscribe hands it back. A job performed inline during a request thus records into
+      # its own slots, and the request gets its own back, with what it recorded before the job.
+      def claim_thread_slot(key, value)
+        @claimed_thread_slots ||= {}
+        @claimed_thread_slots[key] = Thread.current[key] unless @claimed_thread_slots.key?(key)
+        Thread.current[key] = value
+      end
+
+      def restore_thread_slots
+        @claimed_thread_slots&.each { |key, previous| Thread.current[key] = previous }
+        @claimed_thread_slots = nil
+      end
+
+      def unsubscribe_notifications(subscriptions)
+        return unless defined?(ActiveSupport::Notifications)
+
+        subscriptions.each { |sub| ActiveSupport::Notifications.unsubscribe(sub) }
+        subscriptions.clear
       end
     end
   end

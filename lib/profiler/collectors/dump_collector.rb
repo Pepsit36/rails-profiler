@@ -30,7 +30,8 @@ module Profiler
       end
 
       def collect
-        dumps = Thread.current[:profiler_dumps] || []
+        dumps = @dumps || Thread.current[:profiler_dumps] || []
+        unsubscribe
 
         formatted_dumps = dumps.map do |dump|
           {
@@ -47,9 +48,15 @@ module Profiler
           count: formatted_dumps.size,
           dumps: formatted_dumps
         })
+      end
 
-        # Clear dumps for next request
-        Thread.current[:profiler_dumps] = []
+      # Profiler.dump fills this slot while the profile runs.
+      def subscribe
+        @dumps = claim_thread_slot(:profiler_dumps, [])
+      end
+
+      def unsubscribe
+        restore_thread_slots
       end
 
       def toolbar_summary

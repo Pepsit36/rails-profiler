@@ -36,11 +36,17 @@ module Profiler
         return unless Profiler.configuration.track_http
 
         Profiler::Instrumentation::NetHttpInstrumentation.install!
-        Thread.current[:profiler_http_collector] = self
+        claim_thread_slot(:profiler_http_collector, self)
+      end
+
+      # The Net::HTTP patch installed by subscribe stays: it is installed once per process and
+      # records nothing when no collector holds the thread-local slot.
+      def unsubscribe
+        restore_thread_slots
       end
 
       def collect
-        Thread.current[:profiler_http_collector] = nil
+        unsubscribe
 
         data = @mutex.synchronize do
           @collected = true
