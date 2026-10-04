@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.13] - 2026-10-04
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Middleware:** A request that raises below the profiler no longer runs your application a
