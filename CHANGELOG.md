@@ -19,6 +19,35 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.12] - 2026-10-04
+
+<!-- stamped -->
+
+### Security
+
+- **Toolbar:** The toolbar endpoint (`/_profiler/api/toolbar/:token`) now answers `403` when the
+  profiler is disabled, like the rest of the API. It used to keep serving any profile left in
+  storage, request headers and environment included, after `enabled = false`. The toolbar is only
+  injected while the profiler is enabled, so it is not affected.
+- **Profile page:** The profile embedded as JSON in the profile page is now escaped explicitly
+  (`<`, `>`, `&`, U+2028 and U+2029), whatever the application sets for
+  `ActiveSupport.escape_html_entities_in_json`. An application that turned that setting off let a
+  captured value (a parameter, a header, a body) close the `<script>` element and run JavaScript
+  in the application's origin. The token and the CSP nonce written into the application's pages
+  by the toolbar injector are escaped too.
+- **Dashboard:** Captured bodies offered for download are no longer typed with their captured
+  content type: opened in a tab, a `text/html` or `image/svg+xml` body ran its scripts in the
+  application's origin. Previews keep their type for raster images and PDF only. Email previews
+  are rendered in a fully sandboxed iframe, with an opaque origin. The unused SQL highlighter,
+  which wrote captured SQL into the page as HTML, is removed.
+- **Access control:** A disabled profiler now answers its API requests with a JSON error, like
+  any other refusal of the API, instead of plain text.
+- **Toolbar:** The toolbar is now injected before the `</body>` that closes the page, looked for
+  outside comments, scripts, style sheets, `<textarea>` and `<title>`, instead of the first
+  `</body>` found. A `</body>` inside a script string of the page used to receive it, and the
+  toolbar's own `</script>` then turned the rest of that string into live markup. A page whose only
+  `</body>` sits in one of those, or that leaves one of them open, gets no toolbar.
+
 ## [0.30.11] - 2026-10-04
 
 <!-- stamped -->
