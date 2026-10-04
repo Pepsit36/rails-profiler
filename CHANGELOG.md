@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.11] - 2026-10-04
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Cluster:** A profile page served by the master now finds profiles held by a slave even before
