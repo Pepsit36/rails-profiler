@@ -62,8 +62,10 @@ RSpec.describe "Sensitive data redaction, second review follow-up" do
       end
       Profiler.instance_variable_set(:@storage, Profiler::Storage::MemoryStore.new)
       app = Profiler::Middleware::ProfilerMiddleware.new(->(_env) { [200, { "Content-Type" => "text/plain" }, ["ok"]] })
-      env = Rack::MockRequest.env_for("/users", method: "POST", input: '{"user":{"name":"René"}}'.b,
-                                                "CONTENT_TYPE" => "application/json")
+      # A request from this machine, as the default :allow_local expects.
+      env = Rack::MockRequest.env_for("http://localhost/users", method: "POST", input: '{"user":{"name":"René"}}'.b,
+                                                                "REMOTE_ADDR" => "127.0.0.1",
+                                                                "CONTENT_TYPE" => "application/json")
       app.call(env)
 
       expect(Profiler.storage.list.first.request_body).to eq('{"user":{"name":"René"}}')

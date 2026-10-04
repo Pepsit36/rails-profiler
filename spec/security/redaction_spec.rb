@@ -276,6 +276,11 @@ RSpec.describe "Sensitive data redaction" do
     let(:dir) { Dir.mktmpdir }
     after { FileUtils.rm_rf(dir) }
 
+    # rack-test sends REMOTE_ADDR 127.0.0.1: a browser on this machine, as :allow_local expects.
+    def default_host
+      "localhost"
+    end
+
     def app
       inner = lambda do |_env|
         [200, { "Content-Type" => "application/json", "Set-Cookie" => PLANTED[:set_cookie] },
