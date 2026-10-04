@@ -54,7 +54,7 @@ Add to your project's `.claude/settings.json` or run from within Claude Code:
 
 The endpoint `/_profiler/mcp` is routed only when **both** `config.mcp_enabled = true` and
 `config.mcp_transport = :http` are set; otherwise it answers `404`. The stdio transport does not
-depend on it. Since 0.30.7, an application that used the HTTP endpoint with `mcp_transport` left at
+depend on it. An application that used the HTTP endpoint with `mcp_transport` left at
 its default (`:stdio`) has to set `config.mcp_transport = :http`.
 
 Each request goes through the profiler's own checks before the MCP server sees it, and gets a `403`
