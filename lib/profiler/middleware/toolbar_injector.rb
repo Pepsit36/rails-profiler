@@ -16,9 +16,11 @@ module Profiler
 
       def inject
         content = extract_content(@body)
-        return @body unless content.include?(CLOSING_BODY_TAG)
+        # The last </body>: an earlier one can sit in a script string of the page.
+        position = content.rindex(CLOSING_BODY_TAG)
+        return @body unless position
 
-        injected_content = content.sub(CLOSING_BODY_TAG, toolbar_html + CLOSING_BODY_TAG)
+        injected_content = content.dup.insert(position, toolbar_html)
 
         # Return as array for Rack compatibility
         [injected_content]
