@@ -487,9 +487,9 @@ Each of these brings back a risk the defaults remove; set only the ones you need
 
 | Setting | Behaviour | Risk |
 |---|---|---|
-| `config.cluster_master = true` | Routes the cluster endpoints, which every application had before 0.30.7 | None by itself: the other checks still apply |
+| `config.cluster_master = true` | Routes the cluster endpoints, which every application had in earlier versions | None by itself: the other checks still apply |
 | `config.cluster_require_secret = false` (and no `cluster_secret`) | `register` and `heartbeat` accept any client that `authorization_mode` and the forgery header let in, as in 0.30.6, and the master proxies without a secret | Whoever passes `authorization_mode` can register a slave URL; a slave across the network has to admit the master's address itself |
-| `config.cluster_allowed_slave_urls = :any` | Any slave URL is accepted, as before 0.30.7 | Server-side request forgery: whoever can register makes the master fetch any host and port it can reach, internal services and cloud metadata included, and read the answer |
+| `config.cluster_allowed_slave_urls = :any` | Any slave URL is accepted, as in earlier versions | Server-side request forgery: whoever can register makes the master fetch any host and port it can reach, internal services and cloud metadata included, and read the answer |
 | `config.cluster_allow_insecure_http = true` | Plain HTTP to any host | The secret and every proxied profile cross the network in clear |
 
 ---
@@ -515,7 +515,7 @@ preflight, which the profiler does not grant. A refused request gets a `403` bef
 handshake, so none of the tools (including the ones that write `ENV`, clear profiles or run tests)
 is reachable without passing these checks.
 
-Before 0.30.7, `/_profiler/mcp` was routed in every application, whatever `mcp_enabled` and
+In earlier versions, `/_profiler/mcp` was routed in every application, whatever `mcp_enabled` and
 `mcp_transport` said, and answered anyone. An installation that used the HTTP endpoint while
 `mcp_transport` was left at its default, `:stdio`, now has to set `config.mcp_enabled = true` and
 `config.mcp_transport = :http`. There is no setting that routes it without the checks: the general
