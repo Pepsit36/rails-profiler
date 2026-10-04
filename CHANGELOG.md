@@ -19,6 +19,47 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Security
+
+- **MCP:** The HTTP transport at `/_profiler/mcp` is routed only when `mcp_enabled` is true and
+  `mcp_transport` is `:http`; it answers `404` otherwise. It used to be routed in every application,
+  whatever these options said, and to answer anyone: after the MCP handshake, any client could list
+  the tools and call those that write `ENV`, clear profiles or run the test suite. The stdio
+  transport (`rake profiler:mcp`) is unchanged.
+- **MCP:** When it is routed, each request to `/_profiler/mcp` passes the profiler's own checks
+  before the MCP server sees it, and gets a `403` otherwise: the profiler must be enabled, the
+  request must pass `authorization_mode`, and a `POST` must carry `Content-Type: application/json`
+  with no foreign `Origin`, so that a page on another site cannot call the tools from your browser.
+- **Cluster:** The cluster endpoints (`register`, `heartbeat`, `slaves` and the slave proxy) are
+  routed only on a node with the new `cluster_master = true`; they answer `404` otherwise. Every
+  application used to accept slave registrations.
+- **Cluster:** The master and its slaves authenticate each other with the new shared
+  `cluster_secret`, sent in an `X-Profiler-Cluster-Secret` header and compared in constant time:
+  `register` and `heartbeat` refuse a missing or wrong secret, and everything while no secret is
+  configured. On a slave, the master's proxied calls are let in by the secret, so a master on
+  another machine no longer needs the slave to admit its address.
+- **Cluster:** The master registers, and sends requests to, only the slave URLs allowed by the new
+  `cluster_allowed_slave_urls` (scheme, host and port, compared after normalization, and a path
+  prefix); the default refuses all. HTTPS is required, except for loopback addresses, for slave URLs
+  and for `master_url` (new `cluster_allow_insecure_http` to lift it), and the master no longer
+  returns the body of a redirect. Anyone who could register used to make the master fetch any host
+  and port it could reach and read the answer (server-side request forgery).
+- **Upgrading:** Nothing to do if you use neither the MCP HTTP endpoint nor the cluster. Otherwise,
+  in `config/initializers/profiler.rb`:
+  - MCP over HTTP: set `config.mcp_enabled = true` and `config.mcp_transport = :http`. An
+    installation that used `/_profiler/mcp` while `mcp_transport` stayed at its default, `:stdio`,
+    must now set `:http`. The checks have no MCP-specific switch: `config.authorization_mode =
+    :allow_all` lets anybody who can reach the application call every tool, and
+    `config.api_forgery_protection = false` lets any website you visit make your browser call them.
+  - Cluster master: set `config.cluster_master = true`, `config.cluster_secret` (the same value on
+    every node, from the environment) and `config.cluster_allowed_slave_urls`. Slaves: set the same
+    `config.cluster_secret`, and use HTTPS URLs unless master and slave share the machine.
+  - To go back to the previous behavior: `config.cluster_require_secret = false` (with no
+    `cluster_secret`) accepts registrations from any client `authorization_mode` lets in, as in
+    0.30.6; `config.cluster_allowed_slave_urls = :any` accepts any slave URL, which reopens the
+    server-side request forgery; `config.cluster_allow_insecure_http = true` sends the secret and the
+    profiles in clear to remote hosts.
+
 ## [0.30.10] - 2026-10-04
 
 <!-- stamped -->

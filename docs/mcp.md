@@ -52,7 +52,34 @@ Add to your project's `.claude/settings.json` or run from within Claude Code:
 
 ### HTTP transport (alternative)
 
-When `mcp_transport: :http`, the MCP endpoint is available at `/_profiler/mcp` and can be connected from any MCP-compatible client.
+The endpoint `/_profiler/mcp` is routed only when **both** `config.mcp_enabled = true` and
+`config.mcp_transport = :http` are set; otherwise it answers `404`. The stdio transport does not
+depend on it. Since 0.30.7, an application that used the HTTP endpoint with `mcp_transport` left at
+its default (`:stdio`) has to set `config.mcp_transport = :http`.
+
+Each request goes through the profiler's own checks before the MCP server sees it, and gets a `403`
+otherwise:
+
+- the profiler is enabled;
+- the request passes `authorization_mode` (`:allow_local` by default: from this machine only);
+- a `POST` carries `Content-Type: application/json`, and an `Origin` header, when present, is the
+  profiler's own or one of `cors_allowed_origins`. MCP clients send JSON already; a page on another
+  site cannot without a CORS preflight. `config.api_forgery_protection = false` turns this check off.
+
+A Claude Code entry for a local server:
+
+```json
+{
+  "mcpServers": {
+    "rails-profiler": {
+      "type": "http",
+      "url": "http://localhost:3000/_profiler/mcp"
+    }
+  }
+}
+```
+
+Prefer the stdio transport when the client runs on the same machine: it opens no endpoint at all.
 
 ---
 
@@ -73,7 +100,9 @@ query_profiles path: "/api/charges", slave: "payment"
 list_slaves
 ```
 
-See [Cluster setup](../README.md#cluster-multi-instance) for configuration details.
+The master reaches a slave only if the slave registered with the shared `cluster_secret` and its
+URL is allowed by `cluster_allowed_slave_urls`; otherwise the tool returns an error and no request
+is sent. See [Cluster setup](../README.md#cluster-multi-instance) for configuration details.
 
 ---
 
