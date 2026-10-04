@@ -123,9 +123,9 @@ Profiler.configure do |config|
   config.extension_cors_enabled = false
   config.cors_allowed_origins = []
 
-  # MCP server for AI assistant integration
+  # MCP server for AI assistant integration (see "MCP Server")
   config.mcp_enabled = true
-  config.mcp_transport = :stdio  # or :http
+  config.mcp_transport = :stdio  # or :http, which routes /_profiler/mcp
 
   # Authorization (default: :allow_local; see "Access control")
   config.authorization_mode = :allow_local  # or :allow_authorized, or :allow_all
@@ -386,19 +386,29 @@ config.test_runner_allow_undiscovered_files = true
 
 Connect multiple Rails profiler instances so a single **master** dashboard and MCP server can query any **slave**.
 
-**On the master** (no extra config needed — it accepts slave connections automatically):
+The master and its slaves authenticate each other with a **shared secret**, and the master only
+sends requests to slave URLs you allow. Nothing is routed or accepted until you configure it.
+
+**On the master**:
 ```ruby
 Profiler.configure do |config|
   config.name = "main"  # optional display name
+  config.cluster_master = true                                  # routes the cluster endpoints
+  config.cluster_secret = ENV.fetch("PROFILER_CLUSTER_SECRET")  # same value on every node
+  config.cluster_allowed_slave_urls = [
+    "https://payment.internal:3001",  # a slave URL must match one entry
+    "http://localhost:3002"           # plain HTTP is accepted for loopback addresses only
+  ]
 end
 ```
 
 **On each slave**, add to `config/initializers/profiler.rb`:
 ```ruby
 Profiler.configure do |config|
-  config.name       = "payment-service"           # display name
-  config.master_url = "http://master-host:3000"   # master's URL
-  config.self_url   = "http://this-host:3001"     # this instance's URL (reachable from master)
+  config.name       = "payment-service"                         # display name
+  config.master_url = "https://master-host:3000"                # master's URL
+  config.self_url   = "https://payment.internal:3001"           # this instance's URL (reachable from master)
+  config.cluster_secret = ENV.fetch("PROFILER_CLUSTER_SECRET")  # same value as the master
 
   # Optional tuning (defaults shown)
   config.cluster_heartbeat_interval = 15  # seconds between heartbeats
@@ -406,7 +416,25 @@ Profiler.configure do |config|
 end
 ```
 
-The slave registers automatically at boot and sends periodic heartbeats. No code changes required in the master.
+Generate the secret once, for example with `ruby -rsecurerandom -e 'puts SecureRandom.hex(32)'`,
+and give it to every node through the environment, never in the repository.
+
+The slave registers automatically at boot and sends periodic heartbeats.
+
+**Two applications on one machine** (for example two git worktrees on ports 3000 and 3001) need
+no HTTPS: loopback addresses are accepted over plain HTTP.
+
+```ruby
+# master, on port 3000
+config.cluster_master = true
+config.cluster_secret = ENV.fetch("PROFILER_CLUSTER_SECRET")
+config.cluster_allowed_slave_urls = ["http://localhost:3001"]
+
+# slave, on port 3001
+config.master_url = "http://localhost:3000"
+config.self_url = "http://localhost:3001"
+config.cluster_secret = ENV.fetch("PROFILER_CLUSTER_SECRET")
+```
 
 **In the UI** (`/_profiler` on the master): a **Profiler** dropdown appears in the header listing all connected slaves. Selecting one proxies all data through the master — the rest of the interface is unchanged.
 
@@ -416,7 +444,42 @@ query_profiles slave: "payment-service", path: "/api/charges"
 list_slaves  # → shows connected slaves and their status
 ```
 
-> ⚠️ **Security — trusted networks only.** The cluster has **no authentication**: any client that can reach the master's `/_profiler/api/cluster/register` endpoint can register an arbitrary `url`, and the master will then issue proxied HTTP requests to that URL (a server-side request forgery vector). Only enable the cluster on trusted development networks, keep `/_profiler` behind your `authorization_mode`, and never expose a cluster master to untrusted traffic. The profiler is disabled in production by default — keep it that way for clustered setups.
+#### How the cluster is protected
+
+- **Routes.** `POST /_profiler/api/cluster/register`, `POST /_profiler/api/cluster/heartbeat`,
+  `GET /_profiler/api/cluster/slaves` and the proxy `/_profiler/api/slaves/<name>/...` exist only
+  on a node with `cluster_master = true`; elsewhere they answer `404`. A slave needs no route of its
+  own: `master_url` is what makes it register.
+- **Shared secret.** A slave sends `X-Profiler-Cluster-Secret` on `register` and `heartbeat`, and
+  the master sends it on every proxied call. It is compared in constant time. `register` and
+  `heartbeat` are authenticated by the secret alone, from any address (a slave is a server, not a
+  browser); they are refused when it is missing or wrong, and refused altogether while no
+  `cluster_secret` is configured. On a slave (a node with `master_url`), a request carrying the
+  right secret is let in as the master's, in place of `authorization_mode` and the forgery header;
+  a wrong or missing secret changes nothing.
+- **Slave URLs.** The master registers, and sends requests to, a slave URL only if it matches an
+  entry of `cluster_allowed_slave_urls`: same scheme, host and port, compared after normalization
+  (case of the host, default port, IPv6 between brackets), and a path under the entry's path,
+  segment by segment. A URL with user info, a query, a fragment or a `.` or `..` segment is refused.
+  The default, `[]`, refuses every URL. The check runs again on each proxied call, so removing an
+  entry cuts off a slave already registered.
+- **HTTPS.** Slave URLs and `master_url` must use HTTPS, except for `localhost`, `127.0.0.0/8` and
+  `::1`, so that the secret and the profiles do not cross the network in clear.
+- **Redirects.** The master never follows a redirect from a slave: a `3xx` answer is reported as an
+  error, without its body.
+- The proxy route itself is called by your browser, so it stays behind `authorization_mode` and the
+  forgery protection, like the rest of `/_profiler`.
+
+#### Restoring the behaviour of earlier versions
+
+Each of these brings back a risk the defaults remove; set only the ones you need.
+
+| Setting | Behaviour | Risk |
+|---|---|---|
+| `config.cluster_master = true` | Routes the cluster endpoints, which every application had before 0.30.7 | None by itself: the other checks still apply |
+| `config.cluster_require_secret = false` (and no `cluster_secret`) | `register` and `heartbeat` accept any client that `authorization_mode` and the forgery header let in, as in 0.30.6, and the master proxies without a secret | Whoever passes `authorization_mode` can register a slave URL; a slave across the network has to admit the master's address itself |
+| `config.cluster_allowed_slave_urls = :any` | Any slave URL is accepted, as before 0.30.7 | Server-side request forgery: whoever can register makes the master fetch any host and port it can reach, internal services and cloud metadata included, and read the answer |
+| `config.cluster_allow_insecure_http = true` | Plain HTTP to any host | The secret and every proxied profile cross the network in clear |
 
 ---
 
@@ -427,6 +490,26 @@ Connect Claude (or any MCP-compatible AI assistant) to your profiler data:
 ```bash
 bundle exec rake profiler:mcp
 ```
+
+The stdio transport above needs no route and no network access. The HTTP transport is routed at
+`/_profiler/mcp` only when both `config.mcp_enabled = true` and `config.mcp_transport = :http` are
+set; otherwise `/_profiler/mcp` answers `404`. When it is routed, each request goes through the same
+checks as the rest of the profiler before the MCP server sees it: the profiler must be enabled, the
+request must pass `authorization_mode`, and, for forgery protection, a `POST` must carry
+`Content-Type: application/json` and any `Origin` header must be the profiler's own or one of
+`cors_allowed_origins`. MCP clients already send JSON; a page on another site cannot without a CORS
+preflight, which the profiler does not grant. A refused request gets a `403` before any MCP
+handshake, so none of the tools (including the ones that write `ENV`, clear profiles or run tests)
+is reachable without passing these checks.
+
+Before 0.30.7, `/_profiler/mcp` was routed in every application, whatever `mcp_enabled` and
+`mcp_transport` said, and answered anyone. An installation that used the HTTP endpoint while
+`mcp_transport` was left at its default, `:stdio`, now has to set `config.mcp_enabled = true` and
+`config.mcp_transport = :http`. There is no setting that routes it without the checks: the general
+ones apply, `config.authorization_mode = :allow_all` (anyone who can reach the application can then
+read and change everything the profiler exposes, through the MCP tools as well as the API) and
+`config.api_forgery_protection = false` (any website you visit can then make your browser call the
+tools).
 
 See the **[MCP Guide](docs/mcp.md)** for Claude Desktop and Claude Code setup, all available tools (`query_profiles`, `analyze_queries`, `run_tests`, `query_test_profiles`, etc.), and example prompts.
 
@@ -585,8 +668,8 @@ Read `REMOTE_ADDR` there, not `request.remote_ip`, which trusts `X-Forwarded-For
 back to `config.authorization_mode = :allow_all`, the default before 0.30.6, which lets anybody who
 can reach the application read and change everything the profiler exposes.
 
-A cluster master and its slaves call each other's `/_profiler/api`: when they do not run on the
-same machine, each side has to admit the other's address the same way.
+A cluster master and its slaves do not need this: they authenticate each other with
+`cluster_secret` (see [Cluster](#cluster-multi-instance)).
 
 ### Forgery protection
 
@@ -645,6 +728,8 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - Only requests from this machine get in by default (`authorization_mode: :allow_local`), on every page and endpoint; see [Access control](#access-control)
 - API mutations require the `X-Profiler-Request` header or a CSRF token
 - The test runner only runs discovered test files; see [Test runner](#test-runner)
+- The MCP HTTP endpoint is routed only when enabled, and goes through the same checks
+- The cluster is off by default; when on, nodes authenticate with a shared secret and the master only reaches allowed slave URLs
 - No CORS and no framing by other sites by default
 - Sensitive data masked before it is stored, using your `config.filter_parameters`; see [Sensitive data](#sensitive-data)
 - Env overrides saved from the UI or MCP are never applied in production, nor while the profiler
