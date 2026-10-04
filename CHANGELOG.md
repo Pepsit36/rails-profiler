@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.9] - 2026-10-04
+
+<!-- stamped -->
+
 ### Security
 
 - **Database:** Explain only read-only queries. The **Explain** button, `POST /_profiler/api/explain`
