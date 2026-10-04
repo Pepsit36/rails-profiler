@@ -2,6 +2,7 @@
 
 require "concurrent"
 require "securerandom"
+require_relative "../redaction"
 
 module Profiler
   module TestRunner
@@ -62,7 +63,10 @@ module Profiler
         run = @runs[id]
         return unless run
 
-        run.output_lines.push(chunk)
+        # Free text read back by the API, the SSE stream and run_tests: the profiler's own
+        # credentials are masked by value, as in a profile. A credential split across two
+        # chunks is not seen.
+        run.output_lines.push(Profiler::Redaction.hide_credentials(chunk))
         signal(id)
       end
 

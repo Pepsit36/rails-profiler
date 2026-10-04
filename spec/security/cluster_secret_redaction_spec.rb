@@ -66,4 +66,66 @@ RSpec.describe "Cluster secret redaction" do
 
     expect(Profiler::Redaction.filter_hash("a" => "abc", "b" => "xabcx")).to eq("a" => mask, "b" => "xabcx")
   end
+
+  # Free text: what collectors capture without a name to filter on. Every collector stores its
+  # data through Profile#add_collector_data, and the console expression becomes the path.
+  describe "free text captured by collectors" do
+    require "profiler/collectors/log_collector"
+    require "profiler/collectors/exception_collector"
+    require "profiler/collectors/dump_collector"
+
+    let(:profile) { Profiler::Models::Profile.new }
+
+    after do
+      Thread.current[:profiler_logs] = nil
+      Thread.current[:profiler_dumps] = nil
+    end
+
+    it "masks it in log lines" do
+      collector = Profiler::Collectors::LogCollector.new(profile)
+      Thread.current[:profiler_logs] = [{ level: "INFO", message: "joining with #{secret}", timestamp: "t" }]
+      collector.collect
+
+      expect(profile.collector_data("logs").to_s).not_to include(secret)
+      expect(profile.collector_data("logs").to_s).to include("joining with #{mask}")
+    end
+
+    it "masks it in exception messages" do
+      collector = Profiler::Collectors::ExceptionCollector.new(profile)
+      collector.subscribe
+      collector.capture(RuntimeError.new("refused #{secret}"))
+      collector.collect
+
+      expect(profile.collector_data("exception").to_s).not_to include(secret)
+    end
+
+    it "masks it in dumps" do
+      collector = Profiler::Collectors::DumpCollector.new(profile)
+      Thread.current[:profiler_dumps] = [{ value: { "conf" => secret }, file: "f", line: 1, label: "l", timestamp: "t" }]
+      collector.collect
+
+      expect(profile.collector_data("dump").to_s).not_to include(secret)
+    end
+
+    it "masks it in whatever any collector stores, SQL text included" do
+      profile.add_collector_data("database", { queries: [{ sql: "SELECT 1 WHERE k = '#{secret}'" }] })
+
+      expect(profile.collector_data("database").to_s).not_to include(secret)
+    end
+
+    it "masks it in a console expression shown as the path" do
+      profile.path = "Profiler.configuration.cluster_secret == '#{secret}'"
+
+      expect(profile.path).not_to include(secret)
+    end
+  end
+
+  it "masks it in the output of a test run, read back by the API and MCP" do
+    require "profiler/test_runner/run_store"
+    store = Profiler::TestRunner::RunStore.new
+    run = store.create(files: [], framework: "rspec")
+    store.append_output(run.id, "ENV dump: #{secret}\n")
+
+    expect(store.find(run.id).to_h[:output]).not_to include(secret)
+  end
 end
