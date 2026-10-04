@@ -15,6 +15,11 @@ module Profiler
 
       GC_FRAME_NAME = "(garbage collection)"
 
+      THREAD_KEYS = %i[
+        fn_profiler_mode fn_profiler_clock fn_profiler_wall_start fn_profiler_cpu_start
+        fn_profiler_stack fn_profiler_roots fn_profiler_count fn_profiler_depth
+      ].freeze
+
       def name
         "function_profile"
       end
@@ -55,6 +60,7 @@ module Profiler
 
         mode  = Profiler.function_profiling_mode
         clock = Profiler.function_profiling_clock
+        @subscribed = true
         Thread.current[:fn_profiler_mode]  = mode
         Thread.current[:fn_profiler_clock] = clock
 
@@ -68,7 +74,9 @@ module Profiler
                     when "object" then :object
                     else               :wall
                     end
-          StackProf.start(mode: sp_mode, interval: 1000, raw: true)
+          # false when another request already runs the process-wide sampler: then it is not
+          # this collector's to stop on release.
+          @stackprof_started = StackProf.start(mode: sp_mode, interval: 1000, raw: true)
         else
           subscribe_tracepoint(mode)
         end
@@ -82,6 +90,7 @@ module Profiler
 
         if mode == "lite" && defined?(StackProf)
           StackProf.stop
+          @stackprof_started = false
           result   = StackProf.results
           wall_ms  = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - (Thread.current[:fn_profiler_wall_start] || 0)) * 1000
           cpu_ms   = (Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID) - (Thread.current[:fn_profiler_cpu_start] || 0)) * 1000
@@ -91,6 +100,22 @@ module Profiler
         else
           collect_tracepoint(mode)
         end
+      end
+
+      def unsubscribe
+        if @stackprof_started
+          @stackprof_started = false
+          if StackProf.running?
+            StackProf.stop
+            StackProf.results # discards the samples and frees the sampler's buffers
+          end
+        end
+
+        @trace&.disable
+        @trace = nil
+
+        THREAD_KEYS.each { |key| Thread.current[key] = nil } if @subscribed
+        @subscribed = false
       end
 
       def toolbar_summary

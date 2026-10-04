@@ -53,7 +53,7 @@ module Profiler
       end
 
       def collect
-        @subscriptions.each { |sub| ActiveSupport::Notifications.unsubscribe(sub) }
+        unsubscribe
 
         data = {
           views: @views,
@@ -64,6 +64,10 @@ module Profiler
         }
 
         store_data(data)
+      end
+
+      def unsubscribe
+        unsubscribe_notifications(@subscriptions)
       end
 
       def toolbar_summary

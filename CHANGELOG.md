@@ -19,6 +19,28 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Middleware:** A request that raises below the profiler no longer runs your application a
+  second time, and no longer leaves the collectors installed. Until now the exception made the
+  profiler call the application again, duplicating its side effects (two emails sent, two
+  records written), and every SQL, view, cache, mailer and controller subscriber, the log sink on
+  `Rails.logger`, the StackProf sampler or the `TracePoint` of the function profiler stayed active
+  for the life of the process: memory and request time grew with each failed request until the
+  process was killed. Any exception between the profiler and `ShowExceptions` triggers it, for
+  example `ActionDispatch::RemoteIp::IpSpoofAttackError` on contradictory `Client-IP` and
+  `X-Forwarded-For` headers, and in tests every exception a controller raises. The exception now
+  goes on to the server unchanged, and the profile of the failed request is kept, with status 500
+  and the exception in the Exception tab.
+- **Collectors:** Collectors gain `unsubscribe`, which releases what `subscribe` installed and runs
+  after `collect` and on every error path, for requests, jobs, console commands and tests alike.
+  A collector that fails to subscribe no longer leaves the others installed: the work runs once,
+  unprofiled. A custom collector that subscribes to something should implement `unsubscribe`, as
+  the README example now does.
+- **Logs:** On Rails 7.0, the log collector no longer extends `Rails.logger` with a new module on
+  every request; one shared sink is attached once, and only records while a profile runs on the
+  thread.
+
 ## [0.30.12] - 2026-10-04
 
 <!-- stamped -->

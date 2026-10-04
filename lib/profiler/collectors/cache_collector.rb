@@ -62,7 +62,7 @@ module Profiler
       end
 
       def collect
-        @subscriptions.each { |sub| ActiveSupport::Notifications.unsubscribe(sub) }
+        unsubscribe
 
         hits = @cache_reads.count { |r| r[:hit] }
         misses = @cache_reads.count { |r| !r[:hit] }
@@ -80,6 +80,10 @@ module Profiler
         }
 
         store_data(data)
+      end
+
+      def unsubscribe
+        unsubscribe_notifications(@subscriptions)
       end
 
       def toolbar_summary

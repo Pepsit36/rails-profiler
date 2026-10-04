@@ -2,6 +2,7 @@
 
 require_relative "../models/profile"
 require_relative "../current_context"
+require_relative "../collectors/lifecycle"
 require_relative "toolbar_injector"
 
 module Profiler
@@ -14,28 +15,54 @@ module Profiler
       def call(env)
         return @app.call(env) unless should_profile?(env)
 
-        status = nil
-        headers = nil
-        body = nil
         collectors = nil
+        begin
+          profile = Models::Profile.new(build_request(env))
+          profile.gem_version = Profiler::VERSION
+          Profiler::CurrentContext.token = profile.token
 
-        profile = Models::Profile.new(build_request(env))
-        profile.gem_version = Profiler::VERSION
-        Profiler::CurrentContext.token = profile.token
+          # Capture request body before app processes it
+          req_body_raw = read_rack_input(env)
 
-        # Capture request body before app processes it
-        req_body_raw = read_rack_input(env)
+          # Store profile in env for collectors
+          env["profiler.profile"] = profile
 
-        # Store profile in env for collectors
-        env["profiler.profile"] = profile
+          collectors = create_collectors(profile)
+          env["profiler.collectors"] = collectors
+          subscribed = Collectors::Lifecycle.subscribe_all(collectors, "ProfilerMiddleware")
+        rescue => e
+          warn "Profiler error: #{e.message}\n#{e.backtrace.join("\n")}"
+          subscribed = false
+        end
 
-        collectors = create_collectors(profile)
-        env["profiler.collectors"] = collectors
+        unless subscribed
+          # The application has not run yet: serve the request once, unprofiled.
+          release(collectors)
+          return @app.call(env)
+        end
 
-        # Measure memory before
-        memory_before = current_memory if Profiler.configuration.track_memory
+        begin
+          # Measure memory before
+          memory_before = current_memory if Profiler.configuration.track_memory
 
-        status, headers, body = @app.call(env)
+          begin
+            response = @app.call(env)
+          rescue => e
+            record_failed_request(env, profile, collectors, req_body_raw, memory_before, e)
+            raise
+          end
+
+          complete_profile(env, profile, collectors, req_body_raw, memory_before, response)
+        ensure
+          # Whatever happened above, nothing a collector installed outlives the request.
+          release(collectors)
+        end
+      end
+
+      private
+
+      def complete_profile(env, profile, collectors, req_body_raw, memory_before, response)
+        status, headers, body = response
         headers = headers.dup
 
         # Measure memory after
@@ -56,17 +83,9 @@ module Profiler
           resp_content_type: (headers["content-type"] || headers["Content-Type"]).to_s
         )
 
-        collectors.each do |collector|
-          begin
-            collector.collect if collector.respond_to?(:collect)
-            profile.add_collector_metadata(collector)
-          rescue => e
-            warn "Collector #{collector.class} failed: #{e.message}"
-          end
-        end
+        collect_all(profile, collectors)
 
         Profiler.storage.save(profile.token, profile)
-        Profiler::CurrentContext.clear
 
         headers["X-Profiler-Token"] = profile.token
 
@@ -77,13 +96,44 @@ module Profiler
 
         [status, headers, body]
       rescue => e
+        # The application has run: its response goes out, profiled or not.
         warn "Profiler error: #{e.message}\n#{e.backtrace.join("\n")}"
-        collectors&.each { |c| c.unsubscribe if c.respond_to?(:unsubscribe) }
-        Profiler::CurrentContext.clear
-        status ? [status, headers, body || []] : @app.call(env)
+        [status, headers, body || []]
       end
 
-      private
+      # The profile of a request that raised is kept: status 500, which the server answers once
+      # the exception leaves the stack, and the exception itself. Never masks the exception.
+      def record_failed_request(env, profile, collectors, req_body_raw, memory_before, error)
+        collectors.each { |collector| collector.capture(error) if collector.respond_to?(:capture) }
+        profile.memory = current_memory - memory_before if Profiler.configuration.track_memory
+        profile.finish(500)
+        profile.set_bodies(
+          request_body: req_body_raw,
+          response_body: "",
+          req_content_type: env["CONTENT_TYPE"].to_s,
+          resp_content_type: ""
+        )
+        collect_all(profile, collectors)
+        Profiler.storage.save(profile.token, profile)
+      rescue => e
+        warn "Profiler error while recording a failed request: #{e.message}"
+      end
+
+      def collect_all(profile, collectors)
+        collectors.each do |collector|
+          begin
+            collector.collect if collector.respond_to?(:collect)
+            profile.add_collector_metadata(collector)
+          rescue => e
+            warn "Collector #{collector.class} failed: #{e.message}"
+          end
+        end
+      end
+
+      def release(collectors)
+        Collectors::Lifecycle.release_all(collectors)
+        Profiler::CurrentContext.clear
+      end
 
       def should_profile?(env)
         return false unless Profiler.enabled?
@@ -104,12 +154,10 @@ module Profiler
         end
       end
 
+      # Builds the collectors without subscribing them: Lifecycle.subscribe_all does, so that
+      # a failure part way leaves every collector reachable for release.
       def create_collectors(profile)
-        Profiler.configuration.collectors.map do |collector_class|
-          collector = collector_class.new(profile)
-          collector.subscribe if collector.respond_to?(:subscribe)
-          collector
-        end
+        Profiler.configuration.collectors.map { |collector_class| collector_class.new(profile) }
       end
 
       def html_response?(headers)
