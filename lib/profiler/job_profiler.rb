@@ -118,11 +118,11 @@ module Profiler
 
       Redaction.filter_value(args).map do |arg|
         case arg
-        when String then arg.length > 200 ? "#{arg[0, 200]}..." : arg
+        when String then Redaction.truncate(arg, 200)
         when Numeric, TrueClass, FalseClass, NilClass then arg
         else
           inspected = arg.inspect
-          inspected.length > 200 ? "#{inspected[0, 200]}..." : inspected
+          Redaction.truncate(inspected, 200)
         end
       rescue
         arg.to_s

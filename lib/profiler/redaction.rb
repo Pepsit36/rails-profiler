@@ -4,6 +4,7 @@ require "json"
 require "set"
 require "rack/utils"
 require "active_support/parameter_filter"
+require_relative "cluster/security"
 
 module Profiler
   # The single filter applied to everything the profiler captures: request
@@ -44,10 +45,6 @@ module Profiler
     # fail on the same key inside the text.
     CONTEXT_SENSITIVE_REGEXP = /\\[AzZbBG]|[\^$]|\(\?<?[=!]/
 
-    # A credential embedded in a longer string is replaced only when it is at
-    # least this long; a shorter one is masked only as a whole value.
-    MIN_EMBEDDED_CREDENTIAL = 8
-
     # The profiler's own credentials are masked wherever they appear, by value,
     # whatever name they travel under, and even with redact_sensitive_data
     # off: the cluster secret opens every slave from the network, and a
@@ -72,13 +69,31 @@ module Profiler
 
       # Masks every occurrence of the profiler's own credentials in a value:
       # a string equal to one becomes MASK, a string holding one has it
-      # replaced, hashes and arrays are walked.
+      # replaced, hashes and arrays are walked. Only what changes is copied:
+      # a value holding no credential is returned as it is.
       def hide_credentials(value)
         credentials = credential_values
         credentials.empty? ? value : hide_in(value, credentials)
       rescue StandardError => e
         report(e, "masking a profiler credential")
         MASK
+      end
+
+      # Text cut to +max+ characters, with +ellipsis+ when cut, once the
+      # credentials are masked: cutting first would leave a prefix of one, or
+      # all of it once the pieces are put back together. Every capture point
+      # that shortens text goes through here.
+      def truncate(text, max, ellipsis = "...")
+        text = hide_credentials(text.to_s)
+        text.length > max ? "#{text[0, max]}#{ellipsis}" : text
+      end
+
+      # How many trailing bytes of a stream cut in chunks may hold the start
+      # of a credential, and have to wait for the next chunk before they are
+      # shown: one less than the longest credential, 0 without any.
+      def credential_holdback
+        credentials = credential_values
+        credentials.empty? ? 0 : credentials.map(&:bytesize).max - 1
       end
 
       def enabled?
@@ -260,32 +275,54 @@ module Profiler
 
       private
 
+      # Only a secret the cluster would use (Cluster::Security.secret_problem
+      # nil: 32 characters or more): a shorter one is ignored by the cluster,
+      # and masking "true" or "/" everywhere would hide the very data profiled.
       def credential_values
-        secret = Profiler.configuration.cluster_secret.to_s
-        return [] if secret.strip.empty?
+        return [] unless Cluster::Security.configured_secret?
 
-        [secret, secret.strip].uniq
+        [Profiler.configuration.cluster_secret.to_s.strip]
       end
 
       def hide_in(value, credentials)
         case value
-        when Hash then value.each_with_object(value.class.new) { |(k, v), out| out[k] = hide_in(v, credentials) }
-        when Array then value.map { |v| hide_in(v, credentials) }
         when String then hide_in_string(value, credentials)
+        when Hash
+          changes = nil
+          value.each do |key, v|
+            masked = hide_in(v, credentials)
+            (changes ||= {})[key] = masked unless masked.equal?(v)
+          end
+          changes ? value.merge(changes) : value
+        when Array
+          copy = nil
+          value.each_with_index do |v, i|
+            masked = hide_in(v, credentials)
+            next if masked.equal?(v)
+
+            (copy ||= value.dup)[i] = masked
+          end
+          copy || value
         else value
         end
       end
 
-      # Compared as bytes, so that a binary body never meets an incompatible
-      # encoding.
+      # The string itself when it holds no credential, which is the common
+      # case and costs one search; otherwise a copy, compared as bytes so that
+      # a binary body never meets an incompatible encoding.
       def hide_in_string(string, credentials)
         credentials.reduce(string) do |text, credential|
-          next text if text.equal?(MASK)
-          next MASK if text.strip.b == credential.strip.b
-          next text unless credential.length >= MIN_EMBEDDED_CREDENTIAL && text.b.include?(credential.b)
+          next text unless contains?(text, credential)
+          next MASK if text.b.strip == credential.b
 
           text.b.gsub(credential.b, MASK).force_encoding(text.encoding)
         end
+      end
+
+      def contains?(text, credential)
+        text.include?(credential)
+      rescue Encoding::CompatibilityError, ArgumentError
+        text.b.include?(credential.b)
       end
 
       def compiled

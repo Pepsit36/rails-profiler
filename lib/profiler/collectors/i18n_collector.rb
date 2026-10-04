@@ -93,7 +93,7 @@ module Profiler
       private
 
       def truncate(str, max = 100)
-        str.length > max ? "#{str[0, max]}…" : str
+        Profiler::Redaction.truncate(str, max, "…")
       end
     end
   end

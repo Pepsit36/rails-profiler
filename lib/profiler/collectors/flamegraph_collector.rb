@@ -86,7 +86,7 @@ module Profiler
 
           sql = payload[:sql].to_s
           add_event Models::TimelineEvent.new(
-            name: sql.length > 80 ? "#{sql[0, 80]}..." : sql,
+            name: Profiler::Redaction.truncate(sql, 80),
             started_at: started,
             finished_at: finished,
             category: "sql",
@@ -100,7 +100,7 @@ module Profiler
             op = name.split(".").first.sub("cache_", "")
             key = payload[:key].to_s
             add_event Models::TimelineEvent.new(
-              name: "cache_#{op}: #{key.length > 60 ? "#{key[0, 60]}..." : key}",
+              name: "cache_#{op}: #{Profiler::Redaction.truncate(key, 60)}",
               started_at: started,
               finished_at: finished,
               category: "cache",
