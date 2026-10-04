@@ -102,18 +102,51 @@ RSpec.describe "Cluster secret and cut text" do
   end
 
   # A cut written later without Redaction.truncate would bring the defect back: the capture
-  # code (collectors and the job, console and test profilers) must not cut text by itself.
+  # code must not cut text by itself. Cuts of lists (whole lines kept) and cuts of text already
+  # masked are listed below, each with its reason; output-side code (MCP tools, resources,
+  # body_formatter) reads data masked when it was captured and is not scanned.
+  RAW_CUT = /
+    \[0,\s*[\w:]+\] | \[0\.\.\.?[\w:-]+\] | \[\.\.\.?[\w:]+\] |
+    \.first\(\s*[\w:]+\s*\) | \.take\( | \.truncate\( | %\.\d+s |
+    \.slice\(\s*0\s*, | \.byteslice\(\s*0\s*,
+  /x
+
+  ALLOWED_CUTS = {
+    # Backtrace frames: a list of lines, cut by count; each frame is kept whole and masked with
+    # the rest of the collector data.
+    "collectors/exception_collector.rb" => ["raw_backtrace.first(30)"],
+    "instrumentation/net_http_instrumentation.rb" => ["frames.first(depth)"],
+    # A list of emails, cut by count; each email is masked whole.
+    "collectors/mailer_collector.rb" => ["@emails.first(MAX_EMAILS)"],
+    # The text shown so far, cut after it was masked on the joined text (see append_output).
+    "test_runner/run_store.rb" => ["text.byteslice(0, cut)"],
+    # Segments of a test file path, cut by count; not captured text.
+    "test_runner/discovery.rb" => ["parts[0..-2]"]
+  }.freeze
+
   it "leaves no raw cut of text in the capture code" do
     root = File.expand_path("../../lib/profiler", __dir__)
-    files = Dir[File.join(root, "collectors", "*.rb")] + Dir[File.join(root, "*_profiler.rb")]
-    raw_cut = /\[0,\s*[\w:]+\]|\.slice\(\s*0\s*,|\.byteslice\(\s*0\s*,/
+    files = %w[collectors instrumentation middleware models test_runner].flat_map { |dir| Dir[File.join(root, dir, "*.rb")] } +
+            Dir[File.join(root, "*_profiler.rb")]
     offenders = files.flat_map do |file|
+      relative = file.delete_prefix("#{root}/")
+      allowed = ALLOWED_CUTS.fetch(relative, [])
       File.readlines(file).each_with_index.filter_map do |line, i|
-        "#{File.basename(file)}:#{i + 1}: #{line.strip}" if line.match?(raw_cut) && !line.include?("Redaction.truncate")
+        next unless line.match?(RAW_CUT)
+        next if line.include?("Redaction.truncate") || allowed.any? { |cut| line.include?(cut) }
+
+        "#{relative}:#{i + 1}: #{line.strip}"
       end
     end
 
     expect(offenders).to eq([])
+  end
+
+  it "catches each form of cut it is meant to" do
+    ['s[0, 80]', 's[0...n]', 's[0..n]', 's[..n]', 'l.first(3)', 'l.take(2)', 's.truncate(10)',
+     'format("%.40s", s)', 's.slice(0, 5)', 's.byteslice(0, 5)'].each do |code|
+      expect(code).to match(RAW_CUT)
+    end
   end
 
   describe "test runner output, read in 256-byte chunks" do
@@ -140,14 +173,74 @@ RSpec.describe "Cluster secret and cut text" do
       end
     end
 
-    it "gives the whole output, masked, once the run is over" do
+    it "gives the whole output, masked, once the output is finished" do
       each_offset do |run, text|
+        store.finish_output(run.id)
         store.update(run.id, status: "passed", finished_at: Time.now)
         full = store.find(run.id).to_h[:output]
 
         expect(leaks?(full)).to be(false)
         expect(full).to eq(text.sub(secret, Profiler::Redaction::MASK))
       end
+    end
+
+    # A kill sets the status first; the process then prints its summary and flushes its buffers.
+    # The end of the output is told by finish_output, never by the status.
+    it "keeps holding back after a kill, until the output is finished" do
+      runs = (0...256).map do |offset|
+        run = store.create(files: [], framework: "rspec")
+        text = "#{"o" * offset}#{output}"
+        chunks = text.b.scan(/.{1,256}/m)
+        half = chunks.size / 2
+        chunks.first(half).each { |chunk| store.append_output(run.id, chunk) }
+        store.update(run.id, status: "killed", finished_at: Time.now)
+        chunks.drop(half).each { |chunk| store.append_output(run.id, chunk) }
+        store.update(run.id, exit_code: 143)
+        [offset, run, text]
+      end
+
+      leaked = runs.select { |_, run, _| leaks?(store.find(run.id).to_h[:output]) }.map(&:first)
+      expect(leaked).to eq([])
+
+      runs.each do |_, run, text|
+        store.finish_output(run.id)
+        expect(store.find(run.id).to_h[:output]).to eq(text.sub(secret, Profiler::Redaction::MASK))
+      end
+    end
+
+    # Only the bytes that could start the secret wait: progress dots are shown as they come.
+    it "holds back only an end of the text that could start the secret" do
+      run = store.create(files: [], framework: "rspec")
+      store.append_output(run.id, "....")
+      store.append_output(run.id, "..F#{secret[0, 5]}")
+
+      expect(store.find(run.id).to_h[:output]).to eq("......F")
+      store.append_output(run.id, "x")
+      expect(store.find(run.id).to_h[:output]).to eq("......F#{secret[0, 5]}x")
+    end
+  end
+
+  describe "binary bodies, stored in base64" do
+    require "profiler/instrumentation/net_http_instrumentation"
+
+    def decoded(processed)
+      Base64.strict_decode64(processed[:body])
+    end
+
+    it "masks the raw bytes of an incoming or response binary body" do
+      profile = Profiler::Models::Profile.new
+      processed = profile.send(:process_body, "\x00\x01#{secret}\xFF".b, "application/octet-stream")
+
+      expect(processed[:encoding]).to eq("base64")
+      expect(decoded(processed)).not_to include(secret)
+      expect(decoded(processed)).to include(Profiler::Redaction::MASK)
+    end
+
+    it "masks the raw bytes of an outbound binary body" do
+      processed = Profiler::Instrumentation::NetHttpInstrumentation.process_body("\x89PNG#{secret}".b, "image/png")
+
+      expect(processed[:encoding]).to eq("base64")
+      expect(decoded(processed)).not_to include(secret)
     end
   end
 

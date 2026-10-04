@@ -88,12 +88,16 @@ module Profiler
         text.length > max ? "#{text[0, max]}#{ellipsis}" : text
       end
 
-      # How many trailing bytes of a stream cut in chunks may hold the start
-      # of a credential, and have to wait for the next chunk before they are
-      # shown: one less than the longest credential, 0 without any.
-      def credential_holdback
-        credentials = credential_values
-        credentials.empty? ? 0 : credentials.map(&:bytesize).max - 1
+      # How many trailing bytes of +text+, a stream read in pieces, could be
+      # the start of a credential and have to wait for the next piece: the
+      # longest end of the text that is also the beginning of a credential,
+      # 0 when there is none, so that other output is shown as it comes.
+      def held_back_bytes(text)
+        bytes = text.to_s.b
+        credential_values.map do |credential|
+          start = credential.b
+          [start.bytesize - 1, bytes.bytesize].min.downto(1).find { |k| bytes.end_with?(start.byteslice(0, k)) } || 0
+        end.max || 0
       end
 
       def enabled?

@@ -150,7 +150,8 @@ module Profiler
         mime = content_type.split(";").first.to_s.strip
 
         if mime.match?(BINARY_CONTENT_TYPES)
-          { body: Base64.strict_encode64(body.b), encoding: "base64" }
+          # Masked on the raw bytes, before the encoding hides them from any later search.
+          { body: Base64.strict_encode64(Redaction.hide_credentials(body.b)), encoding: "base64" }
         else
           text = Redaction.filter_body(body, content_type)
                           .encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")

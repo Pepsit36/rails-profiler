@@ -168,7 +168,9 @@ module Profiler
         return { body: nil, encoding: "text" } if raw.nil? || raw.empty?
 
         if binary_content_type?(content_type)
-          { body: Base64.strict_encode64(raw.b), encoding: "base64" }
+          # Masked on the raw bytes, before the encoding hides them from any later search. A
+          # compressed format (zip, png, gzip...) does not hold the secret as it is.
+          { body: Base64.strict_encode64(Redaction.hide_credentials(raw.b)), encoding: "base64" }
         else
           text = Redaction.filter_body(raw, content_type).encode("UTF-8", invalid: :replace, undef: :replace)
           if compress_body?(text)
