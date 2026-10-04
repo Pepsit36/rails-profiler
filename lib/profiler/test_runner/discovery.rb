@@ -24,8 +24,8 @@ module Profiler
                 end
 
         globs.each do |glob|
-          Dir.glob(File.join(root, glob)).each do |path|
-            relative = path.sub("#{root}/", "")
+          # base: keeps glob metacharacters of the root ([, {, *) out of the pattern
+          Dir.glob(glob, base: root).each do |relative|
             parts = relative.split("/")
             dir   = parts[0..-2].join("/")
             result[dir] ||= []
