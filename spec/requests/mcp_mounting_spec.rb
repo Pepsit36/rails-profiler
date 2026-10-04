@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "fileutils"
+require "tmpdir"
 require_relative "../support/rails_app"
 
 RSpec.describe "MCP HTTP endpoint", type: :request do
@@ -150,6 +152,63 @@ RSpec.describe "MCP HTTP endpoint", type: :request do
 
       mcp_post(initialize_payload, local.merge("CONTENT_TYPE" => "text/plain", "HTTP_ACCEPT" => mcp_headers["HTTP_ACCEPT"]))
       expect(last_response.status).not_to eq(403)
+    end
+  end
+
+  # A remote client calling a tool that writes ENV, end to end: handshake, then tools/call
+  # set_env_var. Each step is sent whatever the previous one answered, as an attacker would.
+  describe "tools/call set_env_var, end to end" do
+    let(:key) { "PROFILER_SPEC_MCP_PROBE" }
+    let(:tmp) { Pathname(Dir.mktmpdir("profiler-mcp-spec")) }
+
+    before do
+      ENV.delete(key)
+      Profiler.instance_variable_set(:@env_override_store, nil)
+      Profiler.configure do |config|
+        config.mcp_enabled = true
+        config.mcp_transport = :http
+        config.tmp_path = tmp
+      end
+    end
+
+    after do
+      ENV.delete(key)
+      Profiler.instance_variable_set(:@env_override_store, nil)
+      FileUtils.remove_entry(tmp)
+    end
+
+    # The SSE answer is a lazy body: the tool only runs while it is read, so each answer is
+    # read in full, as a client would.
+    def call_set_env_var(env)
+      mcp_post(initialize_payload, env)
+      last_response.body
+      session = last_response.headers["Mcp-Session-Id"] || last_response.headers["mcp-session-id"]
+      session_env = session ? env.merge("HTTP_MCP_SESSION_ID" => session) : env
+      mcp_post({ jsonrpc: "2.0", method: "notifications/initialized" }, session_env)
+      last_response.body
+      mcp_post({ jsonrpc: "2.0", id: 2, method: "tools/call",
+                 params: { name: "set_env_var", arguments: { key: key, value: "pwned" } } }, session_env)
+      last_response.body
+      last_response.status
+    end
+
+    it "(a) is refused while the profiler is disabled, and ENV is unchanged" do
+      Profiler.configuration.enabled = false
+
+      expect(call_set_env_var(local.merge(mcp_headers))).to eq(403)
+      expect(ENV[key]).to be_nil
+    end
+
+    it "(b) is refused from a remote address that authorization_mode does not admit" do
+      remote_client = { "REMOTE_ADDR" => "203.0.113.9", "HTTP_HOST" => "localhost" }
+
+      expect(call_set_env_var(remote_client.merge(mcp_headers))).to eq(403)
+      expect(ENV[key]).to be_nil
+    end
+
+    it "(c) is accepted from this machine with Content-Type: application/json" do
+      expect(call_set_env_var(local.merge(mcp_headers))).to eq(200)
+      expect(ENV[key]).to eq("pwned")
     end
   end
 end
