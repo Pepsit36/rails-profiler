@@ -68,6 +68,23 @@ RSpec.describe Profiler::Middleware::ToolbarInjector do
       end
     end
 
+    # A page can carry "</body>" before its real closing tag, in a script string for
+    # instance; the toolbar's own </script> would then close that script and turn the rest
+    # of the string into live markup.
+    context "when </body> also appears earlier in the page" do
+      let(:html) do
+        %(<html><body><script>var tpl = "</body><img src=x onerror=alert(1)>";</script><p>end</p></body></html>)
+      end
+
+      it "injects before the last </body> and leaves the earlier one alone" do
+        content = described_class.new([html], token).inject.join
+
+        expect(content).to start_with(%(<html><body><script>var tpl = "</body><img src=x onerror=alert(1)>";</script><p>end</p>))
+        expect(content.index("profiler-toolbar")).to be > content.index("<p>end</p>")
+        expect(content).to end_with("</body></html>")
+      end
+    end
+
     # The token and the nonce come from the gem and from Rails today; the injector escapes
     # them anyway, as it writes into the application's own page.
     context "with a token or a nonce carrying markup" do
