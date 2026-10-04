@@ -150,6 +150,74 @@ RSpec.describe Profiler::Middleware::ToolbarInjector do
         expect(content.b).to start_with("<html><body><p>caf\xE9</p>".b)
         toolbar_before(content.b, "</body></html>".b)
       end
+
+      # A quoted attribute value is not markup: injected there, the toolbar's own quotes would
+      # close the attribute and turn the rest of the value into live markup.
+      it "skips one in a single-quoted attribute value after the real one" do
+        html = %(<html><body><p>end</p></body><div title='#{alert}'></div></html>)
+        content = inject(html)
+
+        toolbar_before(content, %(</body><div title='))
+        expect(content).to end_with(%(</body><div title='#{alert}'></div></html>))
+      end
+
+      it "skips one in a double-quoted attribute value after the real one" do
+        html = %(<html><body><p>end</p></body><div title="#{alert}"></div></html>)
+        content = inject(html)
+
+        toolbar_before(content, %(</body><div title="))
+        expect(content).to end_with(%(</body><div title="#{alert}"></div></html>))
+      end
+
+      it "leaves alone a page whose only </body> is in an attribute value" do
+        html = %(<html><body><div data-props='{"html":"#{alert}"}'></div></html>)
+
+        expect(inject(html)).to eq(html)
+      end
+
+      it "skips quotes that do not follow an equals sign, as the browser does" do
+        content = inject(%(<html><body><div a"b c='x'>"</div><p>end</p></body></html>))
+
+        expect(toolbar_before(content, "</body></html>")).to be > content.index("<p>end</p>")
+      end
+
+      it "leaves the page alone when a tag or a quoted value is never closed" do
+        [
+          %(<html><body><p>end</p></body><div title="#{alert}),
+          %(<html><body><p>end</p><div title="x></body></html>),
+          %(<html><body><p>end</p></body><div title=x)
+        ].each { |html| expect(inject(html)).to eq(html) }
+      end
+
+      %w[xmp iframe noembed noframes noscript].each do |name|
+        it "skips one in a <#{name}> element" do
+          html = %(<html><body><p>end</p></body><#{name}>#{alert}</#{name}></html>)
+          content = inject(html)
+
+          toolbar_before(content, "</body><#{name}>")
+          expect(content).to end_with(%(</body><#{name}>#{alert}</#{name}></html>))
+        end
+      end
+
+      it "leaves the page alone after a <plaintext>, which never closes" do
+        html = %(<html><body><plaintext></body></html>)
+
+        expect(inject(html)).to eq(html)
+      end
+
+      # In a script, <!-- followed by <script enters a state where </script> does not close
+      # it: rather than follow it, the page is left without a toolbar.
+      it "leaves the page alone after a double-escaped script" do
+        html = %(<html><body><script><!--<script></script>"#{alert}"--></script><p>end</p></body></html>)
+
+        expect(inject(html)).to eq(html)
+      end
+
+      it "still injects after a script holding a plain <!-- comment" do
+        content = inject(%(<html><body><script><!-- var a = 1; //--></script><p>end</p></body></html>))
+
+        expect(toolbar_before(content, "</body></html>")).to be > content.index("<p>end</p>")
+      end
     end
 
     # The token and the nonce come from the gem and from Rails today; the injector escapes
