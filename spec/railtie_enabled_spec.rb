@@ -20,11 +20,26 @@ RSpec.describe "Railtie honoring enabled from the application's initializers" do
       require "active_job/railtie"
       require "irb"
 
-      # Stands in for Sidekiq: records whether the railtie configured it.
+      # Stands in for Sidekiq: records whether the railtie configured it, and keeps the
+      # middleware chains with the semantics of Sidekiq::Middleware::Chain#add and #prepend.
       module Sidekiq
+        class Chain
+          attr_reader :entries
+          def initialize = @entries = []
+          def add(klass) = (@entries << klass unless @entries.include?(klass))
+          def prepend(klass) = (@entries.delete(klass); @entries.unshift(klass))
+        end
+
+        class Config
+          SERVER = Chain.new
+          CLIENT = Chain.new
+          def server_middleware = yield(SERVER)
+          def client_middleware = yield(CLIENT)
+        end
+
         CALLS = []
-        def self.configure_server; CALLS << "server"; end
-        def self.configure_client; CALLS << "client"; end
+        def self.configure_server; CALLS << "server"; yield Config.new; end
+        def self.configure_client; CALLS << "client"; yield Config.new; end
       end
 
       require "profiler"
@@ -58,6 +73,14 @@ RSpec.describe "Railtie honoring enabled from the application's initializers" do
         def perform; end
       end
 
+      # "profiler" for a callback the gem installs, "app" for any other.
+      callback_owners = lambda do |name, kind|
+        ProbeJob.__callbacks[name].select { |cb| cb.kind == kind }.map do |cb|
+          file = cb.filter.respond_to?(:source_location) ? cb.filter.source_location&.first.to_s : ""
+          file.include?("active_job_instrumentation") ? "profiler" : "app"
+        end
+      end
+
       response = Rack::MockRequest.new(ProbeApp).get("/ping", "REMOTE_ADDR" => "127.0.0.1")
       ProbeJob.perform_now
 
@@ -70,6 +93,10 @@ RSpec.describe "Railtie honoring enabled from the application's initializers" do
         "middleware" => profiler_middlewares,
         "stack_top" => ProbeApp.middleware.map(&:name).first(3),
         "sidekiq" => Sidekiq::CALLS,
+        "sidekiq_server_chain" => Sidekiq::Config::SERVER.entries.map(&:name),
+        "sidekiq_client_chain" => Sidekiq::Config::CLIENT.entries.map(&:name),
+        "perform_callbacks" => callback_owners.call(:perform, :around),
+        "enqueue_callbacks" => callback_owners.call(:enqueue, :before),
         "active_job" => defined?(Profiler::Instrumentation::ActiveJobInstrumentation) ?
           ActiveJob::Base.include?(Profiler::Instrumentation::ActiveJobInstrumentation) : false,
         "test_profiler" => !defined?(Profiler::TestProfiler).nil?,
@@ -84,10 +111,14 @@ RSpec.describe "Railtie honoring enabled from the application's initializers" do
     RUBY
   end
 
-  def boot(rails_env:, initializer:, env: {})
+  def boot(rails_env:, initializer:, env: {}, environment_file: nil)
     Dir.mktmpdir do |root|
       FileUtils.mkdir_p(File.join(root, "config", "initializers"))
       File.write(File.join(root, "config", "initializers", "profiler.rb"), initializer) if initializer
+      if environment_file
+        FileUtils.mkdir_p(File.join(root, "config", "environments"))
+        File.write(File.join(root, "config", "environments", "#{rails_env}.rb"), environment_file)
+      end
       script = File.join(root, "boot.rb")
       File.write(script, boot_script)
 
@@ -161,6 +192,31 @@ RSpec.describe "Railtie honoring enabled from the application's initializers" do
     end
   end
 
+  # The application's initializers run before the profiler installs its job instrumentation;
+  # the profiler still comes first, so that a job's profile covers what they install.
+  context "when the application installs its own Sidekiq middlewares and ActiveJob callbacks" do
+    let(:initializer) do
+      <<~RUBY
+        class AppServerMiddleware; end
+        class AppClientMiddleware; end
+        Sidekiq.configure_server { |c| c.server_middleware { |chain| chain.add AppServerMiddleware } }
+        Sidekiq.configure_client { |c| c.client_middleware { |chain| chain.add AppClientMiddleware } }
+        ActiveSupport.on_load(:active_job) do
+          around_perform { |_job, block| block.call }
+          before_enqueue { |_job| }
+        end
+      RUBY
+    end
+
+    it "puts the profiler's ahead of them", :aggregate_failures do
+      result = boot(rails_env: "development", initializer: initializer)
+      expect(result["sidekiq_server_chain"]).to eq(%w[Profiler::Instrumentation::SidekiqMiddleware AppServerMiddleware])
+      expect(result["sidekiq_client_chain"]).to eq(%w[Profiler::Instrumentation::SidekiqClientMiddleware AppClientMiddleware])
+      expect(result["perform_callbacks"]).to eq(%w[profiler app])
+      expect(result["enqueue_callbacks"]).to eq(%w[profiler app])
+    end
+  end
+
   context "when config/initializers/profiler.rb enables the profiler in production" do
     let(:result) { boot(rails_env: "production", initializer: "Profiler.configure { |c| c.enabled = true }") }
 
@@ -208,6 +264,37 @@ RSpec.describe "Railtie honoring enabled from the application's initializers" do
     it "lets config/initializers/profiler.rb have the last word" do
       result = boot(rails_env: "development", initializer: "Profiler.configure { |c| c.enabled = true }",
                     env: { "PROBE_CONFIG_PROFILER" => "false" })
+      expect(result["enabled"]).to be(true)
+      expect(result["middleware"]).not_to be_empty
+    end
+  end
+
+  # From lowest to highest: the Rails default, Profiler.configure in config/application.rb or in
+  # config/environments, config.profiler, config/initializers.
+  describe "precedence of the places that set enabled" do
+    it "keeps enabled set with Profiler.configure in config/environments over the default" do
+      result = boot(rails_env: "development", initializer: nil,
+                    environment_file: "Profiler.configure { |c| c.enabled = false }")
+      expect(result["enabled"]).to be(false)
+      expect(result["middleware"]).to be_empty
+    end
+
+    it "applies config.profiler over Profiler.configure in config/application.rb" do
+      result = boot(rails_env: "development", initializer: nil,
+                    env: { "PROBE_APPLICATION_RB" => "1", "PROBE_CONFIG_PROFILER" => "true" })
+      expect(result["enabled"]).to be(true)
+    end
+
+    it "applies config.profiler over Profiler.configure in config/environments" do
+      result = boot(rails_env: "development", initializer: nil, env: { "PROBE_CONFIG_PROFILER" => "true" },
+                    environment_file: "Profiler.configure { |c| c.enabled = false }")
+      expect(result["enabled"]).to be(true)
+    end
+
+    it "applies config/initializers over all of them" do
+      result = boot(rails_env: "development", initializer: "Profiler.configure { |c| c.enabled = true }",
+                    env: { "PROBE_APPLICATION_RB" => "1", "PROBE_CONFIG_PROFILER" => "false" },
+                    environment_file: "Profiler.configure { |c| c.enabled = false }")
       expect(result["enabled"]).to be(true)
       expect(result["middleware"]).not_to be_empty
     end
