@@ -137,6 +137,8 @@ Displays all SQL queries executed during the request:
 
 Slow queries (above `slow_query_threshold`, default 100ms) are highlighted in red.
 
+The **Explain** button only explains read-only queries, in a transaction always rolled back; any other query is refused with the reason. See [Explaining a query](../README.md#explaining-a-query).
+
 ---
 
 ### Timeline tab (Flame Graph)

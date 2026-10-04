@@ -162,6 +162,54 @@ Once installed, the profiler automatically:
 
 See the **[UI Guide](docs/ui.md)** for a full walkthrough of the toolbar, profile list, and all dashboard tabs (Request, Dump, Database, Timeline, Views, Cache, Logs, I18n, Routes, Exception).
 
+### Explaining a query
+
+The **Explain** button of the Database tab, the `POST /_profiler/api/explain` endpoint and the MCP
+`explain_query` tool all show the plan of a query the application already ran, with its bind values
+put back. They run `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on PostgreSQL, `EXPLAIN FORMAT=JSON`
+on MySQL and `EXPLAIN QUERY PLAN` on SQLite.
+
+A query whose bind values were masked when captured is refused first, since it cannot be rebuilt
+(see [Sensitive data](#sensitive-data)). Then only read-only statements are explained: those that
+start, after comments and parentheses, with `SELECT`, `WITH`, `TABLE` or `VALUES`, and contain none
+of `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE`, `DROP`, `ALTER`, `CREATE`, `INTO`, `LOCK` or
+`SHARE` outside literals, quoted identifiers and comments, in a single statement. Anything else is
+refused with a message saying why: a 422 from the endpoint, an error from the MCP tool. PostgreSQL's
+`EXPLAIN ANALYZE` runs the statement it explains, so explaining a `DELETE` would delete the rows
+again. This refuses a writing CTE (`WITH d AS (DELETE ... RETURNING id) SELECT ...`), `SELECT ...
+INTO`, `INTO OUTFILE`, `FOR UPDATE`, `FOR SHARE` and `LOCK IN SHARE MODE`. It can also refuse a
+read: an unquoted column named `share`, for example.
+
+The probe then runs on a connection of its own, closed afterwards, in a transaction that is always
+rolled back. Nothing it does to its session outlives it, and the application's own connection and
+transaction are never touched. The connection is opened from the database configuration, outside the
+pool: a pool of one, or a full one, does not keep Explain waiting.
+
+- **PostgreSQL:** the transaction is also `READ ONLY`, so a function with a side effect called from
+  a `SELECT` fails instead of writing (`nextval()` included), and limited by `SET LOCAL
+  statement_timeout = '30s'`, since `EXPLAIN ANALYZE` runs the query. The EXPLAIN goes by the
+  extended protocol, so the server itself refuses more than one statement.
+- **MySQL:** rolled back, not read-only, no timeout: `EXPLAIN` without `ANALYZE` plans the query
+  without running it. (`max_execution_time`, or `max_statement_time` on MariaDB, would only bound
+  a `SELECT` that runs.)
+- **SQLite:** rolled back. `EXPLAIN QUERY PLAN` does not run the statement. The probe's transaction
+  waits for a write transaction open on another connection, and fails with `database is locked`
+  after the busy timeout.
+
+What this does not cover: effects outside the database. Anything a function called from a
+`SELECT` does through `dblink` or on the file system stays done. A session-level advisory lock taken
+by `pg_advisory_lock()` is released when the probe's connection closes.
+
+There is no setting to explain a write. To see the plan of a slow `UPDATE` or `DELETE` on
+PostgreSQL, run it yourself in `psql`, in a transaction you roll back, knowing that sequences still
+advance, row locks are held until the rollback and triggers with outside effects still fire:
+
+```sql
+BEGIN;
+EXPLAIN (ANALYZE, BUFFERS) DELETE FROM orders WHERE customer_id = 42;
+ROLLBACK;
+```
+
 ### Dumping variables
 
 Inspect any value in the **Dump** tab:
@@ -552,6 +600,7 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - Sensitive data masked before it is stored, using your `config.filter_parameters`; see [Sensitive data](#sensitive-data)
 - Env overrides saved from the UI or MCP are never applied in production, nor while the profiler
   is disabled (`apply_env_overrides_when_disabled`)
+- EXPLAIN runs read-only statements only, in a transaction always rolled back (see [Explaining a query](#explaining-a-query))
 
 ### Sensitive data
 

@@ -19,6 +19,34 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.9] - 2026-10-04
+
+<!-- stamped -->
+
+### Security
+
+- **Database:** Explain only read-only queries. The **Explain** button, `POST /_profiler/api/explain`
+  and the MCP `explain_query` tool ran `EXPLAIN ANALYZE` on any stored query, and PostgreSQL's
+  `EXPLAIN ANALYZE` runs the statement it explains: explaining a `DELETE`, `UPDATE` or `INSERT` the
+  application had just run ran it a second time, for real. Only statements starting with `SELECT`,
+  `WITH`, `TABLE` or `VALUES` are explained now, and a writing CTE, `SELECT ... INTO`, `FOR UPDATE`
+  or a second statement is refused too, with a 422 from the endpoint and an error from the MCP tool.
+  The probe also runs in a transaction that is always rolled back, read-only on PostgreSQL.
+  Upgrading: nothing to set, and no setting brings back the explaining of writes, since the old
+  behaviour was to run them again; to see the plan of a write, run it yourself in `psql` between
+  `BEGIN` and `ROLLBACK`, as the README shows.
+- **Database:** Run the Explain probe on a connection of its own, opened outside the pool and closed
+  afterwards, so that nothing it does to its session outlives it: a `SELECT pg_try_advisory_lock(...)`
+  explained from a profile left the lock held by a connection of the pool. On PostgreSQL the probe
+  is also limited to 30 seconds (`statement_timeout`), and its EXPLAIN goes by the extended
+  protocol, which refuses a second statement.
+
+### Fixed
+
+- **Database:** Put bind values back correctly when explaining a query with ten binds or more
+  (`$10` was read as `$1` followed by `0`), and leave alone a `?` or `$1` inside a string literal or
+  inside a value already put back.
+
 ## [0.30.8] - 2026-10-04
 
 <!-- stamped -->
