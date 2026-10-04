@@ -107,7 +107,18 @@ module Profiler
       warn "[Profiler] EnvOverrideStore: failed to check overrides at boot: #{e.message}"
     end
 
+    # Set by the test runner in the environment of the test process, to which it already gave
+    # the admitted overrides only (TestRunner::Runner.build_env).
+    TEST_RUNNER_CHILD_ENV = "PROFILER_TEST_RUNNER_CHILD"
+    RESERVED_KEY_ERROR = "#{TEST_RUNNER_CHILD_ENV} is reserved for the test runner"
+
+    # The env tools may not set or delete the test runner marker, whatever its case.
+    def self.reserved_key?(key)
+      key.to_s.upcase == TEST_RUNNER_CHILD_ENV
+    end
+
     def apply!
+      return if ENV[TEST_RUNNER_CHILD_ENV] == "1"
       return if blocked_reason
 
       overrides = load_overrides
