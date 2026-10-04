@@ -365,6 +365,9 @@ in the shell that starts Rails: the test process inherits it. Variables the appl
 writes into `ENV` once loaded (`dotenv` for instance) do not reach the test process, which loads
 them on its own when your test setup does.
 
+The test process boots your application too: the runner sets `PROFILER_TEST_RUNNER_CHILD=1` in
+its environment so that it does not replay the overrides itself, and the env tools refuse that name.
+
 The copy of the environment is taken once, when the gem is loaded. Two cases keep an older copy:
 
 - After a hot restart of Puma (`pumactl restart`, `SIGUSR2`), the new server inherits the
