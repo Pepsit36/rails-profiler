@@ -87,7 +87,7 @@ module Profiler
         # Any remaining pending process entries had no matching deliver event:
         # they were enqueued via deliver_later in the HTTP context.
         pending = Thread.current[:profiler_pending_processes] || []
-        Thread.current[:profiler_pending_processes] = nil
+        unsubscribe
 
         pending.each do |info|
           @queued << {
@@ -101,8 +101,6 @@ module Profiler
             triggered_at: Time.now.utc.iso8601(3)
           }
         end
-
-        @subscriptions.each { |sub| ActiveSupport::Notifications.unsubscribe(sub) }
 
         detect_loops
 
@@ -122,6 +120,14 @@ module Profiler
           failed: @errors.size,
           truncated: truncated
         )
+      end
+
+      def unsubscribe
+        unsubscribe_notifications(@subscriptions)
+        return unless @subscriber_thread
+
+        Thread.current[:profiler_pending_processes] = nil
+        @subscriber_thread = nil
       end
 
       def has_data?

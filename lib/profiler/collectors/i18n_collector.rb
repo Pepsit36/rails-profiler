@@ -56,8 +56,14 @@ module Profiler
         Thread.current[:profiler_i18n_collector] = self
       end
 
+      # The I18n patch installed by subscribe stays: it is prepended once per process and
+      # records nothing when no collector holds the thread-local slot.
+      def unsubscribe
+        release_thread_slot(:profiler_i18n_collector)
+      end
+
       def collect
-        Thread.current[:profiler_i18n_collector] = nil
+        unsubscribe
 
         missing_count = @lookups.count { |l| l[:missing] }
 

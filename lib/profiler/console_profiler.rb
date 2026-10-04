@@ -44,7 +44,7 @@ module Profiler
 
       console_collector = Collectors::ConsoleCollector.new(profile, expression: @expression)
       collectors = [console_collector] + CONSOLE_COLLECTOR_CLASSES.map { |klass| klass.new(profile) }
-      collectors.each { |c| c.subscribe if c.respond_to?(:subscribe) }
+      return block.call unless Collectors::Lifecycle.subscribe_all(collectors, "ConsoleProfiler")
 
       exception_collector = collectors.find { |c| c.is_a?(Collectors::ExceptionCollector) }
 
@@ -82,6 +82,9 @@ module Profiler
 
         Profiler.storage.save(profile.token, profile)
       end
+    ensure
+      # After collect, and also when collect or the storage failed.
+      Collectors::Lifecycle.release_all(collectors)
     end
 
     private

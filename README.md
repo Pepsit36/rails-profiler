@@ -599,10 +599,17 @@ class MyCollector < Profiler::Collectors::BaseCollector
   def priority = 100  # lower = earlier in tab list
 
   def subscribe
-    ActiveSupport::Notifications.monotonic_subscribe('my.event') do |name, started, finished, id, payload|
+    @subscription = ActiveSupport::Notifications.monotonic_subscribe('my.event') do |name, started, finished, id, payload|
       @events ||= []
       @events << { name: name, duration: (finished - started) * 1000 }
     end
+  end
+
+  # Called after collect, and also when the request raises before collect runs.
+  # Release everything subscribe installed; calling it twice must be harmless.
+  def unsubscribe
+    ActiveSupport::Notifications.unsubscribe(@subscription) if @subscription
+    @subscription = nil
   end
 
   def collect

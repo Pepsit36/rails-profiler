@@ -48,7 +48,12 @@ module Profiler
           dumps: formatted_dumps
         })
 
-        # Clear dumps for next request
+        unsubscribe
+      end
+
+      # Profiler.dump fills this slot during the request; a request that raises before collect
+      # must not hand its dumps to the next one on the thread.
+      def unsubscribe
         Thread.current[:profiler_dumps] = []
       end
 

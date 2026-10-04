@@ -291,6 +291,7 @@ class MyCollector < Profiler::Collectors::BaseCollector
   def name; 'my_collector'; end
   def icon; '🔧'; end
   def subscribe; ...; end
+  def unsubscribe; ...; end   # releases what subscribe installed; idempotent
   def collect; ...; end
   def toolbar_summary; ...; end
   def panel_content; ...; end

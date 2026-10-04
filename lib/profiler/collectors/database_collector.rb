@@ -55,8 +55,7 @@ module Profiler
       end
 
       def collect
-        # Unsubscribe from notifications
-        ActiveSupport::Notifications.unsubscribe(@subscription) if @subscription
+        unsubscribe
 
         data = {
           total_queries: @queries.size,
@@ -67,6 +66,13 @@ module Profiler
         }
 
         store_data(data)
+      end
+
+      def unsubscribe
+        return unless @subscription
+
+        ActiveSupport::Notifications.unsubscribe(@subscription)
+        @subscription = nil
       end
 
       def toolbar_summary

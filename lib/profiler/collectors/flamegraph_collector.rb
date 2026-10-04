@@ -133,8 +133,7 @@ module Profiler
       end
 
       def collect
-        @subscriptions.each { |sub| ActiveSupport::Notifications.unsubscribe(sub) }
-        Thread.current[:profiler_flamegraph_collector] = nil
+        unsubscribe
 
         root_events = build_hierarchy(@events)
 
@@ -143,6 +142,11 @@ module Profiler
           total_duration: @events.empty? ? 0 : @events.map(&:duration).sum.round(2),
           root_events: root_events.map(&:to_h)
         })
+      end
+
+      def unsubscribe
+        unsubscribe_notifications(@subscriptions)
+        release_thread_slot(:profiler_flamegraph_collector)
       end
 
       def toolbar_summary
