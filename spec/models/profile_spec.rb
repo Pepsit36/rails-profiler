@@ -46,9 +46,8 @@ RSpec.describe Profiler::Models::Profile do
         expect(profile.collectors_metadata).to eq([])
       end
 
-      it "sanitizes params by removing sensitive keys" do
-        expect(profile.params).to eq("name" => "alice")
-        expect(profile.params).not_to have_key("token")
+      it "sanitizes params by masking sensitive values" do
+        expect(profile.params).to eq("name" => "alice", "token" => "[FILTERED]")
       end
 
       it "extracts only allowed HTTP headers" do
@@ -193,27 +192,27 @@ RSpec.describe Profiler::Models::Profile do
   end
 
   describe "sanitize_params" do
-    it "removes password" do
+    it "masks password" do
       request = double("req", path: "/", request_method: "POST",
                        params: { "username" => "bob", "password" => "secret" },
                        env: {})
       profile = described_class.new(request)
-      expect(profile.params).not_to have_key("password")
+      expect(profile.params["password"]).to eq("[FILTERED]")
       expect(profile.params["username"]).to eq("bob")
     end
 
-    it "removes password_confirmation" do
+    it "masks password_confirmation" do
       request = double("req", path: "/", request_method: "POST",
                        params: { "password_confirmation" => "x" }, env: {})
       profile = described_class.new(request)
-      expect(profile.params).not_to have_key("password_confirmation")
+      expect(profile.params["password_confirmation"]).to eq("[FILTERED]")
     end
 
-    it "removes secret" do
+    it "masks secret" do
       request = double("req", path: "/", request_method: "POST",
                        params: { "secret" => "x" }, env: {})
       profile = described_class.new(request)
-      expect(profile.params).not_to have_key("secret")
+      expect(profile.params["secret"]).to eq("[FILTERED]")
     end
   end
 

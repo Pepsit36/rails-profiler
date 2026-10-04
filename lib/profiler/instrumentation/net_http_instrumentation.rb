@@ -5,6 +5,7 @@ require "base64"
 require "zlib"
 require "stringio"
 require "securerandom"
+require_relative "../redaction"
 
 module Profiler
   module Instrumentation
@@ -20,7 +21,7 @@ module Profiler
           host = address.to_s
           return super if NetHttpInstrumentation.skip_host?(host)
 
-          url = build_url(host, port, req.path, use_ssl?)
+          url = Redaction.filter_url(build_url(host, port, req.path, use_ssl?))
           req_body = req.body.to_s
           # Fallback: body may be passed as the 2nd argument and only applied
           # to req inside super via req.set_body_internal(body)
@@ -43,7 +44,7 @@ module Profiler
               req_body = ""
             end
           end
-          req_headers = req.to_hash.transform_values { |v| v.join(", ") }
+          req_headers = Redaction.filter_headers(req.to_hash.transform_values { |v| v.join(", ") })
           req_content_type = req["content-type"].to_s
           processed_req = req_body.empty? ? { body: nil, encoding: "text" } : NetHttpInstrumentation.process_body(req_body, req_content_type)
 
@@ -83,7 +84,7 @@ module Profiler
             entry,
             status: response.code.to_i,
             duration: duration,
-            response_headers: response.to_hash.transform_values { |v| v.join(", ") },
+            response_headers: Redaction.filter_headers(response.to_hash.transform_values { |v| v.join(", ") }),
             response_body: processed_resp[:body],
             response_body_encoding: processed_resp[:encoding],
             response_size: resp_body_raw.bytesize
@@ -151,7 +152,8 @@ module Profiler
         if mime.match?(BINARY_CONTENT_TYPES)
           { body: Base64.strict_encode64(body.b), encoding: "base64" }
         else
-          text = body.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")
+          text = Redaction.filter_body(body, content_type)
+                          .encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")
           { body: text, encoding: "text" }
         end
       end

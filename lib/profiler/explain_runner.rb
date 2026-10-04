@@ -28,6 +28,10 @@ module Profiler
       query = queries[query_index]
       sql   = query["sql"].to_s
       binds = Array(query["binds"])
+      if binds.include?(Redaction::MASK)
+        raise ArgumentError, "EXPLAIN refused for query #{query_index}: one of its bind values was " \
+                             "filtered when captured (config.filter_parameters), so the query cannot be rebuilt"
+      end
 
       conn    = ActiveRecord::Base.connection
       adapter = conn.adapter_name.downcase

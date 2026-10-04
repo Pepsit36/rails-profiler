@@ -96,11 +96,15 @@ module Profiler
 
         binds.map do |bind|
           if bind.respond_to?(:value)
-            bind.value
+            name = bind.name if bind.respond_to?(:name)
+            Profiler::Redaction.filter_named(name, bind.value)
           else
             bind
           end
         end
+      rescue StandardError
+        # Never let the profiler raise into the application's query.
+        binds.map { Profiler::Redaction::MASK }
       end
 
       def extract_backtrace
