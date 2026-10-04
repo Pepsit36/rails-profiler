@@ -7,9 +7,28 @@ require "profiler/test_runner/runner"
 require "profiler/test_runner/discovery"
 require "profiler/env_override_store"
 require "profiler/mcp/tools/run_tests"
+require "profiler/mcp/server"
+require "fileutils"
+require "pathname"
 
 RSpec.describe Profiler::MCP::Tools::RunTests do
+  let(:tmpdir) do
+    dir = File.realpath(Dir.mktmpdir("profiler_run_tests_spec"))
+    FileUtils.mkdir_p(File.join(dir, "spec/models"))
+    FileUtils.mkdir_p(File.join(dir, "lib/tasks"))
+    File.write(File.join(dir, "spec/fake_spec.rb"), "")
+    File.write(File.join(dir, "spec/models/user_spec.rb"), "")
+    File.write(File.join(dir, "lib/tasks/not_a_test.rb"), "")
+    dir
+  end
+
   before do
+    rails_root = Pathname.new(tmpdir)
+    rails_stub = Module.new
+    rails_stub.define_singleton_method(:root) { rails_root }
+    rails_stub.define_singleton_method(:to_s) { "Rails" }
+    stub_const("Rails", rails_stub)
+
     Profiler.configure { |c| c.enabled = true; c.storage = :memory }
     Profiler::TestRunner.instance_variable_set(:@run_store, nil)
     allow(Profiler).to receive(:env_override_store).and_return(
@@ -23,6 +42,7 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
 
   after do
     Profiler::TestRunner.instance_variable_set(:@run_store, nil)
+    FileUtils.rm_rf(tmpdir)
   end
 
   def call(params = {})
@@ -138,6 +158,64 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
     it "includes the run ID so the caller can poll later" do
       result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 1)
       expect(result.first[:text]).to match(/Run ID.*`[0-9a-f]{16}`/)
+    end
+  end
+
+  describe "file selection" do
+    def expect_refused(files)
+      expect(Profiler::TestRunner::Runner).not_to receive(:spawn_async)
+      result = call("files" => files, "framework" => "rspec")
+
+      expect(result).to be_a(::MCP::Tool::Response)
+      expect(result.error?).to be true
+      expect(result.content.first[:text]).to match(/Not a discovered test file: #{Regexp.escape(files.last)}/)
+    end
+
+    it "refuses a file under the Rails root that is not a discovered test" do
+      expect_refused(["lib/tasks/not_a_test.rb"])
+    end
+
+    it "refuses a path that leaves the Rails root" do
+      File.write(File.join(File.dirname(tmpdir), "outside_spec.rb"), "")
+      expect_refused(["../outside_spec.rb"])
+    ensure
+      FileUtils.rm_f(File.join(File.dirname(tmpdir), "outside_spec.rb"))
+    end
+
+    it "refuses an absolute path outside the discovered tests" do
+      expect_refused([File.join(tmpdir, "lib/tasks/not_a_test.rb")])
+    end
+
+    it "refuses a symbolic link in the spec directory that points outside the discovered tests" do
+      File.symlink(File.join(tmpdir, "lib/tasks/not_a_test.rb"), File.join(tmpdir, "spec/models/helper_link.rb"))
+      expect_refused(["spec/models/helper_link.rb"])
+    end
+
+    it "refuses a path holding a null byte with a tool error" do
+      expect_refused(["spec/fake_spec.rb\0"])
+    end
+
+    it "reaches the MCP client as a tool error" do
+      expect(Profiler::TestRunner::Runner).not_to receive(:spawn_async)
+      server = Profiler::MCP::Server.new.instance_variable_get(:@server)
+
+      response = server.handle({
+        jsonrpc: "2.0", id: 1, method: "tools/call",
+        params: { name: "run_tests", arguments: { files: ["lib/tasks/not_a_test.rb"], framework: "rspec" } }
+      })
+
+      expect(response[:result][:isError]).to be true
+      expect(response[:result][:content]).to eq([{ type: "text", text: "Not a discovered test file: lib/tasks/not_a_test.rb" }])
+    end
+
+    it "accepts discovered files, several at once and with a line number" do
+      allow(Profiler::TestRunner::Runner).to receive(:spawn_async)
+
+      result = call("files" => ["spec/fake_spec.rb", "spec/models/user_spec.rb:12"], "framework" => "rspec",
+                    "timeout_seconds" => 0)
+
+      expect(Profiler::TestRunner::Runner).to have_received(:spawn_async).once
+      expect(result.first[:text]).to include("Files | 2")
     end
   end
 end

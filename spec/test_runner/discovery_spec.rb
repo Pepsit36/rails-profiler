@@ -32,6 +32,20 @@ RSpec.describe Profiler::TestRunner::Discovery do
   end
 
   describe ".files" do
+    context "when the Rails root holds glob metacharacters" do
+      let(:tmpdir) do
+        dir = File.join(Dir.mktmpdir("profiler_discovery_spec"), "app [v2] {x}")
+        FileUtils.mkdir_p(File.join(dir, "spec/models"))
+        File.write(File.join(dir, "spec/models/user_spec.rb"), "")
+        dir
+      end
+
+      it "still finds the test files" do
+        paths = described_class.files.flat_map { |d| d[:files].map { |f| f[:path] } }
+        expect(paths).to eq(["spec/models/user_spec.rb"])
+      end
+    end
+
     context "without framework filter" do
       it "returns both rspec and minitest files" do
         result = described_class.files

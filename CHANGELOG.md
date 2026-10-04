@@ -19,6 +19,41 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.10] - 2026-10-04
+
+<!-- stamped -->
+
+### Security
+
+- **Test runner:** The test runner (the dashboard page and the MCP tool `run_tests`) only runs
+  the test files it discovers, `spec/**/*_spec.rb` and `test/**/*_test.rb` under the Rails root,
+  optionally with a line number (`spec/models/user_spec.rb:12`). Paths are compared after resolving
+  symbolic links. Any other path answers `422` over HTTP, or a tool error over MCP, and nothing is
+  started. The HTTP endpoint used to run any file under the Rails root, and `run_tests` any path at all.
+- **Test runner:** A selection sent with the wrong framework (a `test/**/*_test.rb` file for
+  `rspec`, or a spec for `minitest`) now answers `422` too, and so does a path holding a null byte,
+  which used to raise an error.
+- **Test runner:** The test process starts from the environment the shell gave Rails, copied when
+  the gem is loaded, plus the environment overrides set from the profiler, instead of the current
+  environment of the application. Overrides that make the test process, or the rbenv or asdf shim
+  that starts it, load or run other code are left out, with a warning naming them once: names
+  starting with `RUBY`, `GEM_`, `BUNDLE_`, `LD_`, `BASH_`, `RBENV_` and others, `NODE_OPTIONS`,
+  `PATH`, `SPEC_OPTS`, `PS4`, `SHELLOPTS`, any name holding a character other than a letter, a
+  digit or `_`, and the rest of the list in the README. Those keep their shell value, and so do
+  `DATABASE_URL` and `SECRET_KEY_BASE`, whose overrides were skipped but still reached the test
+  process, since an override is also written into the environment of the running application. A
+  variable deleted from the profiler is now unset in the test process, where it used to hold the
+  text `__profiler_deleted__`. Variables the application writes into `ENV` once loaded (`dotenv`
+  for instance) no longer reach the test process, which loads them itself when your test setup does.
+  The test process, which boots the same application, no longer replays the overrides on its own:
+  the runner marks it with `PROFILER_TEST_RUNNER_CHILD=1`, a name the env tools and the env vars
+  endpoint now refuse to set or delete (`422`, or a tool error over MCP).
+- **Test runner:** Test files are found when the path of the application holds `[` or `{`.
+- **Upgrading:** Nothing to do when you run the specs the profiler lists. To run any file under the
+  Rails root again, set `config.test_runner_allow_undiscovered_files = true`. The environment
+  overrides left out have no option, the list being a deny list that cannot be complete: set those
+  variables in the shell that starts Rails instead, the test process inherits them.
+
 ## [0.30.9] - 2026-10-04
 
 <!-- stamped -->

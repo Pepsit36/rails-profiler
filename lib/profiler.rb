@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# First, so that the copy of ENV is taken before anything writes into it
+require_relative "profiler/boot_env"
 require_relative "profiler/version"
 require_relative "profiler/configuration"
 require_relative "profiler/redaction"

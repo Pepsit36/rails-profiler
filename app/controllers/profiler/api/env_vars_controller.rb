@@ -17,6 +17,12 @@ module Profiler
           return
         end
 
+        if Profiler::EnvOverrideStore.reserved_key?(key)
+          render json: { error: "#{Profiler::EnvOverrideStore::RESERVED_KEY_ERROR}; #{key} was left unchanged" },
+                 status: :unprocessable_entity
+          return
+        end
+
         value = params[:value]
 
         if Profiler::Redaction.mask?(value)

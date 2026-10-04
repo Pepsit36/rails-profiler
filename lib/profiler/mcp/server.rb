@@ -389,7 +389,7 @@ module Profiler
       def define_tool(name:, description:, input_schema:, handler:)
         ::MCP::Tool.define(name: name, description: description, input_schema: input_schema) do |server_context: nil, **args|
           result = handler.call(args.transform_keys(&:to_s))
-          ::MCP::Tool::Response.new(result)
+          result.is_a?(::MCP::Tool::Response) ? result : ::MCP::Tool::Response.new(result)
         end
       end
 
