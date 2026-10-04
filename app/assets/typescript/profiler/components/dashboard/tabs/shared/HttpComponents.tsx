@@ -46,10 +46,13 @@ function mimeToExt(mime: string): string {
   return map[m] || '.bin'
 }
 
+// A blob: URL inherits the profiler's origin, which is the application's: opened in a tab,
+// a blob typed text/html or image/svg+xml would run the scripts of the captured body. Blobs
+// offered for download are therefore untyped; the file name keeps the extension.
 function DownloadTextButton({ text, mime }: { text: string, mime: string }) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
-    const objectUrl = URL.createObjectURL(new Blob([text], { type: mime }))
+    const objectUrl = URL.createObjectURL(new Blob([text], { type: 'application/octet-stream' }))
     setUrl(objectUrl)
     return () => URL.revokeObjectURL(objectUrl)
   }, [text, mime])
@@ -157,6 +160,14 @@ function categoryMime(category: BodyCategory): string {
   return map[category] || 'text/plain'
 }
 
+// The type a preview blob may carry: raster images and PDF, which run no script in the
+// profiler's origin. Anything else, SVG included, stays an untyped download.
+function inertPreviewType(mime: string): string {
+  const m = mime.toLowerCase()
+  if (m === 'application/pdf' || (m.startsWith('image/') && m !== 'image/svg+xml')) return m
+  return 'application/octet-stream'
+}
+
 const PREVIEW_LIMIT = 500
 const CSV_ROW_LIMIT = 10
 
@@ -167,6 +178,7 @@ export function SmartBodyPreview({ body, encoding, headers }: {
 }) {
   const [expanded, setExpanded] = useState(false)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
 
   const category = detectContentType(headers)
 
@@ -176,9 +188,14 @@ export function SmartBodyPreview({ body, encoding, headers }: {
     const raw = atob(body)
     const bytes = new Uint8Array(raw.length)
     for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
-    const url = URL.createObjectURL(new Blob([bytes], { type: mime }))
+    const url = URL.createObjectURL(new Blob([bytes], { type: inertPreviewType(mime) }))
+    const download = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }))
     setObjectUrl(url)
-    return () => URL.revokeObjectURL(url)
+    setDownloadUrl(download)
+    return () => {
+      URL.revokeObjectURL(url)
+      URL.revokeObjectURL(download)
+    }
   }, [body, encoding, headers])
 
   if (!body) return <span class="profiler-text--muted profiler-text--xs">empty</span>
@@ -188,15 +205,20 @@ export function SmartBodyPreview({ body, encoding, headers }: {
     const filename = `body${mimeToExt(mime)}`
     return (
       <div class="profiler-body-binary">
-        {objectUrl && (category === 'image' || category === 'svg') && (
+        {objectUrl && category === 'image' && (
           <img src={objectUrl} alt="response preview" style="max-width:100%;max-height:300px;display:block;margin-bottom:8px;border-radius:4px;border:1px solid var(--profiler-border)" />
+        )}
+        {category === 'svg' && (
+          // A data: URL rather than a blob: one: an <img> runs no script, and browsers refuse
+          // to open a data: URL in a tab of its own.
+          <img src={`data:image/svg+xml;base64,${body}`} alt="response preview" style="max-width:100%;max-height:300px;display:block;margin-bottom:8px;border-radius:4px;border:1px solid var(--profiler-border)" />
         )}
         {objectUrl && category === 'pdf' && (
           <iframe src={objectUrl} class="profiler-body-preview-frame" title="PDF preview" />
         )}
         <div style="display:flex;gap:8px;margin-top:4px">
-          {objectUrl && (
-            <a href={objectUrl} download={filename} class="profiler-body-download-btn profiler-text--xs">
+          {downloadUrl && (
+            <a href={downloadUrl} download={filename} class="profiler-body-download-btn profiler-text--xs">
               Download {mime}
             </a>
           )}

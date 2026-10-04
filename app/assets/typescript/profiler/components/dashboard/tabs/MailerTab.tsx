@@ -51,7 +51,8 @@ function BodyPreview({ email }: { email: MailerEmail }) {
       {mode === 'preview' && hasHtml && (
         <iframe
           srcdoc={email.body_html ?? undefined}
-          sandbox="allow-same-origin"
+          // An empty sandbox: no script, and an opaque origin rather than the profiler's.
+          sandbox=""
           style={{ width: '100%', height: '300px', border: '1px solid var(--profiler-border)', borderRadius: 'var(--profiler-radius-md)', background: '#fff', display: 'block' }}
         />
       )}
