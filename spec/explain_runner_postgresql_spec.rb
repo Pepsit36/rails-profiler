@@ -132,6 +132,13 @@ RSpec.describe "Profiler::ExplainRunner on a real PostgreSQL", if: POSTGRES_URL 
     end
   end
 
+  it "explains with no connection to spare in the pool" do
+    allow(ActiveRecord::Base.connection_pool).to receive(:checkout)
+      .and_raise(ActiveRecord::ConnectionTimeoutError, "could not obtain a connection from the pool")
+
+    expect(explain("SELECT 1")[:format]).to eq("json")
+  end
+
   it "leaves the pool's connections where they were" do
     pool = ActiveRecord::Base.connection_pool
     conn # the connection the application holds

@@ -31,11 +31,11 @@ every commit of every tag interval is accounted for one way or the other.
   Upgrading: nothing to set, and no setting brings back the explaining of writes, since the old
   behaviour was to run them again; to see the plan of a write, run it yourself in `psql` between
   `BEGIN` and `ROLLBACK`, as the README shows.
-- **Database:** Run the Explain probe on a connection of its own, closed afterwards, so that nothing
-  it does to its session outlives it: a `SELECT pg_try_advisory_lock(...)` explained from a profile
-  left the lock held by a connection of the pool. On PostgreSQL the probe is also limited to 30
-  seconds (`statement_timeout`), and its EXPLAIN goes by the extended protocol, which refuses a
-  second statement. Explain now needs one free connection in the pool besides the request's.
+- **Database:** Run the Explain probe on a connection of its own, opened outside the pool and closed
+  afterwards, so that nothing it does to its session outlives it: a `SELECT pg_try_advisory_lock(...)`
+  explained from a profile left the lock held by a connection of the pool. On PostgreSQL the probe
+  is also limited to 30 seconds (`statement_timeout`), and its EXPLAIN goes by the extended
+  protocol, which refuses a second statement.
 
 ### Fixed
 
