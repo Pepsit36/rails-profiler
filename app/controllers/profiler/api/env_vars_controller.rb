@@ -32,7 +32,8 @@ module Profiler
           render json: { key: key, value: nil, deleted: true, override: redacted_override(key) }
         else
           current_original = Profiler.env_override_store.all_overrides.dig(key, "original")
-          if current_original == value.to_s
+          # Where the overrides are blocked, set records this process's value, which reset would not.
+          if current_original == value.to_s && Profiler.env_override_store.blocked_reason.nil?
             Profiler.env_override_store.reset(key)
           else
             Profiler.env_override_store.set(key, value.to_s)

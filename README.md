@@ -102,6 +102,10 @@ Profiler.configure do |config|
   # Background job tracking
   config.track_jobs = true
 
+  # Apply the env overrides saved from the UI or MCP even while `enabled` is false
+  # (never in production, whatever this says). See "Environment variable overrides".
+  config.apply_env_overrides_when_disabled = false
+
   # Console profiling (rails console expressions)
   config.track_console = true
 
@@ -201,7 +205,7 @@ Post.includes(:comments).limit(10).to_a
 
 Results appear in the **Console** tab at `/_profiler`. Each entry shows the expression, duration, SQL query count, and whether it raised an error.
 
-Env overrides set via the profiler UI or MCP tools are applied before each console evaluation — no need to restart the console to pick up changes.
+Env overrides set via the profiler UI or MCP tools are applied before each console evaluation, so there is no need to restart the console to pick up changes. They follow the rules of [Environment variable overrides](#environment-variable-overrides): never in production, and not while the profiler is disabled.
 
 To disable console profiling:
 
@@ -210,6 +214,41 @@ Profiler.configure do |config|
   config.track_console = false
 end
 ```
+
+### Environment variable overrides
+
+Values set, deleted or reset from the **Env** tab or the MCP env tools are saved in
+`env_overrides.json` under `tmp_path` (`tmp/rails-profiler` by default) and applied to `ENV` at
+boot, before each Sidekiq job and before each console evaluation. They are applied only when both
+hold:
+
+- the application is not running in production (`Rails.env.production?`), with no option to
+  change that: an overrides file deployed with the application is never read into `ENV`;
+- the profiler is enabled, as the application sets it (`config.enabled` in
+  `config/initializers/profiler.rb`). Set `config.apply_env_overrides_when_disabled = true` to
+  apply them while the profiler is disabled, as versions before 0.30.8 did.
+
+Where they are left out, resetting an override from the UI or MCP still updates the file, but
+puts back in `ENV` only a variable this process changed itself, to the value it had before; it
+never writes the "original" values the file carries, which come from the machine that wrote it.
+
+When the file holds overrides that are left out, the boot logs one warning to `Rails.logger` with
+the file, the number of overrides and the reason, never a name or a value.
+
+At boot the overrides are applied once the application's `config/initializers` have run, since
+that is where `enabled` is decided. Code that reads `ENV` later (requests, jobs, eager loading,
+`after_initialize`) sees them; an initializer of the application that reads `ENV` while it runs
+does not. If one needs them, apply them at the end of `config/initializers/profiler.rb`, with the
+same rules:
+
+```ruby
+Profiler.configure do |config|
+  config.enabled = Rails.env.development?
+end
+Profiler.env_override_store.apply!
+```
+
+Initializers that sort after `profiler.rb` then see the overrides.
 
 ---
 
@@ -511,6 +550,8 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - API mutations require the `X-Profiler-Request` header or a CSRF token
 - No CORS and no framing by other sites by default
 - Sensitive data masked before it is stored, using your `config.filter_parameters`; see [Sensitive data](#sensitive-data)
+- Env overrides saved from the UI or MCP are never applied in production, nor while the profiler
+  is disabled (`apply_env_overrides_when_disabled`)
 
 ### Sensitive data
 
