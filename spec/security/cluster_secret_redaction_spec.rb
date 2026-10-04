@@ -61,10 +61,10 @@ RSpec.describe "Cluster secret redaction" do
     expect(Profiler::Redaction.filter_hash("q" => secret)).to eq("q" => secret)
   end
 
-  it "replaces a short secret only as a whole value" do
+  it "masks nothing for a secret the cluster ignores, shorter than 32 characters" do
     Profiler.configuration.cluster_secret = "abc"
 
-    expect(Profiler::Redaction.filter_hash("a" => "abc", "b" => "xabcx")).to eq("a" => mask, "b" => "xabcx")
+    expect(Profiler::Redaction.filter_hash("a" => "abc", "b" => "xabcx")).to eq("a" => "abc", "b" => "xabcx")
   end
 
   # Free text: what collectors capture without a name to filter on. Every collector stores its

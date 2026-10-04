@@ -25,6 +25,8 @@ module Profiler
       def initialize
         @runs  = Concurrent::Hash.new
         @locks = Concurrent::Hash.new
+        @held  = Concurrent::Hash.new
+        @held_lock = Mutex.new
       end
 
       def create(files:, framework:)
@@ -55,18 +57,28 @@ module Profiler
         return unless run
 
         attrs.each { |k, v| run.send(:"#{k}=", v) }
+        release_held_output(id, run) if TERMINAL_STATUSES.include?(run.status)
         signal(id)
         run
       end
 
+      # Output is free text read back by the API, the SSE stream and run_tests, in the pieces it
+      # arrives in: the profiler's own credentials are masked by value, as in a profile. They
+      # are masked on the text joined with what was held back from the previous piece, and the
+      # last bytes that could start a credential wait for the next piece, so that none is ever
+      # shown cut in two. What is held back is released when the run ends.
       def append_output(id, chunk)
         run = @runs[id]
         return unless run
 
-        # Free text read back by the API, the SSE stream and run_tests: the profiler's own
-        # credentials are masked by value, as in a profile. A credential split across two
-        # chunks is not seen.
-        run.output_lines.push(Profiler::Redaction.hide_credentials(chunk))
+        @held_lock.synchronize do
+          holdback = TERMINAL_STATUSES.include?(run.status) ? 0 : Profiler::Redaction.credential_holdback
+          text = Profiler::Redaction.hide_credentials(@held.fetch(id, "".b) + chunk.to_s.b)
+          cut = [text.bytesize - holdback, 0].max
+          @held[id] = text.byteslice(cut, text.bytesize - cut)
+          shown = text.byteslice(0, cut).force_encoding(chunk.to_s.encoding)
+          run.output_lines.push(shown) unless shown.empty?
+        end
         signal(id)
       end
 
@@ -101,6 +113,13 @@ module Profiler
         lock[:mutex].synchronize { lock[:cond].broadcast }
       end
 
+      def release_held_output(id, run)
+        @held_lock.synchronize do
+          rest = @held.delete(id)
+          run.output_lines.push(rest) if rest && !rest.empty?
+        end
+      end
+
       def snapshot(run, position)
         lines = run.output_lines.dup
         {
@@ -113,7 +132,7 @@ module Profiler
 
       def cleanup_old_runs
         cutoff = Time.now - TTL
-        @runs.delete_if { |id, r| r.finished_at && r.finished_at < cutoff && @locks.delete(id) }
+        @runs.delete_if { |id, r| r.finished_at && r.finished_at < cutoff && @locks.delete(id) && (@held.delete(id) || true) }
       end
     end
 
