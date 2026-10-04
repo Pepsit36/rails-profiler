@@ -65,6 +65,11 @@ every commit of every tag interval is accounted for one way or the other.
   every collector: log lines, exception messages, dumps, SQL text, console expressions), and in the
   output of the test runner, whatever name it travels under and even with `redact_sensitive_data`
   off, on top of the masking by name.
+- **Cluster:** The `cluster_secret` is masked before text is shortened (flame graph names, I18n
+  values, console expressions and results, mail bodies and assigns, job arguments), so no prefix of
+  it is left, and the output of the test runner is masked across the pieces it is read in, so the
+  secret no longer comes back whole once they are joined. Only a secret the cluster accepts (32
+  characters or more) is masked by value.
 - **Upgrading:** Nothing to do if you use neither the MCP HTTP endpoint nor the cluster. Otherwise,
   in `config/initializers/profiler.rb`:
   - MCP over HTTP: set `config.mcp_enabled = true` and `config.mcp_transport = :http`. An
