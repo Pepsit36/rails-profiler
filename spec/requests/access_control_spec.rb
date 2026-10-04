@@ -195,11 +195,16 @@ RSpec.describe "Profiler access control", type: :request do
       expect(last_response.body).not_to include("secret")
     end
 
-    # Walks every route of the engine, so that a controller added later without the
-    # check, or one that skips it, fails here. The MCP HTTP transport, a mounted Rack
-    # application, is left out until MR E of issue #42, which guards that mount, lands;
-    # any other mount fails the example, a Rack application skipping every filter.
+    # Walks every route of the engine, the MCP mount and the routes behind a configuration
+    # switch included, so that a controller or a Rack application added later without the
+    # check, or one that skips it, fails here. Any other mount fails the example: a mounted
+    # Rack application skips every controller filter and needs its own guard.
     it "refuses every route of the engine except the static assets" do
+      Profiler.configure do |config|
+        config.cluster_master = true
+        config.mcp_enabled = true
+        config.mcp_transport = :http
+      end
       mounts, routes = Profiler::Engine.routes.routes.partition { |route| route.defaults[:controller].nil? }
       expect(mounts.map { |route| route.path.spec.to_s }).to eq(["/mcp"])
 
@@ -214,8 +219,20 @@ RSpec.describe "Profiler access control", type: :request do
         custom_request(verb, path, {}, local.merge(profiler_header))
         "#{verb} #{path} -> #{last_response.status}" unless last_response.status == 403
       end
+      allowed += %w[GET POST DELETE].filter_map do |verb|
+        custom_request(verb, "/_profiler/mcp", "{}", local.merge(mcp_headers))
+        "#{verb} /_profiler/mcp -> #{last_response.status}" unless last_response.status == 403
+      end
 
       expect(allowed).to be_empty
+    end
+
+    it "does not route the MCP mount while its HTTP transport is off" do
+      with_rendered_errors do
+        post "/_profiler/mcp", "{}", local.merge(mcp_headers)
+      end
+
+      expect(last_response.status).to eq(404)
     end
   end
 
@@ -227,6 +244,21 @@ RSpec.describe "Profiler access control", type: :request do
       expect(last_response.status).to eq(200)
       expect(json.dig("profile", "token")).to eq("tok")
     end
+  end
+
+  let(:mcp_headers) do
+    { "CONTENT_TYPE" => "application/json", "HTTP_ACCEPT" => "application/json, text/event-stream" }
+  end
+
+  # The spec application raises routing errors; render them as an application does, so that
+  # a route that is not there answers 404.
+  def with_rendered_errors
+    env_config = Rails.application.env_config
+    previous = env_config["action_dispatch.show_exceptions"]
+    env_config["action_dispatch.show_exceptions"] = :all
+    yield
+  ensure
+    env_config["action_dispatch.show_exceptions"] = previous
   end
 
   def rails_env(name)
