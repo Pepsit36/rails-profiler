@@ -136,21 +136,26 @@ RSpec.describe "Persisted env overrides at boot" do
 
   # An initializer declared without `after:` runs after the one declared before it. Declared
   # below profiler.apply_env_overrides, it would run after the application's initializers too,
-  # and profiler.set_configs moved there would overwrite the application's `enabled`.
+  # and profiler.set_configs moved there would overwrite the application's `enabled`. The
+  # initializers that act on `enabled` are meant to run after them, declared just above it.
   describe "initializer order" do
     let(:result) do
       boot(rails_env: "development", initializer: "Profiler.configure { |c| c.enabled = true }")
     end
 
-    it "runs apply_env_overrides after every load_config_initializers, and every other gem initializer before" do
+    it "runs apply_env_overrides and the enabled decisions after every load_config_initializers, the defaults before" do
       ran = result["ran"]
       loads = ran.each_index.select { |i| ran[i] == "load_config_initializers" }
-      others = result["declared"] - ["profiler.apply_env_overrides"]
+      declared = result["declared"]
+      first_deferred = declared.index("profiler.remove_disabled_middleware")
+      early = declared[0...first_deferred]
+      deferred = declared[first_deferred..]
 
-      expect(result["declared"].last).to eq("profiler.apply_env_overrides")
-      expect(ran.index("profiler.apply_env_overrides")).to be > loads.max
-      expect(others.map { |name| ran.index(name) }).to all(be < loads.min)
-      expect(others.sort_by { |name| ran.index(name) }).to eq(others)
+      expect(declared.last).to eq("profiler.apply_env_overrides")
+      expect(early).to include("profiler.set_configs", "profiler.insert_middleware", "profiler.load_collectors")
+      expect(early.map { |name| ran.index(name) }).to all(be < loads.min)
+      expect(deferred.map { |name| ran.index(name) }).to all(be > loads.max)
+      expect(declared.sort_by { |name| ran.index(name) }).to eq(declared)
     end
   end
 
