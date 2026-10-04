@@ -7,19 +7,25 @@ require "active_support/core_ext/string/output_safety"
 module Profiler
   module Middleware
     class ToolbarInjector
+      # The only characters HTML counts as white space between attributes (\s also takes \v).
+      WS = "[\\t\\n\\f\\r ]"
       # Elements whose content the browser does not parse as markup: a </body> inside one of
       # them is text, not the end of the page. Each maps to the end tag that closes it.
       RAW_TEXT_ELEMENTS = %w[script style textarea title xmp iframe noembed noframes noscript]
-                          .to_h { |name| [name, %r{</#{name}(?=[\s/>])}i] }.freeze
+                          .to_h { |name| [name, %r{</#{name}(?=#{WS}|[/>])}i] }.freeze
       # Never closed: whatever follows it is text.
       PLAINTEXT = "plaintext"
-      TAG_NAME = %r{[a-z][^\s/>]*+}i
-      # The rest of a tag, up to its >. A quoted value only starts after an equals sign and may
-      # hold a > or a </body>; one that is never closed fails the match, as does a tag without
-      # its >. Possessive, so that a failure costs no backtracking.
-      TAG_REST = /(?:=\s*+(?:"[^"]*+"|'[^']*+'|[^\s>"'][^\s>]*+|(?=[\s>]))|[^>=]++)*+>/
+      # An attribute as the HTML tokenizer reads it: the name may start with = (or a quote),
+      # and a value only follows a name, after =. A quoted value may hold a > or a </body>.
+      ATTRIBUTE = %r{
+        [^\t\n\f\r\ />][^\t\n\f\r\ />=]*+
+        (?:#{WS}*+(?:=#{WS}*+(?:"[^"]*+"|'[^']*+'|[^\t\n\f\r\ >"'][^\t\n\f\r\ >]*+|(?=>))|(?!=)))
+      }x
+      # The rest of a tag, up to its >. A quoted value that is never closed fails the match,
+      # as does a tag without its >. Possessive, so that a failure costs no backtracking.
+      TAG_REST = %r{(?:#{WS}++|/|#{ATTRIBUTE})*+>}
       # A whole start or end tag, read after its <: the slash and the name are captured.
-      TAG = %r{(/)?([a-z][^\s/>]*+)#{TAG_REST.source}}i
+      TAG = %r{(/)?([a-z][^\t\n\f\r\ />]*+)#{TAG_REST}}i
 
       def initialize(body, token, nonce = nil)
         @body = body
@@ -78,6 +84,10 @@ module Profiler
             next if scanner.skip(/-?>/) || scanner.skip_until(/-->/)
 
             return nil
+          elsif scanner.skip(/!\[CDATA\[/)
+            # A bogus comment up to the first > in HTML, a CDATA section up to ]]> in <svg> or
+            # <math>: go on only when both end at the same place.
+            return nil unless scanner.skip_until(/>/) && bytes.byteslice(scanner.pos - 3, 3) == "]]>"
           elsif scanner.skip(%r{[!?/]})
             # <!DOCTYPE>, <?xml ?>, </ not followed by a letter: a bogus comment, up to its >.
             return nil unless scanner.skip_until(/>/)
@@ -88,12 +98,12 @@ module Profiler
       end
 
       # In a script, <!-- followed by <script enters a state where </script> does not close it.
+      # Only the script itself is searched, so that a page of many scripts is read in linear
+      # time.
       def double_escaped?(bytes, from, to)
-        comment = bytes.index("<!--", from)
-        return false unless comment && comment < to
-
-        script = bytes.index(%r{<script[\s/>]}i, comment)
-        script ? script < to : false
+        text = bytes.byteslice(from, to - from)
+        comment = text.index("<!--")
+        comment ? text.match?(%r{<script(?:#{WS}|[/>])}i, comment) : false
       end
 
       def ajax_interceptor_script

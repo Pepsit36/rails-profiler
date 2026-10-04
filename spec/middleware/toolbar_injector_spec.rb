@@ -218,6 +218,61 @@ RSpec.describe Profiler::Middleware::ToolbarInjector do
 
         expect(toolbar_before(content, "</body></html>")).to be > content.index("<p>end</p>")
       end
+
+      # The browser reads attributes as its tokenizer does: an = where an attribute name
+      # starts is part of the name, and only tab, line feed, form feed, carriage return and
+      # space separate them (not a vertical tab).
+      [
+        %(<p ="><script>">),
+        %(<p a="1"="><script>">),
+        %(<p/="><script>">),
+        %(<p a=\v"><script>">)
+      ].each do |tag|
+        it "sees the script opened by #{tag.inspect} after the real </body>" do
+          tail = %(</body>#{tag}var a = "#{alert}";</script></html>)
+          content = inject(%(<html><body><p>end</p>#{tail}))
+
+          toolbar_before(content, tail)
+          expect(content).to end_with(tail)
+        end
+      end
+
+      it "leaves the page alone when its only </body> is in a script opened by <p =\">" do
+        html = %(<html><body><p>end</p><p ="><script>">var a = "#{alert}";</script></html>)
+
+        expect(inject(html)).to eq(html)
+      end
+
+      it "does not take </body followed by a vertical tab for the closing tag" do
+        html = %(<html><body><p>end</p></body\v></html>)
+
+        expect(inject(html)).to eq(html)
+      end
+
+      it "scans many scripts in linear time" do
+        html = "<html><body>#{"<script>a()</script>" * 40_000}<p>end</p></body></html>"
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        content = inject(html)
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+        toolbar_before(content, "</body></html>")
+        expect(elapsed).to be < 1.0
+      end
+
+      # Outside <svg> and <math>, <![CDATA[ is a bogus comment that ends at the first >; inside,
+      # a CDATA section that ends at ]]>. The scanner does not follow foreign content, so it
+      # only goes on when both readings agree.
+      it "skips a CDATA section without > before its end" do
+        content = inject(%(<html><body><svg><![CDATA[ a < b ]]></svg><p>end</p></body></html>))
+
+        expect(toolbar_before(content, "</body></html>")).to be > content.index("<p>end</p>")
+      end
+
+      it "leaves the page alone rather than inject into a CDATA section holding a >" do
+        html = %(<html><body><p>end</p></body><svg><![CDATA[ a > b </body> ]]></svg></html>)
+
+        expect(inject(html)).to eq(html)
+      end
     end
 
     # The token and the nonce come from the gem and from Rails today; the injector escapes
