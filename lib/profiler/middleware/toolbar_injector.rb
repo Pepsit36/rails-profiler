@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "json"
+require "active_support/core_ext/string/output_safety"
+
 module Profiler
   module Middleware
     class ToolbarInjector
@@ -28,7 +31,7 @@ module Profiler
 
         <<~HTML
           <script#{nonce_attr}>
-            window.__PROFILER_PARENT_TOKEN__ = '#{@token}';
+            window.__PROFILER_PARENT_TOKEN__ = #{js_token};
           </script>
           <script#{nonce_attr}>
             #{ajax_interceptor_code}
@@ -63,15 +66,20 @@ module Profiler
         <<~HTML
           #{ajax_interceptor_script}
           <style>#{toolbar_styles}</style>
-          <div id="profiler-toolbar" class="profiler-root" data-token="#{@token}"></div>
+          <div id="profiler-toolbar" class="profiler-root" data-token="#{ERB::Util.html_escape(@token)}"></div>
           <button id="profiler-toolbar-toggle" class="profiler-root" title="Toggle profiler (Alt+P)"><span class="profiler-toggle-icon">&#9654;</span></button>
           <script#{nonce_attr}>(function(){var c=localStorage.getItem('profiler-toolbar-collapsed')==='true',t=localStorage.getItem('profiler-theme'),theme=t==='light'?'light':t==='dark'?'dark':(window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'),el=document.getElementById('profiler-toolbar'),tog=document.getElementById('profiler-toolbar-toggle');if(c){el.style.cssText='animation:none!important;transform:translateX(calc(100% + 44px))';tog.dataset.collapsed='true';}el.setAttribute('data-theme',theme);tog.setAttribute('data-theme',theme);})();</script>
           <script src="/_profiler/assets/profiler-toolbar.js" defer#{nonce_attr}></script>
         HTML
       end
 
+      # The token as a JavaScript string literal that cannot close the <script> element.
+      def js_token
+        ERB::Util.json_escape(@token.to_s.to_json)
+      end
+
       def nonce_attr
-        @nonce ? " nonce=\"#{@nonce}\"" : ""
+        @nonce ? " nonce=\"#{ERB::Util.html_escape(@nonce)}\"" : ""
       end
 
       # Thermal design system — self-contained CSS for the injected toolbar.
