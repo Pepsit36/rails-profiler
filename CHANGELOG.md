@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.7] - 2026-10-04
+
+<!-- stamped -->
+
 ### Security
 
 - **Sensitive data:** Mask sensitive values with `[FILTERED]` before a profile is stored. Until
