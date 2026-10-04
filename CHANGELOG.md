@@ -53,6 +53,9 @@ every commit of every tag interval is accounted for one way or the other.
 - **Function profiler:** In sampling (`lite`) mode, a request no longer stops the StackProf
   sampler that a concurrent request started, nor takes its samples: its profile says the sampler
   was busy instead.
+- **Dumps:** `Profiler.dump` called outside a profile that collects dumps (a request the profiler
+  skips, a test profile) no longer keeps the value on the thread. Nothing ever read those dumps,
+  and the thread held on to them, and to everything they referenced, for good.
 
 ## [0.30.12] - 2026-10-04
 

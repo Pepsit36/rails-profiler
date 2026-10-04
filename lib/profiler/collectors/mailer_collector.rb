@@ -53,7 +53,10 @@ module Profiler
 
           mailer_class = payload[:mailer].to_s
           action = payload[:action].to_s
-          (Thread.current[:profiler_pending_processes] ||= []) << {
+          pending = Thread.current[:profiler_pending_processes]
+          next unless pending
+
+          pending << {
             mailer_class: mailer_class,
             action: action,
             duration_ms: ((finished - started) * 1000).round(2),
@@ -67,7 +70,7 @@ module Profiler
           next if rails_preview_request?
 
           delivery_ms = ((finished - started) * 1000).round(2)
-          process_info = (Thread.current[:profiler_pending_processes] ||= []).pop || {}
+          process_info = Thread.current[:profiler_pending_processes]&.pop || {}
           mail = payload[:mail]
 
           mailer_class = process_info[:mailer_class] || payload[:mailer_class].to_s
