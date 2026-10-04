@@ -19,6 +19,43 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.7] - 2026-10-04
+
+<!-- stamped -->
+
+### Security
+
+- **Sensitive data:** Mask sensitive values with `[FILTERED]` before a profile is stored. Until
+  now `Authorization`, `Cookie` and `Set-Cookie` headers, raw request and response bodies
+  (passwords included), outbound request headers and bodies, and the whole of `ENV` were stored in
+  clear, and params lost only four exact root keys. The profiler now builds one filter from your
+  `Rails.application.config.filter_parameters` plus its own `config.filter_parameters`, with Rails
+  semantics (nested keys, any case, regexps, procs), and applies it to params and route params,
+  JSON, NDJSON and form bodies, incoming, response and outbound headers (the query string of
+  `Referer`, `Location` and `Content-Location` included), outbound URLs, SQL binds of filtered
+  columns, job arguments and mailer arguments. `multipart` bodies, and JSON bodies that cannot be
+  parsed and in which a filter matches, are masked entirely; HTML and other unstructured bodies are
+  kept. A params key that matches the filter is now kept with a masked value instead of being
+  removed.
+- **Sensitive data:** `ENV` values are shown only for the variables in `config.env_allowlist`, in
+  the Env tab, the `env_vars` endpoint and the `list_env_vars`, `reset_env_var` and `get_profile`
+  MCP tools alike. `[FILTERED]` is refused as a value by the `env_vars` endpoint (422), the
+  `set_env_var` MCP tool and the Env tab import, so re-importing an export cannot overwrite a
+  secret. EXPLAIN is refused, with a message, for a query whose bind values were masked.
+- **Sensitive data:** Procs of `filter_parameters` run once per string value, with the original
+  params for a proc of three arguments, as in Rails; other objects, Active Record models included,
+  are neither copied nor passed to them. When the filter fails, the value is masked rather than
+  the error reaching the application, and the error class is logged once, without the value. A
+  JSON body in whose text no filter matches is not parsed.
+- **Upgrade note:** To get the previous behaviour back, set `config.redact_sensitive_data = false`
+  (no masking) and `config.env_allowlist = :all` (every `ENV` value); `config.filter_parameters = []`
+  keeps masking but relies on your application's list alone. Profiles stored before the upgrade
+  are not rewritten and keep their values in clear until they rotate out: clear them after
+  upgrading with `bin/rails runner 'Profiler.storage.clear'` (every storage backend), the
+  `clear_profiles` MCP tool or the dashboard; the memory store is emptied by a restart. Update
+  every node of a cluster: a node still on an older version returns its data in clear to the
+  master.
+
 ## [0.30.6] - 2026-10-03
 
 <!-- stamped -->

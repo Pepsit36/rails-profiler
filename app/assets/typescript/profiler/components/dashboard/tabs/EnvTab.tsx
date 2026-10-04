@@ -2,6 +2,9 @@ import { useState, useMemo, useEffect, useRef } from 'preact/hooks'
 import { useUpdateEnvVar, useResetEnvVar, useResetAllEnvVars, getEnvVars } from '../../../generated/api'
 import { EnvData, EnvOverride } from '../../../dashboard/types'
 
+// The value the profiler shows in place of a hidden one (Profiler::Redaction::MASK).
+const FILTERED_MASK = '[FILTERED]'
+
 interface Props {
   envData: EnvData | undefined
   readOnly?: boolean
@@ -218,8 +221,16 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
 
   // --- Import ---
 
-  const importPreview = useMemo(() => parseEnvFile(importContent), [importContent])
+  // A value exported while masked is the mask, not the value: importing it
+  // would overwrite the real one, so those lines are skipped (the server
+  // refuses them too).
+  const importParsed = useMemo(() => parseEnvFile(importContent), [importContent])
+  const importPreview = useMemo(
+    () => Object.fromEntries(Object.entries(importParsed).filter(([, v]) => v !== FILTERED_MASK)),
+    [importParsed]
+  )
   const importCount = Object.keys(importPreview).length
+  const importMaskedCount = Object.keys(importParsed).length - importCount
 
   const importEnv = async () => {
     const entries = Object.entries(importPreview)
@@ -230,7 +241,8 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
       setVariables(prev => ({ ...prev, ...importPreview }))
       setImportContent('')
       setShowImport(false)
-      showFlash('success', `Imported ${entries.length} variables`)
+      const skipped = importMaskedCount > 0 ? `, skipped ${importMaskedCount} masked` : ''
+      showFlash('success', `Imported ${entries.length} variables${skipped}`)
     } catch (e: any) {
       showFlash('error', e.message ?? 'Import failed')
     } finally {
@@ -500,6 +512,11 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
             {importCount > 0 && (
               <span class="profiler-text--xs profiler-text--muted">
                 {importCount} variable{importCount !== 1 ? 's' : ''} to import
+              </span>
+            )}
+            {importMaskedCount > 0 && (
+              <span class="profiler-text--xs profiler-text--muted">
+                {importMaskedCount} masked ({FILTERED_MASK}) skipped
               </span>
             )}
             <button

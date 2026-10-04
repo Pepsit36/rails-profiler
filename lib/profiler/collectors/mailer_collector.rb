@@ -199,7 +199,19 @@ module Profiler
         klass = Object.const_get(mailer_class)
         params = klass.instance_method(action).parameters
         params.each_with_index.each_with_object({}) do |((_, name), i), h|
-          h[name.to_s] = serialize_assign(args[i])
+          h[name.to_s] = if Profiler::Redaction.sensitive_key?(name)
+            Profiler::Redaction::MASK
+          else
+            value = args[i]
+            # A hash or array goes through the filter by its keys, anything
+            # else by the parameter name: never both, so a proc runs once.
+            filtered = if value.is_a?(Hash) || value.is_a?(Array)
+              Profiler::Redaction.filter_value(value)
+            else
+              Profiler::Redaction.filter_named(name, value)
+            end
+            serialize_assign(filtered)
+          end
         end
       rescue StandardError
         {}
