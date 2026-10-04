@@ -98,10 +98,18 @@ module Profiler
         @profile.add_collector_data(name, data)
       end
 
-      # Clears a thread-local slot this collector set to itself, but not one a nested profile
-      # (a job performed inline during a request) has taken over since.
-      def release_thread_slot(key)
-        Thread.current[key] = nil if Thread.current[key].equal?(self)
+      # Thread-local slots follow a stack: subscribe takes one over and remembers what it held,
+      # unsubscribe hands it back. A job performed inline during a request thus records into
+      # its own slots, and the request gets its own back, with what it recorded before the job.
+      def claim_thread_slot(key, value)
+        @claimed_thread_slots ||= {}
+        @claimed_thread_slots[key] = Thread.current[key] unless @claimed_thread_slots.key?(key)
+        Thread.current[key] = value
+      end
+
+      def restore_thread_slots
+        @claimed_thread_slots&.each { |key, previous| Thread.current[key] = previous }
+        @claimed_thread_slots = nil
       end
 
       def unsubscribe_notifications(subscriptions)

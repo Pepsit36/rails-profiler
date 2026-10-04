@@ -19,20 +19,20 @@ require "profiler/collectors/function_profiler_collector"
 # every path where collect never runs, so it must be idempotent and safe after a partial or
 # missing subscribe.
 RSpec.describe "Collector release (unsubscribe)" do
-  NOTIFICATION_NAMES = %w[
+  RELEASE_SPEC_NOTIFICATIONS = %w[
     sql.active_record render_template.action_view render_partial.action_view
     cache_read.active_support cache_write.active_support cache_delete.active_support
     process_action.action_controller process.action_mailer deliver.action_mailer
   ].freeze
 
-  RELEASED_THREAD_KEYS = %i[
+  RELEASE_SPEC_THREAD_KEYS = %i[
     profiler_flamegraph_collector profiler_http_collector profiler_i18n_collector
     profiler_pending_processes profiler_logs profiler_dumps
     fn_profiler_mode fn_profiler_clock fn_profiler_wall_start fn_profiler_cpu_start
     fn_profiler_stack fn_profiler_roots fn_profiler_count fn_profiler_depth
   ].freeze
 
-  COLLECTOR_CLASSES = [
+  RELEASE_SPEC_COLLECTORS = [
     Profiler::Collectors::DatabaseCollector,
     Profiler::Collectors::ViewCollector,
     Profiler::Collectors::CacheCollector,
@@ -51,8 +51,8 @@ RSpec.describe "Collector release (unsubscribe)" do
 
   def installed
     {
-      subscribers: NOTIFICATION_NAMES.sum { |n| ActiveSupport::Notifications.notifier.listeners_for(n).size },
-      thread_keys: RELEASED_THREAD_KEYS.reject { |k| v = Thread.current[k]; v.nil? || (v.respond_to?(:empty?) && v.empty?) },
+      subscribers: RELEASE_SPEC_NOTIFICATIONS.sum { |n| ActiveSupport::Notifications.notifier.listeners_for(n).size },
+      thread_keys: RELEASE_SPEC_THREAD_KEYS.reject { |k| v = Thread.current[k]; v.nil? || (v.respond_to?(:empty?) && v.empty?) },
       stackprof: StackProf.running?,
       tracepoints: ObjectSpace.each_object(TracePoint).count(&:enabled?),
       log_sinks: broadcaster.broadcasts.size
@@ -68,7 +68,7 @@ RSpec.describe "Collector release (unsubscribe)" do
   end
 
   before do
-    RELEASED_THREAD_KEYS.each { |key| Thread.current[key] = nil }
+    RELEASE_SPEC_THREAD_KEYS.each { |key| Thread.current[key] = nil }
     stub_const("Rails", Module.new)
     logger = broadcaster
     Rails.define_singleton_method(:logger) { logger }
@@ -83,7 +83,7 @@ RSpec.describe "Collector release (unsubscribe)" do
     context "with function profiling in #{mode} mode" do
       before { Profiler.function_profiling_mode = mode }
 
-      COLLECTOR_CLASSES.each do |klass|
+      RELEASE_SPEC_COLLECTORS.each do |klass|
         describe klass.name.split("::").last do
           it "releases everything subscribe installed, without collect" do
             baseline = installed
@@ -142,15 +142,20 @@ RSpec.describe "Collector release (unsubscribe)" do
   end
 
   describe "a thread-local slot taken over by a nested profile" do
-    it "is left to the nested collector" do
+    it "is handed back to the outer collector, then to what the thread held before" do
+      Thread.current[:profiler_flamegraph_collector] = :held_before
       outer = Profiler::Collectors::FlameGraphCollector.new(profile)
       inner = Profiler::Collectors::FlameGraphCollector.new(profile)
       outer.subscribe
       inner.subscribe
-      outer.unsubscribe
       expect(Thread.current[:profiler_flamegraph_collector]).to be(inner)
       inner.unsubscribe
-      expect(Thread.current[:profiler_flamegraph_collector]).to be_nil
+      inner.unsubscribe
+      expect(Thread.current[:profiler_flamegraph_collector]).to be(outer)
+      outer.unsubscribe
+      expect(Thread.current[:profiler_flamegraph_collector]).to eq(:held_before)
+    ensure
+      Thread.current[:profiler_flamegraph_collector] = nil
     end
   end
 
@@ -164,6 +169,15 @@ RSpec.describe "Collector release (unsubscribe)" do
       collector.unsubscribe
       expect(StackProf.running?).to be(true)
     end
+
+    it "neither stops nor reads a StackProf run it did not start, in collect" do
+      StackProf.start(mode: :wall, interval: 1000, raw: true)
+      collector = described_class.new(profile)
+      collector.subscribe
+      collector.collect
+      expect(StackProf.running?).to be(true)
+      expect(collector.panel_content).to include(enabled: true, sampler_busy: true, functions: [])
+    end
   end
 
   describe Profiler::Collectors::LogCollector do
@@ -174,7 +188,7 @@ RSpec.describe "Collector release (unsubscribe)" do
       collector.unsubscribe
       Rails.logger.info("after the request")
       collector.collect
-      expect(collector.panel_content[:logs].map { |l| l[:message] }).to eq([])
+      expect(collector.panel_content[:logs].map { |l| l[:message] }).to eq(["during the request"])
 
       collector = described_class.new(profile)
       collector.subscribe

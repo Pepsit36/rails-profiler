@@ -3,6 +3,7 @@
 require "spec_helper"
 require "rack/test"
 require "stackprof"
+require "timeout"
 require "profiler/collectors/database_collector"
 require "profiler/collectors/view_collector"
 require "profiler/collectors/cache_collector"
@@ -20,7 +21,7 @@ require "profiler/collectors/function_profiler_collector"
 RSpec.describe Profiler::Middleware::ProfilerMiddleware, "on the error path" do
   include Rack::Test::Methods
 
-  NOTIFICATIONS = %w[
+  ERROR_PATH_NOTIFICATIONS = %w[
     sql.active_record
     render_template.action_view
     render_partial.action_view
@@ -32,7 +33,7 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "on the error path" do
     deliver.action_mailer
   ].freeze
 
-  INSTALLING_COLLECTORS = [
+  ERROR_PATH_COLLECTORS = [
     Profiler::Collectors::DatabaseCollector,
     Profiler::Collectors::ViewCollector,
     Profiler::Collectors::CacheCollector,
@@ -46,7 +47,7 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "on the error path" do
     Profiler::Collectors::FunctionProfilerCollector
   ].freeze
 
-  THREAD_KEYS = %i[
+  ERROR_PATH_THREAD_KEYS = %i[
     profiler_flamegraph_collector profiler_http_collector profiler_i18n_collector
     profiler_pending_processes profiler_logs profiler_dumps profiler_token
     fn_profiler_mode fn_profiler_clock fn_profiler_wall_start fn_profiler_cpu_start
@@ -71,7 +72,7 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "on the error path" do
   end
 
   def subscriber_counts
-    NOTIFICATIONS.to_h { |name| [name, ActiveSupport::Notifications.notifier.listeners_for(name).size] }
+    ERROR_PATH_NOTIFICATIONS.to_h { |name| [name, ActiveSupport::Notifications.notifier.listeners_for(name).size] }
   end
 
   def enabled_tracepoints
@@ -79,7 +80,7 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "on the error path" do
   end
 
   def leftover_thread_keys
-    THREAD_KEYS.select { |key| v = Thread.current[key]; !(v.nil? || (v.respond_to?(:empty?) && v.empty?)) }
+    ERROR_PATH_THREAD_KEYS.select { |key| v = Thread.current[key]; !(v.nil? || (v.respond_to?(:empty?) && v.empty?)) }
   end
 
   def get_raising(path = "/boom")
@@ -97,10 +98,10 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "on the error path" do
   end
 
   before do
-    THREAD_KEYS.each { |key| Thread.current[key] = nil }
+    ERROR_PATH_THREAD_KEYS.each { |key| Thread.current[key] = nil }
     Profiler.configure do |c|
       c.enabled = true
-      c.collectors = INSTALLING_COLLECTORS
+      c.collectors = ERROR_PATH_COLLECTORS
       c.skip_paths = []
       c.track_memory = false
       c.track_http = true
@@ -184,7 +185,7 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "on the error path" do
     end
 
     it "serves the request once, unprofiled, and releases the collectors already subscribed" do
-      Profiler.configure { |c| c.collectors = INSTALLING_COLLECTORS + [failing_collector] }
+      Profiler.configure { |c| c.collectors = ERROR_PATH_COLLECTORS + [failing_collector] }
       before_counts = subscriber_counts
 
       get "/ok"
@@ -193,6 +194,80 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "on the error path" do
       expect(calls).to eq([:called])
       expect(subscriber_counts).to eq(before_counts)
       expect(StackProf.running?).to be(false)
+    end
+  end
+
+  describe "when a collector's subscribe is interrupted by an exception outside StandardError" do
+    [Interrupt, Timeout::ExitException].each do |exception_class|
+      it "propagates #{exception_class}, never calls the application and releases everything" do
+        interrupting = Class.new(Profiler::Collectors::BaseCollector) do
+          define_method(:subscribe) { raise exception_class }
+        end
+        Profiler.configure { |c| c.collectors = ERROR_PATH_COLLECTORS + [interrupting] }
+        before_counts = subscriber_counts
+
+        expect { get "/ok" }.to raise_error(exception_class)
+
+        expect(calls).to eq([])
+        expect(subscriber_counts).to eq(before_counts)
+        expect(StackProf.running?).to be(false)
+        expect(leftover_thread_keys).to eq([])
+      end
+    end
+  end
+
+  describe "when the request is cut short by an exception outside StandardError" do
+    let(:raised) { Timeout::ExitException }
+    let(:inner_app) do
+      calls = self.calls
+      raised = self.raised
+      ->(_env) { calls << :called; raise raised, "request timed out" }
+    end
+
+    it "keeps the profile of a timed-out request, with status 500 and the exception" do
+      expect { get "/slow" }.to raise_error(Timeout::ExitException)
+      profiles = Profiler.storage.list
+      expect(profiles.map(&:status)).to eq([500])
+      exception = Profiler.storage.load(profiles.first.token).collectors_data["exception"]
+      expect(exception).to include("exception_class" => "Timeout::ExitException")
+    end
+
+    [Interrupt, SignalException.new("TERM"), SystemExit].each do |signal|
+      context "by #{signal.is_a?(Exception) ? signal.class : signal}" do
+        let(:raised) { signal }
+        let(:inner_app) do
+          calls = self.calls
+          raised = self.raised
+          ->(_env) { calls << :called; raise raised }
+        end
+
+        it "keeps no profile, and still releases everything" do
+          before_counts = subscriber_counts
+          expect { get "/stopped" }.to raise_error(signal.is_a?(Exception) ? signal.class : signal)
+          expect(Profiler.storage.list).to eq([])
+          expect(calls).to eq([:called])
+          expect(subscriber_counts).to eq(before_counts)
+          expect(StackProf.running?).to be(false)
+        end
+      end
+    end
+  end
+
+  describe "when another request already runs the StackProf sampler" do
+    let(:inner_app) do
+      calls = self.calls
+      ->(_env) { calls << :called; [200, { "Content-Type" => "text/plain" }, ["ok"]] }
+    end
+
+    it "leaves that sampler running and marks the profile as sampler busy" do
+      Profiler.configure { |c| c.collectors = [Profiler::Collectors::FunctionProfilerCollector] }
+      StackProf.start(mode: :wall, interval: 1000, raw: true)
+
+      get "/concurrent"
+
+      expect(StackProf.running?).to be(true)
+      data = Profiler.storage.load(last_response.headers["X-Profiler-Token"]).collectors_data["function_profile"]
+      expect(data).to include("enabled" => true, "sampler_busy" => true)
     end
   end
 

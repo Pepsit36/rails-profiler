@@ -35,7 +35,7 @@ module Profiler
       def subscribe
         return unless defined?(ActiveSupport::Notifications)
 
-        Thread.current[:profiler_flamegraph_collector] = self
+        claim_thread_slot(:profiler_flamegraph_collector, self)
 
         # Controller action
         @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("process_action.action_controller") do |_name, started, finished, _unique_id, payload|
@@ -146,7 +146,7 @@ module Profiler
 
       def unsubscribe
         unsubscribe_notifications(@subscriptions)
-        release_thread_slot(:profiler_flamegraph_collector)
+        restore_thread_slots
       end
 
       def toolbar_summary

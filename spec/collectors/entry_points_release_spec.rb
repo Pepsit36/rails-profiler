@@ -8,10 +8,10 @@ require "profiler/test_profiler"
 # Jobs, console commands and tests start collectors like the request middleware does: a
 # collector that fails to subscribe, or to collect, must not leave the others installed.
 RSpec.describe "Collector release in the job, console and test profilers" do
-  NOTIFICATIONS = %w[sql.active_record cache_read.active_support process_action.action_controller].freeze
+  ENTRY_POINTS_NOTIFICATIONS = %w[sql.active_record cache_read.active_support process_action.action_controller].freeze
 
   def subscriber_counts
-    NOTIFICATIONS.to_h { |name| [name, ActiveSupport::Notifications.notifier.listeners_for(name).size] }
+    ENTRY_POINTS_NOTIFICATIONS.to_h { |name| [name, ActiveSupport::Notifications.notifier.listeners_for(name).size] }
   end
 
   before do
@@ -46,6 +46,16 @@ RSpec.describe "Collector release in the job, console and test profilers" do
 
         expect(result).to eq(:done)
         expect(calls).to eq(1)
+        expect(subscriber_counts).to eq(before_counts)
+      end
+
+      it "releases the others when a subscribe is interrupted by an exception outside StandardError" do
+        allow_any_instance_of(Profiler::Collectors::ExceptionCollector).to receive(:subscribe).and_raise(Interrupt)
+        before_counts = subscriber_counts
+        calls = 0
+
+        expect { run.call { calls += 1 } }.to raise_error(Interrupt)
+        expect(calls).to eq(0)
         expect(subscriber_counts).to eq(before_counts)
       end
 

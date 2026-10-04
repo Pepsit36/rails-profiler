@@ -17,44 +17,45 @@ module Profiler
 
         collectors = nil
         begin
-          profile = Models::Profile.new(build_request(env))
-          profile.gem_version = Profiler::VERSION
-          Profiler::CurrentContext.token = profile.token
+          begin
+            profile = Models::Profile.new(build_request(env))
+            profile.gem_version = Profiler::VERSION
+            Profiler::CurrentContext.token = profile.token
 
-          # Capture request body before app processes it
-          req_body_raw = read_rack_input(env)
+            # Capture request body before app processes it
+            req_body_raw = read_rack_input(env)
 
-          # Store profile in env for collectors
-          env["profiler.profile"] = profile
+            # Store profile in env for collectors
+            env["profiler.profile"] = profile
 
-          collectors = create_collectors(profile)
-          env["profiler.collectors"] = collectors
-          subscribed = Collectors::Lifecycle.subscribe_all(collectors, "ProfilerMiddleware")
-        rescue => e
-          warn "Profiler error: #{e.message}\n#{e.backtrace.join("\n")}"
-          subscribed = false
-        end
+            collectors = create_collectors(profile)
+            env["profiler.collectors"] = collectors
+            subscribed = Collectors::Lifecycle.subscribe_all(collectors, "ProfilerMiddleware")
+          rescue => e
+            warn "Profiler error: #{e.message}\n#{e.backtrace.join("\n")}"
+            subscribed = false
+          end
 
-        unless subscribed
-          # The application has not run yet: serve the request once, unprofiled.
-          release(collectors)
-          return @app.call(env)
-        end
+          unless subscribed
+            # The application has not run yet: serve the request once, unprofiled.
+            release(collectors)
+            return @app.call(env)
+          end
 
-        begin
           # Measure memory before
           memory_before = current_memory if Profiler.configuration.track_memory
 
           begin
             response = @app.call(env)
-          rescue => e
-            record_failed_request(env, profile, collectors, req_body_raw, memory_before, e)
+          rescue Exception => e # rubocop:disable Lint/RescueException
+            record_failed_request(env, profile, collectors, req_body_raw, memory_before, e) if failed_request?(e)
             raise
           end
 
           complete_profile(env, profile, collectors, req_body_raw, memory_before, response)
         ensure
-          # Whatever happened above, nothing a collector installed outlives the request.
+          # Opened before the first subscribe: whatever happens from there on, an exception
+          # outside StandardError included, nothing a collector installed outlives the request.
           release(collectors)
         end
       end
@@ -99,6 +100,12 @@ module Profiler
         # The application has run: its response goes out, profiled or not.
         warn "Profiler error: #{e.message}\n#{e.backtrace.join("\n")}"
         [status, headers, body || []]
+      end
+
+      # A request cut short by a timeout (Timeout::ExitException, Rack::Timeout) is profiled like
+      # one that raised; one stopped by a signal or an exit is not, the process is going away.
+      def failed_request?(error)
+        !error.is_a?(SignalException) && !error.is_a?(SystemExit)
       end
 
       # The profile of a request that raised is kept: status 500, which the server answers once
