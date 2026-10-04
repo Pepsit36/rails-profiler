@@ -62,10 +62,16 @@ end
 
 `enabled` defaults to true in development and test, false elsewhere. The profiler reads it once
 the application's `config/initializers` have run: with `enabled = false` it inserts no middleware
-and installs no instrumentation (Sidekiq, ActiveJob, test profiler, console), and with
-`enabled = true` in production it gets all of them. Options can also be set in
-`config/application.rb`, with `Profiler.configure` or `config.profiler.<option> = value`; the
-initializer has the last word.
+and installs no Sidekiq, ActiveJob, test or console instrumentation, and with `enabled = true` in
+production it gets all of them. The patch that carries the profiling context into new threads
+(`Thread#initialize`) is put in place when the gem is loaded, whatever `enabled` says.
+
+`enabled` is read once, at boot: setting it to true on a running process does not insert the
+middleware nor install the instrumentation. Options can also be set with `Profiler.configure` in
+`config/application.rb` or in `config/environments/*.rb`, or with
+`config.profiler.<option> = value` in `config/application.rb`; from lowest to highest priority:
+the default, `Profiler.configure` in `config/application.rb` or `config/environments`,
+`config.profiler`, then `config/initializers`.
 
 Create `config/initializers/profiler.rb`:
 
@@ -741,7 +747,7 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 ## Performance
 
 - Only active when enabled (development/test by default); when disabled, nothing is left in the
-  middleware stack and no instrumentation is installed
+  middleware stack and no Sidekiq, ActiveJob, test or console instrumentation is installed
 - Expected overhead: < 5ms per request
 - Text bodies > 10 KB compressed automatically (gzip+base64)
 - Masking sensitive data adds well under 1 ms to a typical profile. A JSON body in whose text no
