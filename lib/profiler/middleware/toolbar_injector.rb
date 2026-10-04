@@ -8,8 +8,18 @@ module Profiler
   module Middleware
     class ToolbarInjector
       # Elements whose content the browser does not parse as markup: a </body> inside one of
-      # them is text, not the end of the page.
-      RAW_TEXT_ELEMENTS = /(script|style|textarea|title)(?=[\s\/>])/i
+      # them is text, not the end of the page. Each maps to the end tag that closes it.
+      RAW_TEXT_ELEMENTS = %w[script style textarea title xmp iframe noembed noframes noscript]
+                          .to_h { |name| [name, %r{</#{name}(?=[\s/>])}i] }.freeze
+      # Never closed: whatever follows it is text.
+      PLAINTEXT = "plaintext"
+      TAG_NAME = %r{[a-z][^\s/>]*+}i
+      # The rest of a tag, up to its >. A quoted value only starts after an equals sign and may
+      # hold a > or a </body>; one that is never closed fails the match, as does a tag without
+      # its >. Possessive, so that a failure costs no backtracking.
+      TAG_REST = /(?:=\s*+(?:"[^"]*+"|'[^']*+'|[^\s>"'][^\s>]*+|(?=[\s>]))|[^>=]++)*+>/
+      # A whole start or end tag, read after its <: the slash and the name are captured.
+      TAG = %r{(/)?([a-z][^\s/>]*+)#{TAG_REST.source}}i
 
       def initialize(body, token, nonce = nil)
         @body = body
@@ -32,31 +42,58 @@ module Profiler
 
       private
 
-      # Byte offset of the </body> that closes the page: the last one outside comments and
-      # raw-text elements, where a page can carry the string "</body>" (a script building
-      # markup, a cached fragment in a final comment). nil when there is none, or when a
-      # comment or a raw-text element is never closed: no toolbar rather than a toolbar in
-      # the wrong place.
+      # Byte offset of the </body> that closes the page: the last one outside comments, tags
+      # (an attribute value) and raw-text elements, where a page can carry the string
+      # "</body>" (a script building markup, a cached fragment in a final comment). nil when
+      # there is none, or when the page leaves a comment, a tag, a quoted value or a raw-text
+      # element open, or holds a <plaintext> or a double-escaped script: no toolbar rather than
+      # a toolbar in the wrong place.
       def closing_body_position(bytes)
         scanner = StringScanner.new(bytes)
         position = nil
 
-        while scanner.skip_until(/<(?=!--|\/?[a-z])/i)
+        while scanner.skip_until(/</)
           start = scanner.pos - 1
 
-          if scanner.skip(/!--/)
+          if scanner.skip(TAG)
+            name = scanner[2]
+            name = name.downcase if name.match?(/[A-Z]/)
+
+            if scanner[1]
+              position = start if name == "body"
+              next
+            end
+            return nil if name == PLAINTEXT
+            next unless (end_tag = RAW_TEXT_ELEMENTS[name])
+
+            text_start = scanner.pos
+            return nil unless scanner.skip_until(end_tag)
+            return nil if name == "script" && double_escaped?(bytes, text_start, scanner.pos - scanner.matched_size)
+            return nil unless scanner.skip(TAG_REST)
+          elsif scanner.match?(%r{/?[a-z]}i)
+            # A tag, or a quoted value in it, that is never closed.
+            return nil
+          elsif scanner.skip(/!--/)
             # <!--> and <!---> are complete comments.
             next if scanner.skip(/-?>/) || scanner.skip_until(/-->/)
 
             return nil
-          elsif scanner.skip(/\/body(?=[\s\/>])/i)
-            position = start
-          elsif (name = scanner.scan(RAW_TEXT_ELEMENTS))
-            return nil unless scanner.skip_until(%r{</#{name}(?=[\s/>])}i)
+          elsif scanner.skip(%r{[!?/]})
+            # <!DOCTYPE>, <?xml ?>, </ not followed by a letter: a bogus comment, up to its >.
+            return nil unless scanner.skip_until(/>/)
           end
         end
 
         position
+      end
+
+      # In a script, <!-- followed by <script enters a state where </script> does not close it.
+      def double_escaped?(bytes, from, to)
+        comment = bytes.index("<!--", from)
+        return false unless comment && comment < to
+
+        script = bytes.index(%r{<script[\s/>]}i, comment)
+        script ? script < to : false
       end
 
       def ajax_interceptor_script
