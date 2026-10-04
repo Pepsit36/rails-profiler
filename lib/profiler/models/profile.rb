@@ -195,7 +195,7 @@ module Profiler
       def sanitize_params(params)
         return {} unless params
 
-        return params.to_h.except(*LEGACY_FILTERED_PARAMS) unless Redaction.enabled?
+        return Redaction.hide_credentials(params.to_h.except(*LEGACY_FILTERED_PARAMS)) unless Redaction.enabled?
 
         Redaction.filter_hash(params.to_h)
       end

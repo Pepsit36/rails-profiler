@@ -44,6 +44,22 @@ module Profiler
     # fail on the same key inside the text.
     CONTEXT_SENSITIVE_REGEXP = /\\[AzZbBG]|[\^$]|\(\?<?[=!]/
 
+    # A credential embedded in a longer string is replaced only when it is at
+    # least this long; a shorter one is masked only as a whole value.
+    MIN_EMBEDDED_CREDENTIAL = 8
+
+    # The profiler's own credentials are masked wherever they appear, by value,
+    # whatever name they travel under, and even with redact_sensitive_data
+    # off: the cluster secret opens every slave from the network, and a
+    # profile can be read on any node. Wraps every public filter, so that each
+    # capture point gets it.
+    module CredentialMasking
+      %i[filter_hash filter_value filter_named filter_headers filter_body filter_query filter_url
+         env_snapshot env_value env_overrides].each do |name|
+        define_method(name) { |*args| hide_credentials(super(*args)) }
+      end
+    end
+
     # Bound on the memo of names already tested against the filter.
     KEY_CACHE_LIMIT = 10_000
 
@@ -52,6 +68,19 @@ module Profiler
     PROBE = "x"
 
     class << self
+      prepend CredentialMasking
+
+      # Masks every occurrence of the profiler's own credentials in a value:
+      # a string equal to one becomes MASK, a string holding one has it
+      # replaced, hashes and arrays are walked.
+      def hide_credentials(value)
+        credentials = credential_values
+        credentials.empty? ? value : hide_in(value, credentials)
+      rescue StandardError => e
+        report(e, "masking a profiler credential")
+        MASK
+      end
+
       def enabled?
         Profiler.configuration.redact_sensitive_data != false
       end
@@ -230,6 +259,34 @@ module Profiler
       end
 
       private
+
+      def credential_values
+        secret = Profiler.configuration.cluster_secret.to_s
+        return [] if secret.strip.empty?
+
+        [secret, secret.strip].uniq
+      end
+
+      def hide_in(value, credentials)
+        case value
+        when Hash then value.each_with_object(value.class.new) { |(k, v), out| out[k] = hide_in(v, credentials) }
+        when Array then value.map { |v| hide_in(v, credentials) }
+        when String then hide_in_string(value, credentials)
+        else value
+        end
+      end
+
+      # Compared as bytes, so that a binary body never meets an incompatible
+      # encoding.
+      def hide_in_string(string, credentials)
+        credentials.reduce(string) do |text, credential|
+          next text if text.equal?(MASK)
+          next MASK if text.strip.b == credential.strip.b
+          next text unless credential.length >= MIN_EMBEDDED_CREDENTIAL && text.b.include?(credential.b)
+
+          text.b.gsub(credential.b, MASK).force_encoding(text.encoding)
+        end
+      end
 
       def compiled
         filters = current_filters

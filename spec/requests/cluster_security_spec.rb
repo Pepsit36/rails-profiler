@@ -441,4 +441,61 @@ RSpec.describe "Cluster endpoints", type: :request do
       expect { client.send(:heartbeat!) }.not_to raise_error
     end
   end
+
+  # The secret opens every slave from the network: it must not be readable in a profile, on
+  # any node, whatever name it travels under. Names the filter knows (PROFILER_CLUSTER_SECRET,
+  # X-Profiler-Cluster-Secret) are masked by name; the others only by value.
+  describe "the cluster secret in captured data" do
+    let(:env_names) { %w[PROFILER_CLUSTER_SECRET CLUSTER_PSK] }
+
+    around do |example|
+      saved = env_names.to_h { |name| [name, ENV[name]] }
+      env_names.each { |name| ENV[name] = secret }
+      example.run
+    ensure
+      saved.each { |name, value| value.nil? ? ENV.delete(name) : ENV[name] = value }
+    end
+
+    before do
+      require "profiler/collectors/request_collector"
+      require "profiler/collectors/env_collector"
+      Profiler.configure do |config|
+        config.name = "payment"
+        config.collectors = [Profiler::Collectors::RequestCollector, Profiler::Collectors::EnvCollector]
+        config.env_allowlist = :all
+        config.cluster_master = true
+        config.cluster_secret = ENV.fetch("PROFILER_CLUSTER_SECRET")
+        config.cluster_allowed_slave_urls = ["http://localhost:3001"]
+        config.master_url = "http://localhost:3000"
+        config.self_url = "http://localhost:3001"
+      end
+      relay = lambda do |env|
+        env.delete("rack.session")
+        env.delete("rack.session.options")
+        Rails.application.call(env.merge("REMOTE_ADDR" => "127.0.0.1"))
+      end
+      stub_request(:any, %r{\Ahttp://localhost:300[01]/}).to_rack(relay)
+      Profiler::Cluster::MasterClient.new.send(:register!)
+    end
+
+    it "appears nowhere in a profile stored on the slave and read through the master" do
+      get "/hello", { q: secret, note: "auth=#{secret}" },
+          local.merge("HTTP_REFERER" => "http://localhost/?auth=#{secret}", "HTTP_X_PROFILER_CLUSTER_SECRET" => secret)
+      token = last_response.headers["X-Profiler-Token"]
+      expect(token).not_to be_nil
+
+      expect(Profiler.storage.load(token).to_h.to_json).not_to include(secret)
+
+      get "/_profiler/api/slaves/payment/profiles/#{token}", {}, local
+      expect(last_response.status).to eq(200)
+      body = last_response.body
+      expect(body).to include("CLUSTER_PSK", "Referer")
+      expect(body).not_to include(secret)
+
+      get "/_profiler/api/slaves/payment/env_vars", {}, local
+      expect(last_response.status).to eq(200)
+      expect(last_response.body).to include("CLUSTER_PSK")
+      expect(last_response.body).not_to include(secret)
+    end
+  end
 end
