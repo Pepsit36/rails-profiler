@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.31.4] - 2026-10-05
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Storage:** A save into the file store costs the same whatever the number of profiles on disk:
