@@ -82,9 +82,24 @@ module Profiler
 
           allowed = config.cluster_allowed_slave_urls
           return nil if allowed == :any
-          return nil if Array(allowed).any? { |entry| covers?(normalize(entry), target) }
+
+          registered = normalized_url(url)
+          return nil if Array(allowed).any? { |entry| entry_allows?(entry, target, registered) }
 
           "#{url} is not allowed by config.cluster_allowed_slave_urls"
+        end
+
+        # Whether a Regexp entry of cluster_allowed_slave_urls is anchored at both ends: its source
+        # starts with \A and ends with an unescaped \z. \Z, ^ and $ do not count, since they let a
+        # trailing newline or another line through.
+        def anchored_pattern?(pattern)
+          return false unless pattern.is_a?(Regexp)
+
+          source = pattern.source
+          return false unless source.start_with?("\\A")
+
+          ending = source.match(/(\\+)z\z/)
+          !ending.nil? && ending[1].length.odd? && source.length > 4
         end
 
         # Same transport rule for the master URL a slave sends its secret to.
@@ -137,6 +152,22 @@ module Profiler
           "#{path.inspect} holds an empty, \".\", \"..\" or encoded \"/\" path segment"
         rescue ArgumentError
           "#{path.inspect} is not a valid path"
+        end
+
+        # One entry of cluster_allowed_slave_urls against a URL already through normalize and the
+        # transport rule. A Regexp is matched, as a whole, against the URL as the registry keeps it
+        # (normalized_url), and only when anchored; anything else is an URL compared by covers?,
+        # so a String is never read as a pattern.
+        def entry_allows?(entry, target, registered)
+          if entry.is_a?(Regexp)
+            return false unless registered && anchored_pattern?(entry)
+
+            # Wrapped again so that a top-level alternation (\Aa|b\z) cannot leave one branch
+            # anchored at a single end.
+            Regexp.new("\\A(?:#{entry.source})\\z", entry.options).match?(registered)
+          else
+            covers?(normalize(entry), target)
+          end
         end
 
         # Scheme, host and port compared after normalization (case, default port, IPv6 brackets),
