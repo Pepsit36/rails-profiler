@@ -467,11 +467,13 @@ config.cluster_allow_insecure_http = true  # plain HTTP to a non-loopback host, 
 ```
 
 - The pattern must start with `\A` and end with `\z`, so that it matches the whole URL: any other
-  `Regexp` (unanchored, or anchored with `^`, `$` or `\Z`) raises an `ArgumentError` when it is
-  assigned. It is matched as a whole even if it alternates at the top level.
+  `Regexp` (unanchored, anchored with `^`, `$` or `\Z`, or whose `x`-mode comment hides the `\z`)
+  raises an `ArgumentError` when it is assigned. It is matched as a whole even if it alternates at
+  the top level, and its options (`i`, `x`) apply.
 - It is matched against the URL as the master keeps it: lower-case scheme and host, no default port
-  (`:80` for `http`, `:443` for `https`), no trailing slash, path segments kept. Write the pattern
-  for that form, and keep the port in it if the slaves use a non-default one.
+  (`:80` for `http`, `:443` for `https`), no trailing slash, and path segments percent-encoded again
+  (`~` becomes `%7E`, `:` becomes `%3A`). Write the pattern for that form, and keep the port in it
+  if the slaves use a non-default one.
 - The checks on the URL come first and the pattern cannot lift them: user info, a query, a fragment
   or a `.` or `..` segment are refused, and plain HTTP to a host that is not a loopback address
   still needs `cluster_allow_insecure_http`.
@@ -505,7 +507,8 @@ list_slaves  # → shows connected slaves and their status
   entry of `cluster_allowed_slave_urls`: same scheme, host and port, compared after normalization
   (case of the host, default port, IPv6 between brackets), and a path under the entry's path,
   segment by segment. A URL with user info, a query, a fragment or a `.` or `..` segment is refused.
-  An entry can also be a `Regexp` (see below). The default, `[]`, refuses every URL. The check runs again on each proxied call, so removing an
+  An entry can also be an anchored `Regexp` (see *Slaves whose names are not known in advance*
+  above). The default, `[]`, refuses every URL. The check runs again on each proxied call, so removing an
   entry cuts off a slave already registered.
 - **HTTPS.** Slave URLs and `master_url` must use HTTPS, except for `localhost`, `127.0.0.0/8` and
   `::1`, so that the secret and the profiles do not cross the network in clear.
