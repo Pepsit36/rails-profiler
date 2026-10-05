@@ -861,10 +861,19 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
   (`bundle exec ruby script/bench/request_overhead.rb [--no-stackprof]`); it is not part of the
   gem and does not run in CI
 - Each collector records the events of its own request only: the thread that runs it, the
-  threads it starts, the thread `ActionController::Live` runs the action in, and the server thread
-  that iterates a streamed body. The process holds one subscriber per event, however many requests
-  are profiled at once. Under Falcon, set `config.active_support.isolation_level = :fiber`, as
-  Rails requires, so that requests sharing a thread are told apart
+  threads it starts with `Thread.new`, the tasks it posts to a concurrent-ruby executor
+  (`Concurrent::Promises`, `Concurrent::Future`, ActiveJob's `:async` adapter), whichever pool
+  thread runs them and whenever, the thread `ActionController::Live` runs the action in, and the
+  server thread that iterates a streamed body. A thread created by a pool (concurrent-ruby, Puma,
+  including the one Puma starts for a request marked with `env["puma.mark_as_io_bound"]`) inherits
+  nothing from the request that was running when it was created. The process holds one subscriber
+  per event, however many requests are profiled at once. Under Falcon, set
+  `config.active_support.isolation_level = :fiber`, as Rails requires, so that requests sharing a
+  thread are told apart. Not covered: a pool of the application's own, whose threads are started
+  with `Thread.new` while a request runs; they take that request's context for their whole life:
+  its queries stop being recorded when the request ends, but the outgoing HTTP calls of their later
+  tasks are still added to that request's profile. Measure it on your setup with
+  `bundle exec ruby script/bench/puma_attribution.rb`
 - The function profiler samples with [stackprof](https://github.com/tmm1/stackprof), which is not
   a dependency of the gem: add `gem "stackprof"` to the application's Gemfile to use it. Without
   it, the function profiler stays off. Earlier versions then traced every method call of every
