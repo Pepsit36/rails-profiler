@@ -21,7 +21,8 @@ module Profiler
     # sub-requests and without the tab is left as it is.
     def attach(profile, children)
       requests = children.select { |child| child.profile_type == "http" }
-      tabs = profile.collectors_metadata ||= []
+      # A copy: the memory store hands out the very tabs it keeps.
+      tabs = profile.collectors_metadata = (profile.collectors_metadata || []).map(&:dup)
       tab = tabs.find { |entry| (entry[:key] || entry["key"]).to_s == "ajax" }
       return if requests.empty? && tab.nil?
 

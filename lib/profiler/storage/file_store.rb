@@ -302,19 +302,21 @@ module Profiler
         end
       end
 
+      # @last_compacted_at is kept only from a sound index: with a damaged one, a profile whose
+      # line was lost would pass for a file the last compaction evicted (see #resynchronize).
       def reload_for_compaction
         forget_index
         @last_compacted_at = nil
         PrivateFiles.open_for_reading(@index_path) do |file|
           header = parse_line(file.gets)
-          next unless header && header["profiler_index"] == INDEX_VERSION
+          next unless header && header["profiler_index"] == INDEX_VERSION && header["generation"].is_a?(String)
 
-          @last_compacted_at = header["compacted_at"].is_a?(Numeric) ? header["compacted_at"] : nil
-
+          sound = true
           file.each_line do |line|
             record = parse_line(line)
-            apply(record) if record
+            record && line.end_with?("\n") ? apply(record) : sound = false
           end
+          @last_compacted_at = header["compacted_at"] if sound && header["compacted_at"].is_a?(Numeric)
         end
       rescue Errno::ENOENT
         nil

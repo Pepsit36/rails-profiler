@@ -171,6 +171,21 @@ RSpec.describe Profiler::Storage::FileStore do
         .to match_array(saved.map(&:token))
     end
 
+    # C5: a damaged line must not make the profile it described look like a leftover of a
+    # killed compaction (absent from the index, older than the last compaction).
+    it "keeps a live profile older than the last compaction when its index line is damaged" do
+      store = described_class.new(path: path, max_profiles: 100)
+      old = profile_at(1).tap { |p| store.save(p.token, p) }
+      File.utime(Time.now - 3600, Time.now - 3600, File.join(path, "#{old.token}.json"))
+      store.cleanup(older_than: 7200) # a compaction, after the old profile was saved
+      index = File.join(path, described_class::INDEX_FILE)
+      File.write(index, File.read(index).lines.map { |l| l.include?(old.token) ? "#{l[0, 20]}\n" : l }.join)
+
+      fresh = described_class.new(path: path, max_profiles: 100)
+      expect(fresh.list(limit: 10).map(&:token)).to include(old.token)
+      expect(File.exist?(File.join(path, "#{old.token}.json"))).to be true
+    end
+
     it "rebuilds an index that was damaged" do
       store = described_class.new(path: path, max_profiles: 100)
       saved = (0...3).map { |i| profile_at(i).tap { |p| store.save(p.token, p) } }

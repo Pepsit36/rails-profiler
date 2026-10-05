@@ -154,6 +154,17 @@ RSpec.describe "Profile lists and children through the profiler API", type: :req
     end
   end
 
+  # R-e: the tab is added to a copy, never to the tabs the memory store keeps.
+  it "leaves the stored profile's tabs alone" do
+    parent = save(0)
+    save(1, parent_token: parent.token, is_ajax: true)
+
+    get "/_profiler/api/profiles/#{parent.token}", {}, local
+
+    expect(json["tabs"].map { |t| t["key"] }).to include("ajax")
+    expect(store.load(parent.token).collectors_metadata).to be_empty
+  end
+
   describe "a page without sub-requests" do
     it "gets no AJAX tab" do
       parent = save(0)
