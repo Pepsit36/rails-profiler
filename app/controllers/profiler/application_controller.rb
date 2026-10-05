@@ -74,9 +74,10 @@ module Profiler
       render_page(Profiler.storage.list(limit: limit + 1, offset: offset, type: type, summary: summary), limit, offset)
     end
 
+    # The bodies as text: the cluster proxy lists whole profiles (all_types), a summary has none.
     def render_page(profiles, limit, offset)
       render json: {
-        profiles: profiles.first(limit).map(&:to_h),
+        profiles: profiles.first(limit).map { |profile| profile.to_h(decode_bodies: true) },
         limit:    limit,
         offset:   offset,
         has_more: profiles.size > limit

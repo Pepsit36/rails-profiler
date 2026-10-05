@@ -14,7 +14,7 @@ module Profiler
           return render json: { error: "Console profile not found" }, status: :not_found
         end
 
-        render json: profile.to_h
+        render json: profile.to_h(decode_bodies: true)
       end
 
       def destroy
