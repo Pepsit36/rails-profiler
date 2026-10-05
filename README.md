@@ -682,16 +682,22 @@ on one volume, for instance), restore the modes of the umask:
 config.restrict_storage_permissions = false # true by default
 ```
 
-It only applies to what is created from then on: reopen what already exists with
+With `false`, the profiler creates its directories and files with the modes of the umask, follows
+a symbolic link in place of its SQLite database, its `-wal` or `-shm` file or the lock of the env
+overrides, and does not warn about a shared `tmp_path`, as versions before 0.31.1 did. It only
+applies to what is created from then on: reopen what already exists with
 `chmod -R u=rwX,go=rX tmp/rails-profiler` (`0755` and `0644`, the modes of the usual umask). A
 worker under another user that writes there too (it opens `env_overrides.json.lock` for writing)
-needs a group shared with the web process, a umask of `002`, and
+also needs the files to belong to a group of both users: give both users the same primary group,
+or run `chgrp -R <group> tmp/rails-profiler` and `find tmp/rails-profiler -type d -exec chmod g+s {} +`
+so that new files inherit the group; then run both processes with a umask of `002`, and
 `chmod -R ug=rwX,o=rX tmp/rails-profiler`.
 
-While the modes are restricted, a symbolic link where the profiler keeps the SQLite database, its
-`-wal` or `-shm` file or the lock of the env overrides is refused rather than followed, and an
-existing `tmp_path` that belongs to another user or that group or others can write to (a
-`tmp/rails-profiler` under a shared directory, outside Rails) is reported once on standard error.
+While the modes are restricted (the default), a symbolic link where the profiler keeps the SQLite
+database, its `-wal` or `-shm` file or the lock of the env overrides is refused rather than
+followed, and an existing `tmp_path` that belongs to another user or that group or others can
+write to (a `tmp/rails-profiler` under a shared directory, outside Rails) is reported once on
+standard error.
 
 ## Creating Custom Collectors
 
