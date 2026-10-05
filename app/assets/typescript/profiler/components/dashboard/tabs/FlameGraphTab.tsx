@@ -50,7 +50,11 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
   const [totalCount, setTotalCount] = useState(0)
   const [fnSortKey, setFnSortKey] = useState<SortKey>('total_duration')
   const [fnSortDir, setFnSortDir] = useState<SortDir>('desc')
-  const [fnEnabled, setFnEnabled] = useState<boolean>(functionProfileData?.enabled ?? false)
+  // Without stackprof the profile says enabled: false, but function profiling is on: only the
+  // sampler is missing.
+  const [fnEnabled, setFnEnabled] = useState<boolean>(
+    functionProfileData?.reason === 'stackprof_missing' ? true : (functionProfileData?.enabled ?? false)
+  )
   const [fnMaxFrames, setFnMaxFrames] = useState<number>(functionProfileData?.max_frames ?? 2000)
   const [fnMode, setFnMode] = useState<'full' | 'lite'>(functionProfileData?.mode === 'lite' ? 'lite' : 'full')
   const [fnClock, setFnClock] = useState<'wall' | 'cpu' | 'object'>(functionProfileData?.clock ?? 'wall')
@@ -402,6 +406,7 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
   const fnRendererRef = useRef<FlameGraphRenderer | null>(null)
 
   const hasData = enabled && data?.enabled && (data.functions?.length ?? 0) > 0
+  const stackprofMissing = data?.reason === 'stackprof_missing' && mode === 'lite'
   const dataMode = data?.mode ?? 'full'
   const dataClock = data?.clock ?? 'wall'
   const isSampling = dataMode === 'lite'
@@ -511,7 +516,7 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
             onClick={onToggle}
             disabled={toggling}
           >
-            {toggling ? '…' : enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'}
+            {toggling ? '…' : enabled ? 'Enabled (click to disable)' : 'Disabled (click to enable)'}
           </button>
         </div>
       </div>
@@ -519,12 +524,21 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
       {!enabled && (
         <p class="profiler-fn-profiling__hint">
           Enable function profiling to see where your app spends time.{' '}
-          <strong>Lite</strong>: statistical sampling via stackprof — very low overhead (&lt;1%), enabled by default.{' '}
+          <strong>Lite</strong>: statistical sampling with the stackprof gem, to add to the application's Gemfile; very low overhead (&lt;1%), on by default once stackprof is installed.{' '}
           <strong>Full</strong>: exhaustive TracePoint tracing with memory bytes — significant overhead.
         </p>
       )}
 
-      {enabled && !hasData && (
+      {enabled && stackprofMissing && (
+        <p class="profiler-fn-profiling__hint">
+          No data: sampling needs the <code>stackprof</code> gem, which is not installed. Add{' '}
+          <code>gem "stackprof"</code> to the application's Gemfile. To trace every method call instead,
+          at a much higher cost, choose <strong>Full</strong>, or set{' '}
+          <code>Profiler.function_profiling_tracepoint_fallback = true</code> in an initializer.
+        </p>
+      )}
+
+      {enabled && !hasData && !stackprofMissing && (
         <p class="profiler-fn-profiling__hint">
           Function profiling is active. Data will appear on the next request.
         </p>
