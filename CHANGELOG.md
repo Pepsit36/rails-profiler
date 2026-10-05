@@ -19,6 +19,66 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.31.3] - 2026-10-05
+
+<!-- stamped -->
+
+### Fixed
+
+- **Collectors:** a profile no longer records the SQL queries, views, cache operations, timeline
+  events, exceptions and mails of other requests. The collectors subscribed to the process-wide
+  `ActiveSupport::Notifications` bus without looking at the thread, so on a multi-threaded server
+  (Puma, Sidekiq) a profile could show the queries of a concurrent request, another user's
+  included. Each collector now records the events of its own request: its thread, the threads it
+  starts with `Thread.new`, the thread `ActionController::Live` runs the action in, the server
+  thread iterating a streamed body, and the queries of `load_async`, which Rails reports on the
+  request's thread. The process holds one subscriber per event instead of one per profiled request,
+  so an SQL event costs the same however many requests are profiled at once (6 us with 8 requests
+  profiled, 260 us before, measured). A job performed inline still shows in both profiles. A test
+  profile no longer shows the queries the application server runs for a system test in its own
+  thread: they are in the profile of that HTTP request.
+- **Instrumentation:** a thread created by a pool while a request ran (a concurrent-ruby worker
+  behind `Concurrent::Promises`, ActiveJob's `:async` adapter or `ActionController::Live`, or the
+  thread Puma starts for a request marked as IO bound) no longer keeps that request's HTTP and
+  timeline collectors for good, which put the outgoing HTTP calls of other requests' tasks in its
+  profile. A task posted to a concurrent-ruby executor now runs in the context of the request that
+  posted it, and a pool thread inherits nothing. On Puma with 8 threads, 40 concurrent requests
+  each running a query and an HTTP call in a `Concurrent::Promises.future`: 0 queries and 0 HTTP
+  calls of another request in a profile, none lost, against 560 foreign queries, 35 misattributed
+  and 36 lost HTTP calls before (measured, `script/bench/puma_attribution.rb`).
+- **Function profiler:** without the `stackprof` gem, which the gem does not depend on, the
+  function profiler stays off instead of falling back to a `TracePoint` enabled on every thread of
+  the process, which called `GC.stat` four times per method and tripled the cost of a request, for
+  a tab that is not shown. To trace again, set `Profiler.function_profiling_tracepoint_fallback =
+  true`; the `TracePoint`, like the one of the `full` mode chosen from the dashboard, is now
+  enabled on the request's thread only. The Timeline tab now says that stackprof is missing and
+  how to add it, instead of a button to enable function profiling that changed nothing, and no
+  longer says that sampling is on by default whatever the Gemfile.
+- **Database:** the caller of a query is captured the first time a statement runs in the request
+  (values left out, as the N+1 detection groups them) and for every slow query, instead of for
+  every query, at about 0.1 ms each. The N+1 groups of the Database tab and of the MCP
+  `n1-patterns` resource keep their location. The backtrace now starts at the application's code
+  that ran the query, cleaned by `Rails.backtrace_cleaner` as in the Exception tab, or without
+  Rails, past the frames of gems and of Ruby; it often started inside Active Support, with the
+  application's first frame too far down for the three frames `n1-patterns` shows.
+  `config.sql_backtrace = :all` captures every query again, `:none` none.
+- **Routes and Env tabs:** a profile no longer stores the whole route table and `ENV`, rebuilt and
+  sorted on every request (the route table alone cost 7.7 ms per request with 210 routes, and 29 KB
+  per profile, measured). It keeps the route its request matched, the one of the request's verb
+  (a `PUT` showed the `PATCH` route of the same action). The Routes tab, the toolbar and the MCP
+  `get_profile` tool list the route table of the process that serves them, rebuilt when the
+  routes are reloaded in development; the Env tab of an HTTP profile shows the current `ENV` of that
+  process, not the `ENV` as it was during the request, masked as before. The profiles of jobs,
+  console expressions and tests, which run in another process, keep that process's `ENV`, masked,
+  as before. Profiles saved by an earlier version keep
+  showing their own table and variables. With both changes, the profiler adds about 6 to 8 ms to
+  the reference page of `script/bench/request_overhead.rb` instead of 13.6 ms with stackprof and
+  20.5 ms without it (Ruby 3.3); the README gives this measured cost instead of "< 5ms per request".
+- **Upgrading:** to get the previous behaviours back, set `config.sql_backtrace = :all` and
+  `Profiler.function_profiling_tracepoint_fallback = true` in `config/initializers/profiler.rb`.
+  The Routes and Env tabs cannot show the table and the variables of the request's time any more:
+  they show the process's current ones.
+
 ## [0.31.2] - 2026-10-05
 
 <!-- stamped -->
