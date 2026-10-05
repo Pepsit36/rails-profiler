@@ -19,6 +19,16 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Jobs:** A storage error while saving a profile no longer makes the application fail: a job,
+  a console command, a test, or an outbound HTTP call that ends after its profile was collected
+  now goes on, with its own result or its own exception, and the error is printed as a warning.
+  The save of a job, console or test profile ran with nothing to catch it, so a full disk, a
+  Redis that went away or, from this version, a symbolic link refused in place of the SQLite
+  database made the job fail, or replaced the job's own exception. The HTTP middleware already
+  kept requests going.
+
 ## [0.31.1] - 2026-10-05
 
 <!-- stamped -->
@@ -60,8 +70,13 @@ every commit of every tag interval is accounted for one way or the other.
     files with the modes of the umask, as before. It does not reopen what was already created
     `0700` and `0600`: run `chmod -R u=rwX,go=rX tmp/rails-profiler` for the modes earlier
     versions created with the usual umask (`0755` and `0644`). A worker under another user that
-    also writes there (it opens `env_overrides.json.lock` for writing) needs a group shared with
-    the web process, a umask of `002`, and `chmod -R ug=rwX,o=rX tmp/rails-profiler`.
+    also writes there (it opens `env_overrides.json.lock` for writing) needs the
+    files belonging to a group of both users (the same primary group for both, or
+    `chgrp -R <group> tmp/rails-profiler` then `find tmp/rails-profiler -type d -exec chmod g+s {} +`
+    so that new files inherit it), a umask of `002` for both processes, and
+    `chmod -R ug=rwX,o=rX tmp/rails-profiler`. The option also follows a symbolic link in place
+    of the SQLite database, its `-wal` or `-shm` file or the lock of the env overrides, and drops
+    the warning about a shared `tmp_path`, as before.
 
 ### Security
 
