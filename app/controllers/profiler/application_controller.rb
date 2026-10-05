@@ -56,6 +56,26 @@ module Profiler
       end
     end
 
+    # A page of one type of profile, filtered, ordered and paged by the store: one profile more
+    # than the limit tells whether there is a next page, at any offset.
+    def render_profile_page(type:, summary: true)
+      limit, offset = page_params
+      render_page(Profiler.storage.list(limit: limit + 1, offset: offset, type: type, summary: summary), limit, offset)
+    end
+
+    def render_page(profiles, limit, offset)
+      render json: {
+        profiles: profiles.first(limit).map(&:to_h),
+        limit:    limit,
+        offset:   offset,
+        has_more: profiles.size > limit
+      }
+    end
+
+    def page_params
+      [[(params[:limit] || 50).to_i, 0].max, [(params[:offset] || 0).to_i, 0].max]
+    end
+
     def build_child_jobs(profile)
       storage = @resolved_storage || Profiler.storage
       storage.find_by_parent(profile.token)

@@ -5,8 +5,8 @@ module Profiler
     module Resources
       class RecentConsole
         def self.call
-          profiles = Profiler.storage.list(limit: 200)
-          consoles = profiles.select { |p| p.profile_type == "console" }.first(50)
+          profiles = Profiler.storage.list(limit: 50, type: "console")
+          consoles = profiles.select { |p| p.profile_type == "console" }
 
           data = consoles.map do |profile|
             console_data = profile.collector_data("console") || {}
