@@ -15,6 +15,7 @@ import { I18nPanel } from './panels/I18nPanel'
 import { JobsPanel } from './panels/JobsPanel'
 import { EnvPanel } from './panels/EnvPanel'
 import { MailerPanel } from './panels/MailerPanel'
+import { allocatedObjects, formatAllocations, ALLOCATIONS_HINT } from '../../dashboard/utils'
 
 interface Props {
   profile: Profile
@@ -93,10 +94,10 @@ export function ToolbarApp({ profile, token }: Props) {
                     <span>Duration</span>
                     <strong class={durClass}>{profile.duration.toFixed(2)} ms</strong>
                   </div>
-                  {profile.memory && (
-                    <div class="profiler-toolbar-panel-row">
-                      <span>Memory</span>
-                      <strong>{(profile.memory / 1024 / 1024).toFixed(2)} MB</strong>
+                  {allocatedObjects(profile) != null && (
+                    <div class="profiler-toolbar-panel-row" title={ALLOCATIONS_HINT}>
+                      <span>Allocations</span>
+                      <strong>{formatAllocations(allocatedObjects(profile))}</strong>
                     </div>
                   )}
                   <div class="profiler-toolbar-panel-row">

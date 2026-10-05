@@ -98,9 +98,16 @@ Profiler.configure do |config|
   config.slow_query_threshold = 100  # ms
   config.max_queries_warning = 50
 
-  # Memory tracking
+  # Allocation tracking: objects allocated during the request, job, command or test
+  # (see "Allocated objects" under Performance)
   config.track_memory = true
-  config.memory_warning_threshold = 100.megabytes
+  # No effect yet: nothing compares a profile with it. Replaces memory_warning_threshold,
+  # still accepted (deprecated) and read as this number times 40.
+  config.allocated_objects_warning_threshold = 2_621_440
+
+  # Request and response bodies kept in a profile stop at this size; the application still
+  # reads and sends every byte. nil keeps whole bodies, as earlier versions did.
+  config.max_captured_body_bytes = 256.kilobytes
 
   # Body compression (text bodies larger than threshold are stored gzip+base64)
   config.compress_bodies = true
@@ -845,6 +852,26 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
   middleware stack and no Sidekiq, ActiveJob, test or console instrumentation is installed
 - Expected overhead: < 5ms per request
 - Text bodies > 10 KB compressed automatically (gzip+base64)
+- Bodies kept in a profile stop at `max_captured_body_bytes` (256 KB by default): `rack.input` is
+  read up to that size and rewound for the application, a larger response is kept in part, and
+  the Request tab says so with the whole size. A cluster secret cut in two by the limit is left
+  out with the rest. `nil` keeps whole bodies
+- Streamed responses go out as they are produced: a body that does not answer `to_ary` (an
+  `ActionController::Live` or `response.stream` action, an enumerator), a `text/event-stream`, or
+  a file sent by its path (`send_file`, which keeps `to_path`) is handed to the server chunk by
+  chunk, with a copy kept up to `max_captured_body_bytes`. The collectors are read when the
+  application returns; the profile is saved, with the body and the full duration, when the
+  server closes the body, also when the client went away. An error raised while the body is
+  iterated reaches the server as it would without the profiler. The toolbar is only injected in
+  pages the application returns whole. Under Rack 2, `Rack::ETag` buffers a `Live` response
+  before the profiler sees it, as it does without the profiler
+- Allocated objects: the profiles report `allocated_objects`, the number of objects Ruby
+  allocated while the request, job, command or test ran (`GC.stat(:total_allocated_objects)`
+  before and after). The counter belongs to the process: on a multi-threaded server (Puma with
+  several threads, jobs running alongside), it includes what the other threads allocated
+  meanwhile, so it is only exact when one thing runs at a time. It is not a byte count: the
+  `memory` field the API still returns, deprecated, is that number times 40, the figure earlier
+  versions showed as bytes
 - Masking sensitive data adds well under 1 ms to a typical profile. A JSON body in whose text no
   filter matches is not parsed: about 10 ms per megabyte for ASCII text, 50 ms when it holds other
   characters. A body where a filter matches, in a key or only in a value (`"title": "reset your

@@ -30,7 +30,8 @@ module Profiler
           method: @profile.method,
           status: @profile.status,
           duration: @profile.duration,
-          memory: @profile.memory,
+          allocated_objects: @profile.allocated_objects,
+          memory: @profile.memory, # deprecated, see Profile#memory
           params: @profile.params,
           headers: @profile.headers,
           response_headers: @profile.response_headers,
@@ -38,6 +39,10 @@ module Profiler
           request_body_encoding: @profile.request_body_encoding,
           response_body: @profile.response_body,
           response_body_encoding: @profile.response_body_encoding,
+          request_body_size: @profile.request_body_size,
+          request_body_truncated: @profile.request_body_truncated || false,
+          response_body_size: @profile.response_body_size,
+          response_body_truncated: @profile.response_body_truncated || false,
           started_at: @profile.started_at&.iso8601,
           finished_at: @profile.finished_at&.iso8601
         }
@@ -59,7 +64,7 @@ module Profiler
           text: "#{@profile.method} #{@profile.status}",
           color: status_color,
           duration: @profile.duration,
-          memory: format_memory(@profile.memory)
+          allocated_objects: format_allocations(@profile.allocated_objects)
         }
       end
 
@@ -98,16 +103,10 @@ module Profiler
         {}
       end
 
-      def format_memory(bytes)
-        return "0 B" unless bytes
+      def format_allocations(count)
+        return "0 objects" unless count
 
-        if bytes < 1024
-          "#{bytes} B"
-        elsif bytes < 1024 * 1024
-          "#{(bytes / 1024.0).round(2)} KB"
-        else
-          "#{(bytes / 1024.0 / 1024.0).round(2)} MB"
-        end
+        "#{count.to_s.reverse.scan(/\d{1,3}/).join(",").reverse} objects"
       end
     end
   end

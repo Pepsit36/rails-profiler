@@ -42,9 +42,26 @@ function buildCurl(profile: Profile): string {
   return parts.join(' \\\n')
 }
 
+// Bodies are kept up to max_captured_body_bytes. The flags are on the profile, and in the
+// request collector's data for the stores that rebuild a profile from it.
+function truncationNotes(profile: Profile, routeData: RequestData): string[] {
+  const notes: string[] = []
+  const describe = (what: string, truncated?: boolean | null, size?: number | null) => {
+    if (truncated) {
+      notes.push(`${what} body truncated: ${size != null ? `${size.toLocaleString('en')} bytes, ` : ''}only the beginning was kept (max_captured_body_bytes).`)
+    }
+  }
+  describe('Request', profile.request_body_truncated ?? routeData.request_body_truncated,
+    profile.request_body_size ?? routeData.request_body_size)
+  describe('Response', profile.response_body_truncated ?? routeData.response_body_truncated,
+    profile.response_body_size ?? routeData.response_body_size)
+  return notes
+}
+
 export function RequestTab({ profile }: Props) {
   const routeData = (profile.collectors_data?.request ?? {}) as RequestData
   const hasParams = profile.params && Object.keys(profile.params).length > 0
+  const notes = truncationNotes(profile, routeData)
 
   return (
     <div class="profiler-ajax-card profiler-ajax-card--success" style="margin-bottom:8px;background:var(--profiler-bg-elevated);transform:translateX(3px);box-shadow:var(--profiler-shadow-sm);transition:none">
@@ -72,6 +89,10 @@ export function RequestTab({ profile }: Props) {
           )}
         </div>
       )}
+
+      {notes.map(note => (
+        <div class="profiler-ajax-card__row profiler-text--xs profiler-text--warning" key={note}>{note}</div>
+      ))}
 
       <HttpReqRespDetail
         request={{
