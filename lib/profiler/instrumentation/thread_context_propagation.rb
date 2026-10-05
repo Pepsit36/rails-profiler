@@ -17,8 +17,10 @@ module Profiler
           val = Thread.current[key]
           [key, val] unless val.nil?
         end.to_h
+        # The request's notification scope: the queries of a thread it starts are its own.
+        scope = Profiler::Collectors::ScopedNotifications.current if defined?(Profiler::Collectors::ScopedNotifications)
 
-        return super if parent_context.empty?
+        return super if parent_context.empty? && scope.nil?
 
         # Thread.new hands its arguments to the block, so the wrapper has to take
         # them and pass them on. Ruby 3.4 depends on it in the stdlib: the Happy
@@ -31,10 +33,12 @@ module Profiler
         # flattening it into a positional argument.
         wrapper = proc do |*block_args|
           parent_context.each { |k, v| Thread.current[k] = v }
+          Profiler::Collectors::ScopedNotifications.adopt(scope) if scope
           begin
             block&.call(*block_args)
           ensure
             PROPAGATED_KEYS.each { |k| Thread.current[k] = nil }
+            Profiler::Collectors::ScopedNotifications.adopt(nil) if scope
           end
         end
         wrapper.ruby2_keywords

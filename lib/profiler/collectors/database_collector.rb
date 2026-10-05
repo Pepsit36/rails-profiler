@@ -9,7 +9,7 @@ module Profiler
       def initialize(profile)
         super
         @queries = []
-        @subscription = nil
+        @subscriptions = []
       end
 
       def icon
@@ -34,7 +34,7 @@ module Profiler
       def subscribe
         return unless defined?(ActiveSupport::Notifications)
 
-        @subscription = ActiveSupport::Notifications.monotonic_subscribe("sql.active_record") do |name, started, finished, unique_id, payload|
+        @subscriptions << subscribe_notification("sql.active_record") do |name, started, finished, unique_id, payload|
           duration = ((finished - started) * 1000).round(2) # milliseconds
 
           # Skip schema queries and internal Rails queries
@@ -74,10 +74,7 @@ module Profiler
       end
 
       def unsubscribe
-        return unless @subscription
-
-        ActiveSupport::Notifications.unsubscribe(@subscription)
-        @subscription = nil
+        unsubscribe_notifications(@subscriptions)
       end
 
       def toolbar_summary
