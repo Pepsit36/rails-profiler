@@ -31,6 +31,8 @@ module Profiler
     # the application has not assigned them itself (see #default).
     RAILS_DEFAULTED = %i[enabled storage track_tests].freeze
 
+    BACKEND_LOCK = Mutex.new
+
     attr_accessor :storage_options, :collectors,
                   :skip_paths, :slow_query_threshold, :max_queries_warning, :sql_backtrace,
                   :track_memory, :allocated_objects_warning_threshold,
@@ -246,8 +248,9 @@ module Profiler
       @storage_backend = nil
     end
 
+    # Under the same lock as Profiler.storage, for a caller that asks the configuration directly.
     def storage_backend
-      @storage_backend ||= build_storage_backend
+      @storage_backend || BACKEND_LOCK.synchronize { @storage_backend ||= build_storage_backend }
     end
 
     private
