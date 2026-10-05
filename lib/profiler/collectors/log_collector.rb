@@ -58,6 +58,8 @@ module Profiler
         def add(severity, message = nil, progname = nil)
           logs = Thread.current[:profiler_logs]
           return true unless logs
+          # The profiler's own messages (Profiler.log) are not the application's.
+          return true if Thread.current[:profiler_logging]
           return true if @buffer && !logs.equal?(@buffer)
 
           msg = message || progname
