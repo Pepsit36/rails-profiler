@@ -26,7 +26,8 @@ module Profiler
 
         dir = Storage::PrivateFiles.tmp_dir(DIR_NAME, token)
         Storage::PrivateFiles.write(dir.join(name), content)
-      rescue Errno::EACCES, Errno::EROFS
+      rescue Errno::EACCES, Errno::EROFS => e
+        Profiler.log_error_once(:mcp_file_cache, "MCP: could not cache a body under tmp_path", e)
         nil
       end
 

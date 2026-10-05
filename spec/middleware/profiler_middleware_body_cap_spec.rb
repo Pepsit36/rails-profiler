@@ -215,7 +215,7 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "captured body size" do
       [200, Rack::Headers["content-type" => "text/plain"], ["ok"]]
     end
 
-    expect { described_class.new(app).call(env) }.to output(/could not read the request body/).to_stderr
+    expect(capture_profiler_log { described_class.new(app).call(env) }).to match(/\[Profiler\] ProfilerMiddleware: could not read the request body: IOError/)
     expect(seen).to eq("payload")
   end
 end

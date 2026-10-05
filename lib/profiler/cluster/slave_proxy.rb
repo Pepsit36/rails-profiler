@@ -115,10 +115,13 @@ module Profiler
         Security.outgoing_headers.each { |name, value| req[name] = value }
         # Net::HTTP never follows a redirect; a 3xx is reported, without its body, rather than
         # handed back as if the slave had answered.
-        resp = Net::HTTP.start(uri.hostname, uri.port,
-                               open_timeout: @open_timeout, read_timeout: @read_timeout,
-                               use_ssl: uri.scheme == "https") do |http|
-          http.request(req)
+        # The profiler's own call, never recorded in the profile of the request that makes it.
+        resp = Profiler.untracked_http do
+          Net::HTTP.start(uri.hostname, uri.port,
+                          open_timeout: @open_timeout, read_timeout: @read_timeout,
+                          use_ssl: uri.scheme == "https") do |http|
+            http.request(req)
+          end
         end
         return {} if resp.code == "204"
         if resp.code.to_s.start_with?("3")

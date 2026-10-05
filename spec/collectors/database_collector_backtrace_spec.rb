@@ -23,10 +23,14 @@ RSpec.describe Profiler::Collectors::DatabaseCollector, "backtraces" do
 
   after { collector.unsubscribe }
 
+  # The event carries its own start and finish, 50 ms apart for a slow query and 0.1 ms otherwise,
+  # whatever the machine's load: a query measured on the clock could pass the 5 ms threshold
+  # while the thread waits for a CPU, and get a backtrace it is not meant to get.
   def query(sql, slow: false)
-    ActiveSupport::Notifications.instrument("sql.active_record", sql: sql, name: "User Load", binds: []) do
-      sleep 0.01 if slow
-    end
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    finished = started + (slow ? 0.05 : 0.0001)
+    ActiveSupport::Notifications.publish("sql.active_record", started, finished, SecureRandom.hex(10),
+                                         { sql: sql, name: "User Load", binds: [] })
   end
 
   def backtraces

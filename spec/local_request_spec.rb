@@ -110,13 +110,13 @@ RSpec.describe Profiler::LocalRequest do
     before { described_class.reset_warning! }
 
     it "warns a single time" do
-      allow(described_class).to receive(:warn)
+      allow(Profiler).to receive(:log_warn)
       allow(Rails).to receive(:logger).and_return(nil) if defined?(Rails)
 
       described_class.warn_once("first")
       described_class.warn_once("second")
 
-      expect(described_class).to have_received(:warn).once.with(/first/)
+      expect(Profiler).to have_received(:log_warn).once.with(/first/)
     end
   end
 end

@@ -117,7 +117,10 @@ module Profiler
           Profiler.storage.list(limit: 500, type: "test").select do |p|
             p.profile_type == "test" && p.started_at && p.started_at >= since
           end.map(&:token)
-        rescue
+        rescue Profiler::Storage::Unavailable::Error
+          raise # answered by the MCP server as an error
+        rescue StandardError => e
+          Profiler.log_error("MCP run_tests: could not list the profiles of the run", e)
           []
         end
 

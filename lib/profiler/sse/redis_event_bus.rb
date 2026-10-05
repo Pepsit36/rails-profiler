@@ -29,7 +29,8 @@ module Profiler
       # The version of the last save of +token+, 0 when none is known or Redis cannot be read.
       def version(token)
         redis.get(key(token)).to_i
-      rescue StandardError
+      rescue StandardError => e
+        Profiler.log_error_once(:redis_event_bus_version, "RedisEventBus: could not read the version of a profile", e)
         0
       end
 

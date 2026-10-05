@@ -35,7 +35,7 @@ module Profiler
 
         JSON.parse(File.read(file))
       rescue => e
-        warn "BlobStore: failed to read #{token}/#{collector_name}: #{e.message}"
+        Profiler.log_error("BlobStore: could not read #{token}/#{collector_name}", e)
         nil
       end
 

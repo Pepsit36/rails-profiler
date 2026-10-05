@@ -213,7 +213,8 @@ module Profiler
             serialize_assign(filtered)
           end
         end
-      rescue StandardError
+      rescue StandardError => e
+        Profiler.log_error_once(:mailer_assigns, "MailerCollector: could not read the mailer's assigns", e)
         {}
       end
 
@@ -232,7 +233,8 @@ module Profiler
           text = Profiler::Redaction.truncate(mail.body.decoded, MAX_BODY_SIZE, "")
         end
         [html.nil? || html.empty? ? nil : html, text.nil? || text.empty? ? nil : text]
-      rescue StandardError
+      rescue StandardError => e
+        Profiler.log_error_once(:mailer_body, "MailerCollector: could not read the mail's body", e)
         [nil, nil]
       end
 
@@ -250,7 +252,8 @@ module Profiler
         return nil unless mail.is_a?(String)
 
         Mail.new(mail)
-      rescue StandardError
+      rescue StandardError => e
+        Profiler.log_error_once(:mailer_parse, "MailerCollector: could not parse the mail", e)
         nil
       end
 
@@ -291,7 +294,8 @@ module Profiler
             "filename" => att.filename.to_s,
             "size" => att.body.decoded.bytesize
           }
-        rescue StandardError
+        rescue StandardError => e
+          Profiler.log_error_once(:mailer_attachment, "MailerCollector: could not read an attachment", e)
           { "filename" => att.filename.to_s, "size" => 0 }
         end
       end

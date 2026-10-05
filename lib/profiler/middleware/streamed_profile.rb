@@ -85,7 +85,7 @@ module Profiler
             collector.collect if collector.respond_to?(:collect)
             @profile.refresh_collector_metadata(collector)
           rescue => e
-            warn "Collector #{collector.class} failed: #{e.message}"
+            Profiler.log_error("ProfilerMiddleware: collector #{collector.class} failed", e)
           end
           Collectors::Lifecycle.release_all(@collectors)
         end

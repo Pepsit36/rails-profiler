@@ -36,11 +36,12 @@ RSpec.describe "Env override errors on the application's paths" do
     allow(Profiler::JobProfiler).to receive(:profile).and_yield
     ran = false
 
-    expect do
+    log = capture_profiler_log do
       Profiler::Instrumentation::SidekiqMiddleware.new.call(double("worker"), { "class" => "W", "jid" => "1" }, "q") do
         ran = true
       end
-    end.to output(/failed to apply overrides/).to_stderr
+    end
+    expect(log).to match(/ERROR -- : \[Profiler\] EnvOverrideStore: failed to apply overrides/)
     expect(ran).to be true
   end
 
@@ -55,11 +56,11 @@ RSpec.describe "Env override errors on the application's paths" do
     allow(Profiler.env_override_store).to receive(:blocked_reason).and_return(:disabled)
     log = StringIO.new
 
-    expect { Profiler.env_override_store.apply_at_boot!(Logger.new(log)) }
-      .to output(/failed to check overrides at boot/).to_stderr
+    expect(capture_profiler_log { Profiler.env_override_store.apply_at_boot!(Logger.new(log)) })
+      .to match(/\[Profiler\] EnvOverrideStore: failed to check overrides at boot/)
   end
 
   it "lets a console line run" do
-    expect { Profiler.env_override_store.apply! }.to output(/failed to apply overrides/).to_stderr
+    expect(capture_profiler_log { Profiler.env_override_store.apply! }).to match(/failed to apply overrides/)
   end
 end

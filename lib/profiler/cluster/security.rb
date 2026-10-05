@@ -44,9 +44,9 @@ module Profiler
           return unless config.cluster_master? || config.slave?
           return unless (problem = secret_problem) && secret_required?
 
-          logger.warn("[Profiler Cluster] #{problem}: registrations, heartbeats and proxied requests " \
-                      "are refused. Generate one with `ruby -rsecurerandom -e 'puts SecureRandom.hex(32)'` " \
-                      "and give the same value to every node.")
+          Profiler.log_warn("Cluster: #{problem}: registrations, heartbeats and proxied requests " \
+                            "are refused. Generate one with `ruby -rsecurerandom -e 'puts SecureRandom.hex(32)'` " \
+                            "and give the same value to every node.", logger: logger)
         end
 
         # Constant-time comparison of the secret a request carries with the configured one.

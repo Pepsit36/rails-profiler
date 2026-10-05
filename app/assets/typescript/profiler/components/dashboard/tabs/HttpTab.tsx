@@ -92,6 +92,15 @@ function buildCurl(req: HttpRequest): string {
   return parts.join(' \\\n')
 }
 
+// What the profile left out of the bodies (max_captured_body_bytes, a stream sent unread).
+function bodyNotes(req: HttpRequest): string[] {
+  const notes: string[] = []
+  if (req.request_body_not_captured) notes.push('Request body not captured: a stream that cannot be rewound is sent unread.')
+  if (req.request_body_truncated) notes.push('Request body truncated: only the beginning was kept (max_captured_body_bytes).')
+  if (req.response_body_truncated) notes.push('Response body truncated: only the beginning was kept (max_captured_body_bytes).')
+  return notes
+}
+
 export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest, index: number, threshold: number }) {
   const [open, setOpen] = useState(false)
   const isError = req.status >= 400 || req.status === 0
@@ -113,12 +122,18 @@ export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest,
 
       <div class="profiler-ajax-card__row">
         <span class="profiler-text--xs profiler-text--muted">
-          ↑ {formatBytes(req.request_size)} · ↓ {formatBytes(req.response_size)}
+          ↑ {req.request_size == null ? 'size unknown' : `${req.request_size_is_minimum ? 'at least ' : ''}${formatBytes(req.request_size)}`} · ↓ {formatBytes(req.response_size)}
         </span>
         {req.backtrace && req.backtrace.length > 0 && (
           <span class="profiler-text--xs profiler-text--muted" style="margin-left:12px">{req.backtrace[0]}</span>
         )}
       </div>
+
+      {bodyNotes(req).map(note => (
+        <div class="profiler-ajax-card__row">
+          <span class="profiler-text--xs profiler-text--muted">{note}</span>
+        </div>
+      ))}
 
       {req.error && (
         <div class="profiler-ajax-card__row">

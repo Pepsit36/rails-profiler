@@ -75,7 +75,7 @@ module Profiler
 
         $stdout.puts lines.join("\n")
       rescue => e
-        warn "Profiler Reporter: failed to generate report: #{e.message}"
+        Profiler.log_error("Reporter: could not generate the report", e)
       end
 
       def self.has_n1?(profile)

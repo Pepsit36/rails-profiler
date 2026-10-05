@@ -26,6 +26,17 @@ module Profiler
       TAG_REST = %r{(?:#{WS}++|/|#{ATTRIBUTE})*+>}
       # A whole start or end tag, read after its <: the slash and the name are captured.
       TAG = %r{(/)?([a-z][^\t\n\f\r\ />]*+)#{TAG_REST}}i
+      # Text and complete tags that cannot hold the page's end, skipped in one match: every tag
+      # but </body>, a raw-text element, <plaintext>, a comment, a declaration or a tag left
+      # open, which the scan below reads one by one. A tag here is read with TAG_REST, as there.
+      NAME_END = "(?=[\\t\\n\\f\\r\\ />])"
+      PLAIN_MARKUP = %r{
+        (?:
+          [^<]++
+          | <(?:/(?!body#{NAME_END})|(?!(?:#{(RAW_TEXT_ELEMENTS.keys + [PLAINTEXT]).join("|")})#{NAME_END}))
+            [a-z][^\t\n\f\r\ />]*+#{TAG_REST}
+        )*+
+      }xi
 
       def initialize(body, token, nonce = nil)
         @body = body
@@ -58,7 +69,10 @@ module Profiler
         scanner = StringScanner.new(bytes)
         position = nil
 
-        while scanner.skip_until(/</)
+        loop do
+          skip_plain_markup(scanner)
+          break unless scanner.skip_until(/</)
+
           start = scanner.pos - 1
 
           if scanner.skip(TAG)
@@ -97,6 +111,11 @@ module Profiler
         position
       end
 
+      # A page is mostly ordinary text and tags: one match instead of one scan step per tag.
+      def skip_plain_markup(scanner)
+        scanner.skip(PLAIN_MARKUP)
+      end
+
       # In a script, <!-- followed by <script enters a state where </script> does not close it.
       # Only the script itself is searched, so that a page of many scripts is read in linear
       # time.
@@ -124,7 +143,7 @@ module Profiler
           path = File.join(__dir__, "..", "..", "..", "app", "assets", "javascript", "profiler-ajax-interceptor.js")
           File.read(path)
         rescue => e
-          warn "Failed to load AJAX interceptor script: #{e.message}"
+          Profiler.log_error("ToolbarInjector: could not load the AJAX interceptor script", e)
           ""
         end
       end

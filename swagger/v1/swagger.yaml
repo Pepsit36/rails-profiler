@@ -683,6 +683,10 @@ components:
           type: object
           additionalProperties: true
           nullable: true
+        params_truncated:
+          type: boolean
+          nullable: true
+          description: Whether params were cut at max_captured_body_bytes (they then hold a "[profiler]" key saying so).
         headers:
           type: object
           additionalProperties: true
@@ -932,6 +936,10 @@ components:
         params:
           type: object
           additionalProperties: true
+        params_truncated:
+          type: boolean
+          nullable: true
+          description: Whether params were cut at max_captured_body_bytes.
         response_headers:
           type: object
           additionalProperties: true
@@ -1186,6 +1194,21 @@ components:
           nullable: true
         request_size:
           type: integer
+          nullable: true
+          description: Size in bytes of the whole request body; null for a body_stream that was not read and
+            announced no Content-Length.
+        request_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the request body were kept.
+        request_body_not_captured:
+          type: boolean
+          nullable: true
+          description: Whether the request body was a stream that cannot be rewound, sent without being read.
+        request_size_is_minimum:
+          type: boolean
+          nullable: true
+          description: Whether request_size is only a minimum (a stream without Content-Length or known size).
         response_headers:
           type: object
           additionalProperties:
@@ -1201,6 +1224,10 @@ components:
           nullable: true
         response_size:
           type: integer
+        response_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the response body were kept.
         backtrace:
           type: array
           items:
@@ -1256,6 +1283,14 @@ components:
           type: array
           items:
             "$ref": "#/components/schemas/LogEntry"
+        truncated:
+          type: boolean
+          nullable: true
+          description: Whether lines were cut or left out at max_captured_log_bytes.
+        dropped:
+          type: integer
+          nullable: true
+          description: How many log lines were left out at max_captured_log_bytes (the last entry says so).
     LogEntry:
       type: object
       required:
@@ -1858,6 +1893,21 @@ components:
           nullable: true
         request_size:
           type: integer
+          nullable: true
+          description: Size in bytes of the whole request body; null for a body_stream that was not read and
+            announced no Content-Length.
+        request_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the request body were kept.
+        request_body_not_captured:
+          type: boolean
+          nullable: true
+          description: Whether the request body was a stream that cannot be rewound, sent without being read.
+        request_size_is_minimum:
+          type: boolean
+          nullable: true
+          description: Whether request_size is only a minimum (a stream without Content-Length or known size).
         response_headers:
           type: object
           additionalProperties:
@@ -1870,6 +1920,10 @@ components:
           nullable: true
         response_size:
           type: integer
+        response_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the response body were kept.
         backtrace:
           type: array
           items:
