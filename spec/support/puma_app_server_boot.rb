@@ -3,11 +3,16 @@
 # Boots the spec Rails application (spec/support/rails_app.rb) under a real Puma with a fixed
 # number of threads, for the specs that measure what a request holds a server thread for.
 # Run as a separate process by PumaAppServer; prints the port it listens on, and the id of a
-# test run that stays in progress with no output, then serves until it is killed.
+# test run that stays in progress with no output, then serves until it is killed or its
+# standard input ends (the process that started it is gone).
 #
 #   ruby spec/support/puma_app_server_boot.rb THREADS
 
 $stdout.sync = true
+Thread.new do
+  $stdin.read
+  exit!(0)
+end
 $LOAD_PATH.unshift(File.expand_path("../../lib", __dir__))
 
 require "bundler/setup"
