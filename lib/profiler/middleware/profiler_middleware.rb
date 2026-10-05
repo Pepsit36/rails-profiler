@@ -157,7 +157,7 @@ module Profiler
                           captured, size, complete, error)
         end
         limit = Profiler.configuration.max_captured_body_bytes
-        streamed.body = CapturingBody.new(body, limit: limit, token: profile.token) do |captured, size, complete, error|
+        streamed.body = CapturingBody.new(body, limit: limit, context: streamed) do |captured, size, complete, error|
           streamed.finish(captured, size, complete, error)
         end
         StreamedProfile.register(streamed)
@@ -326,9 +326,12 @@ module Profiler
       # Read whole only when it is already in memory: a body that answers to_ary (Rack 3 lets a
       # middleware call it), or the buffered body of Rails 7.0, which has no to_ary. A file sent
       # by its path and an event stream are never read, even when they could be.
+      # A body already framed for the wire (Transfer-Encoding: chunked, as Rails 7.0 streams a
+      # template) is never read either: a toolbar put into it would break the framing.
       def buffered_body?(headers, body)
         return false if body.respond_to?(:to_path)
         return false if content_type(headers).include?("text/event-stream")
+        return false if header(headers, "transfer-encoding")
 
         body.respond_to?(:to_ary) || buffered_rails_body?(body)
       end

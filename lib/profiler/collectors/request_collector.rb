@@ -45,6 +45,8 @@ module Profiler
           response_body_size: @profile.response_body_size,
           response_body_truncated: @profile.response_body_truncated || false,
           response_body_size_is_minimum: @profile.response_body_size_is_minimum || false,
+          # A streamed response whose collectors were released before its body was closed.
+          collectors_released_after_seconds: @profile.collectors_released_after_seconds,
           started_at: @profile.started_at&.iso8601,
           finished_at: @profile.finished_at&.iso8601
         }

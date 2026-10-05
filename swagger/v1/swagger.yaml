@@ -717,6 +717,12 @@ components:
           type: boolean
           nullable: true
           description: Whether response_body_size is only a minimum (a stream that stopped before its end).
+        collectors_released_after_seconds:
+          type: integer
+          nullable: true
+          description: Set when the collectors of a streamed response were released this many
+            seconds after the application returned, before the server closed the body; what the
+            stream did after that is missing from the profile.
         response_body_truncated:
           type: boolean
           nullable: true
@@ -956,6 +962,12 @@ components:
           type: boolean
           nullable: true
           description: Whether response_body_size is only a minimum (a stream that stopped before its end).
+        collectors_released_after_seconds:
+          type: integer
+          nullable: true
+          description: Set when the collectors of a streamed response were released this many
+            seconds after the application returned, before the server closed the body; what the
+            stream did after that is missing from the profile.
         response_body_truncated:
           type: boolean
           nullable: true
