@@ -2,6 +2,7 @@
 
 require_relative "../slave_support"
 require_relative "../../process_snapshot"
+require_relative "../../models/profile"
 
 require "shellwords"
 require "cgi"
@@ -666,7 +667,10 @@ module Profiler
         def self.generate_curl(profile, req_data)
           headers  = req_data&.dig("headers")  || {}
           params   = req_data&.dig("params")   || {}
-          req_body = req_data&.dig("request_body")
+          # As captured: a binary body cannot be typed on a command line.
+          req_body, req_encoding = Models::Profile.decode_body(req_data&.dig("request_body"),
+                                                               req_data&.dig("request_body_encoding"))
+          req_body = nil unless req_encoding.nil? || req_encoding == "text"
 
           parts = ["curl -X #{profile.method}"]
 

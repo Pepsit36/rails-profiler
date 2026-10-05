@@ -115,7 +115,8 @@ Profiler.configure do |config|
   # lines were left out. nil keeps every line, as earlier versions did.
   config.max_captured_log_bytes = 1.megabyte
 
-  # Body compression (text bodies larger than threshold are stored gzip+base64)
+  # Body compression: text bodies larger than the threshold are stored gzip+base64, and
+  # decompressed only when a profile is shown. false stores them as text.
   config.compress_bodies = true
   config.compress_body_threshold = 10.kilobytes
 

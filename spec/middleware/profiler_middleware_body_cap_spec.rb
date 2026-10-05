@@ -124,7 +124,8 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "captured body size" do
       serve(body)
 
       profile = Profiler.storage.load(headers["X-Profiler-Token"])
-      expect(profile.request_body.bytesize).to eq(upload.bytesize)
+      # Stored compressed (compress_bodies): the size is that of the body shown.
+      expect(profile.to_h(decode_bodies: true)[:request_body].bytesize).to eq(upload.bytesize)
       expect(profile.collector_data("request")["response_body_truncated"]).to be(false)
     end
   end

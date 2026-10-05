@@ -703,7 +703,9 @@ components:
           enum:
           - text
           - base64
+          - gzip+base64
           nullable: true
+          description: "gzip+base64 (a text body larger than compress_body_threshold, compressed by compress_bodies) only in the toolbar response, which shows no body; the other responses give it as text."
         response_body:
           type: string
           nullable: true
@@ -712,7 +714,9 @@ components:
           enum:
           - text
           - base64
+          - gzip+base64
           nullable: true
+          description: "gzip+base64 (a text body larger than compress_body_threshold, compressed by compress_bodies) only in the toolbar response, which shows no body; the other responses give it as text."
         request_body_size:
           type: integer
           nullable: true
@@ -952,7 +956,9 @@ components:
           enum:
           - text
           - base64
+          - gzip+base64
           nullable: true
+          description: "gzip+base64 for a text body larger than compress_body_threshold, compressed by compress_bodies: the request collector keeps the bodies as stored."
         response_body:
           type: string
           nullable: true
@@ -961,7 +967,9 @@ components:
           enum:
           - text
           - base64
+          - gzip+base64
           nullable: true
+          description: "gzip+base64 for a text body larger than compress_body_threshold, compressed by compress_bodies: the request collector keeps the bodies as stored."
         request_body_size:
           type: integer
           nullable: true

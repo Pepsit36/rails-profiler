@@ -19,6 +19,36 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.31.6] - 2026-10-05
+
+<!-- stamped -->
+
+### Fixed
+
+- **Storage:** With `config.compress_bodies` (on by default), a text body larger than
+  `config.compress_body_threshold` (10 KB) is now stored gzip+base64, as the README said: the
+  profile was decompressed again before every save, so the file, Redis and memory stores kept the
+  body as text, next to the compressed copy the request collector keeps, and the compression only
+  cost time. A 132 KB HTML page now takes 86 KB in those stores instead of 171 KB (273 KB without
+  compression); SQLite, which only keeps that copy, 44 KB instead of 36 KB at the faster level.
+  Compressing it costs 1.6 ms on the request instead of 4.1 ms (the fastest zlib level), saving
+  the profile 0.2 ms instead of 1.2 ms; the bodies are decompressed only when a profile is shown,
+  about 0.7 ms. The profile page, its API, the job, console and test APIs, the lists the cluster
+  proxy reads and the MCP tools still give the bodies as text; the toolbar, which shows no body,
+  gets them as stored (86 KB instead of 171 KB for that page).
+- **Storage:** The profile list summaries kept by the file, SQLite and Redis stores no longer
+  carry the first 500 characters of the request and response bodies. Summaries written by 0.31.4
+  and 0.31.5 keep them until their profiles are evicted; no list shows them.
+- **MCP:** The `curl` command of `get_profile_detail` carries the request body as it was sent: a
+  body larger than `compress_body_threshold` came out as its compressed base64 form, and a binary
+  body as base64 text. A binary body is now left out of the command.
+- **Upgrading:** the profiles already stored, all as text, are read as before, with no migration.
+  An earlier version reading a store written by this one shows the compressed bodies as text too,
+  and a cluster master and its slaves may run either version: the profile API they read still
+  gives the bodies as text. A body that cannot be decompressed is shown as it is stored, never as
+  an error. To keep the bodies readable as text in the stored files or Redis keys, set
+  `config.compress_bodies = false`.
+
 ## [0.31.5] - 2026-10-05
 
 <!-- stamped -->
