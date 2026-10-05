@@ -139,6 +139,19 @@ RSpec.describe "Profiler's own log messages" do
       expect(io.string).to match(/\[Profiler\] ProfilerMiddleware: could not save profile \h+: Errno::ENOSPC/)
     end
 
+    it "gives no token and no toolbar to a page whose profile could not be saved" do
+      with_rails_logger(logger)
+      Profiler.instance_variable_set(:@storage, failing_storage)
+
+      status, headers, body = Profiler::Middleware::ProfilerMiddleware.new(html_app).call(request_env)
+      page = +""
+      body.each { |part| page << part }
+
+      expect(status).to eq(200)
+      expect(headers.keys.map(&:downcase)).not_to include("x-profiler-token")
+      expect(page).to eq("<html><body>hi</body></html>")
+    end
+
     it "reports a collector that fails, to the application's log" do
       with_rails_logger(logger)
       Profiler.instance_variable_set(:@storage, Profiler::Storage::MemoryStore.new)

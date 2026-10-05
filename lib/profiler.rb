@@ -47,11 +47,17 @@ module Profiler
 
     # Saves a profile from a path of the application (a job, a console command, a test, an
     # outbound HTTP call): a storage error loses the profile, never the application's work.
+    # True when saved; false when the error was logged instead, or when the store is unavailable
+    # (Storage::Unavailable drops the save, and has said why once already).
     def save_profile(profile, from:)
-      storage.save(profile.token, profile)
+      target = storage
+      return false if target.is_a?(Storage::Unavailable)
+
+      target.save(profile.token, profile)
+      true
     rescue StandardError => e
       log_error("#{from}: could not save profile #{profile.token}", e)
-      nil
+      false
     end
 
     # The profiler's own messages, to +logger+ when given, else to config.logger when the
