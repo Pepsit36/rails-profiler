@@ -65,6 +65,20 @@ RSpec.describe "Profiler update endpoints", type: :request do
       expect(json).to eq("cursor" => 42, "updated" => false)
     end
 
+    # A client that sends anything else than a version (NaN, nothing) holds no version: telling
+    # it "updated" would reload its toolbar on every check, for nothing.
+    ["NaN", "", "abc", "12abc", "-1", nil].each do |since|
+      it "gives the current version without an update for since=#{since.inspect}" do
+        storage.save("tok", build_profile(token: "tok"))
+        params = since.nil? ? {} : { since: since }
+
+        get "/_profiler/api/events/tok", params, local
+
+        expect(last_response.status).to eq(200)
+        expect(json).to eq("cursor" => Profiler::SSE.current.version("tok"), "updated" => false)
+      end
+    end
+
     it "only tells the profile whose token was saved" do
       storage.save("other", build_profile(token: "other"))
 
