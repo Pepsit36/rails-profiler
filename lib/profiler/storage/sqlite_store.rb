@@ -191,7 +191,7 @@ module Profiler
 
         Summary.to_profile(JSON.parse(row["summary"]))
       rescue JSON::ParserError => e
-        warn "SqliteStore: failed to read the summary of #{row["token"]}: #{e.message}"
+        Profiler.log_error("SqliteStore: could not read the summary of #{row["token"]}", e)
         nil
       end
 

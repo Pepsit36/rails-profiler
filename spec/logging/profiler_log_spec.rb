@@ -167,6 +167,44 @@ RSpec.describe "Profiler's own log messages" do
     end
   end
 
+  describe "a streamed response while the store is unavailable" do
+    before do
+      Profiler.instance_variable_set(:@storage, Profiler::Storage::Unavailable.new(RuntimeError.new("store gone")))
+    end
+
+    it "sends no token for a body iterated by the server" do
+      streamed = Object.new.tap { |b| b.define_singleton_method(:each) { |&blk| blk.call("chunk") } }
+      app = ->(_env) { [200, Rack::Headers["content-type" => "text/plain"], streamed] }
+
+      _status, headers, body = Profiler::Middleware::ProfilerMiddleware.new(app).call(request_env)
+      body.each { |_| }
+      body.close
+
+      expect(headers["x-profiler-token"]).to be_nil
+    end
+
+    it "sends no token for a Rack 3 body that writes to the socket itself" do
+      callable = ->(stream) { stream.close }
+      app = ->(_env) { [200, Rack::Headers["content-type" => "text/plain"], callable] }
+
+      _status, headers, = Profiler::Middleware::ProfilerMiddleware.new(app).call(request_env)
+
+      expect(headers["x-profiler-token"]).to be_nil
+    end
+
+    it "still sends one when the store is there" do
+      Profiler.instance_variable_set(:@storage, Profiler::Storage::MemoryStore.new)
+      streamed = Object.new.tap { |b| b.define_singleton_method(:each) { |&blk| blk.call("chunk") } }
+      app = ->(_env) { [200, Rack::Headers["content-type" => "text/plain"], streamed] }
+
+      _status, headers, body = Profiler::Middleware::ProfilerMiddleware.new(app).call(request_env)
+      body.each { |_| }
+      body.close
+
+      expect(headers["x-profiler-token"]).to match(/\A\h{32}\z/)
+    end
+  end
+
   describe "the Logs tab of the request being profiled" do
     it "does not record the profiler's own messages, nor count them as the application's errors" do
       require "active_support/logger"

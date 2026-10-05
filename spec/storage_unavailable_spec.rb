@@ -34,7 +34,7 @@ RSpec.describe "Profiler.storage when the store cannot be created" do
   it "warns once, drops the saves and lets the reads raise the cause" do
     profiles = Array.new(3) { build_profile }
 
-    output = capture_stderr { profiles.each { |p| Profiler.storage.save(p.token, p) } }
+    output = capture_profiler_log { profiles.each { |p| Profiler.storage.save(p.token, p) } }
 
     expect(output.lines.size).to eq(1)
     expect(output).to include("symbolic link")

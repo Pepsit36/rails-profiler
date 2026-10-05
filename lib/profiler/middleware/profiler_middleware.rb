@@ -139,7 +139,6 @@ module Profiler
         collect_all(profile, now)
         # Their tabs keep their place; what they hold is filled in when they are collected.
         kept.each { |collector| profile.add_collector_metadata(collector) }
-        set_header(headers, TOKEN_HEADER, profile.token)
 
         # A Rack 3 streaming body (call without each) writes to the socket itself: nothing to relay.
         unless body.respond_to?(:each)
@@ -150,9 +149,14 @@ module Profiler
             Profiler.log_error("ProfilerMiddleware: collector #{collector.class} failed", e)
           end
           record_response(env, profile, request_body, status, profiled_headers, "", nil, false)
-          Profiler.save_profile(profile, from: "ProfilerMiddleware")
+          # Saved before the headers leave: a profile that is not there gets no token.
+          set_header(headers, TOKEN_HEADER, profile.token) if Profiler.save_profile(profile, from: "ProfilerMiddleware")
           return [[status, headers, body], nil]
         end
+
+        # Saved when the server closes the body, after the headers have left: the token is sent
+        # unless the store is already known to be unavailable, where it would be dropped.
+        set_header(headers, TOKEN_HEADER, profile.token) unless Profiler.storage.is_a?(Profiler::Storage::Unavailable)
 
         streamed = StreamedProfile.new(profile, kept) do |captured, size, complete, error|
           finish_streamed(env, streamed, collectors, request_body, allocations_before, status, profiled_headers,
