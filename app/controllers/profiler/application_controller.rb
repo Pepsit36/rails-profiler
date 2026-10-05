@@ -76,22 +76,31 @@ module Profiler
       [[(params[:limit] || 50).to_i, 0].max, [(params[:offset] || 0).to_i, 0].max]
     end
 
+    # The children of a page, read once per request: the child jobs and the AJAX tab share them.
+    def child_profiles(profile)
+      @child_profiles ||= {}
+      @child_profiles[profile.token] ||= (@resolved_storage || Profiler.storage).find_by_parent(profile.token)
+    end
+
+    # The AJAX sub-requests are saved after the page: their tab is computed here, whatever the
+    # configured collector list (Profiler::AjaxData).
+    def recalculate_ajax_data(profile)
+      Profiler::AjaxData.attach(profile, child_profiles(profile))
+    end
+
     def build_child_jobs(profile)
-      storage = @resolved_storage || Profiler.storage
-      storage.find_by_parent(profile.token)
-             .select { |p| p.profile_type == "job" }
-             .map do |j|
-               job_data = j.collector_data("job") || {}
-               {
-                 token: j.token,
-                 job_class: j.path,
-                 job_id: job_data["job_id"],
-                 queue: job_data["queue"],
-                 status: job_data["status"],
-                 duration: j.duration,
-                 started_at: j.started_at&.iso8601
-               }
-             end
+      child_profiles(profile).select { |p| p.profile_type == "job" }.map do |j|
+        job_data = j.collector_data("job") || {}
+        {
+          token: j.token,
+          job_class: j.path,
+          job_id: job_data["job_id"],
+          queue: job_data["queue"],
+          status: job_data["status"],
+          duration: j.duration,
+          started_at: j.started_at&.iso8601
+        }
+      end
     end
 
     def build_parent_summary(profile)
