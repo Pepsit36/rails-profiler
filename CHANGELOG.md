@@ -29,12 +29,14 @@ every commit of every tag interval is accounted for one way or the other.
   slaves whose names are not known in advance, such as one container per git worktree:
   `[%r{\Ahttp://travel-api-[a-z0-9-]+:3000\z}]`. Until now such a setup had to fall back to
   `:any`, which reopens the server-side request forgery closed in 0.30.11. A pattern must start
-  with `\A` and end with `\z`; any other `Regexp` raises an `ArgumentError` when assigned. It is
+  with `\A` and end with `\z`, and compile once wrapped to match the whole URL; any other `Regexp`
+  raises an `ArgumentError` when assigned. It is
   matched as a whole against the URL as the master keeps it (lower-case scheme and host, no default
   port, no trailing slash), after the existing checks, which it cannot lift: user info, a query, a
   fragment or a `.` or `..` segment are still refused, and plain HTTP to a host that is not a
   loopback address still needs `cluster_allow_insecure_http`. A `String` entry is always a URL,
-  never a pattern. The default, `[]`, still refuses every URL.
+  never a pattern. The default, `[]`, still refuses every URL. A slave URL whose path segment decodes
+  to a `\` is now refused like one that decodes to a `/`.
 
 ## [0.30.15] - 2026-10-05
 
