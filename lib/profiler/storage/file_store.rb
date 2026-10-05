@@ -21,16 +21,21 @@ module Profiler
     # size of the file, the type, the parent and the summary the lists show. Every process keeps it
     # in memory and reads only the lines appended since its last read, its own and those of the
     # other processes writing to the directory (Puma workers, Sidekiq), so a save no longer lists
-    # or stats the directory. Appends hold a shared lock; the compaction, which evicts the oldest
-    # profiles past max_profiles or max_size, resynchronizes the index with the directory (profiles
-    # written without it, files removed by hand, temporary files left by a killed writer) and
-    # rewrites it, holds the exclusive lock. A missing or damaged index is rebuilt from the files.
+    # or stats the directory. A save writes its file and its line under a shared flock; the
+    # compaction, which evicts the first saved profiles past max_profiles or max_size,
+    # resynchronizes the index with the directory (profiles written without it, files removed by
+    # hand, temporary files left by a killed writer) and rewrites it, holds the exclusive one: a
+    # save past a cap waits for it, a compaction of dead lines only gives up when another process
+    # holds it. A missing or damaged index is rebuilt from the files. flock has to work across
+    # the processes sharing the directory: one host, not NFS between hosts (see the README).
     class FileStore < BaseStore
       INDEX_FILE = ".profiles-index.jsonl"
       LOCK_FILE = ".profiles-index.lock"
       INDEX_VERSION = 1
       PROFILE_FILE = /\A(\h{32})\.json\z/
-      TEMPORARY_FILE = /\A\..*\.tmp\z/
+      # The temporary files PrivateFiles.write makes for this store: a profile or the index, then
+      # the pid and a random part. Any other file of a shared directory is left alone.
+      TEMPORARY_FILE = /\A\.(?:\h{32}\.json|#{Regexp.escape(INDEX_FILE)})\.\d+\.\h{8}\.tmp\z/
       # A temporary file older than this is one a killed writer left behind.
       STALE_TEMPORARY_AGE = 60
       # Past a cap, the oldest profiles are evicted down to this share of it.
@@ -50,6 +55,9 @@ module Profiler
         end
         @index_path = File.join(@path, INDEX_FILE)
         @lock_path = File.join(@path, LOCK_FILE)
+        # Left with a wider mode by an earlier run: back to 0600 (a link is refused).
+        PrivateFiles.restrict(@lock_path)
+        PrivateFiles.restrict(@index_path)
         @mutex = Mutex.new
         forget_index
       end
@@ -64,10 +72,21 @@ module Profiler
           # cannot evict the file before its line is written.
           with_lock(File::LOCK_SH) do
             PrivateFiles.write(profile_file_path(token), json)
-            PrivateFiles.append(@index_path, "#{line}\n")
+            begin
+              PrivateFiles.append(@index_path, "#{line}\n")
+            rescue StandardError
+              # A file the index never learns of would be listed by no one and counted nowhere.
+              FileUtils.rm_f(profile_file_path(token))
+              raise
+            end
           end
           refresh
-          compact if compaction_due?
+          if over_cap?
+            compact(keep: token)
+          elsif compaction_due?
+            # Dead lines only: another process compacting meanwhile does it for this one.
+            compact(keep: token, wait: false)
+          end
         end
         token
       end
@@ -266,17 +285,20 @@ module Profiler
       end
 
       # Under the exclusive lock: reads the whole index again, resynchronizes it with the
-      # directory, removes the profiles the block returns (if any) and the oldest past the caps,
-      # then rewrites the index. Another process that compacted meanwhile leaves nothing to do but
-      # the rewrite.
-      def compact
-        with_lock(File::LOCK_EX) do
+      # directory, takes out the profiles the block returns (if any) and the first saved past the
+      # caps, never keep (the profile just saved), rewrites the index, then removes their files:
+      # a reader never lists a profile whose file is gone. Another process that compacted
+      # meanwhile leaves nothing to do but the rewrite. wait: false gives up when another process
+      # holds the lock.
+      def compact(keep: nil, wait: true)
+        with_lock(wait ? File::LOCK_EX : File::LOCK_EX | File::LOCK_NB) do
           reload_for_compaction
           resynchronize
-          doomed = block_given? ? yield(@entries) : []
-          doomed.each { |entry| remove_profile(entry.token) }
-          evict_oldest if over_cap?
+          doomed = (block_given? ? yield(@entries) : []).map(&:token)
+          doomed.each { |token| remove_entry(token) }
+          doomed.concat(evict_first_saved(keep)) if over_cap?
           rewrite_index
+          doomed.each { |token| FileUtils.rm_f(profile_file_path(token)) }
         end
       end
 
@@ -302,18 +324,26 @@ module Profiler
         names = Dir.children(@path)
         on_disk = names.filter_map { |name| name[PROFILE_FILE, 1] }
         (@entries.keys - on_disk).each { |token| remove_entry(token) }
-        (on_disk - @entries.keys).each { |token| add_entry(entry_from_file(token)) }
+        # Unknown files in the order they were saved, as far as their modification time tells.
+        (on_disk - @entries.keys).sort_by { |token| modified_at(token) }.each { |token| add_entry(entry_from_file(token)) }
         names.grep(TEMPORARY_FILE).each { |name| remove_stale_temporary(File.join(@path, name)) }
       end
 
+      # A symbolic link in place of a profile is not followed while the modes are restricted.
       def entry_from_file(token)
-        json = File.read(profile_file_path(token))
+        json = PrivateFiles.open_for_reading(profile_file_path(token), &:read)
         record = put_record(token, Models::Profile.from_json(json).to_h, json.bytesize)
         Entry.new(token, record["at"], record["type"], record["parent"], record["bytes"], record["summary"])
       rescue StandardError
         # Unreadable: kept in the count, so that it is evicted in turn; listed by no one.
-        stat = File.stat(profile_file_path(token)) rescue nil
+        stat = File.lstat(profile_file_path(token)) rescue nil
         Entry.new(token, stat ? stat.mtime.to_f : 0.0, nil, nil, stat ? stat.size : 0, nil)
+      end
+
+      def modified_at(token)
+        File.lstat(profile_file_path(token)).mtime.to_f
+      rescue SystemCallError
+        0.0
       end
 
       def remove_stale_temporary(path)
@@ -322,19 +352,20 @@ module Profiler
         nil
       end
 
-      def evict_oldest
+      # In the order they were saved, not started: a job saved when it ends is a new profile. The
+      # entries keep the order of the index lines, the order of the saves.
+      def evict_first_saved(keep)
         count_target = @max_profiles && [(@max_profiles * LOW_WATER).floor, 1].max
         bytes_target = @bytes >= @max_size ? @max_size * LOW_WATER : nil
-        sorted_entries.reverse_each do |entry|
+        evicted = []
+        @entries.values.each do |entry|
           break unless (count_target && @entries.size > count_target) || (bytes_target && @bytes >= bytes_target)
+          next if entry.token == keep
 
-          remove_profile(entry.token)
+          remove_entry(entry.token)
+          evicted << entry.token
         end
-      end
-
-      def remove_profile(token)
-        FileUtils.rm_f(profile_file_path(token))
-        remove_entry(token)
+        evicted
       end
 
       def rewrite_index
@@ -356,7 +387,8 @@ module Profiler
       # with a forked process would not exclude it. The mutex excludes the threads of this one.
       def with_lock(mode)
         PrivateFiles.open(@lock_path) do |file|
-          file.flock(mode)
+          next unless file.flock(mode)
+
           yield
         end
       end

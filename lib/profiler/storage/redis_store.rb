@@ -2,6 +2,7 @@
 
 require "redis"
 require "json"
+require "time"
 require_relative "base_store"
 require_relative "summary"
 require_relative "../models/profile"
@@ -16,8 +17,12 @@ module Profiler
     class RedisStore < BaseStore
       DEFAULT_TTL = 24 * 60 * 60 # 24 hours
       INDEX_VERSION = "1"
-      # Past max_profiles, the oldest profiles are evicted down to this share of it.
+      # Past max_profiles, the first saved profiles are evicted down to this share of it.
       LOW_WATER = 0.8
+      # Indexing the data of an earlier version: tokens read per batch, and how long one process
+      # holds the right to do it.
+      INDEX_BATCH = 500
+      INDEX_LOCK_SECONDS = 60
 
       attr_reader :redis
 
@@ -35,7 +40,7 @@ module Profiler
         unindex(token, read_summary(token))
         @redis.setex(profile_key(token), @ttl, data.to_json)
         index(token, profile.started_at.to_f, Summary.build(data))
-        evict_oldest
+        evict_first_saved(token)
         token
       end
 
@@ -102,17 +107,20 @@ module Profiler
         Redis.new(url: url)
       end
 
-      def index(token, score, summary)
-        type = (summary[:profile_type] || "http").to_s
-        parent = summary[:parent_token]
-        @redis.setex(summary_key(token), @ttl, JSON.generate(summary))
-        @redis.zadd(list_key, score, token)
-        @redis.zadd(type_list_key(type), score, token)
-        @redis.sadd(types_key, type)
+      # score: the start time, the order of the lists. saved_at: the order of the saves, which the
+      # eviction follows.
+      def index(token, score, summary, saved_at: Time.now.to_f, client: @redis)
+        type = (summary[:profile_type] || summary["profile_type"] || "http").to_s
+        parent = summary[:parent_token] || summary["parent_token"]
+        client.setex(summary_key(token), @ttl, JSON.generate(summary))
+        client.zadd(list_key, score, token)
+        client.zadd(type_list_key(type), score, token)
+        client.zadd(saved_key, saved_at, token)
+        client.sadd(types_key, type)
         return unless Token.valid?(parent)
 
-        @redis.sadd(children_key(parent), token)
-        @redis.expire(children_key(parent), @ttl)
+        client.sadd(children_key(parent), token)
+        client.expire(children_key(parent), @ttl)
       end
 
       # Takes token out of the type list and the children set its previous save put it in.
@@ -130,6 +138,7 @@ module Profiler
         @redis.smembers(types_key).each { |type| @redis.zrem(type_list_key(type), token) } unless summary
         @redis.del(profile_key(token), summary_key(token))
         @redis.zrem(list_key, token)
+        @redis.zrem(saved_key, token)
       end
 
       def read_summary(token)
@@ -139,35 +148,62 @@ module Profiler
         nil
       end
 
-      # ZCARD is O(1): the eviction costs nothing until the cap is passed.
-      def evict_oldest
+      # In the order of the saves, not of the starts: a job saved when it ends is a new profile,
+      # and the one just saved (keep) is never evicted. ZCARD is O(1): the eviction costs nothing
+      # until the cap is passed.
+      def evict_first_saved(keep)
         return unless @max_profiles
 
-        count = @redis.zcard(list_key)
+        count = @redis.zcard(saved_key)
         return if count <= @max_profiles
 
-        keep = [(@max_profiles * LOW_WATER).floor, 1].max
-        @redis.zrange(list_key, 0, count - keep - 1).each { |token| remove(token) }
+        target = [(@max_profiles * LOW_WATER).floor, 1].max
+        @redis.zrange(saved_key, 0, count - target - 1).each { |token| remove(token) unless token == keep }
       end
 
-      # Indexes, once, the profiles saved by a version that kept only the list.
+      # Indexes, once, the profiles saved by a version that kept only the list, which it never
+      # pruned: the tokens started long before the TTL first, then the others read by batches.
+      # One process does it, under a lock; the others go on meanwhile, with the list alone.
       def ensure_index
         return if @indexed
         return @indexed = true if @redis.get(index_version_key) == INDEX_VERSION
+        return unless @redis.set(index_lock_key, Process.pid.to_s, nx: true, ex: INDEX_LOCK_SECONDS)
 
-        @redis.zrange(list_key, 0, -1).each do |token|
-          next unless Token.valid?(token)
+        begin
+          # An hour of margin for a profile saved long after it started.
+          @redis.zremrangebyscore(list_key, "-inf", Time.now.to_f - @ttl - 3600)
+          @redis.zrange(list_key, 0, -1).each_slice(INDEX_BATCH) { |tokens| index_batch(tokens) }
+          @redis.set(index_version_key, INDEX_VERSION)
+          @indexed = true
+        ensure
+          @redis.del(index_lock_key)
+        end
+      end
 
-          json = @redis.get(profile_key(token))
-          next @redis.zrem(list_key, token) unless json
+      def index_batch(tokens)
+        tokens = tokens.select { |token| Token.valid?(token) }
+        return if tokens.empty?
 
-          profile = Models::Profile.from_json(json)
-          index(token, profile.started_at.to_f, Summary.build(profile))
+        expired = []
+        profiles = tokens.zip(@redis.mget(*tokens.map { |token| profile_key(token) })).filter_map do |token, json|
+          if json.nil?
+            expired << token
+            next
+          end
+
+          # The summary from the parsed JSON, without building the Profile (and inflating its bodies).
+          data = JSON.parse(json, symbolize_names: true)
+          [token, data[:started_at] ? Time.parse(data[:started_at]).to_f : 0.0, Summary.build(data)]
         rescue StandardError => e
           warn "RedisStore: could not index profile #{token}: #{e.message}"
+          nil
         end
-        @redis.set(index_version_key, INDEX_VERSION)
-        @indexed = true
+        @redis.pipelined do |pipe|
+          profiles.each do |token, started_at, summary|
+            index(token, started_at, summary, saved_at: started_at, client: pipe)
+          end
+        end
+        @redis.zrem(list_key, expired) unless expired.empty?
       end
 
       def profile_key(token)
@@ -196,6 +232,14 @@ module Profiler
 
       def index_version_key
         "#{@key_prefix}:index_version"
+      end
+
+      def index_lock_key
+        "#{@key_prefix}:index_lock"
+      end
+
+      def saved_key
+        "#{@key_prefix}:saved"
       end
     end
   end

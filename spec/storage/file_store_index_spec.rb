@@ -95,9 +95,9 @@ RSpec.describe Profiler::Storage::FileStore do
       done = File.join(@dir, "writers-done")
       damaged = File.join(@dir, "damaged")
       track_damage = Module.new do
-        define_method(:compact) do |&block|
+        define_method(:compact) do |**options, &block|
           File.write(damaged, "x", mode: "a") if @damaged
-          super(&block)
+          super(**options, &block)
         end
       end
 
@@ -203,7 +203,8 @@ RSpec.describe Profiler::Storage::FileStore do
       File.delete(index)
       File.symlink(victim, index)
 
-      expect { profile_at(2).tap { |p| described_class.new(path: path).save(p.token, p) } }.to raise_error(Errno::ELOOP)
+      expect { profile_at(2).tap { |p| described_class.new(path: path).save(p.token, p) } }
+        .to raise_error(Profiler::Error, /symbolic link/)
       expect(File.read(victim)).to eq("untouched")
     end
 
@@ -217,6 +218,80 @@ RSpec.describe Profiler::Storage::FileStore do
       expect(fresh.list(limit: 10).map(&:token)).to eq([profile.token])
       fresh.clear
       expect(File.exist?(File.join(@dir, "outside.json"))).to be true
+    end
+  end
+
+  describe "the compaction" do
+    it "never evicts the profile it has just written, even alone past max_size" do
+      store = described_class.new(path: path, max_profiles: nil, max_size: 10)
+      profile = profile_at(1).tap { |p| store.save(p.token, p) }
+
+      expect(store.list(limit: 10).map(&:token)).to eq([profile.token])
+    end
+
+    # C2: the directory may be shared (tmp_path): another program's temporary file is not ours.
+    it "leaves the temporary files it did not write" do
+      FileUtils.mkdir_p(path)
+      foreign = [".cache.tmp", ".#{"c" * 32}.json.tmp", ".upload.12.abcd.tmp"].map { |n| File.join(path, n) }
+      foreign.each do |f|
+        File.write(f, "x")
+        File.utime(Time.now - 3600, Time.now - 3600, f)
+      end
+      store = described_class.new(path: path, max_profiles: 3)
+      (0...6).each { |i| profile_at(i).tap { |p| store.save(p.token, p) } }
+
+      expect(foreign.select { |f| File.exist?(f) }).to eq(foreign)
+    end
+
+    # R2: the index no longer lists a profile when its file is removed, so that a reader never
+    # lists a profile whose file is gone.
+    it "rewrites the index before it removes the evicted files" do
+      store = described_class.new(path: path, max_profiles: 3)
+      listed_while_removed = []
+      allow(FileUtils).to receive(:rm_f).and_wrap_original do |original, file, *rest|
+        token = File.basename(file.to_s, ".json")
+        listed_while_removed << token if File.read(File.join(path, described_class::INDEX_FILE)).include?(token)
+        original.call(file, *rest)
+      end
+      (0...6).each { |i| profile_at(i).tap { |p| store.save(p.token, p) } }
+
+      expect(listed_while_removed).to be_empty
+    end
+
+    # R6: a profile file the index never learns of is listed by no one and counted nowhere.
+    it "removes the profile file when its index line cannot be written" do
+      store = described_class.new(path: path, max_profiles: 100)
+      profile_at(0).tap { |p| store.save(p.token, p) }
+      profile = profile_at(1)
+      allow(Profiler::Storage::PrivateFiles).to receive(:append).and_raise(Errno::ENOSPC)
+
+      expect { store.save(profile.token, profile) }.to raise_error(Errno::ENOSPC)
+      expect(File.exist?(File.join(path, "#{profile.token}.json"))).to be false
+    end
+  end
+
+  describe "files the store did not create itself" do
+    # R24: a lock or index left with a wider mode by an earlier run is brought back to 0600.
+    it "brings an existing lock file back to 0600" do
+      FileUtils.mkdir_p(path)
+      lock = File.join(path, described_class::LOCK_FILE)
+      File.write(lock, "")
+      File.chmod(0o644, lock)
+
+      profile_at(1).tap { |p| described_class.new(path: path).save(p.token, p) }
+
+      expect(File.stat(lock).mode & 0o777).to eq(0o600)
+    end
+
+    it "does not index a profile name that is a symbolic link, while the modes are restricted" do
+      outside = File.join(@dir, "outside.json")
+      linked = profile_at(1)
+      File.write(outside, linked.to_json)
+      FileUtils.mkdir_p(path)
+      File.symlink(outside, File.join(path, "#{linked.token}.json"))
+
+      store = described_class.new(path: path, max_profiles: 100)
+      expect(store.list(limit: 10, summary: true).map(&:token)).not_to include(linked.token)
     end
   end
 

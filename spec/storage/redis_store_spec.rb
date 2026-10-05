@@ -84,6 +84,40 @@ RSpec.describe Profiler::Storage::RedisStore do
   end
 
   describe "profiles saved by a version without the indexes" do
+    # C3: the list of an earlier version is never pruned, expired tokens included.
+    it "prunes the expired tokens and reads the others in batches" do
+      now = Time.now.to_f
+      2_000.times do |i|
+        p = build_profile
+        if i.even?
+          redis.zadd("test_profiler:list", now - 7200 - i, p.token) # past the TTL of an hour: expired
+        else
+          redis.setex("test_profiler:#{p.token}", 3600, p.to_json)
+          redis.zadd("test_profiler:list", now - i, p.token)
+        end
+      end
+      before = redis.round_trips
+
+      expect(store.list(limit: 5).size).to eq(5)
+
+      expect(redis.round_trips - before).to be < 100
+      expect(redis.zcard("test_profiler:list")).to eq(1_000)
+      expect(store.list(limit: 2_000, type: "http").size).to eq(1_000)
+    end
+
+    it "lets one process index them, the others going on meanwhile" do
+      old = build_profile
+      redis.setex("test_profiler:#{old.token}", 3600, old.to_json)
+      redis.zadd("test_profiler:list", old.started_at.to_f, old.token)
+      redis.set("test_profiler:index_lock", "another process", nx: true, ex: 60)
+
+      expect(store.list(limit: 5).map(&:token)).to eq([old.token])
+      expect(redis.get("test_profiler:summary:#{old.token}")).to be_nil
+
+      redis.del("test_profiler:index_lock")
+      expect(store.list(limit: 5, type: "http").map(&:token)).to eq([old.token])
+    end
+
     it "indexes them once, on first use" do
       parent = build_profile(started_at: Time.now - 10)
       child = build_profile(parent_token: parent.token, profile_type: "job")
