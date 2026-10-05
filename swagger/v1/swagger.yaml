@@ -683,6 +683,10 @@ components:
           type: object
           additionalProperties: true
           nullable: true
+        params_truncated:
+          type: boolean
+          nullable: true
+          description: Whether params were cut at max_captured_body_bytes (they then hold a "[profiler]" key saying so).
         headers:
           type: object
           additionalProperties: true
@@ -932,6 +936,10 @@ components:
         params:
           type: object
           additionalProperties: true
+        params_truncated:
+          type: boolean
+          nullable: true
+          description: Whether params were cut at max_captured_body_bytes.
         response_headers:
           type: object
           additionalProperties: true
