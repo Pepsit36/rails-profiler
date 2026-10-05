@@ -8,6 +8,8 @@ require "profiler/test_runner/discovery"
 require "profiler/env_override_store"
 require "profiler/mcp/tools/run_tests"
 require "profiler/mcp/server"
+require "profiler/cluster/slave_proxy"
+require "active_support/core_ext/object/blank"
 require "fileutils"
 require "pathname"
 
@@ -158,6 +160,46 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
     it "includes the run ID so the caller can poll later" do
       result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 1)
       expect(result.first[:text]).to match(/Run ID.*`[0-9a-f]{16}`/)
+    end
+  end
+
+  # FAB-20 (issue #43): the run is read back through the slave's API, whose JSON carries the
+  # statuses of RunStore and the whole output under "output".
+  describe "on a slave" do
+    let(:proxy) { instance_double(Profiler::Cluster::SlaveProxy) }
+    let(:slave_params) { { "slave" => "payment", "files" => ["spec/fake_spec.rb"], "timeout_seconds" => 5 } }
+
+    before do
+      allow(described_class).to receive(:sleep)
+      allow(proxy).to receive(:post_json).and_return("id" => "r1", "status" => "pending")
+    end
+
+    def run_on_slave
+      described_class.run_on_slave(proxy, slave_params).first[:text]
+    end
+
+    Profiler::TestRunner::RunStore::TERMINAL_STATUSES.each do |status|
+      it "returns as soon as the run is #{status}, with its output" do
+        allow(proxy).to receive(:get_json)
+          .and_return("id" => "r1", "status" => status, "exit_code" => 0, "output" => "3 examples, 0 failures\n")
+
+        text = run_on_slave
+
+        expect(described_class).not_to have_received(:sleep)
+        expect(text).not_to include("timed out")
+        expect(text).to include("**#{status}**")
+        expect(text).to include("3 examples, 0 failures")
+      end
+    end
+
+    it "keeps polling while the run is in progress" do
+      allow(proxy).to receive(:get_json).and_return(
+        { "id" => "r1", "status" => "running", "output" => "" },
+        { "id" => "r1", "status" => "passed", "exit_code" => 0, "output" => "done\n" }
+      )
+
+      expect(run_on_slave).to include("done")
+      expect(described_class).to have_received(:sleep).once
     end
   end
 
