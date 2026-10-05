@@ -37,7 +37,10 @@ module Profiler
           candidates.find { |route| route[:verb] == "ANY" } ||
           candidates.first
       rescue StandardError => e
-        Profiler.log_error_once(:snapshot_route, "could not find the route of a profile", e)
+        # A path no route matches (a 404) has no route to show.
+        unless defined?(ActionController::RoutingError) && e.is_a?(ActionController::RoutingError)
+          Profiler.log_error_once(:snapshot_route, "could not find the route of a profile", e)
+        end
         nil
       end
 
