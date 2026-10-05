@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../slave_support"
+require_relative "../../process_snapshot"
 
 require "shellwords"
 require "cgi"
@@ -22,7 +23,10 @@ module Profiler
 
           storage = MCP::SlaveSupport.resolve_storage(params)
           profile = if token == "latest"
-            storage.list(limit: 1).first
+            # Loaded by its token: a slave adds its own routes and ENV to what it serves then,
+            # never to the profiles it lists.
+            latest = storage.list(limit: 1).first
+            latest && (storage.load(latest.token) || latest)
           else
             storage.load(token)
           end
@@ -50,6 +54,9 @@ module Profiler
         def self.format_profile_detail(profile, params = {})
           requested = params["sections"]&.map(&:to_s)
           want = ->(name) { requested.nil? || requested.include?(name) }
+          # The route table and ENV are the process's, not stored in the profile. A slave's
+          # profile comes with the slave's: this process's would be another process's.
+          Profiler::ProcessSnapshot.hydrate(profile) unless params["slave"]
 
           lines = []
           lines += section_overview(profile)              if want.("overview")

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base_collector"
+require_relative "../process_snapshot"
 
 module Profiler
   module Collectors
@@ -24,14 +25,14 @@ module Profiler
         }
       end
 
+      # ENV is the process's, not the request's: the profile keeps none of it, and the Env tab
+      # shows the variables of the process that displays the profile (ProcessSnapshot).
       def collect
-        variables = Profiler::Redaction.env_snapshot
-        store_data({ variables: variables, total: variables.size })
+        store_data({ scope: "process" })
       end
 
       def toolbar_summary
-        data = panel_content
-        { text: "#{data[:total] || 0} vars", color: "gray" }
+        { text: "#{ENV.size} vars", color: "gray" }
       end
     end
   end
