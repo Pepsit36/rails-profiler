@@ -50,7 +50,7 @@ module Profiler
                   :apply_env_overrides_when_disabled, :restrict_storage_permissions,
                   :test_runner_allow_undiscovered_files,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
-                  :compress_bodies, :compress_body_threshold, :max_captured_body_bytes,
+                  :compress_bodies, :compress_body_threshold, :max_captured_body_bytes, :max_captured_log_bytes,
                   :redact_sensitive_data, :filter_parameters, :env_allowlist,
                   :name, :master_url, :self_url,
                   :cluster_heartbeat_interval, :cluster_offline_threshold,
@@ -113,6 +113,8 @@ module Profiler
       # The request and response bodies kept in a profile stop at this many bytes; the
       # application still reads and sends all of them. nil keeps whole bodies.
       @max_captured_body_bytes = 256 * 1024
+      # What a profile keeps of the lines its request logs, in bytes. nil keeps every line.
+      @max_captured_log_bytes = 1024 * 1024
       @redact_sensitive_data = true
       @filter_parameters = DEFAULT_FILTER_PARAMETERS.dup
       @env_allowlist = DEFAULT_ENV_ALLOWLIST.dup
