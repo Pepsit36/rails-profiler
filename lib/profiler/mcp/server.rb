@@ -35,8 +35,12 @@ module Profiler
           handler = @resource_handlers[uri]
           next [{ uri: uri, mimeType: "application/json", text: "Resource not found: #{uri}" }] unless handler
 
-          result = handler.call
-          [{ uri: result[:uri], mimeType: result[:mimeType], text: result[:text] }]
+          begin
+            result = handler.call
+            [{ uri: result[:uri], mimeType: result[:mimeType], text: result[:text] }]
+          rescue Profiler::Storage::Unavailable::Error => e
+            [{ uri: uri, mimeType: "text/plain", text: e.message }]
+          end
         end
       end
 
@@ -393,6 +397,8 @@ module Profiler
         ::MCP::Tool.define(name: name, description: description, input_schema: input_schema) do |server_context: nil, **args|
           result = handler.call(args.transform_keys(&:to_s))
           result.is_a?(::MCP::Tool::Response) ? result : ::MCP::Tool::Response.new(result)
+        rescue Profiler::Storage::Unavailable::Error => e
+          ::MCP::Tool::Response.new([{ type: "text", text: e.message }], error: true)
         end
       end
 

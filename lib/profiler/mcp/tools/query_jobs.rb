@@ -12,7 +12,7 @@ module Profiler
           limit = params["limit"]&.to_i || 20
           fetch_size = [limit * 5, 500].min
           storage = MCP::SlaveSupport.resolve_storage(params)
-          profiles = storage.list(limit: fetch_size)
+          profiles = storage.list(limit: fetch_size, type: "job")
 
           jobs = profiles.select { |p| p.profile_type == "job" }
 

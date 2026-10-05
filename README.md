@@ -183,6 +183,11 @@ config.collectors = [
 ]
 ```
 
+The AJAX tab does not depend on this list: the sub-requests of a page are saved after it, so the
+tab is computed when the page is shown, from the requests linked to it, and appears when there is
+at least one. The jobs a page enqueued are listed under its child jobs, not counted as AJAX
+requests.
+
 ## Usage
 
 ### Toolbar and Dashboard
@@ -605,6 +610,52 @@ rake profiler:mcp
 
 ## Storage Backends
 
+### How many profiles are kept
+
+Every backend keeps at most `config.max_profiles` profiles (100 by default), evicting the oldest:
+past the cap, the oldest are removed down to 80% of it. `storage_options[:max_profiles]` sets it
+for the store alone. In the test environment, where the [test profiler](#test-profiling) saves one
+profile per example, there is no cap on the count unless the application sets one, so that the
+report at the end of a suite sees every test.
+
+```ruby
+config.max_profiles = 500  # keep more
+config.max_profiles = nil  # no cap on the count: the file store keeps up to max_size (100 MB),
+                           # Redis up to its TTL, SQLite everything, as in earlier versions
+```
+
+The memory store always has a cap: `nil` leaves it at 100.
+
+The eviction follows the order of the saves, not of the starts: a job, a console command or a
+streamed response is saved when it ends, possibly long after it started, and is kept as the newest
+profile; the lists still show the profiles by start time. The profile just saved is never evicted.
+
+**When upgrading** from a version without the cap, the first save of the file or SQLite store
+removes every profile past it, the first saved first: of 3,000 profiles of 17 KB written by
+0.31.1, about 80 remain, and that first save takes about a second, during which the other
+processes writing to the same file store wait. The Redis store does it on first use, a save or a
+list, in the one process that indexes the data of the earlier version (about 0.4 s for 20,000
+profiles); the other processes go on meanwhile. With no cap on the count, that indexing reads
+every profile once, in that one request: about 5 s for 20,000 profiles, paid once. To keep them, set `config.max_profiles` (to a
+higher number, or `nil`) **before** upgrading.
+
+A store that cannot be created (its index or lock replaced by a symbolic link, a directory it
+cannot write) is reported once per process, as a warning: the profiles are not saved and no
+toolbar is added to the pages, the dashboard and its API answer `503` with the cause in one line
+(no path), the MCP tools an error with it, and the store is created again on the next request
+once the cause is gone.
+
+With no cap on the count (`nil`, the default in the test environment), the file store index can
+grow large: with 30,000 profiles it is about 16 MB, read in about a second by the first list of
+each process, which then keeps it in memory (tens of MB), and every list after a save sorts it
+again (about 0.1 s). Prefer a cap, or SQLite, for that many profiles.
+
+Each backend lists, filters by type and pages the profiles itself, and finds the children of a
+page (its AJAX sub-requests and its jobs) through an index of their parent, without reading the
+other profiles. The dashboard lists summaries: the fields the lists show, without the bodies,
+params and headers, and only the scalar values of each collector; the full profile is read when
+it is opened.
+
 ### Memory (default)
 
 Fast, no persistence. Data lost on restart. Good for CI/test.
@@ -632,6 +683,26 @@ subdirectory is added to it. A relative `path` is resolved against the current d
 process, not `Rails.root`: prefer `Rails.root.join(...)`. Only the files named after a profile token (32 hexadecimal
 characters, then `.json`) are read, listed, evicted or cleared there, so a directory shared with
 other files is safe, `tmp_path` included.
+
+Next to the profiles, `.profiles-index.jsonl` holds one line per save or delete (the token, the
+size, the type, the parent and the summary the lists show) and `.profiles-index.lock` the lock that
+the processes writing to the directory share (Puma workers, Sidekiq). A save appends its line
+instead of listing the directory, so it costs the same with 100 or 10,000 profiles; each process
+reads only the lines the others appended since its last read. From time to time (past
+`max_profiles` or `max_size`, or when the index holds more dead lines than live ones) one process
+rewrites the index under the lock: it evicts the oldest profiles, adds the profile files the index
+does not know, drops the lines of the files removed by hand and deletes the temporary files a
+killed process left, and the profile files a compaction killed part way left behind (older than
+that compaction and absent from its index: they were evicted). A missing or damaged index is rebuilt from the profile files, so the profiles
+written by an earlier version are found without any migration.
+
+The index relies on `flock` between the processes sharing the directory. It works on one host,
+containers included (a named volume, a bind mount, Docker Desktop). A directory shared between
+hosts over NFS, mounted `nolock` or with `flock` otherwise without effect, is not supported: lists
+then miss live profiles or show evicted ones until the next compaction, and the cap is passed for
+a while; with a lock daemon out of reach, `flock` fails or waits, and the saves fail with it (the
+profile is lost, the request goes on). For several hosts, use Redis; SQLite, which relies on file
+locks too, only on one host.
 
 ### Redis (recommended for multi-server)
 
@@ -666,6 +737,7 @@ outside Rails) is always a `Pathname`, even when it is set from a `String`. By d
 | Path | Written by |
 |------|-----------|
 | `profiles/<token>.json` | the file store |
+| `profiles/.profiles-index.jsonl`, `profiles/.profiles-index.lock` | the file store, for its index |
 | `profiler.db`, `profiler.db-wal`, `profiler.db-shm` | the SQLite store |
 | `blobs/<token>/` | the SQLite store, for the large bodies |
 | `mcp-cache/<token>/` | the MCP tools, for the bodies they save with `save_bodies` |

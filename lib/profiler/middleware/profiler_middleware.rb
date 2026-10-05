@@ -104,7 +104,10 @@ module Profiler
         record_response(env, profile, request_body, status, headers, content, content.bytesize, true)
         collect_all(profile, collectors)
 
-        Profiler.storage.save(profile.token, profile)
+        storage = Profiler.storage
+        storage.save(profile.token, profile)
+        # Not saved: no token to send, no toolbar to inject for it.
+        return [status, headers, body] if storage.is_a?(Profiler::Storage::Unavailable)
 
         set_header(headers, TOKEN_HEADER, profile.token)
 

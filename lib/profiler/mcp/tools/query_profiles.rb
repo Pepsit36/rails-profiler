@@ -12,7 +12,7 @@ module Profiler
           storage = MCP::SlaveSupport.resolve_storage(params)
           limit = params["limit"]&.to_i || 20
           fetch_size = [limit * 5, 500].min
-          profiles = storage.list(limit: fetch_size)
+          profiles = storage.list(limit: fetch_size, type: params["profile_type"])
 
           profiles = profiles.select { |p| p.path&.include?(params["path"]) } if params["path"]
           profiles = profiles.select { |p| p.method == params["method"]&.upcase } if params["method"]

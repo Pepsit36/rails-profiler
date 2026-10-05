@@ -6,6 +6,9 @@ module Profiler
   class ApplicationController < ActionController::Base
     layout "profiler/application"
 
+    # A store that cannot be created: the cause in one line, as a 503, for every page and API.
+    rescue_from Profiler::Storage::Unavailable::Error, with: :storage_unavailable
+
     before_action :check_authorization
     before_action :authorize_request
     # Declared after the access checks, so that an unauthorized request gets its 403 first.
@@ -48,6 +51,14 @@ module Profiler
       deny("Missing #{Profiler::FORGERY_PROTECTION_HEADER} header or CSRF token")
     end
 
+    def storage_unavailable(error)
+      if controller_path.start_with?("profiler/api/")
+        render json: { error: error.message }, status: :service_unavailable
+      else
+        render plain: error.message, status: :service_unavailable
+      end
+    end
+
     def deny(message)
       if controller_path.start_with?("profiler/api/")
         render json: { error: message }, status: :forbidden
@@ -56,22 +67,51 @@ module Profiler
       end
     end
 
+    # A page of one type of profile, filtered, ordered and paged by the store: one profile more
+    # than the limit tells whether there is a next page, at any offset.
+    def render_profile_page(type:, summary: true)
+      limit, offset = page_params
+      render_page(Profiler.storage.list(limit: limit + 1, offset: offset, type: type, summary: summary), limit, offset)
+    end
+
+    def render_page(profiles, limit, offset)
+      render json: {
+        profiles: profiles.first(limit).map(&:to_h),
+        limit:    limit,
+        offset:   offset,
+        has_more: profiles.size > limit
+      }
+    end
+
+    def page_params
+      [[(params[:limit] || 50).to_i, 0].max, [(params[:offset] || 0).to_i, 0].max]
+    end
+
+    # The children of a page, read once per request: the child jobs and the AJAX tab share them.
+    def child_profiles(profile)
+      @child_profiles ||= {}
+      @child_profiles[profile.token] ||= (@resolved_storage || Profiler.storage).find_by_parent(profile.token)
+    end
+
+    # The AJAX sub-requests are saved after the page: their tab is computed here, whatever the
+    # configured collector list (Profiler::AjaxData).
+    def recalculate_ajax_data(profile)
+      Profiler::AjaxData.attach(profile, child_profiles(profile))
+    end
+
     def build_child_jobs(profile)
-      storage = @resolved_storage || Profiler.storage
-      storage.find_by_parent(profile.token)
-             .select { |p| p.profile_type == "job" }
-             .map do |j|
-               job_data = j.collector_data("job") || {}
-               {
-                 token: j.token,
-                 job_class: j.path,
-                 job_id: job_data["job_id"],
-                 queue: job_data["queue"],
-                 status: job_data["status"],
-                 duration: j.duration,
-                 started_at: j.started_at&.iso8601
-               }
-             end
+      child_profiles(profile).select { |p| p.profile_type == "job" }.map do |j|
+        job_data = j.collector_data("job") || {}
+        {
+          token: j.token,
+          job_class: j.path,
+          job_id: job_data["job_id"],
+          queue: job_data["queue"],
+          status: job_data["status"],
+          duration: j.duration,
+          started_at: j.started_at&.iso8601
+        }
+      end
     end
 
     def build_parent_summary(profile)
