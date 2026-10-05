@@ -122,3 +122,38 @@ RSpec.describe Profiler::Collectors::RoutesCollector do
     end
   end
 end
+
+RSpec.describe Profiler::Collectors::RoutesCollector, "with several routes to one action" do
+  def route(verb, pattern)
+    double("route #{verb}", defaults: { controller: "users", action: "update" }, verb: verb, name: nil,
+                            path: double(spec: double(to_s: "#{pattern}(.:format)")))
+      .tap { |r| allow(r).to receive(:respond_to?).with(:internal).and_return(false) }
+  end
+
+  let(:table) { [route("PATCH", "/users/:id"), route("PUT", "/users/:id")] }
+
+  before do
+    routes = double("routes", routes: table)
+    allow(routes).to receive(:recognize_path).and_return({ controller: "users", action: "update" })
+    stub_const("Rails", double("Rails", application: double(routes: routes), respond_to?: true))
+  end
+
+  def collected(method)
+    profile = build_profile(path: "/users/1", method: method)
+    described_class.new(profile).collect
+    profile
+  end
+
+  it "gives the route of the request's verb, not the first one of the action" do
+    expect(collected("PUT").collector_data("routes")[:matched]).to include(verb: "PUT")
+    expect(collected("PATCH").collector_data("routes")[:matched]).to include(verb: "PATCH")
+  end
+
+  it "marks every route of the action in the table, as before" do
+    profile = collected("PUT")
+    Profiler::ProcessSnapshot.hydrate(profile)
+
+    expect(profile.collector_data("routes")[:routes].map { |r| [r[:verb], r[:matched]] })
+      .to eq([["PATCH", true], ["PUT", true]])
+  end
+end
