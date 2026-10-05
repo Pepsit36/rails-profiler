@@ -19,6 +19,46 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Storage:** A save into the file store costs the same whatever the number of profiles on disk:
+  it listed the directory and read the size of every file on each save, about 5 ms with 500
+  profiles and 100 ms with 10,000, now under 1 ms. The store keeps an index next to the profiles
+  (`.profiles-index.jsonl`, with its lock `.profiles-index.lock`), which the processes writing to
+  the directory share; a missing or damaged one is rebuilt from the profile files, so the profiles
+  already saved are found without any migration. Temporary files left by a killed process are now
+  removed.
+- **Storage:** `config.max_profiles` (100) is honoured by every backend, the oldest profiles
+  evicted first: only the memory store applied it, so the file store grew to `max_size` (100 MB,
+  tens of thousands of profiles), SQLite without limit and Redis up to its TTL. In the test
+  environment, where every example saves a profile, there is no cap on the count unless the
+  application sets one.
+- **Storage:** Finding the children of a page (its AJAX sub-requests and its jobs) reads only
+  them, through an index of their parent, instead of reading and parsing every stored profile
+  (about 260 ms with 1,500 profiles of 17 KB in the file store, now under 1 ms). Every profile page
+  and toolbar paid it, once for the child jobs and once more for the AJAX tab; they now read the
+  children once.
+- **Dashboard:** The HTTP, job, console and test lists are filtered and paged by the storage, and
+  list summaries of the profiles (without the bodies, params, headers and nested collector data):
+  they loaded the 1,000 newest profiles in full on every page (about 200 ms with 1,500 profiles of
+  17 KB, now under 10 ms), showed nothing past the thousandth, said there was no next page there,
+  and missed the profiles of one type behind 1,000 newer ones of another. The MCP tools and
+  resources that list one type of profile (jobs, console, tests) and the test report ask the
+  storage for that type too, and found nothing behind 500 newer profiles of another type.
+- **AJAX:** The AJAX tab shows the sub-requests of a page whatever `config.collectors` holds: it
+  only appeared with `AjaxCollector` in the list, which the default list does not have. The jobs a
+  page enqueued are no longer counted as AJAX requests: they stay under its child jobs. The MCP
+  tool `get_profile_ajax` finds the sub-requests too: it read the AJAX data saved with the page,
+  before any sub-request.
+- **Storage:** The storage is created once, under a lock: the first requests of a threaded server
+  each created their own store, and the profiles saved in all but one were lost (33 to 38 of 40
+  with Puma on 8 threads, when the storage was not created before the first burst of requests).
+- **Upgrading:** the file, SQLite and Redis stores now keep 100 profiles outside the test
+  environment. To keep more, set `config.max_profiles` (or `storage_options[:max_profiles]`) to a
+  higher number; to go back to the earlier behaviour, no cap on the count, set it to `nil`: the
+  file store then keeps up to `max_size`, Redis up to its TTL. The memory store keeps 100 with
+  `nil`, as before.
+
 ## [0.31.3] - 2026-10-05
 
 <!-- stamped -->

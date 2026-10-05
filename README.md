@@ -183,6 +183,11 @@ config.collectors = [
 ]
 ```
 
+The AJAX tab does not depend on this list: the sub-requests of a page are saved after it, so the
+tab is computed when the page is shown, from the requests linked to it, and appears when there is
+at least one. The jobs a page enqueued are listed under its child jobs, not counted as AJAX
+requests.
+
 ## Usage
 
 ### Toolbar and Dashboard
@@ -605,6 +610,28 @@ rake profiler:mcp
 
 ## Storage Backends
 
+### How many profiles are kept
+
+Every backend keeps at most `config.max_profiles` profiles (100 by default), evicting the oldest:
+past the cap, the oldest are removed down to 80% of it. `storage_options[:max_profiles]` sets it
+for the store alone. In the test environment, where the [test profiler](#test-profiling) saves one
+profile per example, there is no cap on the count unless the application sets one, so that the
+report at the end of a suite sees every test.
+
+```ruby
+config.max_profiles = 500  # keep more
+config.max_profiles = nil  # no cap on the count: the file store keeps up to max_size (100 MB),
+                           # Redis up to its TTL, SQLite everything, as in earlier versions
+```
+
+The memory store always has a cap: `nil` leaves it at 100.
+
+Each backend lists, filters by type and pages the profiles itself, and finds the children of a
+page (its AJAX sub-requests and its jobs) through an index of their parent, without reading the
+other profiles. The dashboard lists summaries: the fields the lists show, without the bodies,
+params and headers, and only the scalar values of each collector; the full profile is read when
+it is opened.
+
 ### Memory (default)
 
 Fast, no persistence. Data lost on restart. Good for CI/test.
@@ -632,6 +659,17 @@ subdirectory is added to it. A relative `path` is resolved against the current d
 process, not `Rails.root`: prefer `Rails.root.join(...)`. Only the files named after a profile token (32 hexadecimal
 characters, then `.json`) are read, listed, evicted or cleared there, so a directory shared with
 other files is safe, `tmp_path` included.
+
+Next to the profiles, `.profiles-index.jsonl` holds one line per save or delete (the token, the
+size, the type, the parent and the summary the lists show) and `.profiles-index.lock` the lock that
+the processes writing to the directory share (Puma workers, Sidekiq). A save appends its line
+instead of listing the directory, so it costs the same with 100 or 10,000 profiles; each process
+reads only the lines the others appended since its last read. From time to time (past
+`max_profiles` or `max_size`, or when the index holds more dead lines than live ones) one process
+rewrites the index under the lock: it evicts the oldest profiles, adds the profile files the index
+does not know, drops the lines of the files removed by hand and deletes the temporary files a
+killed process left. A missing or damaged index is rebuilt from the profile files, so the profiles
+written by an earlier version are found without any migration.
 
 ### Redis (recommended for multi-server)
 
@@ -666,6 +704,7 @@ outside Rails) is always a `Pathname`, even when it is set from a `String`. By d
 | Path | Written by |
 |------|-----------|
 | `profiles/<token>.json` | the file store |
+| `profiles/.profiles-index.jsonl`, `profiles/.profiles-index.lock` | the file store, for its index |
 | `profiler.db`, `profiler.db-wal`, `profiler.db-shm` | the SQLite store |
 | `blobs/<token>/` | the SQLite store, for the large bodies |
 | `mcp-cache/<token>/` | the MCP tools, for the bodies they save with `save_bodies` |
