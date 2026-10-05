@@ -60,15 +60,16 @@ module Profiler
       false
     end
 
-    # The profiler's own messages, to +logger+ when given, else to config.logger when the
-    # application sets one (read on each message), else to Rails.logger, else to $stderr.
+    # The profiler's own messages, to config.logger when the application sets one (read on each
+    # message), else to +logger+ when given (Rails.logger at boot), else to Rails.logger, else to
+    # $stderr.
     # Prefixed [Profiler], with the profiler's credentials masked. Never raises: a logger that
     # fails sends the line to $stderr instead. While the line is written, the thread is marked
     # (Thread.current[:profiler_logging]) so that the Logs tab of a profile being recorded does
     # not take it for one of the application's lines.
     def log(level, message, error = nil, backtrace: false, logger: nil)
       line = log_line(message, error, backtrace)
-      logger ||= current_logger
+      logger = configured_logger || logger || current_logger
       if logger
         begin
           return write_log(logger, level, line)
@@ -162,6 +163,12 @@ module Profiler
     end
 
     private
+
+    def configured_logger
+      configuration.logger
+    rescue StandardError
+      nil
+    end
 
     def current_logger
       configured = configuration.logger
