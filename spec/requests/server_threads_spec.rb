@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "fileutils"
 require_relative "../support/puma_app_server"
 
 # What the profiler's own endpoints hold a server thread for, measured on a real Puma with as
@@ -61,5 +62,46 @@ RSpec.describe "Server threads held by the profiler's endpoints" do
     open_connections("/_profiler/api/test_runner/runs/#{server.run_id}/stream").each(&:close)
 
     expect_application_to_answer
+  end
+
+  # A CI job that times out kills rspec with SIGKILL: no ensure runs, and the Puma child must not
+  # stay behind, listening.
+  describe "the Puma child of a spec process that is killed" do
+    after do
+      begin
+        Process.kill("KILL", @orphan) if @orphan
+      rescue Errno::ESRCH
+        nil
+      end
+      # The killed parent could not delete its child's error output.
+      FileUtils.rm_f(Dir.glob(File.join(Dir.tmpdir, "profiler-puma-app-server-#{@parent}-*.log"))) if @parent
+    end
+
+    def listening?(port)
+      TCPSocket.new("127.0.0.1", port).close
+      true
+    rescue SystemCallError
+      false
+    end
+
+    it "stops listening" do
+      support = File.expand_path("../support/puma_app_server", __dir__)
+      script = "require #{support.inspect}; server = PumaAppServer.new(threads: 1).start; " \
+               "puts server.port, server.pid; $stdout.flush; sleep"
+      reader, writer = IO.pipe
+      parent = @parent = Process.spawn(RbConfig.ruby, "-e", script, out: writer, err: File::NULL)
+      writer.close
+      port = Integer(reader.gets)
+      @orphan = Integer(reader.gets)
+      reader.close
+      expect(listening?(port)).to be(true)
+
+      Process.kill("KILL", parent)
+      Process.wait(parent)
+
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + blocked
+      sleep 0.1 while listening?(port) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+      expect(listening?(port)).to be(false)
+    end
   end
 end
