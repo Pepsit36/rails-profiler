@@ -125,9 +125,9 @@ module Profiler
         first = @warn_mutex.synchronize { @warned[key] ? false : (@warned[key] = true) }
         return unless first
 
-        warn "[Profiler] tmp_path #{key} belongs to another user or is writable by group or others " \
-             "(mode #{format("%o", stat.mode & 0o777)}): other local users could place files there. Set " \
-             "config.tmp_path to a directory of your own, or run chmod 700 on it."
+        Profiler.log_warn("tmp_path #{key} belongs to another user or is writable by group or others " \
+                          "(mode #{format("%o", stat.mode & 0o777)}): other local users could place files there. Set " \
+                          "config.tmp_path to a directory of your own, or run chmod 700 on it.")
       rescue SystemCallError
         nil
       end

@@ -100,7 +100,7 @@ module Profiler
               return profile
             end
           rescue => e
-            Rails.logger.warn("[Profiler] Cached slave #{cached_slave} failed for #{token}: #{e.message}")
+            Profiler.log_warn("Cluster: cached slave #{cached_slave} failed for #{token}", e)
           end
         end
         Profiler.token_cache.invalidate(token)
@@ -130,7 +130,7 @@ module Profiler
               end
             end
           rescue => e
-            Rails.logger.warn("[Profiler] Fan-out error for slave #{slave_name} (#{token}): #{e.message}")
+            Profiler.log_warn("Cluster: fan-out error for slave #{slave_name} (#{token})", e)
           end
         end
       end

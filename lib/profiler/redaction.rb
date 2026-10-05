@@ -518,9 +518,7 @@ module Profiler
         return if reported.include?(error.class)
 
         reported << error.class
-        message = "[Profiler] Redaction: #{error.class} while #{during}; the value was masked instead."
-        logger = ::Rails.logger if defined?(::Rails) && ::Rails.respond_to?(:logger)
-        logger ? logger.warn(message) : Kernel.warn(message)
+        Profiler.log_warn("Redaction: #{error.class} while #{during}; the value was masked instead.")
       rescue StandardError
         nil
       end

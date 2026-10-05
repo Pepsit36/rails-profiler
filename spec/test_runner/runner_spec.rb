@@ -156,7 +156,7 @@ RSpec.describe Profiler::TestRunner::Runner do
 
     it "refuses a path holding a null byte when undiscovered files are allowed" do
       Profiler.configure { |c| c.test_runner_allow_undiscovered_files = true }
-      allow(described_class).to receive(:warn)
+      allow(Profiler).to receive(:log_warn)
       expect_refused(["lib/tasks/not_a_test.rb\0"], message: /Not a file under the Rails root/)
     end
 
@@ -205,7 +205,7 @@ RSpec.describe Profiler::TestRunner::Runner do
     end
 
     it "accepts a file under the Rails root that is not a discovered test, with a single warning" do
-      expect(described_class).to receive(:warn).with(/test_runner_allow_undiscovered_files/).once
+      expect(Profiler).to receive(:log_warn).with(/test_runner_allow_undiscovered_files/).once
 
       2.times { described_class.start(files: ["lib/tasks/not_a_test.rb"], framework: "rspec") }
 
@@ -213,7 +213,7 @@ RSpec.describe Profiler::TestRunner::Runner do
     end
 
     it "still refuses a path that leaves the Rails root" do
-      allow(described_class).to receive(:warn)
+      allow(Profiler).to receive(:log_warn)
       expect { described_class.start(files: ["../outside_spec.rb"], framework: "rspec") }
         .to raise_error(Profiler::TestRunner::InvalidFileError, /Not a file under the Rails root/)
       expect(described_class).not_to have_received(:spawn_async)
@@ -351,7 +351,7 @@ RSpec.describe Profiler::TestRunner::Runner do
         allow(Profiler).to receive(:env_override_store).and_return(
           instance_double(Profiler::EnvOverrideStore, all_overrides: with_originals)
         )
-        allow(described_class).to receive(:warn)
+        allow(Profiler).to receive(:log_warn)
       end
 
       it "does not pass those overrides, and keeps the values the process inherited" do
@@ -367,8 +367,8 @@ RSpec.describe Profiler::TestRunner::Runner do
       it "warns once, naming the variables left out without their values" do
         2.times { described_class.send(:build_env) }
 
-        expect(described_class).to have_received(:warn).once
-        expect(described_class).to have_received(:warn) do |message|
+        expect(Profiler).to have_received(:log_warn).once
+        expect(Profiler).to have_received(:log_warn) do |message|
           expect(message).to include("RUBYOPT", "SPEC_OPTS", "BUNDLE_GEMFILE", "LD_PRELOAD", "PATH", "NODE_OPTIONS")
           expect(message).not_to include("not_a_test.rb")
           expect(message).not_to include("MY_FEATURE_FLAG")

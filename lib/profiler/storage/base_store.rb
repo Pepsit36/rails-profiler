@@ -34,7 +34,8 @@ module Profiler
 
       def exists?(token)
         !load(token).nil?
-      rescue
+      rescue StandardError => e
+        Profiler.log_error_once(:store_exists, "#{self.class.name.split("::").last}: could not look up a profile", e)
         false
       end
 
@@ -54,8 +55,9 @@ module Profiler
 
       def broadcast_event(token)
         Profiler::SSE.current.broadcast(token)
-      rescue StandardError
+      rescue StandardError => e
         # Never let a broadcast failure prevent profile persistence
+        Profiler.log_error_once(:store_broadcast, "#{self.class.name.split("::").last}: could not announce a saved profile", e)
       end
     end
   end

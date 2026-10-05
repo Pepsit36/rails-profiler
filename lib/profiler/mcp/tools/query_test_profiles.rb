@@ -37,7 +37,11 @@ module Profiler
           end
 
           if params["cursor"]
-            cutoff = Time.parse(params["cursor"]) rescue nil
+            cutoff = begin
+              Time.parse(params["cursor"])
+            rescue ArgumentError, TypeError
+              nil # a cursor that is not a time is ignored, as before
+            end
             tests = tests.select { |p| p.started_at < cutoff } if cutoff
           end
 

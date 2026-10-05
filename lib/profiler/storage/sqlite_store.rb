@@ -102,7 +102,7 @@ module Profiler
 
         row_to_profile(row)
       rescue => e
-        warn "SqliteStore: failed to load profile #{token}: #{e.message}"
+        Profiler.log_error("SqliteStore: could not load profile #{token}", e)
         nil
       end
 
@@ -308,7 +308,7 @@ module Profiler
           collectors_data:        collectors_data
         )
       rescue => e
-        warn "SqliteStore: failed to deserialize profile #{row["token"]}: #{e.message}"
+        Profiler.log_error("SqliteStore: could not deserialize profile #{row["token"]}", e)
         nil
       end
 

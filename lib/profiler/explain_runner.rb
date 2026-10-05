@@ -61,7 +61,11 @@ module Profiler
       result = if format == "json"
         # PostgreSQL / MySQL return JSON in rows[0]["QUERY PLAN"] or rows[0]["EXPLAIN"]
         raw = rows.first&.values&.first.to_s
-        JSON.parse(raw) rescue raw
+        begin
+          JSON.parse(raw)
+        rescue JSON::ParserError
+          raw
+        end
       else
         rows.map { |r| r.values.join("\t") }.join("\n")
       end

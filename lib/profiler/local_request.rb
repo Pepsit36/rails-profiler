@@ -57,18 +57,14 @@ module Profiler
           @warned = true
         end
 
-        message = "[Profiler] Request refused or not profiled by authorization_mode :allow_local: #{reason}. " \
+        message = "Request refused or not profiled by authorization_mode :allow_local: #{reason}. " \
                   "The profiler only serves and captures requests made from this machine. " \
                   "If the application runs in Docker or behind a remote proxy, either set " \
                   "config.authorization_mode = :allow_authorized with a config.authorize_with block " \
                   "that admits your network (see the Access control section of the README), or set " \
                   "config.authorization_mode = :allow_all, which offers no protection at all. " \
                   "This message is logged once per process."
-        if defined?(Rails) && Rails.respond_to?(:logger) && Rails.logger
-          Rails.logger.warn(message)
-        else
-          warn(message)
-        end
+        Profiler.log_warn(message)
       end
 
       def reset_warning!

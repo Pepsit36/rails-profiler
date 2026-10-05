@@ -101,7 +101,7 @@ RSpec.describe "Sensitive data redaction, third review follow-up" do
 
   describe "a filtered JSON body that cannot be generated back" do
     it "is labelled unparseable without logging a failure" do
-      expect(Kernel).not_to receive(:warn)
+      expect(Profiler).not_to receive(:log)
       raw = '{"password":"x","n":NaN}'
       allow(JSON).to receive(:parse).and_call_original
       allow(JSON).to receive(:parse).with(raw).and_return("password" => "x", "n" => Float::NAN)

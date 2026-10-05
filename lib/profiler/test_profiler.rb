@@ -114,7 +114,7 @@ module Profiler
             collector.collect if collector.respond_to?(:collect)
             profile.add_collector_metadata(collector)
           rescue => e
-            warn "Profiler TestProfiler: Collector #{collector.class} failed: #{e.message}"
+            Profiler.log_error("TestProfiler: collector #{collector.class} failed", e)
           end
         end
 

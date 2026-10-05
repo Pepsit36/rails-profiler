@@ -82,3 +82,14 @@ def build_job_profile(attrs = {})
     }
   ))
 end
+
+# What the profiler logged through Profiler.log while the block ran (config.logger).
+def capture_profiler_log
+  io = StringIO.new
+  previous = Profiler.configuration.logger
+  Profiler.configuration.logger = Logger.new(io)
+  yield
+  io.string
+ensure
+  Profiler.configuration.logger = previous
+end

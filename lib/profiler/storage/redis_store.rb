@@ -64,7 +64,7 @@ module Profiler
 
         Models::Profile.from_json(json_data)
       rescue => e
-        warn "Failed to load profile #{token}: #{e.message}"
+        Profiler.log_error("RedisStore: could not load profile #{token}", e)
         nil
       end
 
