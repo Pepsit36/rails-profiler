@@ -31,11 +31,12 @@ module Profiler
       def subscribe
         @exception_data = nil
 
-        @subscriber = ActiveSupport::Notifications.subscribe("process_action.action_controller") do |*args|
-          event = ActiveSupport::Notifications::Event.new(*args)
-          ex = event.payload[:exception_object]
-          capture_exception(ex) if ex && @exception_data.nil?
-        end
+        @subscriptions = [
+          subscribe_notification("process_action.action_controller") do |_name, _started, _finished, _id, payload|
+            ex = payload[:exception_object]
+            capture_exception(ex) if ex && @exception_data.nil?
+          end
+        ]
       end
 
       def capture(ex)
@@ -54,10 +55,7 @@ module Profiler
       end
 
       def unsubscribe
-        return unless @subscriber
-
-        ActiveSupport::Notifications.unsubscribe(@subscriber)
-        @subscriber = nil
+        unsubscribe_notifications(@subscriptions) if @subscriptions
       end
 
       def has_data?

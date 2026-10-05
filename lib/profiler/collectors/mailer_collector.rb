@@ -40,15 +40,10 @@ module Profiler
         return unless defined?(ActiveSupport::Notifications)
         return unless Profiler.configuration.track_mailers
 
-        # Capture the subscriber thread so notifications from other threads (e.g. async
-        # job threads delivering mail enqueued via deliver_later) are ignored by this collector.
-        @subscriber_thread = Thread.current
-
         # Use a stack so multiple deliver_later calls in the same request are all tracked.
         claim_thread_slot(:profiler_pending_processes, [])
 
-        @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("process.action_mailer") do |_name, started, finished, _id, payload|
-          next unless Thread.current.equal?(@subscriber_thread)
+        @subscriptions << subscribe_notification("process.action_mailer") do |_name, started, finished, _id, payload|
           next if rails_preview_request?
 
           mailer_class = payload[:mailer].to_s
@@ -64,8 +59,7 @@ module Profiler
           }
         end
 
-        @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("deliver.action_mailer") do |_name, started, finished, _id, payload|
-          next unless Thread.current.equal?(@subscriber_thread)
+        @subscriptions << subscribe_notification("deliver.action_mailer") do |_name, started, finished, _id, payload|
           next unless payload[:perform_deliveries]
           next if rails_preview_request?
 
