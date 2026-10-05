@@ -203,6 +203,62 @@ RSpec.describe "Collectors scoped to the request thread" do
     end
   end
 
+  # The server may iterate a streamed body in another fiber than the one that ran the request:
+  # it lends that fiber the profile's token (StreamedProfile#enter), which is fiber-local.
+  describe "a body iterated by another fiber" do
+    def in_fiber(token: nil, &block)
+      Fiber.new do
+        Profiler::CurrentContext.token = token
+        block.call
+      ensure
+        Profiler::CurrentContext.clear
+      end.resume
+    end
+
+    context "with the default isolation level, :thread" do
+      it "records the fiber that carries the profile's token" do
+        Profiler::CurrentContext.token = profile.token
+        collector = Profiler::Collectors::DatabaseCollector.new(profile)
+        collector.subscribe
+        Profiler::CurrentContext.clear
+
+        in_fiber(token: profile.token) { sql("SELECT 'streamed'") }
+
+        expect(collected(collector)[:total_queries]).to eq(1)
+      ensure
+        Profiler::CurrentContext.clear
+      end
+    end
+
+    # Falcon runs each request in its own fiber, and Rails then wants isolation_level = :fiber.
+    context "with isolation_level = :fiber, as under Falcon" do
+      around do |example|
+        previous = ActiveSupport::IsolatedExecutionState.isolation_level
+        ActiveSupport::IsolatedExecutionState.isolation_level = :fiber
+        example.run
+      ensure
+        ActiveSupport::IsolatedExecutionState.isolation_level = previous
+      end
+
+      it "keeps the requests of one thread apart, and records the fiber iterating the body" do
+        collector = nil
+        request_profile = Profiler::Models::Profile.new
+        in_fiber(token: request_profile.token) do
+          collector = Profiler::Collectors::DatabaseCollector.new(request_profile)
+          collector.subscribe
+          sql("SELECT 'in the request'")
+        end
+
+        in_fiber { sql("SELECT 'another request on the same thread'") }
+        in_fiber(token: request_profile.token) { sql("SELECT 'streamed body'") }
+        collector.collect
+
+        expect(request_profile.collector_data("database")[:queries].map { |q| q[:sql] })
+          .to eq(["SELECT 'in the request'", "SELECT 'streamed body'"])
+      end
+    end
+  end
+
   describe "a job performed inline during the request" do
     it "records the job's queries in both profiles, and the request's own after the job, as before" do
       request = Profiler::Collectors::DatabaseCollector.new(profile)
