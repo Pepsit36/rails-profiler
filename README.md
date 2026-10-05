@@ -98,7 +98,7 @@ Profiler.configure do |config|
   config.slow_query_threshold = 100  # ms
   config.max_queries_warning = 50
   # Where each query comes from: the first run of each statement and every slow query
-  # (:first_and_slow, default), every query (:all, the behaviour before 0.31.1), or none (:none)
+  # (:first_and_slow, default), every query (:all, the behaviour of earlier versions), or none (:none)
   config.sql_backtrace = :first_and_slow
 
   # Allocation tracking: objects allocated during the request, job, command or test
@@ -867,7 +867,7 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
   Rails requires, so that requests sharing a thread are told apart
 - The function profiler samples with [stackprof](https://github.com/tmm1/stackprof), which is not
   a dependency of the gem: add `gem "stackprof"` to the application's Gemfile to use it. Without
-  it, the function profiler stays off. Before 0.31.1 it then traced every method call of every
+  it, the function profiler stays off. Earlier versions then traced every method call of every
   thread with a `TracePoint`, which tripled the overhead; set
   `Profiler.function_profiling_tracepoint_fallback = true` in an initializer to trace again, on the
   request's thread only
