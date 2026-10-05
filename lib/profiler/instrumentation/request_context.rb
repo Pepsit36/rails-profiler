@@ -18,8 +18,10 @@ module Profiler
         profiler_flamegraph_collector
       ].freeze
 
-      # Frames of the code that creates the threads of a pool.
-      EXECUTOR_FRAMES = ["/concurrent/executor/", "/puma/thread_pool.rb"].freeze
+      # The files whose code calls Thread.new to create the threads of a pool: concurrent-ruby's
+      # executors (a worker of RubyThreadPoolExecutor, the thread of SimpleExecutorService) and
+      # Puma's thread pool.
+      POOL_FILES = %r{/concurrent/executor/[a-z_]+\.rb\z|/puma/thread_pool\.rb\z}
 
       module_function
 
@@ -51,12 +53,14 @@ module Profiler
         end
       end
 
-      # Whether the thread being created is one of a pool's: then it must not inherit.
+      # Whether the thread being created is one of a pool's: then it must not inherit. Only the
+      # code that calls Thread.new counts; a thread the application starts from a task, or from a
+      # request a pool thread serves, is the request's.
       def creating_pool_thread?
-        caller_locations(2, 40)&.any? do |location|
-          path = location.path.to_s
-          EXECUTOR_FRAMES.any? { |frame| path.include?(frame) }
-        end
+        # 0 is this method, 1 the Thread#initialize patch, 2 Thread.new, which reports the file
+        # of the code that called it.
+        location = caller_locations(2, 1)&.first
+        location ? POOL_FILES.match?(location.path.to_s) : false
       end
     end
   end

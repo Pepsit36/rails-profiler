@@ -183,6 +183,36 @@ RSpec.describe "Request context and thread pools" do
     end
   end
 
+  # Only the thread a pool creates itself is left out: a thread the application starts from
+  # inside a task, or from code a pool thread runs (a Rack route on Puma), is the request's.
+  describe "a thread the application starts from code a pool runs" do
+    it "keeps the request's context when started inside a future" do
+      a = PooledRequest.new
+      a.run { Concurrent::Promises.future_on(pool) { Thread.new { sql("SELECT 'thread in a future'") }.join }.value!(2) }
+
+      expect(a.finish).to eq(["SELECT 'thread in a future'"])
+    end
+
+    it "keeps the request's context when started by a request served on a Puma thread" do
+      require "puma"
+      require "puma/thread_pool"
+      result = Queue.new
+      puma_pool = Puma::ThreadPool.new("spec", { min_threads: 1, max_threads: 1 }) do |*|
+        profile = Profiler::Models::Profile.new
+        collector = Profiler::Collectors::DatabaseCollector.new(profile)
+        collector.subscribe
+        Thread.new { sql("SELECT 'thread of a Rack route'") }.join
+        collector.collect
+        result << profile.collector_data("database")[:queries].map { |q| q[:sql] }
+      end
+      puma_pool << :request
+
+      expect(result.pop).to eq(["SELECT 'thread of a Rack route'"])
+    ensure
+      puma_pool&.shutdown(1)
+    end
+  end
+
   describe "a thread the application starts with Thread.new" do
     it "still inherits the request's context, for the life of its block" do
       a = PooledRequest.new
