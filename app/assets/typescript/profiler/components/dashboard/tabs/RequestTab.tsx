@@ -42,9 +42,34 @@ function buildCurl(profile: Profile): string {
   return parts.join(' \\\n')
 }
 
+// Bodies are kept up to max_captured_body_bytes, and a long stream's collectors may be released
+// before it ends. The flags are on the profile, and in the request collector's data for the
+// stores that rebuild a profile from it.
+function truncationNotes(profile: Profile, routeData: RequestData): string[] {
+  const notes: string[] = []
+  const describe = (what: string, truncated?: boolean | null, size?: number | null, minimum?: boolean | null) => {
+    if (truncated) {
+      const total = size != null ? `${minimum ? 'at least ' : ''}${size.toLocaleString('en')} bytes, ` : ''
+      notes.push(`${what} body truncated: ${total}only the beginning was kept (max_captured_body_bytes).`)
+    }
+  }
+  describe('Request', profile.request_body_truncated ?? routeData.request_body_truncated,
+    profile.request_body_size ?? routeData.request_body_size,
+    profile.request_body_size_is_minimum ?? routeData.request_body_size_is_minimum)
+  describe('Response', profile.response_body_truncated ?? routeData.response_body_truncated,
+    profile.response_body_size ?? routeData.response_body_size,
+    profile.response_body_size_is_minimum ?? routeData.response_body_size_is_minimum)
+  const releasedAfter = profile.collectors_released_after_seconds ?? routeData.collectors_released_after_seconds
+  if (releasedAfter != null) {
+    notes.push(`Incomplete profile: the collectors of this stream were released after ${releasedAfter} s, before the server closed it; what it did later is missing.`)
+  }
+  return notes
+}
+
 export function RequestTab({ profile }: Props) {
   const routeData = (profile.collectors_data?.request ?? {}) as RequestData
   const hasParams = profile.params && Object.keys(profile.params).length > 0
+  const notes = truncationNotes(profile, routeData)
 
   return (
     <div class="profiler-ajax-card profiler-ajax-card--success" style="margin-bottom:8px;background:var(--profiler-bg-elevated);transform:translateX(3px);box-shadow:var(--profiler-shadow-sm);transition:none">
@@ -72,6 +97,10 @@ export function RequestTab({ profile }: Props) {
           )}
         </div>
       )}
+
+      {notes.map(note => (
+        <div class="profiler-ajax-card__row profiler-text--xs profiler-text--warning" key={note}>{note}</div>
+      ))}
 
       <HttpReqRespDetail
         request={{

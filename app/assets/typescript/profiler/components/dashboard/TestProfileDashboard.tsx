@@ -8,6 +8,7 @@ import { LogsTab } from './tabs/LogsTab'
 import { ExceptionTab } from './tabs/ExceptionTab'
 import { EnvTab } from './tabs/EnvTab'
 import { FlameGraphTab } from './tabs/FlameGraphTab'
+import { allocatedObjects, formatAllocations, ALLOCATIONS_HINT } from '../../dashboard/utils'
 
 type TestTabKey = 'test' | 'database' | 'cache' | 'dump' | 'logs' | 'exception' | 'env' | 'timeline'
 
@@ -53,8 +54,8 @@ export function TestProfileDashboard({ profile, initialTab, embedded }: Props) {
               {testStatus === 'failed' ? '✗ Failed' : testStatus === 'pending' ? '⏸ Pending' : '✓ Passed'}
             </span>
           </strong></span>
-          {profile.memory != null && (
-            <span>Memory: <strong>{(profile.memory / 1024 / 1024).toFixed(2)} MB</strong></span>
+          {allocatedObjects(profile) != null && (
+            <span title={ALLOCATIONS_HINT}>Allocations: <strong>{formatAllocations(allocatedObjects(profile))}</strong></span>
           )}
         </div>
         {testData?.test_file && (

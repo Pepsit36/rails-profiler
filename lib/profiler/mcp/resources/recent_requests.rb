@@ -14,6 +14,8 @@ module Profiler
               method: profile.method,
               status: profile.status,
               duration: profile.duration&.round(2),
+              allocated_objects: profile.allocated_objects,
+              # Deprecated, kept for the readers that expect it: allocated_objects times 40, in MB.
               memory: profile.memory ? (profile.memory / 1024.0 / 1024.0).round(2) : nil,
               timestamp: profile.started_at&.iso8601,
               query_count: profile.collector_data("database")&.dig("total_queries") || 0,

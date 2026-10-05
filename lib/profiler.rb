@@ -5,6 +5,7 @@ require_relative "profiler/boot_env"
 require_relative "profiler/version"
 require_relative "profiler/configuration"
 require_relative "profiler/redaction"
+require_relative "profiler/allocation_counter"
 
 module Profiler
   class Error < StandardError; end

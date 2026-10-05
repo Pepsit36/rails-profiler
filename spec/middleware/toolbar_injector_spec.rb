@@ -53,17 +53,19 @@ RSpec.describe Profiler::Middleware::ToolbarInjector do
       end
     end
 
-    context "with object that has a .body method" do
-      let(:body_obj) do
-        obj = double("body")
-        allow(obj).to receive(:body).and_return("<html><body>hi</body></html>")
-        obj
+    context "with the page as a String" do
+      let(:injector) { described_class.new("<html><body>hi</body></html>", token) }
+
+      it "injects the toolbar" do
+        expect(injector.inject.join).to include("profiler-toolbar")
       end
+    end
 
-      let(:injector) { described_class.new(body_obj, token) }
-
-      it "extracts content via .body method" do
-        result = injector.inject
+    # The middleware reads the page; the injector never iterates or closes a response body.
+    context "with an Array of parts" do
+      it "joins them" do
+        result = described_class.new(["<html><body>", "hi</body></html>"], token).inject
+        expect(result.join).to include("hi")
         expect(result.join).to include("profiler-toolbar")
       end
     end

@@ -5,17 +5,21 @@ require "securerandom"
 require "json"
 require "zlib"
 require_relative "../redaction"
+require_relative "../allocation_counter"
 
 module Profiler
   module Models
     class Profile
       attr_reader :path
-      attr_accessor :token, :method, :status, :duration, :memory,
+      attr_accessor :token, :method, :status, :duration, :allocated_objects,
                     :started_at, :finished_at, :params, :headers,
                     :response_headers, :collectors_data, :collectors_metadata,
                     :parent_token, :is_ajax, :profile_type,
                     :request_body, :request_body_encoding,
                     :response_body, :response_body_encoding,
+                    :request_body_size, :request_body_truncated, :request_body_size_is_minimum,
+                    :response_body_size, :response_body_truncated, :response_body_size_is_minimum,
+                    :collectors_released_after_seconds,
                     :gem_version
 
       def initialize(request = nil)
@@ -35,13 +39,32 @@ module Profiler
         end
       end
 
-      def set_bodies(request_body:, response_body:, req_content_type:, resp_content_type:)
+      # The sizes are those of the whole bodies, when a body was cut at max_captured_body_bytes;
+      # *_size_is_minimum when the whole size is not known (no Content-Length, a stream that
+      # stopped), only that it is at least that.
+      def set_bodies(request_body:, response_body:, req_content_type:, resp_content_type:,
+                     request_body_size: nil, response_body_size: nil,
+                     request_body_size_is_minimum: false, response_body_size_is_minimum: false)
         req  = process_body(request_body, req_content_type)
         resp = process_body(response_body, resp_content_type)
         @request_body          = req[:body]
         @request_body_encoding = req[:encoding]
         @response_body         = resp[:body]
         @response_body_encoding = resp[:encoding]
+        @request_body_size, @request_body_truncated = body_size(request_body, request_body_size)
+        @response_body_size, @response_body_truncated = body_size(response_body, response_body_size)
+        @request_body_size_is_minimum = request_body_size_is_minimum ? true : false
+        @response_body_size_is_minimum = response_body_size_is_minimum ? true : false
+      end
+
+      # Deprecated: the number of allocated objects times 40, the figure earlier versions
+      # reported as bytes. Still written in to_h, for the readers that only know it.
+      def memory
+        @allocated_objects&.*(AllocationCounter::LEGACY_BYTES_PER_OBJECT)
+      end
+
+      def memory=(value)
+        @allocated_objects = value && value / AllocationCounter::LEGACY_BYTES_PER_OBJECT
       end
 
       def finish(status, response_headers = {})
@@ -67,8 +90,20 @@ module Profiler
       end
 
       def add_collector_metadata(collector)
+        @collectors_metadata << collector_metadata(collector)
+      end
+
+      # A collector collected again, after the profile's tabs were listed (a streamed response
+      # that failed part way): its tab keeps its place, with what it now has.
+      def refresh_collector_metadata(collector)
+        entry = collector_metadata(collector)
+        index = @collectors_metadata.index { |tab| tab[:key] == entry[:key] }
+        index ? @collectors_metadata[index] = entry : @collectors_metadata << entry
+      end
+
+      def collector_metadata(collector)
         config = collector.tab_config
-        @collectors_metadata << {
+        {
           key: config[:key],
           label: config[:label],
           icon: config[:icon],
@@ -79,6 +114,7 @@ module Profiler
           has_data: collector.has_data?
         }
       end
+      private :collector_metadata
 
       def to_h
         req_body,  req_enc  = decode_body(@request_body,  @request_body_encoding)
@@ -92,7 +128,8 @@ module Profiler
           method: @method,
           status: @status,
           duration: @duration,
-          memory: @memory,
+          allocated_objects: @allocated_objects,
+          memory: memory,
           started_at: @started_at&.iso8601,
           finished_at: @finished_at&.iso8601,
           params: @params,
@@ -102,6 +139,13 @@ module Profiler
           request_body_encoding: req_enc,
           response_body: resp_body,
           response_body_encoding: resp_enc,
+          request_body_size: @request_body_size,
+          request_body_truncated: @request_body_truncated,
+          request_body_size_is_minimum: @request_body_size_is_minimum,
+          response_body_size: @response_body_size,
+          response_body_truncated: @response_body_truncated,
+          response_body_size_is_minimum: @response_body_size_is_minimum,
+          collectors_released_after_seconds: @collectors_released_after_seconds,
           collectors_data: @collectors_data,
           tabs: @collectors_metadata,
           parent_token: @parent_token,
@@ -125,7 +169,12 @@ module Profiler
         profile.method = data[:method]
         profile.status = data[:status]
         profile.duration = data[:duration]
-        profile.memory = data[:memory]
+        # A profile saved before allocated_objects only carries memory, the count times 40.
+        if data.key?(:allocated_objects)
+          profile.allocated_objects = data[:allocated_objects]
+        else
+          profile.memory = data[:memory]
+        end
         profile.started_at = data[:started_at] ? Time.parse(data[:started_at]) : nil
         profile.finished_at = data[:finished_at] ? Time.parse(data[:finished_at]) : nil
         profile.params = data[:params]
@@ -135,6 +184,15 @@ module Profiler
         profile.request_body_encoding = data[:request_body_encoding] || "text"
         profile.response_body = data[:response_body]
         profile.response_body_encoding = data[:response_body_encoding] || "text"
+        profile.request_body_size = data[:request_body_size]
+        # Left nil when the store did not keep them (SqliteStore rebuilds a profile from its
+        # columns): the request collector's data still has them.
+        profile.request_body_truncated = data[:request_body_truncated]
+        profile.request_body_size_is_minimum = data[:request_body_size_is_minimum]
+        profile.response_body_size = data[:response_body_size]
+        profile.response_body_truncated = data[:response_body_truncated]
+        profile.response_body_size_is_minimum = data[:response_body_size_is_minimum]
+        profile.collectors_released_after_seconds = data[:collectors_released_after_seconds]
         profile.parent_token = data[:parent_token]
         profile.is_ajax = data[:is_ajax] || false
         profile.profile_type = data[:profile_type] || "http"
@@ -179,6 +237,12 @@ module Profiler
             { body: text, encoding: "text" }
           end
         end
+      end
+
+      def body_size(captured, total)
+        captured_size = captured.to_s.bytesize
+        total ||= captured_size
+        [total, total > captured_size]
       end
 
       def compress_body?(text)

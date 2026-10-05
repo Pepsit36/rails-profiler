@@ -52,7 +52,7 @@ module Profiler
           lines << "| File | #{test_data["test_file"]}:#{test_data["test_line"]} |"
           lines << "| Duration | #{profile.duration&.round(2)}ms |"
           lines << "| Assertions | #{test_data["assertions"] || "-"} |"
-          lines << "| Memory delta | #{profile.memory ? "#{(profile.memory.to_f / 1024 / 1024).round(2)} MB" : "-"} |"
+          lines << "| Allocated objects | #{profile.allocated_objects || "-"} |"
           lines << "| Time | #{profile.started_at&.strftime("%H:%M:%S")} |"
 
           # Exception / skip

@@ -15,7 +15,7 @@ import { I18nTab } from './tabs/I18nTab'
 import { JobsTab } from './tabs/JobsTab'
 import { EnvTab } from './tabs/EnvTab'
 import { MailerTab } from './tabs/MailerTab'
-import { getGemVersion } from '../../dashboard/utils'
+import { getGemVersion, allocatedObjects, formatAllocations, ALLOCATIONS_HINT } from '../../dashboard/utils'
 
 type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception' | 'routes' | 'i18n' | 'jobs' | 'env' | 'mailer'
 
@@ -56,8 +56,8 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
         <div class="profiler-flex profiler-flex--gap-4 profiler-mt-2">
           <span>Duration: <strong>{profile.duration.toFixed(2)} ms</strong></span>
           <span>Status: <strong>{profile.status}</strong></span>
-          {profile.memory && (
-            <span>Memory: <strong>{(profile.memory / 1024 / 1024).toFixed(2)} MB</strong></span>
+          {allocatedObjects(profile) != null && (
+            <span title={ALLOCATIONS_HINT}>Allocations: <strong>{formatAllocations(allocatedObjects(profile))}</strong></span>
           )}
           <span style="color:var(--profiler-text-muted)">
             {new Date(profile.started_at).toLocaleString('en', { hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
