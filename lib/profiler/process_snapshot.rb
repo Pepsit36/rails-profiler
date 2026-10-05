@@ -41,7 +41,8 @@ module Profiler
       # Puts the route table and ENV back into +profile+'s data for display. A profile saved by
       # an earlier version has its own table and variables, and is left as it is.
       def hydrate(profile)
-        return profile unless profile
+        # A job, a console expression or a test ran in another process, whose ENV its profile keeps.
+        return profile unless profile && profile.profile_type.to_s == "http"
 
         data = profile.collectors_data
         if (routes = data["routes"]) && !key?(routes, :routes)
