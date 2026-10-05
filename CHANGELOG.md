@@ -42,7 +42,10 @@ every commit of every tag interval is accounted for one way or the other.
   with the process defaults, usually `0755` and `0644`, readable by every local user although
   profiles hold cookies, tokens and environment values. A file the profiler writes again (a
   profile, the SQLite database at startup) is brought back to `0600`; a directory that already
-  exists keeps its mode. Writing a profile now goes through a temporary file renamed over it.
+  exists keeps its mode. Writing a profile now goes through a temporary file renamed over it. A
+  symbolic link placed where the profiler keeps its SQLite database, its `-wal` or `-shm` file or
+  the lock of the env overrides is refused instead of followed, and an existing `tmp_path` that
+  belongs to another user or that group or others can write to is reported once with a warning.
 
 ### Fixed
 
@@ -67,18 +70,25 @@ listed, and are not moved. To remove them, with the old MCP body cache, run from
 root (for the default `tmp_path`; adapt the path if you set one):
 
 ```sh
-find tmp/rails-profiler -maxdepth 1 -type f -name '????????????????????????????????.json' -delete
-find tmp/rails-profiler -mindepth 1 -maxdepth 1 -type d -name '????????????????????????????????' -exec rm -rf {} +
+LC_ALL=C find tmp/rails-profiler -maxdepth 1 -type f -name '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json' -delete
+LC_ALL=C find tmp/rails-profiler -mindepth 1 -maxdepth 1 -type d -name '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]' -exec rm -rf {} +
 ```
 
-Both only match names of 32 characters, the length of a profile token: `env_overrides.json`, the
-SQLite database, `blobs`, `profiles` and `mcp-cache` are left alone. To keep reading the old
-profiles instead, set `config.storage_options = { path: Rails.root.join("tmp", "rails-profiler") }`.
+Both only match names made of 32 lower-case hexadecimal digits, a profile token (`LC_ALL=C` keeps
+`[0-9a-f]` from matching upper-case letters in some locales): `env_overrides.json`, the SQLite
+database, `blobs`, `profiles` and `mcp-cache` are left alone. To keep reading the old profiles
+instead, set `config.storage_options = { path: Rails.root.join("tmp", "rails-profiler") }`, and then
+do **not** run the first command: it would delete the current profiles.
+
 The directory `tmp/rails-profiler` created by an earlier version keeps its mode: run
 `chmod 700 tmp/rails-profiler` to restrict it. If the web process and the workers reading the env
 overrides or a shared file or SQLite store run as two different users, set
-`config.restrict_storage_permissions = false` to create the files with the modes of the umask, as
-before.
+`config.restrict_storage_permissions = false` to create new files with the modes of the umask, as
+before. It does not reopen what was already created `0700` and `0600`: run
+`chmod -R u=rwX,go=rX tmp/rails-profiler` for the modes earlier versions created with the usual
+umask (`0755` and `0644`). A worker under another user that also writes there (it opens
+`env_overrides.json.lock` for writing) needs a group shared with the web process, a umask of `002`,
+and `chmod -R ug=rwX,o=rX tmp/rails-profiler`.
 
 ## [0.31.0] - 2026-10-05
 

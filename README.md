@@ -618,7 +618,8 @@ config.storage_options = {
 ```
 
 `path` is the directory that holds the profile files themselves, used as given: no `profiles`
-subdirectory is added to it. Only the files named after a profile token (32 hexadecimal
+subdirectory is added to it. A relative `path` is resolved against the current directory of the
+process, not `Rails.root`: prefer `Rails.root.join(...)`. Only the files named after a profile token (32 hexadecimal
 characters, then `.json`) are read, listed, evicted or cleared there, so a directory shared with
 other files is safe, `tmp_path` included.
 
@@ -680,6 +681,17 @@ on one volume, for instance), restore the modes of the umask:
 ```ruby
 config.restrict_storage_permissions = false # true by default
 ```
+
+It only applies to what is created from then on: reopen what already exists with
+`chmod -R u=rwX,go=rX tmp/rails-profiler` (`0755` and `0644`, the modes of the usual umask). A
+worker under another user that writes there too (it opens `env_overrides.json.lock` for writing)
+needs a group shared with the web process, a umask of `002`, and
+`chmod -R ug=rwX,o=rX tmp/rails-profiler`.
+
+While the modes are restricted, a symbolic link where the profiler keeps the SQLite database, its
+`-wal` or `-shm` file or the lock of the env overrides is refused rather than followed, and an
+existing `tmp_path` that belongs to another user or that group or others can write to (a
+`tmp/rails-profiler` under a shared directory, outside Rails) is reported once on standard error.
 
 ## Creating Custom Collectors
 
