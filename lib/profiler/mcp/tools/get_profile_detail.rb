@@ -184,7 +184,9 @@ module Profiler
           req_body = req_data["request_body"]
           if req_body && !req_body.empty?
             lines << "## Request Body"
-            lines << truncation_note(req_data["request_body_size"]) if req_data["request_body_truncated"]
+            if req_data["request_body_truncated"]
+              lines << truncation_note(req_data["request_body_size"], req_data["request_body_size_is_minimum"])
+            end
             formatted = BodyFormatter.format_body(
               profile.token,
               "request_body",
@@ -211,7 +213,9 @@ module Profiler
           if resp_body && !resp_body.empty?
             lines << "## Response Body"
             response_data = profile.collector_data("request") || {}
-            lines << truncation_note(response_data["response_body_size"]) if response_data["response_body_truncated"]
+            if response_data["response_body_truncated"]
+              lines << truncation_note(response_data["response_body_size"], response_data["response_body_size_is_minimum"])
+            end
             formatted = BodyFormatter.format_body(
               profile.token,
               "response_body",
@@ -225,8 +229,9 @@ module Profiler
           lines
         end
 
-        def self.truncation_note(size)
-          "_Truncated: the body was #{size || "?"} bytes, only its beginning was kept (max_captured_body_bytes)._"
+        def self.truncation_note(size, minimum)
+          "_Truncated: the body was #{"at least " if minimum}#{size || "?"} bytes, only its beginning was kept " \
+            "(max_captured_body_bytes)._"
         end
 
         def self.section_curl(profile)

@@ -705,10 +705,18 @@ components:
           type: boolean
           nullable: true
           description: Whether only the first max_captured_body_bytes of the request body were kept.
+        request_body_size_is_minimum:
+          type: boolean
+          nullable: true
+          description: Whether request_body_size is only a minimum (no Content-Length).
         response_body_size:
           type: integer
           nullable: true
           description: Size in bytes of the whole response body seen by the profiler.
+        response_body_size_is_minimum:
+          type: boolean
+          nullable: true
+          description: Whether response_body_size is only a minimum (a stream that stopped before its end).
         response_body_truncated:
           type: boolean
           nullable: true
@@ -936,10 +944,18 @@ components:
           type: boolean
           nullable: true
           description: Whether only the first max_captured_body_bytes of the request body were kept.
+        request_body_size_is_minimum:
+          type: boolean
+          nullable: true
+          description: Whether request_body_size is only a minimum (no Content-Length).
         response_body_size:
           type: integer
           nullable: true
           description: Size in bytes of the whole response body seen by the profiler.
+        response_body_size_is_minimum:
+          type: boolean
+          nullable: true
+          description: Whether response_body_size is only a minimum (a stream that stopped before its end).
         response_body_truncated:
           type: boolean
           nullable: true

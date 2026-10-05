@@ -17,8 +17,8 @@ module Profiler
                     :parent_token, :is_ajax, :profile_type,
                     :request_body, :request_body_encoding,
                     :response_body, :response_body_encoding,
-                    :request_body_size, :request_body_truncated,
-                    :response_body_size, :response_body_truncated,
+                    :request_body_size, :request_body_truncated, :request_body_size_is_minimum,
+                    :response_body_size, :response_body_truncated, :response_body_size_is_minimum,
                     :gem_version
 
       def initialize(request = nil)
@@ -38,9 +38,12 @@ module Profiler
         end
       end
 
-      # The sizes are those of the whole bodies, when a body was cut at max_captured_body_bytes.
+      # The sizes are those of the whole bodies, when a body was cut at max_captured_body_bytes;
+      # *_size_is_minimum when the whole size is not known (no Content-Length, a stream that
+      # stopped), only that it is at least that.
       def set_bodies(request_body:, response_body:, req_content_type:, resp_content_type:,
-                     request_body_size: nil, response_body_size: nil)
+                     request_body_size: nil, response_body_size: nil,
+                     request_body_size_is_minimum: false, response_body_size_is_minimum: false)
         req  = process_body(request_body, req_content_type)
         resp = process_body(response_body, resp_content_type)
         @request_body          = req[:body]
@@ -49,6 +52,8 @@ module Profiler
         @response_body_encoding = resp[:encoding]
         @request_body_size, @request_body_truncated = body_size(request_body, request_body_size)
         @response_body_size, @response_body_truncated = body_size(response_body, response_body_size)
+        @request_body_size_is_minimum = request_body_size_is_minimum ? true : false
+        @response_body_size_is_minimum = response_body_size_is_minimum ? true : false
       end
 
       # Deprecated: the number of allocated objects times 40, the figure earlier versions
@@ -135,8 +140,10 @@ module Profiler
           response_body_encoding: resp_enc,
           request_body_size: @request_body_size,
           request_body_truncated: @request_body_truncated,
+          request_body_size_is_minimum: @request_body_size_is_minimum,
           response_body_size: @response_body_size,
           response_body_truncated: @response_body_truncated,
+          response_body_size_is_minimum: @response_body_size_is_minimum,
           collectors_data: @collectors_data,
           tabs: @collectors_metadata,
           parent_token: @parent_token,
@@ -176,9 +183,13 @@ module Profiler
         profile.response_body = data[:response_body]
         profile.response_body_encoding = data[:response_body_encoding] || "text"
         profile.request_body_size = data[:request_body_size]
-        profile.request_body_truncated = data[:request_body_truncated] || false
+        # Left nil when the store did not keep them (SqliteStore rebuilds a profile from its
+        # columns): the request collector's data still has them.
+        profile.request_body_truncated = data[:request_body_truncated]
+        profile.request_body_size_is_minimum = data[:request_body_size_is_minimum]
         profile.response_body_size = data[:response_body_size]
-        profile.response_body_truncated = data[:response_body_truncated] || false
+        profile.response_body_truncated = data[:response_body_truncated]
+        profile.response_body_size_is_minimum = data[:response_body_size_is_minimum]
         profile.parent_token = data[:parent_token]
         profile.is_ajax = data[:is_ajax] || false
         profile.profile_type = data[:profile_type] || "http"

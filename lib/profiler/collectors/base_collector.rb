@@ -71,6 +71,21 @@ module Profiler
         # Override in subclasses to collect data
       end
 
+      # Whether collect reads nothing from the request's thread (thread-local slots, the
+      # locale): only then can a streamed response keep the collector subscribed until the
+      # server closes its body, and collect it from whichever thread closes it. The default
+      # is the safe answer: collected on the request's thread when the application returns.
+      def collect_from_any_thread?
+        false
+      end
+
+      # Gives back the thread-local slots subscribe took over, and nothing else: a streamed
+      # response does this on the request's thread when the application returns, and keeps the
+      # notification subscriptions until its body is closed. Idempotent, like unsubscribe.
+      def release_thread_slots
+        restore_thread_slots
+      end
+
       def toolbar_summary
         # Override in subclasses to provide summary for toolbar
         ""

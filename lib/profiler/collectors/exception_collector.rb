@@ -48,6 +48,11 @@ module Profiler
         store_data(@exception_data || {})
       end
 
+      # Collect reads only what the collector gathered itself.
+      def collect_from_any_thread?
+        true
+      end
+
       def unsubscribe
         return unless @subscriber
 

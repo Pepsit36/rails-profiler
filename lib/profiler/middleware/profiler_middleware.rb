@@ -6,6 +6,7 @@ require_relative "../current_context"
 require_relative "../collectors/lifecycle"
 require_relative "toolbar_injector"
 require_relative "capturing_body"
+require_relative "streamed_profile"
 
 module Profiler
   module Middleware
@@ -20,7 +21,11 @@ module Profiler
       def call(env)
         return @app.call(env) unless should_profile?(env)
 
+        # A stream this thread left open, and any held for too long, release what they hold.
+        StreamedProfile.sweep
+
         collectors = nil
+        kept = nil
         begin
           begin
             profile = Models::Profile.new(build_request(env))
@@ -56,13 +61,14 @@ module Profiler
             raise
           end
 
-          complete_profile(env, profile, collectors, request_body, allocations_before, response)
+          response, kept = complete_profile(env, profile, collectors, request_body, allocations_before, response)
+          response
         ensure
           # Opened before the first subscribe: whatever happens from there on, an exception
           # outside StandardError included, nothing a collector installed outlives the request.
-          # A streamed body is finished later, when the server closes it, but its collectors
-          # are released here all the same: they read and restore this thread's state.
-          release(collectors)
+          # The collectors kept for a streamed body only give their thread-local slots back
+          # here; StreamedProfile releases the rest.
+          release(collectors, kept)
         end
       end
 
@@ -75,7 +81,9 @@ module Profiler
           profile.allocated_objects = AllocationCounter.current - allocations_before
         end
 
-        return stream_through(env, profile, collectors, request_body, response) unless buffered_body?(headers, body)
+        unless buffered_body?(headers, body)
+          return stream_through(env, profile, collectors, request_body, allocations_before, response)
+        end
 
         begin
           content = read_buffered_body(body)
@@ -85,7 +93,7 @@ module Profiler
           raise
         end
 
-        complete_buffered(env, profile, collectors, request_body, status, headers, content)
+        [complete_buffered(env, profile, collectors, request_body, status, headers, content), nil]
       end
 
       # The whole body is in memory already: profiled at once, and the toolbar goes into a page.
@@ -93,7 +101,7 @@ module Profiler
         body = [content]
         headers = headers.dup
 
-        record_response(env, profile, request_body, status, headers, content, content.bytesize)
+        record_response(env, profile, request_body, status, headers, content, content.bytesize, true)
         collect_all(profile, collectors)
 
         Profiler.storage.save(profile.token, profile)
@@ -115,46 +123,66 @@ module Profiler
         [status, headers, body || []]
       end
 
-      # A stream leaves at once, chunk by chunk. The collectors are read now, on the request's
-      # thread; the body, the duration and an error raised while streaming are added when the
-      # server closes the body, and the profile is saved then.
-      def stream_through(env, profile, collectors, request_body, response)
+      # A stream leaves at once, chunk by chunk, and its profile is saved when the server closes
+      # the body. The collectors that read the request's thread are collected now, on it; the
+      # others stay subscribed until then (StreamedProfile), so that what the stream does is
+      # recorded. Returns the response and the collectors kept.
+      def stream_through(env, profile, collectors, request_body, allocations_before, response)
         status, headers, body = response
         profiled_headers = headers.dup
         headers = headers.dup
 
         profile.finish(status, profiled_headers)
-        collect_all(profile, collectors)
+        kept, now = collectors.partition { |collector| collect_from_any_thread?(collector) }
+        collect_all(profile, now)
+        # Their tabs keep their place; what they hold is filled in when they are collected.
+        kept.each { |collector| profile.add_collector_metadata(collector) }
         set_header(headers, TOKEN_HEADER, profile.token)
 
         # A Rack 3 streaming body (call without each) writes to the socket itself: nothing to relay.
         unless body.respond_to?(:each)
-          record_response(env, profile, request_body, status, profiled_headers, "", nil)
+          kept.each do |collector|
+            collector.collect if collector.respond_to?(:collect)
+            profile.refresh_collector_metadata(collector)
+          rescue => e
+            warn "Collector #{collector.class} failed: #{e.message}"
+          end
+          record_response(env, profile, request_body, status, profiled_headers, "", nil, false)
           Profiler.storage.save(profile.token, profile)
-          return [status, headers, body]
+          return [[status, headers, body], nil]
         end
 
-        limit = Profiler.configuration.max_captured_body_bytes
-        streamed = CapturingBody.new(body, limit: limit) do |captured, size, error|
-          finish_streamed(env, profile, collectors, request_body, status, profiled_headers, captured, size, error)
+        streamed = StreamedProfile.new(profile, kept) do |captured, size, complete, error|
+          finish_streamed(env, streamed, collectors, request_body, allocations_before, status, profiled_headers,
+                          captured, size, complete, error)
         end
-        [status, headers, streamed]
+        limit = Profiler.configuration.max_captured_body_bytes
+        streamed.body = CapturingBody.new(body, limit: limit, token: profile.token) do |captured, size, complete, error|
+          streamed.finish(captured, size, complete, error)
+        end
+        StreamedProfile.register(streamed)
+        [[status, headers, streamed.body], kept]
       rescue => e
         warn "Profiler error: #{e.message}\n#{e.backtrace.join("\n")}"
-        [status, headers, body]
+        [[status, headers, body], nil]
       end
 
-      def finish_streamed(env, profile, collectors, request_body, status, headers, captured, size, error)
-        record_response(env, profile, request_body, status, headers, captured, size)
+      def finish_streamed(env, streamed, collectors, request_body, allocations_before, status, headers,
+                          captured, size, complete, error)
+        profile = streamed.profile
+        if Profiler.configuration.track_memory
+          profile.allocated_objects = AllocationCounter.current - allocations_before
+        end
+        collectors.each { |collector| collector.capture(error) if collector.respond_to?(:capture) } if error
+        streamed.release_collectors
+        record_response(env, profile, request_body, status, headers, captured, size, complete)
 
-        # Only the collectors that read the profile, or the error, collect again: the others
-        # were read and released on the request's thread.
+        # Collected again: the request collector, which reads the profile, and a collector
+        # collected when the application returned that has an error to add.
         collectors.each do |collector|
-          if error && collector.respond_to?(:capture)
-            collector.capture(error)
-          elsif !collector.is_a?(Collectors::RequestCollector)
-            next
-          end
+          next unless collector.is_a?(Collectors::RequestCollector) ||
+                      (error && collector.respond_to?(:capture) && !collect_from_any_thread?(collector))
+
           collector.collect
           profile.refresh_collector_metadata(collector)
         rescue => e
@@ -166,7 +194,12 @@ module Profiler
         warn "Profiler error while finishing a streamed response: #{e.message}"
       end
 
-      def record_response(env, profile, request_body, status, headers, content, size)
+      def collect_from_any_thread?(collector)
+        collector.respond_to?(:collect_from_any_thread?) && collector.collect_from_any_thread?
+      end
+
+      # +complete+: whether +size+ is the whole body's, or only what was seen before it stopped.
+      def record_response(env, profile, request_body, status, headers, content, size, complete)
         limit = Profiler.configuration.max_captured_body_bytes
         content = Redaction.cut_bytes(content, limit) if limit
 
@@ -174,8 +207,10 @@ module Profiler
         profile.set_bodies(
           request_body: request_body[:content],
           request_body_size: request_body[:size],
+          request_body_size_is_minimum: request_body[:size_is_minimum],
           response_body: content,
           response_body_size: size,
+          response_body_size_is_minimum: !complete,
           req_content_type: env["CONTENT_TYPE"].to_s,
           resp_content_type: content_type(headers)
         )
@@ -219,8 +254,13 @@ module Profiler
         end
       end
 
-      def release(collectors)
-        Collectors::Lifecycle.release_all(collectors)
+      def release(collectors, kept = nil)
+        Collectors::Lifecycle.release_all(kept ? collectors - kept : collectors)
+        kept&.each do |collector|
+          collector.release_thread_slots if collector.respond_to?(:release_thread_slots)
+        rescue => e
+          warn "Profiler: Collector #{collector.class} release failed: #{e.message}"
+        end
         Profiler::CurrentContext.clear
       end
 
@@ -293,29 +333,55 @@ module Profiler
         body.respond_to?(:to_ary) || buffered_rails_body?(body)
       end
 
-      # Rails 7.0: without this, a page that sets its own ETag, which Rack::ETag then leaves
-      # alone, would lose the toolbar. A Live response feeds a queue from the action's thread,
-      # and a sent file is a FileBody: both are streams.
+      # Rails' own body, read whole when it is in memory although it has no to_ary:
+      # - Rails 7.0, whose RackBody has no to_ary at all: without this, a page that sets its own
+      #   ETag, which Rack::ETag then leaves alone, would lose the toolbar;
+      # - a controller that includes ActionController::Live answers every action through a
+      #   Live::Buffer, a queue fed by the action's thread with no to_ary: when the action
+      #   rendered its page whole, the buffer is already closed when the application returns,
+      #   and reading it does not wait. One still open is a stream.
+      # A sent file (FileBody) is a stream. This reads Rails' internals: RackBody keeps its
+      # response in @response, and Response::Buffer answers closed?, in Rails 7.0, 7.1, 7.2, 8.0
+      # and 8.1 (checked in their sources); spec/middleware/rails_body_internals_spec.rb fails
+      # if that changes.
       def buffered_rails_body?(body)
         return false unless defined?(ActionDispatch::Response::RackBody)
 
         body = body.instance_variable_get(:@body) while body.is_a?(Rack::BodyProxy)
         return false unless body.is_a?(ActionDispatch::Response::RackBody)
 
-        body.instance_variable_get(:@response)&.stream.instance_of?(ActionDispatch::Response::Buffer)
+        stream = body.instance_variable_get(:@response)&.stream
+        return true if stream.instance_of?(ActionDispatch::Response::Buffer)
+
+        defined?(ActionController::Live::Buffer) && stream.instance_of?(ActionController::Live::Buffer) && stream.closed?
       end
 
       # No rescue: an error raised by the body is the application's, for the server to answer.
+      # Rack 3 has to_ary close the body, Rails' own body and Rack 2 do not: closed here unless
+      # it says it is. An error from close does not hide one raised while reading.
       def read_buffered_body(body)
-        if body.respond_to?(:to_ary)
-          body.to_ary.join
-        else
-          content = +""
-          body.each { |part| content << part }
-          content
-        end
-      ensure
-        # Rack 3 has to_ary close the body, Rails' own body and Rack 2 do not.
+        content =
+          begin
+            if body.respond_to?(:to_ary)
+              body.to_ary.join
+            else
+              parts = +""
+              body.each { |part| parts << part }
+              parts
+            end
+          rescue Exception # rubocop:disable Lint/RescueException
+            begin
+              close_body(body)
+            rescue => e
+              warn "Profiler: closing a body that failed also failed: #{e.message}"
+            end
+            raise
+          end
+        close_body(body)
+        content
+      end
+
+      def close_body(body)
         body.close if body.respond_to?(:close) && !(body.respond_to?(:closed?) && body.closed?)
       end
 
@@ -326,15 +392,20 @@ module Profiler
         return { content: "", size: nil } unless input.respond_to?(:rewind)
 
         limit = Profiler.configuration.max_captured_body_bytes
-        input.rewind
-        content = (limit ? input.read(limit + 1) : input.read).to_s
-        input.rewind
+        begin
+          input.rewind
+          content = (limit ? input.read(limit + 1) : input.read).to_s
+        ensure
+          input.rewind
+        end
 
         declared = env["CONTENT_LENGTH"].to_s
+        known = declared.match?(/\A\d+\z/)
         # Without a Content-Length, the size of a cut body is only known to exceed the limit.
-        size = declared.match?(/\A\d+\z/) ? declared.to_i : content.bytesize
+        size = known ? declared.to_i : content.bytesize
+        size_is_minimum = !known && limit && content.bytesize > limit
         content = Redaction.cut_bytes(content, limit) if limit
-        { content: content, size: size }
+        { content: content, size: size, size_is_minimum: size_is_minimum || false }
       rescue => e
         warn "Profiler: could not read the request body: #{e.message}"
         { content: "", size: nil }

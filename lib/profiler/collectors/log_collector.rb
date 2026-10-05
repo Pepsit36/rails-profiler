@@ -93,6 +93,11 @@ module Profiler
         warn "LogCollector#subscribe failed: #{e.message}"
       end
 
+      # Collect reads only what the collector gathered itself.
+      def collect_from_any_thread?
+        true
+      end
+
       def unsubscribe
         if @capture_logger
           @broadcaster.stop_broadcasting_to(@capture_logger) if @broadcaster.respond_to?(:stop_broadcasting_to)
