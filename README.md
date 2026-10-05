@@ -861,10 +861,13 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
   (`bundle exec ruby script/bench/request_overhead.rb [--no-stackprof]`); it is not part of the
   gem and does not run in CI
 - Each collector records the events of its own request only: the thread that runs it, the
-  threads it starts with `Thread.new`, the tasks it posts to a concurrent-ruby executor
-  (`Concurrent::Promises`, `Concurrent::Future`, ActiveJob's `:async` adapter), whichever pool
-  thread runs them and whenever, the thread `ActionController::Live` runs the action in, and the
-  server thread that iterates a streamed body. A thread created by a pool (concurrent-ruby, Puma,
+  threads it starts with `Thread.new`, the fibers it creates (on Ruby 3.2 and later; with
+  `render stream: true` the layout is rendered in one), the tasks it posts to a concurrent-ruby
+  executor (`Concurrent::Promises`, `Concurrent::Future`), whichever pool thread runs them and
+  whenever, the thread `ActionController::Live` runs the action in, and the server thread that
+  iterates a streamed body. A job performed by ActiveJob's `:async` adapter is profiled on its own,
+  apart from the request that enqueued it, even while that request runs; with `track_jobs` off, its
+  queries are recorded in that request. A thread created by a pool (concurrent-ruby, Puma,
   including the one Puma starts for a request marked with `env["puma.mark_as_io_bound"]`) inherits
   nothing from the request that was running when it was created. The process holds one subscriber
   per event, however many requests are profiled at once. Under Falcon, set
