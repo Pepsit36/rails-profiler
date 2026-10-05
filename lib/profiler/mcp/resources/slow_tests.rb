@@ -5,7 +5,7 @@ module Profiler
     module Resources
       class SlowTests
         def self.call
-          profiles = Profiler.storage.list(limit: 500)
+          profiles = Profiler.storage.list(limit: 500, type: "test")
           tests = profiles.select { |p| p.profile_type == "test" }
                           .sort_by { |p| -p.duration }
                           .first(10)

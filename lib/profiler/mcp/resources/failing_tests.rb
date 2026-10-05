@@ -5,7 +5,7 @@ module Profiler
     module Resources
       class FailingTests
         def self.call
-          profiles = Profiler.storage.list(limit: 500)
+          profiles = Profiler.storage.list(limit: 500, type: "test")
           failing = profiles.select do |p|
             next false unless p.profile_type == "test"
             test_data = p.collector_data("test") || {}
