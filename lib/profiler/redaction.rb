@@ -88,6 +88,16 @@ module Profiler
         text.length > max ? "#{text[0, max]}#{ellipsis}" : text
       end
 
+      # The first +max+ bytes of +text+, a body kept only in part. A credential cut in two by the
+      # limit would escape the masking by value, which runs later on what is kept: the bytes
+      # that could start one are left out as well. Text no longer than +max+ is returned whole.
+      def cut_bytes(text, max)
+        return text if text.bytesize <= max
+
+        cut = text.byteslice(0, max)
+        cut.byteslice(0, cut.bytesize - held_back_bytes(cut))
+      end
+
       # How many trailing bytes of +text+, a stream read in pieces, could be
       # the start of a credential and have to wait for the next piece: the
       # longest end of the text that is also the beginning of a credential,

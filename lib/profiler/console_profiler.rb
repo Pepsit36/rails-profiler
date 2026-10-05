@@ -48,7 +48,7 @@ module Profiler
 
       exception_collector = collectors.find { |c| c.is_a?(Collectors::ExceptionCollector) }
 
-      memory_before = current_memory if Profiler.configuration.track_memory
+      allocations_before = AllocationCounter.current if Profiler.configuration.track_memory
 
       console_status = "completed"
 
@@ -66,7 +66,7 @@ module Profiler
       ensure
         Profiler::CurrentContext.token = previous_token
         if Profiler.configuration.track_memory
-          profile.memory = current_memory - memory_before
+          profile.allocated_objects = AllocationCounter.current - allocations_before
         end
 
         profile.finish(console_status == "completed" ? 200 : 500)
@@ -85,21 +85,6 @@ module Profiler
     ensure
       # After collect, and also when collect or the storage failed.
       Collectors::Lifecycle.release_all(collectors)
-    end
-
-    private
-
-    def current_memory
-      return 0 unless defined?(GC.stat)
-
-      stats = GC.stat
-      if stats.key?(:total_allocated_size)
-        stats[:total_allocated_size]
-      elsif stats.key?(:total_allocated_objects)
-        stats[:total_allocated_objects] * 40
-      else
-        0
-      end
     end
   end
 end

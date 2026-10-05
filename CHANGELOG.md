@@ -19,6 +19,65 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.31.2] - 2026-10-05
+
+<!-- stamped -->
+
+### Fixed
+
+- **Middleware:** Stream responses through instead of buffering them. The profiler read every
+  response body to the end before handing it to the server, so an `ActionController::Live`,
+  `response.stream` or enumerator response, or a server-sent events stream, left only once it was
+  over (a stream of 5 chunks 200 ms apart sent its first chunk after 1 s instead of 0.2 s, and an
+  endless event stream never answered), and a file sent with `send_file` lost `to_path`, so the
+  server could no longer send it by its path. A body that does not answer `to_ary`, a
+  `text/event-stream` or a body sent by its path now goes to the server chunk by chunk, keeps
+  `to_path` and `close`, and its profile is saved when the server closes it, also when the client
+  went away, with the body seen so far and the full duration. The collectors that only gather
+  what notifications and the logger hand them (SQL, views, cache, exceptions, timeline, logs,
+  outbound HTTP) stay subscribed until then, so the queries and views of a `render stream: true`
+  page or of an enumerator are still recorded; dumps, mailers, I18n and function profiling are
+  read when the application returns. While the server iterates the body, the log lines, outbound
+  HTTP calls and `Profiler.measure` blocks it runs are recorded as well. Until it is saved, a
+  streamed profile is not listed and its token answers 404: an endless event stream is never
+  listed. A body the server never closes is finished when the fiber that started it starts its
+  next profiled request, never cutting a stream that a fiber-based server such as Falcon runs
+  alongside, and its subscriptions are dropped after 5 minutes at the latest, which the profile
+  and the Request tab then say; the server still closes the application's body. Rails 7.0 pages, whose body has no `to_ary`, and pages a `Live`
+  controller renders whole still get the toolbar. The toolbar is only injected in pages returned
+  whole, so a `render stream: true` page has none.
+- **Middleware:** Stop turning an error raised while a response body is iterated (a stream that
+  fails part way, a file sent with `send_file` that disappeared) into an empty `200`. The error now
+  reaches the server, as it does without the profiler, and the profile keeps it.
+- **Middleware:** Keep the request and response bodies of a profile to the first
+  `config.max_captured_body_bytes` (256 KB by default) instead of copying them whole: a 2 MB upload
+  took 2.8 MB in its profile, plus transient copies. `rack.input` is read only up to that size, then
+  rewound for the application, and an input that cannot be rewound is no longer read at all. The
+  Request tab and the MCP profile detail say when a body was cut, with its whole size, or "at
+  least" that size when it is not known; the profile carries `request_body_truncated`,
+  `request_body_size`, `response_body_truncated`, `response_body_size` and their
+  `*_size_is_minimum`. Only the raw bodies are capped: the parsed `params` and the
+  `Parameters:` log line keep their full size, so a 5 MB JSON request still takes about 15 MB in
+  its profile. To keep whole bodies, as before, set `config.max_captured_body_bytes = nil`.
+- **Profiles:** Report the number of objects allocated (`allocated_objects`) instead of a figure
+  shown as memory. `GC.stat` has no `:total_allocated_size` on the supported Rubies, so `memory`
+  was always that number times 40, never a measured byte count. The toolbar, the dashboards, the
+  profile list and the MCP tools show "Allocations". The counter belongs to the process: on a
+  multi-threaded server it includes what other threads allocated meanwhile. Nothing to change on
+  upgrade: the API and the stored profiles still carry `memory` (deprecated, the count times 40),
+  and profiles saved by earlier versions are read back with their count. The option
+  `memory_warning_threshold`, which nothing ever compared with, is deprecated for
+  `allocated_objects_warning_threshold`, a number of objects, still without effect; setting the
+  old one warns and converts it.
+- **Toolbar:** Leave a response already framed with `Transfer-Encoding` untouched. Under Rails
+  7.0, a `render stream: true` page arrives chunked, and the toolbar was put among the chunks,
+  which broke the framing: the browser got an empty or cut page.
+- **Toolbar:** Correct the `Content-Length` of a page the toolbar is injected into. It kept the
+  length of the page without the toolbar, so a server that honours it cut the page short.
+- **Toolbar:** Inject the toolbar into a page whose headers are a plain `Hash` with a lower-case
+  `content-type`, the form Rack 3 requires; only `Content-Type` was looked up. Every response
+  header the profiler reads or writes now ignores the case.
+
 ## [0.31.1] - 2026-10-05
 
 <!-- stamped -->

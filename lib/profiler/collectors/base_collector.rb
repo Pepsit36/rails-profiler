@@ -71,6 +71,36 @@ module Profiler
         # Override in subclasses to collect data
       end
 
+      # Whether collect reads nothing from the request's thread (thread-local slots, the
+      # locale): only then can a streamed response keep the collector subscribed until the
+      # server closes its body, and collect it from whichever thread closes it. The default
+      # is the safe answer: collected on the request's thread when the application returns.
+      def collect_from_any_thread?
+        false
+      end
+
+      # Gives back the thread-local slots subscribe took over, and nothing else: a streamed
+      # response does this on the request's thread when the application returns, and keeps the
+      # notification subscriptions until its body is closed. Idempotent, like unsubscribe.
+      def release_thread_slots
+        restore_thread_slots
+      end
+
+      # Puts the slots subscribe claimed back, for a while, on the thread (or fiber) that
+      # iterates a streamed body: the logs, outbound HTTP calls and measures it makes belong to
+      # this profile. Returns what the slots held there, for return_thread_slots.
+      def lend_thread_slots
+        (@thread_slot_values || {}).to_h do |key, value|
+          previous = Thread.current[key]
+          Thread.current[key] = value
+          [key, previous]
+        end
+      end
+
+      def return_thread_slots(previous)
+        previous&.each { |key, value| Thread.current[key] = value }
+      end
+
       def toolbar_summary
         # Override in subclasses to provide summary for toolbar
         ""
@@ -104,6 +134,7 @@ module Profiler
       def claim_thread_slot(key, value)
         @claimed_thread_slots ||= {}
         @claimed_thread_slots[key] = Thread.current[key] unless @claimed_thread_slots.key?(key)
+        (@thread_slot_values ||= {})[key] = value
         Thread.current[key] = value
       end
 

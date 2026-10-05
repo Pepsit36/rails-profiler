@@ -98,9 +98,16 @@ Profiler.configure do |config|
   config.slow_query_threshold = 100  # ms
   config.max_queries_warning = 50
 
-  # Memory tracking
+  # Allocation tracking: objects allocated during the request, job, command or test
+  # (see "Allocated objects" under Performance)
   config.track_memory = true
-  config.memory_warning_threshold = 100.megabytes
+  # No effect yet: nothing compares a profile with it. Replaces memory_warning_threshold,
+  # still accepted (deprecated) and read as this number times 40.
+  config.allocated_objects_warning_threshold = 2_621_440
+
+  # Request and response bodies kept in a profile stop at this size; the application still
+  # reads and sends every byte. nil keeps whole bodies, as earlier versions did.
+  config.max_captured_body_bytes = 256.kilobytes
 
   # Body compression (text bodies larger than threshold are stored gzip+base64)
   config.compress_bodies = true
@@ -845,6 +852,51 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
   middleware stack and no Sidekiq, ActiveJob, test or console instrumentation is installed
 - Expected overhead: < 5ms per request
 - Text bodies > 10 KB compressed automatically (gzip+base64)
+- Bodies kept in a profile stop at `max_captured_body_bytes` (256 KB by default): `rack.input` is
+  read up to that size and rewound for the application, a larger response is kept in part, and
+  the Request tab says so with the whole size ("at least" when it is not known: no
+  `Content-Length`, or a stream that stopped). A cluster secret cut in two by the limit is left
+  out with the rest. `nil` keeps whole bodies. Only the raw bodies are capped: the parsed
+  `params` and the log lines (`Parameters: ...`) keep their full size, so a 5 MB JSON request
+  still takes about 15 MB in its profile
+- Streamed responses go out as they are produced: a body that does not answer `to_ary` (an
+  `ActionController::Live` or `response.stream` action that writes to the stream,
+  `render stream: true`, an enumerator), a `text/event-stream`, or a file sent by its path
+  (`send_file`, which keeps `to_path`) is handed to the server chunk by chunk, with a copy kept up
+  to `max_captured_body_bytes`. A page an action of a `Live` controller renders whole is still a
+  page, toolbar included. An error raised while the body is iterated reaches the server as it
+  would without the profiler. The toolbar is only injected in pages the application returns
+  whole, so a `render stream: true` page has none. Under Rack 2, `Rack::ETag` buffers a `Live`
+  response before the profiler sees it, as it does without the profiler
+- What a stream records: the collectors that only gather what notifications and the logger hand
+  them (SQL, views, cache, exceptions, timeline, logs, outbound HTTP) stay subscribed until the
+  server closes the body, so the queries, views and logs of the stream are in its profile, and so
+  are its allocated objects. While the server iterates the body, its thread (or fiber) carries
+  the profile: the log lines, the outbound `Net::HTTP` calls and the `Profiler.measure` blocks it
+  runs then, a `render stream: true` template or an enumerator for instance, are recorded, and
+  what that thread held before is given back afterwards. An `ActionController::Live` action runs
+  in a thread of its own, to which Rails copies the request's thread-local values: its log lines
+  and HTTP calls are recorded too. The collectors that keep state in the request's thread (dumps, mailers, I18n,
+  function profiling) are read when the application returns. Like every subscription, these see
+  what other threads do meanwhile. The profile is saved when the server closes the body, also
+  when the client went away: until then it is not listed, and a request for its token answers
+  404, so an endless event stream is never listed and the toolbar of an XHR that streams finds
+  its profile only at the end. A body the server never closes (against the Rack rules) is
+  finished when the fiber that started it starts its next profiled request (a threaded server
+  runs each request in its thread's root fiber; a fiber-based server such as Falcon gives each
+  its own, so a stream there is never cut by the next request), and its subscriptions are
+  dropped after 5 minutes at the latest: the profile then says "collectors released after 300
+  s", what the stream did later is missing. The server still closes the application's body,
+  whatever happened to the profile
+- A response already framed for the wire (`Transfer-Encoding`, as Rails 7.0 sends a
+  `render stream: true` template) goes out untouched, without the toolbar
+- Allocated objects: the profiles report `allocated_objects`, the number of objects Ruby
+  allocated while the request, job, command or test ran (`GC.stat(:total_allocated_objects)`
+  before and after). The counter belongs to the process: on a multi-threaded server (Puma with
+  several threads, jobs running alongside), it includes what the other threads allocated
+  meanwhile, so it is only exact when one thing runs at a time. It is not a byte count: the
+  `memory` field the API still returns, deprecated, is that number times 40, the figure earlier
+  versions showed as bytes
 - Masking sensitive data adds well under 1 ms to a typical profile. A JSON body in whose text no
   filter matches is not parsed: about 10 ms per megabyte for ASCII text, 50 ms when it holds other
   characters. A body where a filter matches, in a key or only in a value (`"title": "reset your

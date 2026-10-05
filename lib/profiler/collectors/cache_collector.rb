@@ -82,6 +82,11 @@ module Profiler
         store_data(data)
       end
 
+      # Collect reads only what the collector gathered itself.
+      def collect_from_any_thread?
+        true
+      end
+
       def unsubscribe
         unsubscribe_notifications(@subscriptions)
       end
