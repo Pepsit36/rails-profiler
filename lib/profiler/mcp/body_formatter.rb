@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require "base64"
-require "zlib"
+require_relative "../models/profile"
 
 module Profiler
   module MCP
@@ -19,13 +18,7 @@ module Profiler
         return "  *(binary, base64 encoded)*" if encoding == "base64"
         return nil if body.nil? || body.empty?
 
-        if encoding == "gzip+base64"
-          begin
-            body = Zlib::Inflate.inflate(Base64.strict_decode64(body))
-          rescue Zlib::Error, ArgumentError
-            # fall through with original body
-          end
-        end
+        body, = Models::Profile.decode_body(body, encoding)
 
         if params["save_bodies"]
           path = FileCache.save(token, name, body)
