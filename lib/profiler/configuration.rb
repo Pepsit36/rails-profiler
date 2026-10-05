@@ -255,7 +255,8 @@ module Profiler
       @storage_backend = nil
     end
 
-    # Under the same lock as Profiler.storage, for a caller that asks the configuration directly.
+    # Under a lock of its own, for a caller that asks the configuration directly; Profiler.storage
+    # takes it inside its own, always in that order.
     def storage_backend
       @storage_backend || BACKEND_LOCK.synchronize { @storage_backend ||= build_storage_backend }
     end

@@ -4,9 +4,10 @@
 # redis-rb 5 (sorted sets ordered by score then member, missing keys read as empty). Enough to run
 # the store's behaviour specs without a server; TTLs are recorded, not enforced.
 class FakeRedis
-  attr_reader :ttls
+  attr_reader :ttls, :round_trips
 
   def initialize
+    @round_trips = 0
     @strings = {}
     @zsets = Hash.new { |h, k| h[k] = {} }
     @sets = Hash.new { |h, k| h[k] = [] }
@@ -19,9 +20,20 @@ class FakeRedis
     "OK"
   end
 
-  def set(key, value)
+  def set(key, value, nx: false, ex: nil)
+    return false if nx && @strings.key?(key)
+
     @strings[key] = value.to_s
-    "OK"
+    @ttls[key] = ex if ex
+    nx ? true : "OK"
+  end
+
+  # One round trip for the whole block, as redis-rb sends a pipeline.
+  def pipelined
+    @in_pipeline = true
+    yield self
+  ensure
+    @in_pipeline = false
   end
 
   def get(key)
@@ -58,6 +70,8 @@ class FakeRedis
   end
 
   def zrem(key, member)
+    return Array(member).count { |m| !@zsets[key].delete(m.to_s).nil? } if member.is_a?(Array)
+
     !@zsets[key].delete(member.to_s).nil?
   end
 
@@ -96,6 +110,16 @@ class FakeRedis
 
   def smembers(key)
     @sets.key?(key) ? @sets[key].dup : []
+  end
+
+  instance_methods(false).each do |name|
+    next if %i[ttls round_trips pipelined].include?(name)
+
+    original = instance_method(name)
+    define_method(name) do |*args, **kwargs, &block|
+      @round_trips += 1 unless @in_pipeline
+      original.bind(self).call(*args, **kwargs, &block)
+    end
   end
 
   private

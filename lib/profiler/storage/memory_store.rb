@@ -84,14 +84,15 @@ module Profiler
 
       private
 
-      # Called before a new profile is added: removes the oldest down to 80% of the cap.
+      # Called before a new profile is added: removes the first saved down to 80% of the cap, in the
+      # order of the saves (@entries keeps it), not of the starts: a job saved when it ends is new.
       def cleanup_if_needed
         return if @profiles.size < @max_profiles
 
         profiles_to_remove = @profiles.size - (@max_profiles * 0.8).to_i
         return if profiles_to_remove <= 0
 
-        sorted_tokens.last(profiles_to_remove).each { |token| remove(token) }
+        @entries.keys.first(profiles_to_remove).each { |token| remove(token) }
       end
 
       def remove(token)

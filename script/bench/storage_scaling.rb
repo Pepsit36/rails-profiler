@@ -10,6 +10,8 @@
 # children: find_by_parent, file and memory stores, 1,500 profiles of about 17 KB, 3 children.
 # list:     GET /_profiler/api/profiles?limit=50 through the engine, file store, 1,500 profiles of
 #           about 17 KB.
+# redis:    with REDIS_URL set (a server that may be flushed), the first list of a process over the
+#           list of an earlier version: 20,000 tokens, half of them expired long ago.
 #
 # Prints the mean over the measured calls, after a warm-up. Runs against older versions of the
 # gem too, to compare: the options they do not know are passed and ignored.
@@ -30,7 +32,7 @@ require "profiler/engine"
 require "profiler/storage/file_store"
 require "profiler/storage/memory_store"
 
-SECTIONS = ARGV.empty? ? %w[save children list] : ARGV
+SECTIONS = ARGV.empty? ? %w[save children list redis] : ARGV
 
 module StorageBench
   module_function
@@ -145,4 +147,34 @@ if SECTIONS.include?("list")
     body = JSON.parse(session.last_response.body)
     puts "  page at offset 1400: #{body["profiles"].size} profiles, has_more #{body["has_more"]}"
   end
+end
+
+if SECTIONS.include?("redis") && ENV["REDIS_URL"]
+  require "redis"
+  require "profiler/storage/redis_store"
+
+  puts "first list of a process, Redis, list of an earlier version: 20,000 tokens, 10,000 expired"
+  redis = Redis.new(url: ENV["REDIS_URL"])
+  redis.flushdb
+  now = Time.now.to_f
+  20_000.times.each_slice(1_000) do |slice|
+    redis.pipelined do |pipe|
+      slice.each do |i|
+        p = StorageBench.profile(i, size: 2_048)
+        if i.even?
+          pipe.zadd("profiler:list", now - 30 * 86_400 - i, p.token)
+        else
+          pipe.setex("profiler:#{p.token}", 86_400, p.to_json)
+          pipe.zadd("profiler:list", now - i, p.token)
+        end
+      end
+    end
+  end
+  store = Profiler::Storage::RedisStore.new(redis: redis)
+  ms = StorageBench.mean_ms(1) { store.list(limit: 50) }
+  StorageBench.report("first list, per process", ms)
+  ms = StorageBench.mean_ms(10) { store.list(limit: 50) }
+  StorageBench.report("next lists, per call", ms)
+  puts "  tokens left in the list: #{redis.zcard("profiler:list")}"
+  redis.flushdb
 end

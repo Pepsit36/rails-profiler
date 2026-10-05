@@ -48,6 +48,30 @@ RSpec.describe "Profile stores at scale" do
       end
     end
 
+    describe "eviction order" do
+      # C1: a job, a console command or a streamed response is saved when it ends, long after it
+      # started: it is the newest profile saved, not the oldest.
+      it "keeps a profile saved last that started before the others, and lists it by its start" do
+        store = build_store(max_profiles: 10)
+        (100...110).each { |i| profile_at(i).tap { |p| store.save(p.token, p) } }
+        job = profile_at(0, profile_type: "job").tap { |p| store.save(p.token, p) }
+
+        expect(store.list(limit: 100, type: "job").map(&:token)).to eq([job.token])
+        expect(store.load(job.token)).not_to be_nil
+        expect(store.list(limit: 100).last.token).to eq(job.token)
+      end
+
+      it "evicts the first saved profiles, not the first started" do
+        store = build_store(max_profiles: 5)
+        first = (100...104).map { |i| profile_at(i).tap { |p| store.save(p.token, p) } }
+        job = profile_at(0, profile_type: "job").tap { |p| store.save(p.token, p) }
+        profile_at(104).tap { |p| store.save(p.token, p) }
+
+        expect(store.load(job.token)).not_to be_nil
+        expect(store.load(first.first.token)).to be_nil
+      end
+    end
+
     describe "#list" do
       it "filters by profile type and paginates in the store, newest first" do
         store = build_store(max_profiles: 100)
@@ -118,6 +142,17 @@ RSpec.describe "Profile stores at scale" do
         end
         expect(summary.to_json).not_to include(secret)
       end
+    end
+
+    # R14: a long scalar (a console return value, an exception message) is cut in the summary.
+    it "cuts the long scalars of the collectors in the summaries" do
+      store = build_store(max_profiles: 100)
+      profile = profile_at(1, profile_type: "console", collectors_data: { "console" => { "return_value" => "v" * 10_000 } })
+      store.save(profile.token, profile)
+
+      value = store.list(limit: 1, summary: true).first.collector_data("console")["return_value"]
+      expect(value.size).to eq(Profiler::Storage::Summary::MAX_SCALAR_LENGTH)
+      expect("v" * 10_000).to start_with(value)
     end
 
     describe "#find_by_parent" do
@@ -208,6 +243,17 @@ RSpec.describe "Profile stores at scale" do
 
     it_behaves_like "a store that scales"
     it_behaves_like "a store without a count cap when max_profiles is nil"
+
+    it "summarizes a row written before the summary column from the whole row" do
+      store = build_store(max_profiles: 100)
+      profile = profile_at(1, collectors_data: { "database" => { "total_queries" => 2, "queries" => [] } })
+      store.save(profile.token, profile)
+      store.instance_variable_get(:@db).execute("UPDATE profiler_profiles SET summary = NULL")
+
+      summary = store.list(limit: 1, summary: true).first
+      expect(summary.token).to eq(profile.token)
+      expect(summary.collector_data("database")).to eq("total_queries" => 2)
+    end
   end
 
   describe Profiler::Storage::RedisStore do

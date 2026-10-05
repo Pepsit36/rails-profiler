@@ -109,8 +109,10 @@ module Profiler
       # Newest first. summary: true reads the summary column only, for the rows that have it.
       def list(limit: 50, offset: 0, type: nil, summary: false)
         where = type ? "WHERE profile_type = :type" : ""
+        # The summaries need neither the params, headers and tabs nor the collector data.
+        columns = summary ? "token, summary" : "*"
         rows = @db.execute(
-          "SELECT * FROM profiler_profiles #{where} ORDER BY started_at DESC, rowid DESC LIMIT :limit OFFSET :offset",
+          "SELECT #{columns} FROM profiler_profiles #{where} ORDER BY started_at DESC, rowid DESC LIMIT :limit OFFSET :offset",
           { limit: limit, offset: offset }.merge(type ? { type: type.to_s } : {})
         )
         return rows.filter_map { |row| row_to_profile(row, load_blobs: false) } unless summary
@@ -159,16 +161,19 @@ module Profiler
 
       private
 
-      # One query on the started_at index tells whether the table holds more than max_profiles.
+      # In the order the profiles were written (rowid: INSERT OR REPLACE gives a saved again
+      # profile a new one), not started: a job saved when it ends is a new profile, and the one
+      # just written is never evicted. One query on the rowid tells whether the table holds more
+      # than max_profiles.
       def evict_oldest
         return unless @max_profiles
         return unless @db.get_first_value(
-          "SELECT 1 FROM profiler_profiles ORDER BY started_at DESC, rowid DESC LIMIT 1 OFFSET :max", max: @max_profiles
+          "SELECT 1 FROM profiler_profiles ORDER BY rowid DESC LIMIT 1 OFFSET :max", max: @max_profiles
         )
 
         keep = [(@max_profiles * LOW_WATER).floor, 1].max
         tokens = @db.execute(
-          "SELECT token FROM profiler_profiles ORDER BY started_at DESC, rowid DESC LIMIT -1 OFFSET :keep", keep: keep
+          "SELECT token FROM profiler_profiles ORDER BY rowid DESC LIMIT -1 OFFSET :keep", keep: keep
         ).map { |r| r["token"] }
         tokens.each_slice(500) do |slice|
           @db.execute("DELETE FROM profiler_profiles WHERE token IN (#{(["?"] * slice.size).join(",")})", slice)
@@ -179,7 +184,8 @@ module Profiler
       # A row written before the summary column falls back to the whole row, summarized.
       def row_to_summary(row)
         if row["summary"].nil? || row["summary"].empty?
-          profile = row_to_profile(row, load_blobs: false)
+          full = @db.get_first_row("SELECT * FROM profiler_profiles WHERE token = :token", token: row["token"])
+          profile = full && row_to_profile(full, load_blobs: false)
           return profile && Summary.to_profile(Summary.build(profile))
         end
 
