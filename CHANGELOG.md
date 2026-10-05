@@ -43,6 +43,15 @@ every commit of every tag interval is accounted for one way or the other.
   it started following and then stopped. The stream now answers at once with the output there
   is and the browser asks again every second, with the position it reached, while the run is in
   progress: following a run holds no server thread either.
+- **Test runner:** Show the output of a run as UTF-8 text. The process is read 256 bytes at a
+  time, so a character could be cut between two pieces: the output stream then failed on every
+  request, the run's JSON (`GET /_profiler/api/test_runner/runs/:id`, which `run_tests` reads on a
+  slave) warned or failed, and non-ASCII output was labelled binary. The first bytes of a cut
+  character now wait for the next piece, and bytes that are not UTF-8 show as `U+FFFD`.
+- **Test runner:** Keep a killed run `killed`, and send its end to the page only with its last
+  output. The status of a killed run became `passed` or `failed` once the process exited, and the
+  page following a killed run, or a run whose test command failed to start, could stop before
+  the summary or the `[Profiler] Error:` line.
 - **MCP:** `run_tests` with a `slave` (FAB-20) returns as soon as the run on the slave is over, with
   its output. It waited for statuses the test runner never gives (`completed`, `cancelled`), so a
   run that passed was reported as timed out after `timeout_seconds` (120 by default), holding a

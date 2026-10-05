@@ -118,13 +118,14 @@ module Profiler
         Thread.new do
           run_process(run)
         rescue => e
+          # The output first: a page following the run stops at its terminal status.
+          Profiler::TestRunner.run_store.append_output(run.id, "\n[Profiler] Error: #{e.message}\n")
+          Profiler::TestRunner.run_store.finish_output(run.id)
           Profiler::TestRunner.run_store.update(
             run.id,
             status: "error",
             finished_at: Time.now
           )
-          Profiler::TestRunner.run_store.append_output(run.id, "\n[Profiler] Error: #{e.message}\n")
-          Profiler::TestRunner.run_store.finish_output(run.id)
         end
       end
 
@@ -151,7 +152,11 @@ module Profiler
         end
 
         exit_code = $?.exitstatus || 0
-        status = exit_code == 0 ? "passed" : "failed"
+        # A run killed from the profiler stays killed, whatever the process answered to TERM.
+        status = if run.status == "killed" then "killed"
+                 elsif exit_code == 0 then "passed"
+                 else "failed"
+                 end
 
         Profiler::TestRunner.run_store.update(
           run.id,

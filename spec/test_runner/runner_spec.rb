@@ -252,6 +252,55 @@ RSpec.describe Profiler::TestRunner::Runner do
     end
   end
 
+  # A page following a run stops at done: done has to come after the last output.
+  describe "the end of a run, as a page following it sees it" do
+    let(:store) { Profiler::TestRunner.run_store }
+
+    def wait_until(timeout: 10)
+      deadline = Time.now + timeout
+      sleep 0.05 until yield || Time.now > deadline
+    end
+
+    it "ends a killed run only after what the process printed on its way out, and keeps it killed" do
+      allow(described_class).to receive(:build_command).and_return(
+        ["ruby", "-e", "trap('TERM') { sleep 0.3; puts 'summary on the way out'; exit 1 }; " \
+                       "puts 'started'; $stdout.flush; sleep 30"]
+      )
+      run = described_class.start(files: ["spec/fake_spec.rb"], framework: "rspec")
+      wait_until { run.output_lines.join.include?("started") }
+
+      expect(described_class.kill(run.id)).to be true
+      expect(run.status).to eq("killed")
+      expect(store.read_output(run.id, position: 0)[:finished]).to be(false)
+
+      wait_until { store.read_output(run.id, position: 0)[:finished] }
+      expect(store.read_output(run.id, position: 0)[:chunks].join).to include("summary on the way out")
+      wait_until { run.exit_code }
+      expect(run.status).to eq("killed")
+    end
+
+    it "gives a run that could not start its error before its error status" do
+      allow(described_class).to receive(:build_command).and_raise("no such command")
+      seen = []
+      allow(store).to receive(:update).and_wrap_original do |original, id, **attrs|
+        seen << [:status, attrs[:status]] if attrs[:status]
+        original.call(id, **attrs)
+      end
+      allow(store).to receive(:append_output).and_wrap_original do |original, *args|
+        seen << [:output, args.last]
+        original.call(*args)
+      end
+
+      run = described_class.start(files: ["spec/fake_spec.rb"], framework: "rspec")
+      wait_until { store.read_output(run.id, position: 0)[:finished] }
+
+      output_at = seen.index { |kind, text| kind == :output && text.include?("[Profiler] Error: no such command") }
+      expect(output_at).not_to be_nil
+      expect(output_at).to be < seen.index([:status, "error"])
+      expect(store.read_output(run.id, position: 0)[:chunks].join).to include("no such command")
+    end
+  end
+
   describe ".build_env" do
     it "sets RAILS_ENV to 'test'" do
       env = described_class.send(:build_env)
