@@ -145,6 +145,7 @@ require_relative "profiler/collectors/mailer_collector"
 
 require_relative "profiler/storage/token"
 require_relative "profiler/storage/private_files"
+require_relative "profiler/ajax_data"
 require_relative "profiler/env_override_store"
 require_relative "profiler/instrumentation/thread_context_propagation"
 require_relative "profiler/instrumentation/executor_context_propagation"
