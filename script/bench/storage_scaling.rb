@@ -11,7 +11,10 @@
 # list:     GET /_profiler/api/profiles?limit=50 through the engine, file store, 1,500 profiles of
 #           about 17 KB.
 # redis:    with REDIS_URL set (a server that may be flushed), the first list of a process over the
-#           list of an earlier version: 20,000 tokens, half of them expired long ago.
+#           list of an earlier version: 20,000 tokens, half of them expired long ago (no count cap).
+# redis-cap: with REDIS_URL set, 20,000 live profiles of an earlier version and max_profiles 100:
+#           the first save of the process that indexes them, then, on the same data once indexed,
+#           the save that evicts the backlog and the save of another process meanwhile.
 #
 # Prints the mean over the measured calls, after a warm-up. Runs against older versions of the
 # gem too, to compare: the options they do not know are passed and ignored.
@@ -32,7 +35,7 @@ require "profiler/engine"
 require "profiler/storage/file_store"
 require "profiler/storage/memory_store"
 
-SECTIONS = ARGV.empty? ? %w[save children list redis] : ARGV
+SECTIONS = ARGV.empty? ? %w[save children list redis redis-cap] : ARGV
 
 module StorageBench
   module_function
@@ -170,11 +173,54 @@ if SECTIONS.include?("redis") && ENV["REDIS_URL"]
       end
     end
   end
-  store = Profiler::Storage::RedisStore.new(redis: redis)
+  store = Profiler::Storage::RedisStore.new(redis: redis, max_profiles: nil)
   ms = StorageBench.mean_ms(1) { store.list(limit: 50) }
   StorageBench.report("first list, per process", ms)
   ms = StorageBench.mean_ms(10) { store.list(limit: 50) }
   StorageBench.report("next lists, per call", ms)
   puts "  tokens left in the list: #{redis.zcard("profiler:list")}"
+  redis.flushdb
+end
+
+if SECTIONS.include?("redis-cap") && ENV["REDIS_URL"]
+  require "redis"
+  require "profiler/storage/redis_store"
+
+  fill_legacy = lambda do |redis|
+    redis.flushdb
+    now = Time.now.to_f
+    20_000.times.each_slice(1_000) do |slice|
+      redis.pipelined do |pipe|
+        slice.each do |i|
+          p = StorageBench.profile(i, size: 2_048)
+          pipe.setex("profiler:#{p.token}", 86_400, p.to_json)
+          pipe.zadd("profiler:list", now - 20_000 + i, p.token)
+        end
+      end
+    end
+  end
+  timed_save = lambda do |store, index|
+    p = StorageBench.profile(100_000 + index, size: 2_048)
+    StorageBench.mean_ms(1) { store.save(p.token, p) }
+  end
+  client = -> { Redis.new(url: ENV["REDIS_URL"]) }
+
+  puts "Redis, 20,000 live profiles of an earlier version, max_profiles 100"
+  redis = client.call
+  fill_legacy.call(redis)
+  StorageBench.report("first save of the indexing process", timed_save.call(Profiler::Storage::RedisStore.new(redis: client.call, max_profiles: 100), 1))
+  puts "  profiles left: #{redis.zcard("profiler:list")}"
+
+  fill_legacy.call(redis)
+  Profiler::Storage::RedisStore.new(redis: client.call, max_profiles: nil).list(limit: 1) # indexed, nothing evicted
+  evicting = Profiler::Storage::RedisStore.new(redis: client.call, max_profiles: 100)
+  other = Profiler::Storage::RedisStore.new(redis: client.call, max_profiles: 100)
+  other.list(limit: 1)
+  evictor = Thread.new { timed_save.call(evicting, 2) }
+  sleep 0.05
+  other_ms = timed_save.call(other, 3)
+  StorageBench.report("save that evicts the backlog", evictor.value)
+  StorageBench.report("save of another process meanwhile", other_ms)
+  puts "  profiles left: #{redis.zcard("profiler:list")}"
   redis.flushdb
 end
