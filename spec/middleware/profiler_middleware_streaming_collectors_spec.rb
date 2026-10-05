@@ -35,6 +35,12 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "collectors of a stream
     ActiveSupport::Notifications.notifier.listeners_for("sql.active_record").size
   end
 
+  # The collectors of a request listen through its notification scope; the process holds one
+  # subscriber per event for all of them.
+  def sql_handlers
+    Profiler::Collectors::ScopedNotifications.current&.handlers_for("sql.active_record")&.size.to_i
+  end
+
   def serve(body)
     parts = []
     begin
@@ -98,9 +104,11 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "collectors of a stream
 
     expect(Thread.current[:profiler_flamegraph_collector]).to be_nil
     expect(Thread.current[:profiler_dumps]).to be_nil
-    expect(sql_listeners).to eq(before_listeners + 2) # database and flame graph
+    expect(sql_handlers).to eq(2) # database and flame graph
+    expect(sql_listeners).to eq(before_listeners + 1)
 
     serve(body)
+    expect(sql_handlers).to eq(0)
     expect(sql_listeners).to eq(before_listeners)
   end
 
