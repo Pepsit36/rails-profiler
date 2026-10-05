@@ -455,6 +455,33 @@ config.self_url = "http://localhost:3001"
 config.cluster_secret = ENV.fetch("PROFILER_CLUSTER_SECRET")
 ```
 
+**Slaves whose names are not known in advance** (for example one container per git worktree in a
+Docker network): an entry of `cluster_allowed_slave_urls` can be a `Regexp` instead of a URL.
+
+```ruby
+# master
+config.cluster_master = true
+config.cluster_secret = ENV.fetch("PROFILER_CLUSTER_SECRET")
+config.cluster_allowed_slave_urls = [%r{\Ahttp://travel-api-[a-z0-9-]+:3000\z}]
+config.cluster_allow_insecure_http = true  # plain HTTP to a non-loopback host, inside the Docker network only
+```
+
+- The pattern must start with `\A` and end with `\z`, so that it matches the whole URL: any other
+  `Regexp` (unanchored, anchored with `^`, `$` or `\Z`, or whose `x`-mode comment hides the `\z`)
+  raises an `ArgumentError` when it is assigned. It is matched as a whole even if it alternates at
+  the top level, and its options (`i`, `x`) apply.
+- It is matched against the URL as the master keeps it: lower-case scheme and host, no default port
+  (`:80` for `http`, `:443` for `https`), no trailing slash, and path segments percent-encoded again
+  (`~` becomes `%7E`, `:` becomes `%3A`). Write the pattern for that form, and keep the port in it
+  if the slaves use a non-default one.
+- The checks on the URL come first and the pattern cannot lift them: user info, a query, a fragment
+  or a `.` or `..` segment are refused, and plain HTTP to a host that is not a loopback address
+  still needs `cluster_allow_insecure_http`.
+- Only a `Regexp` object is a pattern: a `String` is always a URL, even if it looks like a pattern.
+- URLs and patterns can be mixed in one list. As with listed names, the pattern is matched against
+  the name, not the address it resolves to: keep the character classes tight (`[a-z0-9-]+`, never
+  `.*` for a host).
+
 **In the UI** (`/_profiler` on the master): a **Profiler** dropdown appears in the header listing all connected slaves. Selecting one proxies all data through the master — the rest of the interface is unchanged.
 
 **In MCP**: all tools accept an optional `slave: "<name>"` parameter:
@@ -480,7 +507,8 @@ list_slaves  # → shows connected slaves and their status
   entry of `cluster_allowed_slave_urls`: same scheme, host and port, compared after normalization
   (case of the host, default port, IPv6 between brackets), and a path under the entry's path,
   segment by segment. A URL with user info, a query, a fragment or a `.` or `..` segment is refused.
-  The default, `[]`, refuses every URL. The check runs again on each proxied call, so removing an
+  An entry can also be an anchored `Regexp` (see *Slaves whose names are not known in advance*
+  above). The default, `[]`, refuses every URL. The check runs again on each proxied call, so removing an
   entry cuts off a slave already registered.
 - **HTTPS.** Slave URLs and `master_url` must use HTTPS, except for `localhost`, `127.0.0.0/8` and
   `::1`, so that the secret and the profiles do not cross the network in clear.
