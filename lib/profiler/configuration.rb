@@ -47,7 +47,7 @@ module Profiler
                   :name, :master_url, :self_url,
                   :cluster_heartbeat_interval, :cluster_offline_threshold,
                   :cluster_master, :cluster_secret, :cluster_require_secret,
-                  :cluster_allowed_slave_urls, :cluster_allow_insecure_http
+                  :cluster_allow_insecure_http
 
     attr_writer :tmp_path
 
@@ -115,6 +115,30 @@ module Profiler
 
     def tmp_path
       @tmp_path || default_tmp_path
+    end
+
+    attr_reader :cluster_allowed_slave_urls
+
+    # :any, or a list of slave URLs and anchored Regexp patterns (see Profiler::Cluster::Security).
+    # A Regexp that is not anchored with \A and \z is refused here, at boot, rather than ignored.
+    def cluster_allowed_slave_urls=(value)
+      unless value == :any
+        require_relative "cluster/security"
+        Array(value).grep(Regexp).each do |pattern|
+          unless Profiler::Cluster::Security.anchored_pattern?(pattern)
+            raise ArgumentError, "config.cluster_allowed_slave_urls: #{pattern.inspect} must start with \\A and " \
+                                 "end with \\z, so that it matches the whole slave URL"
+          end
+
+          begin
+            Profiler::Cluster::Security.whole_url_pattern(pattern)
+          rescue RegexpError => e
+            raise ArgumentError, "config.cluster_allowed_slave_urls: #{pattern.inspect} cannot be matched against " \
+                                 "the whole slave URL (#{e.message}); an x-mode comment must not hide the \\z"
+          end
+        end
+      end
+      @cluster_allowed_slave_urls = value
     end
 
     def enabled=(value)
