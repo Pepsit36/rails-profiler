@@ -7,15 +7,18 @@ module Profiler
     # What the profile lists show of a profile, for the stores to keep apart from the profile
     # itself: the top-level fields without the bodies, params, headers and tabs, and for each
     # collector its scalar values only (database.total_queries, job.queue, test.test_name...),
-    # nested lists and hashes left out, strings cut at MAX_SCALAR_LENGTH (a console return value,
-    # an exception message). Built from Profile#to_h, after the collectors and the
-    # redaction have run: a summary is a subset of the stored profile (a long string cut to its
-    # start) and holds no value the profile does not.
+    # nested lists and hashes and the request collector's copy of the bodies left out, strings
+    # cut at MAX_SCALAR_LENGTH (a console return value, an exception message). Built from
+    # Profile#to_h, after the collectors and the redaction have run: a summary is a subset of the
+    # stored profile (a long string cut to its start) and holds no value the profile does not.
     module Summary
       MAX_SCALAR_LENGTH = 500
 
       DROPPED = %i[params headers response_headers request_body request_body_encoding
                    response_body response_body_encoding tabs].freeze
+
+      # The request collector keeps a copy of the bodies: no more listed than the profile's own.
+      DROPPED_SCALARS = %w[request_body request_body_encoding response_body response_body_encoding].freeze
 
       module_function
 
@@ -37,6 +40,7 @@ module Profiler
       def scalars(values)
         values.each_with_object({}) do |(key, value), kept|
           next unless scalar?(value)
+          next if DROPPED_SCALARS.include?(key.to_s)
 
           kept[key.to_s] = value.is_a?(String) && value.length > MAX_SCALAR_LENGTH ? value[0, MAX_SCALAR_LENGTH] : value
         end

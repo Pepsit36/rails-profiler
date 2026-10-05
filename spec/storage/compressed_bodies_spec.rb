@@ -138,6 +138,14 @@ RSpec.describe "Bodies compressed by compress_bodies, as stored" do
     end
   end
 
+  it "lists no copy of the bodies in the summary" do
+    summary = Profiler::Storage::Summary.build(profile)
+
+    expect(summary[:collectors_data]["request"].keys)
+      .not_to include("request_body", "request_body_encoding", "response_body", "response_body_encoding")
+    expect(summary[:collectors_data]["request"]["path"]).to eq("/page")
+  end
+
   context "with a secret in a body above the threshold" do
     let(:secret) { "cluster-secret-that-must-not-leak-1234" }
     let(:json_body) do
