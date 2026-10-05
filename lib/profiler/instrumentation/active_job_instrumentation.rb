@@ -8,11 +8,12 @@ module Profiler
       included do
         attr_accessor :profiler_parent_token
 
-        before_enqueue do |job|
+        # Ahead of the application's callbacks, which may already be there when this is included.
+        before_enqueue(prepend: true) do |job|
           job.profiler_parent_token = Profiler::CurrentContext.token
         end
 
-        around_perform do |job, block|
+        around_perform(prepend: true) do |job, block|
           Profiler::JobProfiler.profile(
             job_class: job.class.name,
             job_id: job.job_id,
