@@ -33,8 +33,16 @@ every commit of every tag interval is accounted for one way or the other.
   server could no longer send it by its path. A body that does not answer `to_ary`, a
   `text/event-stream` or a body sent by its path now goes to the server chunk by chunk, keeps
   `to_path` and `close`, and its profile is saved when the server closes it, also when the client
-  went away, with the body seen so far and the full duration. Rails 7.0 pages, whose body has no
-  `to_ary`, still get the toolbar. The toolbar is only injected in pages returned whole.
+  went away, with the body seen so far and the full duration. The collectors that only gather
+  what notifications and the logger hand them (SQL, views, cache, exceptions, timeline, logs,
+  outbound HTTP) stay subscribed until then, so the queries and views of a `render stream: true`
+  page or of an enumerator are still recorded; dumps, mailers, I18n and function profiling are
+  read when the application returns. Until it is saved, a streamed profile is not listed and its
+  token answers 404: an endless event stream is never listed. A body the server never closes is
+  finished when its thread starts its next profiled request, and its subscriptions are dropped
+  after 5 minutes at the latest. Rails 7.0 pages, whose body has no `to_ary`, and pages a `Live`
+  controller renders whole still get the toolbar. The toolbar is only injected in pages returned
+  whole, so a `render stream: true` page has none.
 - **Middleware:** Stop turning an error raised while a response body is iterated (a stream that
   fails part way, a file sent with `send_file` that disappeared) into an empty `200`. The error now
   reaches the server, as it does without the profiler, and the profile keeps it.
@@ -42,9 +50,12 @@ every commit of every tag interval is accounted for one way or the other.
   `config.max_captured_body_bytes` (256 KB by default) instead of copying them whole: a 2 MB upload
   took 2.8 MB in its profile, plus transient copies. `rack.input` is read only up to that size, then
   rewound for the application, and an input that cannot be rewound is no longer read at all. The
-  Request tab and the MCP profile detail say when a body was cut, with its whole size; the
-  profile carries `request_body_truncated`, `request_body_size`, `response_body_truncated` and
-  `response_body_size`. To keep whole bodies, as before, set `config.max_captured_body_bytes = nil`.
+  Request tab and the MCP profile detail say when a body was cut, with its whole size, or "at
+  least" that size when it is not known; the profile carries `request_body_truncated`,
+  `request_body_size`, `response_body_truncated`, `response_body_size` and their
+  `*_size_is_minimum`. Only the raw bodies are capped: the parsed `params` and the
+  `Parameters:` log line keep their full size, so a 5 MB JSON request still takes about 15 MB in
+  its profile. To keep whole bodies, as before, set `config.max_captured_body_bytes = nil`.
 - **Profiles:** Report the number of objects allocated (`allocated_objects`) instead of a figure
   shown as memory. `GC.stat` has no `:total_allocated_size` on the supported Rubies, so `memory`
   was always that number times 40, never a measured byte count. The toolbar, the dashboards, the
