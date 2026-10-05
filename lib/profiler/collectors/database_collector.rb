@@ -7,6 +7,10 @@ module Profiler
   module Collectors
     class DatabaseCollector < BaseCollector
       BACKTRACE_DEPTH = 10
+      MAX_SCANNED_FRAMES = 200
+
+      # Where Ruby's own libraries live.
+      LIBRARY_PATHS = [RbConfig::CONFIG["rubylibdir"], RbConfig::CONFIG["rubyarchdir"]].compact.map { |dir| "#{dir}/" }.freeze
 
       # Frames between the application's code and the subscriber: the profiler itself, the
       # notifications bus and Active Record.
@@ -157,25 +161,35 @@ module Profiler
            .strip
       end
 
-      # The first frames outside the profiler, the notifications bus and Active Record: the
-      # code that ran the query. Read a few at a time, as the stack can be deep.
+      # The code that ran the query: the frames Rails.backtrace_cleaner keeps, as the exception
+      # tab shows them, or without Rails, the frames outside gems and Ruby itself. Whatever stands
+      # in between (the profiler, Active Support, Active Record, the driver, other gems) is left
+      # out, so that the first frames are the application's.
       def extract_backtrace
-        frames = []
-        start = 1
-        while frames.size < BACKTRACE_DEPTH
-          chunk = caller_locations(start, 20)
-          break if chunk.nil? || chunk.empty?
+        lines = (caller_locations(1, MAX_SCANNED_FRAMES) || []).filter_map do |loc|
+          path = loc.path.to_s
+          next if INTERNAL_FRAMES.any? { |internal| path.include?(internal) }
 
-          chunk.each do |loc|
-            path = loc.path.to_s
-            next if INTERNAL_FRAMES.any? { |internal| path.include?(internal) }
-
-            frames << "#{path}:#{loc.lineno}:in `#{loc.label}`"
-            break if frames.size == BACKTRACE_DEPTH
-          end
-          start += chunk.size
+          "#{path}:#{loc.lineno}:in `#{loc.label}`"
         end
-        frames
+
+        cleaned = clean_with_rails(lines)
+        cleaned = lines.reject { |line| library_frame?(line) } if cleaned.nil? || cleaned.empty?
+        cleaned = lines if cleaned.empty?
+        cleaned.first(BACKTRACE_DEPTH)
+      end
+
+      def clean_with_rails(lines)
+        return nil unless defined?(Rails) && Rails.respond_to?(:backtrace_cleaner)
+
+        Rails.backtrace_cleaner&.clean(lines)
+      rescue StandardError
+        nil
+      end
+
+      def library_frame?(line)
+        line.start_with?("<internal:") || LIBRARY_PATHS.any? { |dir| line.start_with?(dir) } ||
+          line.include?("/gems/") || line.include?("/vendor/bundle/")
       end
     end
   end
