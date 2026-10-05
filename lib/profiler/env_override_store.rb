@@ -180,12 +180,15 @@ module Profiler
 
     private
 
+    # The message names the file relative to tmp_path, and an Errno by its description only: it
+    # goes back to the Env tab, the MCP tools and the test runner output, without absolute paths.
     def surfacing(action)
       yield
     rescue Error
       raise
     rescue StandardError => e
-      raise Error, "could not #{action} in #{override_file_path}: #{e.message}"
+      reason = e.is_a?(SystemCallError) ? e.class.new.message : e.class.name
+      raise Error, "could not #{action} in env_overrides.json under tmp_path: #{reason}"
     end
 
     def remember_process_original(key)
