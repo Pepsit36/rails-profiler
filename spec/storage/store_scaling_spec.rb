@@ -74,6 +74,7 @@ RSpec.describe "Profile stores at scale" do
                                                    "job" => { "queue" => "default", "executions" => 1 },
                                                    "exception" => { "exceptions" => [] } })
         profile.response_body = "<html>#{"x" * 1000}</html>"
+        profile.allocated_objects = 1234
         store.save(profile.token, profile)
 
         summary = store.list(limit: 1, summary: true).first
@@ -86,6 +87,9 @@ RSpec.describe "Profile stores at scale" do
         expect(summary.collector_data("database")).to eq("total_queries" => 3)
         expect(summary.collector_data("job")).to eq("queue" => "default", "executions" => 1)
         expect(summary.collectors_data).to have_key("exception")
+        # What the lists show of the allocations (allocatedObjects in ProfileList.tsx).
+        expect(summary.allocated_objects).to eq(1234)
+        expect(summary.to_h[:memory]).to eq(profile.memory)
       end
     end
 
