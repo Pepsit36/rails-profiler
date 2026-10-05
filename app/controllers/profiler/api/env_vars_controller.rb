@@ -3,6 +3,13 @@
 module Profiler
   module Api
     class EnvVarsController < ApplicationController
+      # The overrides file could not be read or written: nothing was changed, ENV included.
+      rescue_from Profiler::EnvOverrideStore::Error do |error|
+        key = params[:key].to_s.strip
+        message = key.empty? ? "#{error.message}; nothing was changed" : "#{error.message}; #{key} was left unchanged"
+        render json: { error: message }, status: :internal_server_error
+      end
+
       def show
         variables = Profiler::Redaction.env_snapshot
         overrides = Profiler::Redaction.env_overrides(Profiler.env_override_store.all_overrides)
@@ -72,8 +79,11 @@ module Profiler
         ENV[key].nil? ? nil : Profiler::Redaction.env_value(key, ENV[key])
       end
 
+      # Read back after a change that succeeded: a failure here must not answer that nothing changed.
       def redacted_override(key)
         Profiler::Redaction.env_overrides(Profiler.env_override_store.all_overrides)[key]
+      rescue Profiler::EnvOverrideStore::Error
+        nil
       end
     end
   end

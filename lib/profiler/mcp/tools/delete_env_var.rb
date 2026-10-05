@@ -26,7 +26,9 @@ module Profiler
           Profiler.env_override_store.delete(key)
           ENV.delete(key)
 
-          [{ type: "text", text: "Deleted #{key}. Override persisted — will remain deleted across restarts until reset." }]
+          [{ type: "text", text: "Deleted #{key}. Override persisted: it will remain deleted across restarts until reset." }]
+        rescue Profiler::EnvOverrideStore::Error => e
+          ::MCP::Tool::Response.new([{ type: "text", text: "Error: #{e.message}; #{key} was left unchanged." }], error: true)
         end
       end
     end
