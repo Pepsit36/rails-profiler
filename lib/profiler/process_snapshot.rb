@@ -36,7 +36,8 @@ module Profiler
         candidates.find { |route| route[:verb].split("|").include?(verb) } ||
           candidates.find { |route| route[:verb] == "ANY" } ||
           candidates.first
-      rescue StandardError
+      rescue StandardError => e
+        Profiler.log_error_once(:snapshot_route, "could not find the route of a profile", e)
         nil
       end
 
@@ -84,7 +85,8 @@ module Profiler
           @routes = build_snapshot(fingerprint, list) unless @routes && @routes[0] == fingerprint
           @routes
         end
-      rescue StandardError
+      rescue StandardError => e
+        Profiler.log_error_once(:snapshot_routes, "could not read the application's routes", e)
         [nil, [].freeze, {}.freeze]
       end
 

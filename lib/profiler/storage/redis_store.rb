@@ -270,7 +270,7 @@ module Profiler
           data = JSON.parse(json, symbolize_names: true)
           [token, data[:started_at] ? Time.parse(data[:started_at]).to_f : 0.0, Summary.build(data)]
         rescue StandardError => e
-          warn "RedisStore: could not index profile #{token}: #{e.message}"
+          Profiler.log_error("RedisStore: could not index profile #{token}", e)
           nil
         end
         @redis.pipelined do |pipe|

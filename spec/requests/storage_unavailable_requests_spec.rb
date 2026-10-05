@@ -39,7 +39,7 @@ RSpec.describe "Profiler routes while the store cannot be created", type: :reque
     end
     Profiler.instance_variable_set(:@storage, nil)
     Profiler::Storage::Unavailable.reset!
-    allow(Profiler::Storage::Unavailable).to receive(:warn)
+    allow(Profiler).to receive(:log_warn)
   end
 
   after do
