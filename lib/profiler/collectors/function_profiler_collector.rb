@@ -5,7 +5,7 @@ require_relative "base_collector"
 begin
   require "stackprof"
 rescue LoadError
-  # stackprof not available — lite mode will fall back to TracePoint without memory tracking
+  # stackprof not available: lite mode stays off, unless Profiler.function_profiling_tracepoint_fallback
 end
 
 module Profiler
@@ -55,6 +55,20 @@ module Profiler
 
         mode  = Profiler.function_profiling_mode
         clock = Profiler.function_profiling_clock
+
+        # Sampling needs stackprof, which the gem does not depend on. Tracing every method call
+        # instead costs several times the rest of the profiler: only when asked for.
+        if stackprof_missing?(mode)
+          store_data({
+            enabled:    false,
+            reason:     "stackprof_missing",
+            max_frames: Profiler.function_profiling_max_frames,
+            mode:       mode,
+            clock:      clock
+          })
+          return
+        end
+
         @subscribed = true
         claim_thread_slot(:fn_profiler_mode, mode)
         claim_thread_slot(:fn_profiler_clock, clock)
@@ -119,6 +133,7 @@ module Profiler
 
       def toolbar_summary
         return { text: "off", color: "gray" } unless Profiler.function_profiling_enabled
+        return { text: "off", color: "gray" } if stackprof_missing?(Profiler.function_profiling_mode)
         case Profiler.function_profiling_mode
         when "lite" then { text: "sampling on", color: "blue" }
         else             { text: "fn profiling on", color: "purple" }
@@ -126,6 +141,10 @@ module Profiler
       end
 
       private
+
+      def stackprof_missing?(mode)
+        mode == "lite" && !defined?(StackProf) && !Profiler.function_profiling_tracepoint_fallback
+      end
 
       # ── StackProf (lite mode) ──────────────────────────────────────────────────
 
@@ -297,10 +316,9 @@ module Profiler
         claim_thread_slot(:fn_profiler_depth, Hash.new(0))
 
         @trace = TracePoint.new(:call, :return) do |tp|
-          next unless tp.path&.start_with?(app_root)
-
           stack = Thread.current[:fn_profiler_stack]
           next unless stack
+          next unless tp.path&.start_with?(app_root)
 
           case tp.event
           when :call
@@ -339,7 +357,13 @@ module Profiler
           end
         end
 
-        @trace.enable
+        # On the request's thread only: a TracePoint enabled for the whole process slows down
+        # every other thread, other requests included.
+        begin
+          @trace.enable(target_thread: Thread.current)
+        rescue ArgumentError
+          @trace.enable # a Ruby without target_thread: the hook returns at once on other threads
+        end
       end
 
       def collect_tracepoint(mode)

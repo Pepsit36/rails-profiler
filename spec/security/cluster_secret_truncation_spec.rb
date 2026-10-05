@@ -116,6 +116,7 @@ RSpec.describe "Cluster secret and cut text" do
     # the rest of the collector data.
     "collectors/exception_collector.rb" => ["raw_backtrace.first(30)"],
     "instrumentation/net_http_instrumentation.rb" => ["frames.first(depth)"],
+    "collectors/database_collector.rb" => ["end.first(BACKTRACE_DEPTH)"],
     # A list of emails, cut by count; each email is masked whole.
     "collectors/mailer_collector.rb" => ["@emails.first(MAX_EMAILS)"],
     # The text shown so far, cut after it was masked on the joined text (see append_output).

@@ -2,6 +2,7 @@
 
 require_relative "../redaction"
 require_relative "lifecycle"
+require_relative "scoped_notifications"
 
 module Profiler
   module Collectors
@@ -143,10 +144,14 @@ module Profiler
         @claimed_thread_slots = nil
       end
 
-      def unsubscribe_notifications(subscriptions)
-        return unless defined?(ActiveSupport::Notifications)
+      # Subscribes to +event+ for the request being profiled only: the block never sees what
+      # another request's thread emits (see ScopedNotifications). Returns the handle to release.
+      def subscribe_notification(event, &block)
+        ScopedNotifications.subscribe(event, &block)
+      end
 
-        subscriptions.each { |sub| ActiveSupport::Notifications.unsubscribe(sub) }
+      def unsubscribe_notifications(subscriptions)
+        subscriptions.each { |handle| ScopedNotifications.unsubscribe(handle) }
         subscriptions.clear
       end
     end

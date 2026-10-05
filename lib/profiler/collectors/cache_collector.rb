@@ -35,7 +35,7 @@ module Profiler
       def subscribe
         return unless defined?(ActiveSupport::Notifications)
 
-        @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("cache_read.active_support") do |name, started, finished, unique_id, payload|
+        @subscriptions << subscribe_notification("cache_read.active_support") do |name, started, finished, unique_id, payload|
           duration = ((finished - started) * 1000).round(2)
           @cache_reads << {
             key: payload[:key],
@@ -44,7 +44,7 @@ module Profiler
           }
         end
 
-        @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("cache_write.active_support") do |name, started, finished, unique_id, payload|
+        @subscriptions << subscribe_notification("cache_write.active_support") do |name, started, finished, unique_id, payload|
           duration = ((finished - started) * 1000).round(2)
           @cache_writes << {
             key: payload[:key],
@@ -52,7 +52,7 @@ module Profiler
           }
         end
 
-        @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("cache_delete.active_support") do |name, started, finished, unique_id, payload|
+        @subscriptions << subscribe_notification("cache_delete.active_support") do |name, started, finished, unique_id, payload|
           duration = ((finished - started) * 1000).round(2)
           @cache_deletes << {
             key: payload[:key],

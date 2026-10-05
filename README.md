@@ -97,6 +97,9 @@ Profiler.configure do |config|
   # Database query thresholds
   config.slow_query_threshold = 100  # ms
   config.max_queries_warning = 50
+  # Where each query comes from: the first run of each statement and every slow query
+  # (:first_and_slow, default), every query (:all, the behaviour of earlier versions), or none (:none)
+  config.sql_backtrace = :first_and_slow
 
   # Allocation tracking: objects allocated during the request, job, command or test
   # (see "Allocated objects" under Performance)
@@ -850,7 +853,43 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 
 - Only active when enabled (development/test by default); when disabled, nothing is left in the
   middleware stack and no Sidekiq, ActiveJob, test or console instrumentation is installed
-- Expected overhead: < 5ms per request
+- Overhead, measured in the default configuration with `script/bench/request_overhead.rb`: on a
+  page that runs 20 SQL queries and renders 3 partials and 20 KB of HTML, in an application with
+  210 routes and the memory storage, the profiler adds about 10 to 13 ms per request, with or
+  without stackprof, on Ruby 3.3 and 3.4 (the page itself takes 1 ms); about a quarter of it goes
+  to finding where to insert the toolbar in the HTML. Each further SQL query adds about 0.1 ms. The figure depends on the machine: run the script to get yours
+  (`bundle exec ruby script/bench/request_overhead.rb [--no-stackprof]`); it is not part of the
+  gem and does not run in CI
+- Each collector records the events of its own request only: the thread that runs it, the
+  threads it starts with `Thread.new`, the fibers it creates (on Ruby 3.2 and later; with
+  `render stream: true` the layout is rendered in one), the tasks it posts to a concurrent-ruby
+  executor (`Concurrent::Promises`, `Concurrent::Future`), whichever pool thread runs them and
+  whenever, the thread `ActionController::Live` runs the action in, and the server thread that
+  iterates a streamed body. A job performed by ActiveJob's `:async` adapter is profiled on its own,
+  apart from the request that enqueued it, even while that request runs; with `track_jobs` off, its
+  queries are recorded in that request. A thread created by a pool (concurrent-ruby, Puma,
+  including the one Puma starts for a request marked with `env["puma.mark_as_io_bound"]`) inherits
+  nothing from the request that was running when it was created. The process holds one subscriber
+  per event, however many requests are profiled at once. Under Falcon, set
+  `config.active_support.isolation_level = :fiber`, as Rails requires, so that requests sharing a
+  thread are told apart. Not covered: a pool of the application's own, whose threads are started
+  with `Thread.new` while a request runs; they take that request's context for their whole life:
+  its queries stop being recorded when the request ends, but the outgoing HTTP calls of their later
+  tasks are still added to that request's profile. Measure it on your setup with
+  `bundle exec ruby script/bench/puma_attribution.rb`
+- The function profiler samples with [stackprof](https://github.com/tmm1/stackprof), which is not
+  a dependency of the gem: add `gem "stackprof"` to the application's Gemfile to use it. Without
+  it, the function profiler stays off. Earlier versions then traced every method call of every
+  thread with a `TracePoint`, which tripled the overhead; set
+  `Profiler.function_profiling_tracepoint_fallback = true` in an initializer to trace again, on the
+  request's thread only
+- The route table and `ENV` are not stored in each profile. A profile keeps the route its request
+  matched; the Routes tab lists the routes of the process that serves the page, rebuilt when the
+  routes are reloaded in development, and the Env tab shows the current `ENV` of that process, not
+  the `ENV` as it was during the request, masked as described under "Sensitive data". The profiles
+  of jobs, console expressions and tests, which run in another process (Sidekiq, the console,
+  rspec), keep the `ENV` of that process, masked, as before. Profiles saved by an earlier version
+  keep showing their own table and variables
 - Text bodies > 10 KB compressed automatically (gzip+base64)
 - Bodies kept in a profile stop at `max_captured_body_bytes` (256 KB by default): `rack.input` is
   read up to that size and rewound for the application, a larger response is kept in part, and

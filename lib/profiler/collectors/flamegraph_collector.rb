@@ -38,7 +38,7 @@ module Profiler
         claim_thread_slot(:profiler_flamegraph_collector, self)
 
         # Controller action
-        @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("process_action.action_controller") do |_name, started, finished, _unique_id, payload|
+        @subscriptions << subscribe_notification("process_action.action_controller") do |_name, started, finished, _unique_id, payload|
           add_event Models::TimelineEvent.new(
             name: "#{payload[:controller]}##{payload[:action]}",
             started_at: started,
@@ -56,7 +56,7 @@ module Profiler
         end
 
         # Template rendering
-        @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("render_template.action_view") do |_name, started, finished, _unique_id, payload|
+        @subscriptions << subscribe_notification("render_template.action_view") do |_name, started, finished, _unique_id, payload|
           identifier = short_identifier(payload[:identifier])
           add_event Models::TimelineEvent.new(
             name: "Render: #{identifier}",
@@ -68,7 +68,7 @@ module Profiler
         end
 
         # Partial rendering
-        @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("render_partial.action_view") do |_name, started, finished, _unique_id, payload|
+        @subscriptions << subscribe_notification("render_partial.action_view") do |_name, started, finished, _unique_id, payload|
           identifier = short_identifier(payload[:identifier])
           add_event Models::TimelineEvent.new(
             name: "Partial: #{identifier}",
@@ -80,7 +80,7 @@ module Profiler
         end
 
         # SQL queries
-        @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("sql.active_record") do |_name, started, finished, _unique_id, payload|
+        @subscriptions << subscribe_notification("sql.active_record") do |_name, started, finished, _unique_id, payload|
           next if payload[:name] == "SCHEMA"
           next if payload[:sql] =~ /^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT)/i
 
@@ -96,7 +96,7 @@ module Profiler
 
         # Cache operations
         %w[cache_read.active_support cache_write.active_support cache_delete.active_support].each do |event_name|
-          @subscriptions << ActiveSupport::Notifications.monotonic_subscribe(event_name) do |name, started, finished, _unique_id, payload|
+          @subscriptions << subscribe_notification(event_name) do |name, started, finished, _unique_id, payload|
             op = name.split(".").first.sub("cache_", "")
             key = payload[:key].to_s
             add_event Models::TimelineEvent.new(

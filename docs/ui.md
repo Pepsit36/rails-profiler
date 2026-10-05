@@ -251,6 +251,12 @@ Shows all routes registered in the Rails app:
 - Matched route highlighted at the top
 - Full route table: HTTP verb, URL pattern, controller#action, route name
 
+The profile keeps only the route its request matched. The table is the one of the process that
+serves the page, as it is now (rebuilt when the routes are reloaded in development). Likewise, the
+Env tab of an HTTP profile shows the current `ENV` of that process, not the `ENV` as it was during
+the request; the profile of a job, a console expression or a test keeps the `ENV` of the process it
+ran in.
+
 ---
 
 ### I18n tab
