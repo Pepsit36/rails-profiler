@@ -33,6 +33,11 @@ export interface Poller {
   stop(): void
 }
 
+function isValidAnswer(answer: unknown): answer is ProfileEventsAnswer {
+  return typeof answer === 'object' && answer !== null &&
+    Number.isFinite((answer as ProfileEventsAnswer).cursor)
+}
+
 export function startProfileUpdatePoller(options: PollerOptions): Poller {
   const now = options.now ?? (() => Date.now())
   const setTimer = options.setTimer ?? ((fn, ms) => setTimeout(fn, ms))
@@ -69,11 +74,15 @@ export function startProfileUpdatePoller(options: PollerOptions): Poller {
     try {
       const answer = await options.check(cursor)
       if (stopped) return
-      cursor = Math.max(cursor, answer.cursor)
-      if (answer.updated) {
-        step = 0
-        lastSaveAt = now()
-        options.onUpdate()
+      // An answer without a version (a proxy's page, a body cut short) counts as a failed check:
+      // a cursor that is not a number would never compare again.
+      if (isValidAnswer(answer)) {
+        cursor = Math.max(cursor, answer.cursor)
+        if (answer.updated === true) {
+          step = 0
+          lastSaveAt = now()
+          options.onUpdate()
+        }
       }
     } catch {
       // A failed check counts as one: the next waits as long as planned, never less.
