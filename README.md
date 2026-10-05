@@ -66,7 +66,9 @@ and installs no Sidekiq, ActiveJob, test or console instrumentation, and with `e
 production it gets all of them. The patch that carries the profiling context into new threads
 (`Thread#initialize`) is put in place when the gem is loaded, whatever `enabled` says. The engine
 routes the application mounts stay: while disabled, the API, the MCP mount and the cluster
-endpoints answer `403`, or `404` when the MCP HTTP transport or `cluster_master` is off.
+endpoints answer `403`, or `404` when the MCP HTTP transport or `cluster_master` is off. The
+engine's static assets (`/_profiler/assets/profiler-toolbar.js`, `profiler.js` and
+`profiler.css`) are still served, to anyone: they hold no application data.
 
 `enabled` is read once, at boot: setting it to true on a running process does not insert the
 middleware nor install the instrumentation. Options can also be set with `Profiler.configure` in
