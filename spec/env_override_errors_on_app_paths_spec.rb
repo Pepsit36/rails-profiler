@@ -44,9 +44,10 @@ RSpec.describe "Env override errors on the application's paths" do
     expect(ran).to be true
   end
 
-  it "lets the env collector collect" do
+  it "lets the env collector collect, and the Env tab read ENV when the profile is displayed" do
     profile = Profiler::Models::Profile.new
     expect { Profiler::Collectors::EnvCollector.new(profile).collect }.not_to raise_error
+    expect { Profiler::ProcessSnapshot.hydrate(profile) }.not_to raise_error
     expect(profile.collector_data("env")[:total]).to be > 0
   end
 
