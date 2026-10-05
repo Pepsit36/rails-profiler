@@ -118,6 +118,11 @@ module Profiler
           state[STATE_KEY] = scope
         end
 
+        # What the current context holds, closed or not, for RequestContext to put back.
+        def adopted
+          state[STATE_KEY]
+        end
+
         private
 
         def state
