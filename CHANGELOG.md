@@ -19,7 +19,7 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
-## [0.31.4] - 2026-10-05
+## [0.31.5] - 2026-10-05
 
 <!-- stamped -->
 
@@ -41,7 +41,12 @@ every commit of every tag interval is accounted for one way or the other.
   profiles through `Profiler.save_profile`, like jobs, console commands and tests; a page whose
   profile could not be saved gets neither the `X-Profiler-Token` header nor the toolbar, which
   would point to a missing profile. The profiler's own lines no longer appear in the Logs tab of
-  the request during which they are written, nor count as its errors.
+  the request during which they are written, nor count as its errors. The same holds while the store is
+  unavailable, for pages and for streamed responses, which no longer send `X-Profiler-Token` for a
+  profile that will be dropped. The storage warnings (a store that cannot be created, said once
+  per cause; a Redis profile that cannot be indexed; a SQLite summary that cannot be read) go to
+  the application's log too, and the `run_tests` MCP tool answers an unavailable store as an error
+  instead of a run without profiles.
 - **Outbound HTTP:** Record the calls to services on the same machine. `127.0.0.1`, `localhost`
   and `::1` were always left out, so in development the calls to a neighbouring service never
   showed. `config.http_skip_hosts` is now the whole list, empty by default. The profiler's own
