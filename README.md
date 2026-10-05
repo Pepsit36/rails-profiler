@@ -854,17 +854,31 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - Text bodies > 10 KB compressed automatically (gzip+base64)
 - Bodies kept in a profile stop at `max_captured_body_bytes` (256 KB by default): `rack.input` is
   read up to that size and rewound for the application, a larger response is kept in part, and
-  the Request tab says so with the whole size. A cluster secret cut in two by the limit is left
-  out with the rest. `nil` keeps whole bodies
+  the Request tab says so with the whole size ("at least" when it is not known: no
+  `Content-Length`, or a stream that stopped). A cluster secret cut in two by the limit is left
+  out with the rest. `nil` keeps whole bodies. Only the raw bodies are capped: the parsed
+  `params` and the log lines (`Parameters: ...`) keep their full size, so a 5 MB JSON request
+  still takes about 15 MB in its profile
 - Streamed responses go out as they are produced: a body that does not answer `to_ary` (an
-  `ActionController::Live` or `response.stream` action, an enumerator), a `text/event-stream`, or
-  a file sent by its path (`send_file`, which keeps `to_path`) is handed to the server chunk by
-  chunk, with a copy kept up to `max_captured_body_bytes`. The collectors are read when the
-  application returns; the profile is saved, with the body and the full duration, when the
-  server closes the body, also when the client went away. An error raised while the body is
-  iterated reaches the server as it would without the profiler. The toolbar is only injected in
-  pages the application returns whole. Under Rack 2, `Rack::ETag` buffers a `Live` response
-  before the profiler sees it, as it does without the profiler
+  `ActionController::Live` or `response.stream` action that writes to the stream,
+  `render stream: true`, an enumerator), a `text/event-stream`, or a file sent by its path
+  (`send_file`, which keeps `to_path`) is handed to the server chunk by chunk, with a copy kept up
+  to `max_captured_body_bytes`. A page an action of a `Live` controller renders whole is still a
+  page, toolbar included. An error raised while the body is iterated reaches the server as it
+  would without the profiler. The toolbar is only injected in pages the application returns
+  whole, so a `render stream: true` page has none. Under Rack 2, `Rack::ETag` buffers a `Live`
+  response before the profiler sees it, as it does without the profiler
+- What a stream records: the collectors that only gather what notifications and the logger hand
+  them (SQL, views, cache, exceptions, timeline, logs, outbound HTTP) stay subscribed until the
+  server closes the body, so the queries, views and logs of the stream are in its profile, and so
+  are its allocated objects. The collectors that keep state in the request's thread (dumps,
+  mailers, I18n, function profiling) are read when the application returns. Like every
+  subscription, these see what other threads do meanwhile. The profile is saved when the server
+  closes the body, also when the client went away: until then it is not listed, and a request
+  for its token answers 404, so an endless event stream is never listed and the toolbar of an
+  XHR that streams finds its profile only at the end. A body the server never closes (against
+  the Rack rules) is finished when its thread starts its next profiled request, and its
+  subscriptions are dropped after 5 minutes at the latest
 - Allocated objects: the profiles report `allocated_objects`, the number of objects Ruby
   allocated while the request, job, command or test ran (`GC.stat(:total_allocated_objects)`
   before and after). The counter belongs to the process: on a multi-threaded server (Puma with
