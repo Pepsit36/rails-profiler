@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-10-05
+
+<!-- stamped -->
+
 ### Added
 
 - **Cluster:** `config.cluster_allowed_slave_urls` accepts `Regexp` entries next to URLs, for
