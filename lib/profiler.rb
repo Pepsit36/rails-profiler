@@ -97,7 +97,7 @@ module Profiler
     # Dump a variable to the profiler
     # Usage: Profiler.dump(variable, "optional label")
     def dump(value, label = nil)
-      return unless enabled?
+      return value unless enabled?
 
       # The slot exists only while a DumpCollector profiles this thread: outside of one, nobody
       # would ever read the dump, and the thread would keep it for good.
