@@ -6,6 +6,7 @@ require "zlib"
 require "stringio"
 require "securerandom"
 require_relative "../redaction"
+require_relative "../configuration"
 
 module Profiler
   module Instrumentation
@@ -47,6 +48,7 @@ module Profiler
             request_body: processed_req[:body],
             request_body_encoding: processed_req[:encoding],
             request_size: captured[:size],
+            request_size_is_minimum: captured[:size_is_minimum],
             request_body_truncated: captured[:truncated],
             request_body_not_captured: captured[:not_captured],
             backtrace: NetHttpInstrumentation.extract_backtrace
@@ -101,6 +103,11 @@ module Profiler
         end
       end
 
+      # Deprecated: the hosts earlier versions always left out, kept for code that read them.
+      # They are left out only when listed in config.http_skip_hosts now.
+      SKIP_HOSTS = Profiler::Configuration::LOCAL_HTTP_HOSTS
+      deprecate_constant :SKIP_HOSTS
+
       TEXT_CONTENT_TYPES   = /\A(text\/|application\/(json|xml|xhtml|javascript|x-www-form-urlencoded)|image\/svg)/i
       BINARY_CONTENT_TYPES = /\A(image\/|application\/pdf|application\/octet-stream|application\/zip|audio\/|video\/)/i
 
@@ -130,9 +137,10 @@ module Profiler
       end
 
       # What a profile keeps of the body Net::HTTP is about to send: at most +limit+ bytes, and
-      # the whole size when known. A body_stream is read only when it can be put back where it
-      # was (a StringIO, a file); a pipe, a socket or an object without pos is never touched, as
-      # reading it would leave nothing to send.
+      # the whole size when known (size_is_minimum when only a lower bound is). A body_stream is
+      # read only when it can be put back where it was (a StringIO, a file), and no further than
+      # its Content-Length; a pipe, a socket or an object without pos (a multipart payload) is
+      # never touched, as reading it would leave nothing to send.
       def self.capture_request_body(req, body, limit)
         content = req.body
         content = body if (content.nil? || content.empty?) && body
@@ -140,28 +148,45 @@ module Profiler
           content = content.to_s
           truncated = limit ? content.bytesize > limit : false
           return { content: truncated ? Redaction.cut_bytes(content, limit) : content,
-                   size: content.bytesize, truncated: truncated, not_captured: false }
+                   size: content.bytesize, size_is_minimum: false, truncated: truncated, not_captured: false }
         end
 
         stream = req.body_stream
-        return { content: nil, size: 0, truncated: false, not_captured: false } unless stream
+        return { content: nil, size: 0, size_is_minimum: false, truncated: false, not_captured: false } unless stream
 
         declared = req["content-length"].to_s
         declared = declared.match?(/\A\d+\z/) ? declared.to_i : nil
-        return { content: nil, size: declared, truncated: false, not_captured: true } unless rewindable?(stream)
+        unless rewindable?(stream)
+          return { content: nil, size: declared, size_is_minimum: false, truncated: false, not_captured: true }
+        end
 
         position = stream.pos
+        total = declared || remaining_size(stream, position)
+        want = [limit && limit + 1, total].compact.min
         begin
-          read = (limit ? stream.read(limit + 1) : stream.read).to_s
+          read = (want ? stream.read(want) : stream.read).to_s
         ensure
           stream.pos = position
         end
-        truncated = limit ? read.bytesize > limit : false
-        { content: truncated ? Redaction.cut_bytes(read, limit) : read,
-          size: declared || read.bytesize, truncated: truncated, not_captured: false }
+        # Bytes as they were sent: labelled UTF-8, the encoding of text on the wire, for the text
+        # filter; a binary type is kept as bytes whatever the label.
+        read = read.dup.force_encoding(Encoding::UTF_8)
+        cut = limit ? read.bytesize > limit : false
+        content = cut ? Redaction.cut_bytes(read, limit) : read
+        size = total || read.bytesize
+        { content: content, size: size, size_is_minimum: total.nil? && cut,
+          truncated: content.bytesize < size, not_captured: false }
       rescue IOError, SystemCallError => e
         Profiler.log_error_once(:net_http_body_stream, "NetHttpInstrumentation: could not read a request body_stream", e)
-        { content: nil, size: declared, truncated: false, not_captured: true }
+        { content: nil, size: declared, size_is_minimum: false, truncated: false, not_captured: true }
+      end
+
+      # What is left to read of a stream that knows its size (a StringIO, a file), else nil.
+      def self.remaining_size(stream, position)
+        size = stream.respond_to?(:size) ? stream.size : nil
+        size.is_a?(Integer) ? [size - position, 0].max : nil
+      rescue IOError, SystemCallError
+        nil
       end
 
       def self.rewindable?(stream)
@@ -173,33 +198,39 @@ module Profiler
         false
       end
 
-      # Inflated up to +limit+ + 1 bytes at most: a small compressed answer can stand for a huge
-      # text, which a profile never keeps whole.
+      # Inflated up to the limit, give or take one buffer of the inflater (16 KB): a small
+      # compressed answer can stand for a huge text, which a profile never keeps whole. Labelled
+      # UTF-8, as the text it is when its type is a text one.
       def self.decompress_body(body, content_encoding, limit = nil)
         return body if content_encoding.empty? || body.nil? || body.empty?
 
-        case content_encoding
-        when "gzip", "x-gzip"
-          reader = Zlib::GzipReader.new(StringIO.new(body))
-          (limit ? reader.read(limit + 1) : reader.read).to_s
-        when "deflate"
-          inflate_capped(body, limit)
-        else
-          body
-        end
+        inflated =
+          case content_encoding
+          when "gzip", "x-gzip" then inflate_capped(body, limit, Zlib::MAX_WBITS + 16)
+          when "deflate" then inflate_capped(body, limit, Zlib::MAX_WBITS)
+          else return body
+          end
+        inflated.force_encoding(Encoding::UTF_8)
       rescue Zlib::Error
         body
       end
 
-      def self.inflate_capped(body, limit)
-        return Zlib::Inflate.inflate(body) unless limit
+      # The input goes in by small slices, and the output is taken buffer by buffer: the
+      # inflating stops as soon as the limit is passed.
+      def self.inflate_capped(body, limit, window_bits)
+        inflater = Zlib::Inflate.new(window_bits)
+        return inflater.inflate(body) unless limit
 
         out = +""
-        inflater = Zlib::Inflate.new
         offset = 0
-        while offset < body.bytesize && out.bytesize <= limit && !inflater.finished?
-          out << inflater.inflate(body.byteslice(offset, 16 * 1024))
-          offset += 16 * 1024
+        catch(:full) do
+          while offset < body.bytesize && !inflater.finished?
+            inflater.inflate(body.byteslice(offset, 1024)) do |chunk|
+              out << chunk
+              throw :full if out.bytesize > limit
+            end
+            offset += 1024
+          end
         end
         out
       ensure
@@ -215,8 +246,12 @@ module Profiler
           # Masked on the raw bytes, before the encoding hides them from any later search.
           { body: Base64.strict_encode64(Redaction.hide_credentials(body.b)), encoding: "base64" }
         else
+          # Bytes are read as UTF-8, as a text body on the wire is; what is not valid UTF-8 shows
+          # as "?".
+          body = body.dup.force_encoding(Encoding::UTF_8) if body.encoding == Encoding::BINARY
           text = Redaction.filter_body(body, content_type)
                           .encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")
+          text = text.scrub("?") unless text.valid_encoding?
           { body: text, encoding: "text" }
         end
       end

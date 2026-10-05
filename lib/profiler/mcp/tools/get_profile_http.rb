@@ -85,7 +85,7 @@ module Profiler
               lines << "- **URL:** #{req['url']}"
               lines << "- **Status:** #{req['status'] == 0 ? 'connection error' : req['status']}"
               lines << "- **Duration:** #{req['duration'].round(2)} ms"
-              lines << "- **Request Size:** #{req['request_size'].nil? ? 'unknown' : "#{req['request_size']} bytes"}"
+              lines << "- **Request Size:** #{req['request_size'].nil? ? 'unknown' : "#{'at least ' if req['request_size_is_minimum']}#{req['request_size']} bytes"}"
               lines << "- **Response Size:** #{req['response_size']} bytes"
               if req["request_body_not_captured"]
                 lines << "- _Request body not captured: a stream that cannot be rewound is sent unread._"
