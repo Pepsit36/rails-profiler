@@ -8,6 +8,43 @@ module Profiler
     class LogCollector < BaseCollector
       SEVERITY_LABELS = %w[DEBUG INFO WARN ERROR FATAL UNKNOWN].freeze
 
+      # The lines of one request, up to max_captured_log_bytes of messages: past it, a line is cut
+      # to what is left, and the next ones are only counted. A request, or a stream held open,
+      # that logs without end no longer grows its thread's buffer without bound.
+      class Buffer < Array
+        attr_reader :bytes, :dropped
+
+        def initialize(limit)
+          super()
+          @limit = limit
+          @bytes = 0
+          @dropped = 0
+          @truncated = false
+        end
+
+        def truncated?
+          @truncated
+        end
+
+        def record(entry)
+          message = entry[:message]
+          if @limit
+            room = @limit - @bytes
+            if room <= 0
+              @dropped += 1
+              @truncated = true
+              return
+            end
+            if message.bytesize > room
+              message = Redaction.cut_bytes(message, room).scrub("")
+              @truncated = true
+            end
+          end
+          @bytes += message.bytesize
+          self << entry.merge(message: message)
+        end
+      end
+
       # Records into the thread's buffer, which only exists while a LogCollector of this thread
       # is subscribed: lines logged by other threads, or after release, are not kept. A logger
       # bound to one collector's buffer records only while that buffer is the thread's current
@@ -27,11 +64,12 @@ module Profiler
           msg = yield if block_given? && msg.nil?
           return true if msg.nil?
 
-          logs << {
+          entry = {
             level: SEVERITY_LABELS[severity] || "UNKNOWN",
             message: msg.to_s.strip,
             timestamp: Time.now.iso8601(3)
           }
+          logs.respond_to?(:record) ? logs.record(entry) : logs << entry
           true
         end
 
@@ -78,7 +116,7 @@ module Profiler
       end
 
       def subscribe
-        @logs = claim_thread_slot(:profiler_logs, [])
+        @logs = claim_thread_slot(:profiler_logs, Buffer.new(Profiler.configuration.max_captured_log_bytes))
 
         if defined?(Rails) && Rails.logger
           if Rails.logger.respond_to?(:broadcast_to)
@@ -113,12 +151,21 @@ module Profiler
 
         errors   = logs.count { |l| %w[ERROR FATAL].include?(l[:level]) }
         warnings = logs.count { |l| l[:level] == "WARN" }
+        dropped = logs.respond_to?(:dropped) ? logs.dropped : 0
+        truncated = logs.respond_to?(:truncated?) && logs.truncated?
+        lines = logs.to_a
+        if dropped.positive?
+          lines += [{ level: "WARN", timestamp: Time.now.iso8601(3),
+                      message: "[Profiler] #{dropped} more log lines were not recorded (max_captured_log_bytes)" }]
+        end
 
         store_data({
-          count: logs.size,
+          count: logs.size + dropped,
           errors: errors,
           warnings: warnings,
-          logs: logs
+          logs: lines,
+          truncated: truncated,
+          dropped: dropped
         })
       end
 
