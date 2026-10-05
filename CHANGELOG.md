@@ -36,9 +36,8 @@ every commit of every tag interval is accounted for one way or the other.
   so an SQL event costs the same however many requests are profiled at once (6 us with 8 requests
   profiled, 260 us before, measured). A job performed inline still shows in both profiles; one
   performed by ActiveJob's `:async` adapter is profiled apart from the request that enqueued it,
-  even while that request still runs. A test
-  profile no longer shows the queries the application server runs for a system test in its own
-  thread: they are in the profile of that HTTP request.
+  even while that request still runs. A test profile no longer shows the queries the application
+  server runs for a system test in its own thread: they are in the profile of that HTTP request.
 - **Instrumentation:** a thread created by a pool while a request ran (a concurrent-ruby worker
   behind `Concurrent::Promises`, ActiveJob's `:async` adapter or `ActionController::Live`, or the
   thread Puma starts for a request marked as IO bound) no longer keeps that request's HTTP and
@@ -73,7 +72,7 @@ every commit of every tag interval is accounted for one way or the other.
   process, not the `ENV` as it was during the request, masked as before. The profiles of jobs,
   console expressions and tests, which run in another process, keep that process's `ENV`, masked,
   as before. Profiles saved by an earlier version keep
-  showing their own table and variables. With both changes, the profiler adds about 11 to 15 ms to
+  showing their own table and variables. With both changes, the profiler adds about 10 to 13 ms to
   the reference page of `script/bench/request_overhead.rb` instead of 21 to 22 ms with stackprof
   and 26 ms without it in 0.31.2 (Ruby 3.3, measured); the README gives this measured cost instead
   of "< 5ms per request".
