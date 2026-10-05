@@ -630,11 +630,18 @@ The eviction follows the order of the saves, not of the starts: a job, a console
 streamed response is saved when it ends, possibly long after it started, and is kept as the newest
 profile; the lists still show the profiles by start time. The profile just saved is never evicted.
 
-**When upgrading** from a version without the cap, the first save of the file, SQLite or Redis
-store removes every profile past it, the first saved first: of 3,000 profiles of 17 KB written by
+**When upgrading** from a version without the cap, the first save of the file or SQLite store
+removes every profile past it, the first saved first: of 3,000 profiles of 17 KB written by
 0.31.1, about 80 remain, and that first save takes about a second, during which the other
-processes writing to the same file store wait. To keep them, set `config.max_profiles` (to a
+processes writing to the same file store wait. The Redis store does it on first use, a save or a
+list, in the one process that indexes the data of the earlier version (about 0.4 s for 20,000
+profiles); the other processes go on meanwhile. To keep them, set `config.max_profiles` (to a
 higher number, or `nil`) **before** upgrading.
+
+A store that cannot be created (its index or lock replaced by a symbolic link, a directory it
+cannot write) is reported once per process, as a warning: the profiles are not saved, the
+dashboard shows the cause, and the store is created again on the next request once the cause is
+gone.
 
 With no cap on the count (`nil`, the default in the test environment), the file store index can
 grow large: with 30,000 profiles it is about 16 MB, read in about a second by the first list of
@@ -683,7 +690,8 @@ reads only the lines the others appended since its last read. From time to time 
 `max_profiles` or `max_size`, or when the index holds more dead lines than live ones) one process
 rewrites the index under the lock: it evicts the oldest profiles, adds the profile files the index
 does not know, drops the lines of the files removed by hand and deletes the temporary files a
-killed process left. A missing or damaged index is rebuilt from the profile files, so the profiles
+killed process left, and the profile files a compaction killed part way left behind (older than
+that compaction and absent from its index: they were evicted). A missing or damaged index is rebuilt from the profile files, so the profiles
 written by an earlier version are found without any migration.
 
 The index relies on `flock` between the processes sharing the directory. It works on one host,

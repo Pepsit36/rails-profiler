@@ -56,6 +56,10 @@ every commit of every tag interval is accounted for one way or the other.
   could each create their own store (16 for 16 threads in the spec), and with the memory store the
   profiles saved in all but one were lost. Several file, SQLite or Redis stores share their data
   and lost nothing.
+- **Storage:** A store that cannot be created (its index or lock replaced by a symbolic link, say)
+  is reported once per process instead of with a backtrace on every request: the profiles are not
+  saved, the dashboard and the MCP tools get the cause, and the store is created again once the
+  cause is gone.
 - **Upgrading:** the file, SQLite and Redis stores now keep 100 profiles outside the test
   environment, and **the first save after the upgrade removes the profiles past the cap**, the
   first saved first: of 3,000 profiles written by 0.31.1 in the file store, about 80 remain, and
@@ -64,7 +68,7 @@ every commit of every tag interval is accounted for one way or the other.
   upgrading: to a higher number, or to `nil` for the earlier behaviour, no cap on the count (the
   file store then keeps up to `max_size`, Redis up to its TTL). The memory store keeps 100 with
   `nil`, as before. A Redis store written by an earlier version is indexed once, by one process,
-  on first use.
+  on first use, which also removes the profiles past the cap then (about 0.4 s for 20,000).
 
 ## [0.31.3] - 2026-10-05
 
