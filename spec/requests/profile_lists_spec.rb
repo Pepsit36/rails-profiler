@@ -72,13 +72,17 @@ RSpec.describe "Profile lists and children through the profiler API", type: :req
     end
 
     it "lists summaries, without the bodies" do
-      profile = save(1, collectors_data: { "database" => { "total_queries" => 4, "queries" => [{ "sql" => "SELECT 1" }] } })
+      profile = build_profile(started_at: base_time + 1, path: "/p1",
+                              collectors_data: { "database" => { "total_queries" => 4, "queries" => [{ "sql" => "SELECT 1" }] } })
+      profile.allocated_objects = 321
+      store.save(profile.token, profile)
 
       get "/_profiler/api/profiles", { limit: 50 }, local
 
       listed = json["profiles"].first
       expect(listed["token"]).to eq(profile.token)
       expect(listed["collectors_data"]["database"]).to eq("total_queries" => 4)
+      expect(listed["allocated_objects"]).to eq(321)
     end
 
     it "keeps the full profiles of every type for the cluster proxy" do
