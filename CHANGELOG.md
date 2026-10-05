@@ -62,8 +62,9 @@ every commit of every tag interval is accounted for one way or the other.
   and lost nothing.
 - **Storage:** A store that cannot be created (its index or lock replaced by a symbolic link, say)
   is reported once per process instead of with a backtrace on every request: the profiles are not
-  saved, the dashboard and the MCP tools get the cause, and the store is created again once the
-  cause is gone.
+  saved and no toolbar is added, the dashboard and its API answer `503` with the cause in one line
+  (no path) instead of a `500`, the MCP tools an error with it, and the store is created again
+  once the cause is gone.
 - **Upgrading:** the file, SQLite and Redis stores now keep 100 profiles outside the test
   environment, and **the first save after the upgrade removes the profiles past the cap**, the
   first saved first: of 3,000 profiles written by 0.31.1 in the file store, about 80 remain, and
