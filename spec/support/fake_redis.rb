@@ -28,6 +28,13 @@ class FakeRedis
     nx ? true : "OK"
   end
 
+  # The only script the store sends: delete KEYS[1] if it still holds ARGV[1].
+  def eval(script, keys: [], argv: [])
+    raise ArgumentError, "unknown script" unless script.include?("get") && script.include?("del")
+
+    @strings[keys.first] == argv.first.to_s ? (@strings.delete(keys.first) ? 1 : 0) : 0
+  end
+
   # One round trip for the whole block, as redis-rb sends a pipeline.
   def pipelined
     @in_pipeline = true

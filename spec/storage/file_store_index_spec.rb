@@ -258,6 +258,35 @@ RSpec.describe Profiler::Storage::FileStore do
       expect(listed_while_removed).to be_empty
     end
 
+    # R-a: a process killed after the index was rewritten, before the evicted files were removed.
+    it "removes the evicted files a killed compaction left, instead of listing them again" do
+      store = described_class.new(path: path, max_profiles: 5)
+      killed = false
+      allow(FileUtils).to receive(:rm_f).and_wrap_original do |original, *args|
+        unless killed
+          killed = true
+          raise SignalException, "KILL"
+        end
+        original.call(*args)
+      end
+      saved = []
+      begin
+        (0...6).each { |i| profile_at(i).tap { |p| saved << p.token; store.save(p.token, p) } }
+      rescue SignalException
+        nil
+      end
+      RSpec::Mocks.space.proxy_for(FileUtils).reset
+      evicted = saved - described_class.new(path: path, max_profiles: 5).list(limit: 100, summary: true).map(&:token)
+      expect(evicted).not_to be_empty
+      sleep 0.01
+
+      fresh = described_class.new(path: path, max_profiles: 5)
+      fresh.cleanup(older_than: 3600) # a compaction that evicts nothing: only the resynchronization
+
+      expect(fresh.list(limit: 100).map(&:token) & evicted).to be_empty
+      expect(evicted.select { |t| File.exist?(File.join(path, "#{t}.json")) }).to be_empty
+    end
+
     # R6: a profile file the index never learns of is listed by no one and counted nowhere.
     it "removes the profile file when its index line cannot be written" do
       store = described_class.new(path: path, max_profiles: 100)

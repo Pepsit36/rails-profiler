@@ -33,8 +33,12 @@ module Profiler
     # Built once, under a lock: the first requests of a threaded server ask for it together, and
     # a profile saved into a store that another thread replaced would be lost. Read without the
     # lock once it exists.
+    # A store that cannot be created is said once (Storage::Unavailable) and tried again on the
+    # next call.
     def storage
       @storage || STORAGE_LOCK.synchronize { @storage ||= configuration.storage_backend }
+    rescue StandardError => e
+      Storage::Unavailable.for(e)
     end
 
     # Saves a profile from a path of the application (a job, a console command, a test, an
@@ -145,6 +149,7 @@ require_relative "profiler/collectors/mailer_collector"
 
 require_relative "profiler/storage/token"
 require_relative "profiler/storage/private_files"
+require_relative "profiler/storage/unavailable"
 require_relative "profiler/ajax_data"
 require_relative "profiler/env_override_store"
 require_relative "profiler/instrumentation/thread_context_propagation"

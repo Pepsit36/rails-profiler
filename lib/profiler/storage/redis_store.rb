@@ -2,6 +2,7 @@
 
 require "redis"
 require "json"
+require "securerandom"
 require "time"
 require_relative "base_store"
 require_relative "summary"
@@ -23,6 +24,16 @@ module Profiler
       # holds the right to do it.
       INDEX_BATCH = 500
       INDEX_LOCK_SECONDS = 60
+      # Past the cap, a save removes at most this many profiles itself; a larger backlog (the data
+      # of an earlier version) is removed by one process, under a lock, by batches of INDEX_BATCH.
+      EVICT_BATCH = 100
+      EVICT_LOCK_SECONDS = 60
+      # Deletes a lock only while it still holds the value its owner set: one that expired and was
+      # taken by another process is left to it.
+      RELEASE_LOCK = <<~LUA
+        if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) end
+        return 0
+      LUA
 
       attr_reader :redis
 
@@ -75,7 +86,7 @@ module Profiler
       def cleanup(older_than: 24 * 60 * 60)
         ensure_index
         cutoff_time = Time.now.to_f - older_than
-        @redis.zrangebyscore(list_key, "-inf", cutoff_time).each { |token| remove(token) }
+        @redis.zrangebyscore(list_key, "-inf", cutoff_time).each_slice(INDEX_BATCH) { |tokens| remove_tokens(tokens) }
       end
 
       def find_by_parent(parent_token)
@@ -97,7 +108,7 @@ module Profiler
 
       def clear(type: nil)
         ensure_index
-        @redis.zrange(type ? type_list_key(type) : list_key, 0, -1).each { |token| remove(token) }
+        @redis.zrange(type ? type_list_key(type) : list_key, 0, -1).each_slice(INDEX_BATCH) { |tokens| remove_tokens(tokens) }
       end
 
       private
@@ -133,32 +144,84 @@ module Profiler
       end
 
       def remove(token)
-        summary = read_summary(token)
-        unindex(token, summary)
-        @redis.smembers(types_key).each { |type| @redis.zrem(type_list_key(type), token) } unless summary
-        @redis.del(profile_key(token), summary_key(token))
-        @redis.zrem(list_key, token)
-        @redis.zrem(saved_key, token)
+        remove_tokens([token])
       end
 
-      def read_summary(token)
-        json = @redis.get(summary_key(token))
+      # Removes tokens and their index entries in three round trips, whatever their number: their
+      # summaries (type and parent), the types when a summary is missing, then one pipeline.
+      def remove_tokens(tokens)
+        tokens = tokens.select { |token| Token.valid?(token) }
+        return if tokens.empty?
+
+        summaries = @redis.mget(*tokens.map { |token| summary_key(token) }).map { |json| parse_summary(json) }
+        types = summaries.all? ? [] : @redis.smembers(types_key)
+        @redis.pipelined do |pipe|
+          tokens.zip(summaries).each do |token, summary|
+            if summary
+              pipe.zrem(type_list_key(summary["profile_type"] || "http"), token)
+              parent = summary["parent_token"]
+              pipe.srem(children_key(parent), token) if Token.valid?(parent)
+            else
+              types.each { |type| pipe.zrem(type_list_key(type), token) }
+            end
+            pipe.del(profile_key(token), summary_key(token))
+          end
+          pipe.zrem(list_key, tokens)
+          pipe.zrem(saved_key, tokens)
+        end
+      end
+
+      def parse_summary(json)
         json && JSON.parse(json)
       rescue JSON::ParserError
         nil
       end
 
+      def read_summary(token)
+        parse_summary(@redis.get(summary_key(token)))
+      end
+
       # In the order of the saves, not of the starts: a job saved when it ends is a new profile,
       # and the one just saved (keep) is never evicted. ZCARD is O(1): the eviction costs nothing
-      # until the cap is passed.
+      # until the cap is passed. A backlog larger than EVICT_BATCH is removed by one process, under
+      # a lock, by batches; meanwhile the other saves remove EVICT_BATCH profiles each at most.
       def evict_first_saved(keep)
         return unless @max_profiles
 
-        count = @redis.zcard(saved_key)
-        return if count <= @max_profiles
-
         target = [(@max_profiles * LOW_WATER).floor, 1].max
-        @redis.zrange(saved_key, 0, count - target - 1).each { |token| remove(token) unless token == keep }
+        excess = @redis.zcard(saved_key) - target
+        return if excess <= @max_profiles - target
+
+        if excess <= EVICT_BATCH
+          remove_tokens(@redis.zrange(saved_key, 0, excess - 1) - [keep])
+        else
+          evicted_all = with_lock(evict_lock_key, EVICT_LOCK_SECONDS) do
+            loop do
+              excess = @redis.zcard(saved_key) - target
+              break if excess <= 0
+
+              batch = @redis.zrange(saved_key, 0, [excess, INDEX_BATCH].min - 1) - [keep]
+              break if batch.empty?
+
+              remove_tokens(batch)
+            end
+          end
+          remove_tokens(@redis.zrange(saved_key, 0, EVICT_BATCH - 1) - [keep]) unless evicted_all
+        end
+      end
+
+      # Runs the block holding key, set to a value of this call's own; false, without running it,
+      # when another process holds it.
+      def with_lock(key, seconds)
+        owner = SecureRandom.hex(16)
+        return false unless @redis.set(key, owner, nx: true, ex: seconds)
+
+        begin
+          yield
+        ensure
+          @redis.eval(RELEASE_LOCK, keys: [key], argv: [owner])
+        end
+        true
       end
 
       # Indexes, once, the profiles saved by a version that kept only the list, which it never
@@ -167,16 +230,28 @@ module Profiler
       def ensure_index
         return if @indexed
         return @indexed = true if @redis.get(index_version_key) == INDEX_VERSION
-        return unless @redis.set(index_lock_key, Process.pid.to_s, nx: true, ex: INDEX_LOCK_SECONDS)
 
-        begin
+        with_lock(index_lock_key, INDEX_LOCK_SECONDS) do
           # An hour of margin for a profile saved long after it started.
           @redis.zremrangebyscore(list_key, "-inf", Time.now.to_f - @ttl - 3600)
-          @redis.zrange(list_key, 0, -1).each_slice(INDEX_BATCH) { |tokens| index_batch(tokens) }
+          tokens = @redis.zrange(list_key, 0, -1)
+          # Past the cap, the first saved would be evicted right after: removed without indexing.
+          if @max_profiles && tokens.size > @max_profiles
+            target = [(@max_profiles * LOW_WATER).floor, 1].max
+            tokens.first(tokens.size - target).each_slice(INDEX_BATCH) { |batch| drop_unindexed(batch) }
+            tokens = tokens.last(target)
+          end
+          tokens.each_slice(INDEX_BATCH) { |batch| index_batch(batch) }
           @redis.set(index_version_key, INDEX_VERSION)
           @indexed = true
-        ensure
-          @redis.del(index_lock_key)
+        end
+      end
+
+      # Profiles of an earlier version, which only the list and their own key know.
+      def drop_unindexed(tokens)
+        @redis.pipelined do |pipe|
+          tokens.each { |token| pipe.del(profile_key(token)) if Token.valid?(token) }
+          pipe.zrem(list_key, tokens)
         end
       end
 
@@ -236,6 +311,10 @@ module Profiler
 
       def index_lock_key
         "#{@key_prefix}:index_lock"
+      end
+
+      def evict_lock_key
+        "#{@key_prefix}:evict_lock"
       end
 
       def saved_key

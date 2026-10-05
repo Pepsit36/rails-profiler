@@ -304,9 +304,12 @@ module Profiler
 
       def reload_for_compaction
         forget_index
+        @last_compacted_at = nil
         PrivateFiles.open_for_reading(@index_path) do |file|
           header = parse_line(file.gets)
           next unless header && header["profiler_index"] == INDEX_VERSION
+
+          @last_compacted_at = header["compacted_at"].is_a?(Numeric) ? header["compacted_at"] : nil
 
           file.each_line do |line|
             record = parse_line(line)
@@ -319,13 +322,19 @@ module Profiler
 
       # The directory is the truth: entries whose file is gone are dropped, files the index does
       # not know (written by an older version, or with the index lost) are read once and added,
-      # temporary files left by a killed writer are removed.
+      # temporary files left by a killed writer are removed. A file the index does not know that
+      # is older than the last compaction was evicted by it (a save writes its file and its line
+      # under the lock, so a file saved before that compaction is in the index): the process that
+      # compacted was killed before it removed the file, which is removed now, not listed again.
       def resynchronize
         names = Dir.children(@path)
         on_disk = names.filter_map { |name| name[PROFILE_FILE, 1] }
         (@entries.keys - on_disk).each { |token| remove_entry(token) }
+        unknown = (on_disk - @entries.keys).map { |token| [token, modified_at(token)] }
+        evicted, unknown = unknown.partition { |_, mtime| @last_compacted_at && mtime < @last_compacted_at }
+        evicted.each { |token, _| FileUtils.rm_f(profile_file_path(token)) }
         # Unknown files in the order they were saved, as far as their modification time tells.
-        (on_disk - @entries.keys).sort_by { |token| modified_at(token) }.each { |token| add_entry(entry_from_file(token)) }
+        unknown.sort_by(&:last).each { |token, _| add_entry(entry_from_file(token)) }
         names.grep(TEMPORARY_FILE).each { |name| remove_stale_temporary(File.join(@path, name)) }
       end
 
@@ -370,7 +379,8 @@ module Profiler
 
       def rewrite_index
         generation = SecureRandom.hex(8)
-        lines = [JSON.generate("profiler_index" => INDEX_VERSION, "generation" => generation)]
+        lines = [JSON.generate("profiler_index" => INDEX_VERSION, "generation" => generation,
+                               "compacted_at" => Time.now.to_f)]
         @entries.each_value do |entry|
           lines << JSON.generate("op" => "put", "token" => entry.token, "at" => entry.at, "type" => entry.type,
                                  "parent" => entry.parent, "bytes" => entry.bytes, "summary" => entry.summary)
