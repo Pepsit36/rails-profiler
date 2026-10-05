@@ -107,7 +107,7 @@ RSpec.describe Profiler::Collectors::DatabaseCollector, "backtraces" do
     expect(backtraces.first.join).not_to include("active_support/notifications")
   end
 
-  context "with config.sql_backtrace = :all, the behavior before 0.31.1" do
+  context "with config.sql_backtrace = :all, the behavior of earlier versions" do
     let(:sql_backtrace) { :all }
 
     it "locates every query" do

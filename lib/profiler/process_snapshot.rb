@@ -39,7 +39,7 @@ module Profiler
       end
 
       # Puts the route table and ENV back into +profile+'s data for display. A profile saved by
-      # a version before 0.31.1 has its own table and variables, and is left as it is.
+      # an earlier version has its own table and variables, and is left as it is.
       def hydrate(profile)
         return profile unless profile
 
