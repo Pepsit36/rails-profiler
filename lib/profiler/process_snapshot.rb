@@ -14,7 +14,7 @@ module Profiler
   # process runs, through the profiler's own env overrides among others.
   module ProcessSnapshot
     @mutex = Mutex.new
-    @routes = nil # [fingerprint, table, index by [controller, action]]
+    @routes = nil # [fingerprint, table, routes by [controller, action]]
 
     class << self
       # The application's routes, the engine's and Rails' own left out, as the Routes tab lists
@@ -28,7 +28,14 @@ module Profiler
         return nil unless rails_routes?
 
         recognized = Rails.application.routes.recognize_path(path, method: method)
-        routes_snapshot[2][[recognized[:controller], recognized[:action]]]
+        candidates = routes_snapshot[2][[recognized[:controller], recognized[:action]]]
+        return nil unless candidates
+
+        # A PUT goes to the action of the PATCH route too: give the route of the request's verb.
+        verb = method.to_s.upcase == "HEAD" ? "GET" : method.to_s.upcase
+        candidates.find { |route| route[:verb].split("|").include?(verb) } ||
+          candidates.find { |route| route[:verb] == "ANY" } ||
+          candidates.first
       rescue StandardError
         nil
       end
@@ -98,10 +105,10 @@ module Profiler
             verb: (verb && !verb.empty?) ? verb : "ANY",
             controller_action: controller_action(controller, action)
           }.freeze
-          index[[controller, action]] ||= entry
+          (index[[controller, action]] ||= []) << entry
           entry
         end
-        [fingerprint, table.freeze, index.freeze]
+        [fingerprint, table.freeze, index.each_value(&:freeze).freeze]
       end
 
       def controller_action(controller, action)
@@ -116,10 +123,12 @@ module Profiler
         merge(routes, routes: table, total: table.size)
       end
 
+      # Every route of the matched action, as the table always marked them.
       def same_route?(route, matched)
         return false unless matched.is_a?(Hash)
 
-        %i[pattern verb controller_action].all? { |field| route[field] == fetch(matched, field) }
+        action = fetch(matched, :controller_action)
+        action ? route[:controller_action] == action : route[:pattern] == fetch(matched, :pattern)
       end
 
       # Collector data has symbol keys as collected, string keys once read back from storage.
