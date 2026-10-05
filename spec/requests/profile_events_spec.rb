@@ -141,6 +141,23 @@ RSpec.describe "Profiler update endpoints", type: :request do
       expect(events).to eq([{ "retry" => "1000" }])
     end
 
+    it "streams a character cut between two pieces of output whole, and the run's JSON too" do
+      run_store.update(run.id, status: "running")
+      run_store.append_output(run.id, "caf\xC3".b)
+      run_store.append_output(run.id, "\xA9\n".b)
+
+      get "/_profiler/api/test_runner/runs/#{run.id}/stream", {}, local
+
+      expect(last_response.status).to eq(200)
+      chunks = events.select { |event| event["event"] == "output" }.map { |event| JSON.parse(event["data"])["chunk"] }
+      expect(chunks.join).to eq("caf\u00e9\n")
+
+      get "/_profiler/api/test_runner/runs/#{run.id}", {}, local
+
+      expect(last_response.status).to eq(200)
+      expect(json["output"]).to eq("caf\u00e9\n")
+    end
+
     it "ends with done once the run is over" do
       run_store.append_output(run.id, "1 example, 0 failures\n")
       run_store.finish_output(run.id)

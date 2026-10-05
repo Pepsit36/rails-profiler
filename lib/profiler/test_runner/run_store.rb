@@ -69,16 +69,25 @@ module Profiler
       # last bytes that could start a credential wait for the next piece, so that none is ever
       # shown cut in two. What is held back is released by finish_output, once the process has
       # nothing more to print: a killed run still prints its summary after its status changed.
+      #
+      # The process is read in binary pieces of a fixed size, so a character can be cut in two
+      # as well: its first bytes wait for the next piece the same way. What is shown is UTF-8,
+      # with any byte that is not replaced by U+FFFD, so that every reader (JSON of the run, the
+      # stream, run_tests) gets text it can encode.
       def append_output(id, chunk)
         run = @runs[id]
         return unless run
 
         @held_lock.synchronize do
-          text = Profiler::Redaction.hide_credentials(@held.fetch(id, "".b) + chunk.to_s.b)
-          holdback = @output_finished[id] ? 0 : Profiler::Redaction.held_back_bytes(text)
+          text = Profiler::Redaction.hide_credentials(@held.fetch(id, "".b) + chunk.to_s.b).b
+          holdback = if @output_finished[id]
+                       0
+                     else
+                       [Profiler::Redaction.held_back_bytes(text), incomplete_character_bytes(text)].max
+                     end
           cut = text.bytesize - holdback
           @held[id] = text.byteslice(cut, text.bytesize - cut)
-          shown = text.byteslice(0, cut).force_encoding(chunk.to_s.encoding)
+          shown = as_text(text.byteslice(0, cut))
           run.output_lines.push(shown) unless shown.empty?
         end
         signal(id)
@@ -93,18 +102,22 @@ module Profiler
         @held_lock.synchronize do
           @output_finished[id] = true
           rest = @held.delete(id)
-          run.output_lines.push(rest) if rest && !rest.empty?
+          run.output_lines.push(as_text(rest)) if rest && !rest.empty?
         end
         signal(id)
       end
 
       # The output from +position+ on, as it is now, without waiting for more.
-      # Returns { chunks: [...], status: "...", position: N, finished: bool }.
+      # Returns { chunks: [...], status: "...", position: N, finished: bool }, finished once the
+      # status is terminal and the reader of the process has read everything: a killed run gets
+      # its status at once, and prints its summary after.
       def read_output(id, position:)
         run = @runs[id]
         return NOT_FOUND unless run
 
-        snapshot(run, position)
+        result = snapshot(run, position)
+        result[:finished] &&= @output_finished.fetch(id, false)
+        result
       end
 
       # Block until new output is available at +position+ or the run terminates.
@@ -136,6 +149,26 @@ module Profiler
         lock = @locks[id]
         return unless lock
         lock[:mutex].synchronize { lock[:cond].broadcast }
+      end
+
+      # How many bytes at the end of +bytes+ start a UTF-8 character that the next piece ends.
+      def incomplete_character_bytes(bytes)
+        [3, bytes.bytesize].min.times do |back|
+          byte = bytes.getbyte(bytes.bytesize - 1 - back)
+          next if byte & 0xC0 == 0x80 # a continuation byte: the start is further back
+
+          length = if byte >= 0xF0 then 4
+                   elsif byte >= 0xE0 then 3
+                   elsif byte >= 0xC0 then 2
+                   else 1
+                   end
+          return length > back + 1 ? back + 1 : 0
+        end
+        0
+      end
+
+      def as_text(bytes)
+        bytes.dup.force_encoding(Encoding::UTF_8).scrub
       end
 
       def forget_output(id)
