@@ -111,6 +111,9 @@ Profiler.configure do |config|
   # Request and response bodies kept in a profile stop at this size; the application still
   # reads and sends every byte. nil keeps whole bodies, as earlier versions did.
   config.max_captured_body_bytes = 256.kilobytes
+  # What a profile keeps of the lines its request logs; past it, the Logs tab says how many
+  # lines were left out. nil keeps every line, as earlier versions did.
+  config.max_captured_log_bytes = 1.megabyte
 
   # Body compression (text bodies larger than threshold are stored gzip+base64)
   config.compress_bodies = true
@@ -124,6 +127,12 @@ Profiler.configure do |config|
   # Outbound HTTP tracking
   config.track_http = true
   config.slow_http_threshold = 500  # ms
+  # Hosts whose calls are left out (Strings and Regexps matched against the host). Empty by
+  # default: calls to services on the same machine are recorded. Earlier versions always left
+  # out 127.0.0.1, localhost and ::1; to do so again:
+  #   config.http_skip_hosts += Profiler::Configuration::LOCAL_HTTP_HOSTS
+  # The profiler's own calls (a slave's registration and heartbeats, the master's requests to
+  # its slaves) are never recorded, whatever this list says.
   config.http_skip_hosts = []
 
   # AJAX tracking
@@ -165,8 +174,19 @@ Profiler.configure do |config|
 
   # Who may frame the profiler (default: itself, the Chrome extension and DevTools)
   config.frame_ancestors = ["'self'", "chrome-extension:", "devtools:"]
+
+  # Where the profiler's own errors and warnings go (default: nil, see below)
+  config.logger = nil
 end
 ```
+
+The profiler's own messages (a profile it could not save, a collector that failed, a cluster
+node it cannot reach) go to the application's log: `config.logger` when it is set, read on each
+message, otherwise `Rails.logger`, otherwise `$stderr` when there is no logger yet (early in the
+boot, or outside Rails). Each line starts with `[Profiler]`, the cluster secret is masked in it,
+and an error message is cut at 1,000 characters. A logger that raises never fails a request, a
+job or the boot: the line then goes to `$stderr`. Earlier versions wrote most of these messages to
+`$stderr`; to keep them there, set `config.logger = Logger.new($stderr)`.
 
 ### Default collectors
 
@@ -259,7 +279,7 @@ Profiler.dump(@user)
 # With a label
 Profiler.dump(@posts, "Posts for current page")
 
-# Chainable — returns the original value
+# Chainable: returns the original value, also when the profiler is disabled
 user = Profiler.dump(User.find(params[:id]), "Current user")
 
 # Dump anything
@@ -949,6 +969,28 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
   its queries stop being recorded when the request ends, but the outgoing HTTP calls of their later
   tasks are still added to that request's profile. Measure it on your setup with
   `bundle exec ruby script/bench/puma_attribution.rb`
+- What reaches a request's profile depends on what is recorded, because the SQL, view, cache and
+  mailer events follow the request's notification scope, while the outbound HTTP calls, dumps and
+  log lines follow values the request's own thread holds. Measured on Ruby 3.3 and 3.4, a request
+  that runs a query, an outbound `Net::HTTP` call, a `Profiler.dump` and a `Rails.logger` line in
+  each place (views and cache go through the same notification scope as the query):
+
+  | Where the work runs | SQL, views, cache | Outbound HTTP | `Profiler.dump` | Log lines |
+  |---|---|---|---|---|
+  | The request's thread | yes | yes | yes | yes |
+  | A thread started with `Thread.new` | yes | yes | no | no |
+  | A thread started with `Thread.start` or `Thread.fork` | yes | no | no | no |
+  | A fiber the request creates | yes | no | no | no |
+  | A task posted to a concurrent-ruby executor | yes | yes | no | no |
+  | A thread of a pool created before the request (the application's own queue, Sidekiq) | no | no | no | no |
+  | A thread started during the request, after the request has ended | no | yes, added to the finished profile | no | no |
+
+  `Thread.start` and `Thread.fork` do not run the `Thread#initialize` the profiler patches, and a
+  fiber has its own thread-local values: both get the notification scope, which Ruby hands to new
+  threads and fibers, and none of the values the HTTP, dump and log collectors read. A dump or a
+  log line from any other thread or fiber than the request's is not kept. A thread created before
+  the request can only get the request's context when its work goes through a concurrent-ruby
+  executor
 - The function profiler samples with [stackprof](https://github.com/tmm1/stackprof), which is not
   a dependency of the gem: add `gem "stackprof"` to the application's Gemfile to use it. Without
   it, the function profiler stays off. Earlier versions then traced every method call of every
@@ -967,9 +1009,17 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
   read up to that size and rewound for the application, a larger response is kept in part, and
   the Request tab says so with the whole size ("at least" when it is not known: no
   `Content-Length`, or a stream that stopped). A cluster secret cut in two by the limit is left
-  out with the rest. `nil` keeps whole bodies. Only the raw bodies are capped: the parsed
-  `params` and the log lines (`Parameters: ...`) keep their full size, so a 5 MB JSON request
-  still takes about 15 MB in its profile
+  out with the rest. `nil` keeps whole bodies. The parsed `params` a profile keeps are capped at
+  the same size: long values are cut and the entries past it left out, with a `"[profiler]"` key
+  saying so (the application still gets all of them). The log lines of a request are capped by
+  `max_captured_log_bytes` (1 MB by default), a single `Parameters: ...` line included, and the
+  Logs tab ends with the number of lines left out. Earlier versions kept a 5 MB JSON request three
+  times, about 15 MB in its profile
+- Outbound `Net::HTTP` bodies are capped by `max_captured_body_bytes` as well, sent and received:
+  the HTTP tab and the `get_profile_http` MCP tool say when a body was cut. A compressed answer is
+  inflated only up to that size. A `body_stream` is read only when it can be put back where it
+  was (a `StringIO`, a file); a pipe or a socket is sent unread and its body is not captured.
+  Earlier versions read any `body_stream` whole, which sent an empty body for a pipe
 - Streamed responses go out as they are produced: a body that does not answer `to_ary` (an
   `ActionController::Live` or `response.stream` action that writes to the stream,
   `render stream: true`, an enumerator), a `text/event-stream`, or a file sent by its path
