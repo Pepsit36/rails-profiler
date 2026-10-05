@@ -21,6 +21,24 @@ every commit of every tag interval is accounted for one way or the other.
 
 ### Fixed
 
+- **Toolbar:** Stop the toolbar from holding a server thread for as long as its page stays open.
+  Every page kept a server-sent events stream open on `/_profiler/api/events/:token`, and the
+  server waited on it in one of its threads, 30 seconds at a time; a closed page was only noticed
+  at the next 30-second heartbeat. With as many open (or recently closed) pages as the server has
+  threads (3 in the Puma configuration Rails generates), the application stopped answering. The toolbar now asks whether
+  its profile was saved again with short requests the server answers at once: after 1 s, then
+  less and less often (10 in the first minute, 2 a minute after that), none while the tab is
+  hidden, and none after 10 minutes without a save. `GET /_profiler/api/events/:token` now
+  answers JSON (`cursor`, `updated`) for a `since` version, and the toolbar data carries the
+  version it reflects as `events_cursor`. With Redis storage, saves are counted in Redis: the
+  bus no longer keeps a listening thread and a dedicated Redis connection in each process, and a
+  failing Redis no longer leaves every toolbar without updates until the next page.
+- **Test runner:** Follow the output of a run live again on `/_profiler/test_runner`. The output
+  stream answered `500` on every request since server-sent events were added for the toolbar
+  (its controller picked up the wrong `SSE` class), so the page showed the output as it was when
+  it started following and then stopped. The stream now answers at once with the output there
+  is and the browser asks again every second, with the position it reached, while the run is in
+  progress: following a run holds no server thread either.
 - **MCP:** `run_tests` with a `slave` (FAB-20) returns as soon as the run on the slave is over, with
   its output. It waited for statuses the test runner never gives (`completed`, `cancelled`), so a
   run that passed was reported as timed out after `timeout_seconds` (120 by default), holding a

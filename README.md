@@ -647,7 +647,7 @@ end
 
 The profiler shows everything your application does: parameters, SQL, headers, logs, `ENV`, and
 it can change `ENV` and run your tests. Every page and endpoint under `/_profiler` (UI, API,
-server-sent events, test runner, toolbar) goes through the same check, and answers `403` when it
+toolbar update checks, test runner, toolbar) goes through the same check, and answers `403` when it
 fails. The gem's static JS and CSS are the only exception: they hold no application data. The
 same check decides which requests the profiler captures.
 
@@ -761,6 +761,14 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
   in the request. Procs and regexps with anchors or lookarounds in `filter_parameters` send every
   JSON body to the parser
 - Automatic cleanup of old profiles
+- No request of the profiler keeps a server thread waiting, however many pages are open. The
+  toolbar learns that its profile was saved again (an outgoing HTTP request finished after the
+  page, say) by asking the server, which answers at once: after 1 s, then less and less often,
+  10 requests in the first minute and 2 a minute after that, none while the tab is hidden, and
+  none after 10 minutes without a save (reload the page to follow it again). The test runner page
+  asks for the new output once a second while a run is in progress. With several worker
+  processes and no Redis storage, each worker only knows the saves it made: the toolbar sees a
+  save when one of its requests reaches the worker that made it
 
 ## Security
 

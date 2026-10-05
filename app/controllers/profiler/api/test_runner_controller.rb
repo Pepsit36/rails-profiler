@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
+require "stringio"
 require "profiler/test_runner/discovery"
 require "profiler/test_runner/runner"
 
 module Profiler
   module Api
     class TestRunnerController < ApplicationController
-      include ActionController::Live
+      # How long the page waits before asking for the output that came since.
+      STREAM_RETRY_MS = 1000
 
       def files
         framework = params[:framework]
@@ -41,47 +43,31 @@ module Profiler
         render json: run.to_h
       end
 
-      # SSE endpoint — streams output chunks as server-sent events.
-      # Replaces polling for live test output in the frontend.
+      # Server-sent events with the output of a run from the position the page holds: what is
+      # there now, then the response ends. The page's EventSource comes back after `retry`, with
+      # the position reached in Last-Event-ID, so no server thread waits on a run that prints
+      # nothing, however many pages follow it.
       def stream
-        run = Profiler::TestRunner.run_store.find(params[:id])
-        unless run
+        position = [(request.headers["Last-Event-ID"].presence || params[:position]).to_i, 0].max
+        result = Profiler::TestRunner.run_store.read_output(params[:id], position: position)
+        if result[:status] == "not_found"
           render json: { error: "Run not found" }, status: :not_found
           return
         end
 
-        response.headers["Content-Type"]  = "text/event-stream"
-        response.headers["Cache-Control"] = "no-cache"
-        response.headers["X-Accel-Buffering"] = "no"
-
-        sse = SSE.new(response.stream, retry: 1000, event: "output")
-        position = 0
-
-        begin
-          loop do
-            result = Profiler::TestRunner.run_store.wait_for_output(
-              params[:id], position: position, timeout: 15
-            )
-
-            result[:chunks].each do |chunk|
-              sse.write({ chunk: chunk })
-            end
-            position = result[:position]
-
-            if result[:finished]
-              current_run = Profiler::TestRunner.run_store.find(params[:id])
-              sse.write(
-                { status: result[:status], exit_code: current_run&.exit_code },
-                event: "done"
-              )
-              break
-            end
-          end
-        rescue ActionController::Live::ClientDisconnected, IOError
-          # Client navigated away — normal exit
-        ensure
-          sse.close
+        body = StringIO.new
+        body.write("retry: #{STREAM_RETRY_MS}\n\n")
+        sse = ActionController::Live::SSE.new(body, event: "output")
+        result[:chunks].each.with_index(position + 1) do |chunk, id|
+          sse.write({ chunk: chunk }, id: id)
         end
+        if result[:finished]
+          run = Profiler::TestRunner.run_store.find(params[:id])
+          sse.write({ status: result[:status], exit_code: run&.exit_code }, event: "done")
+        end
+
+        response.headers["Cache-Control"] = "no-cache"
+        render plain: body.string, content_type: "text/event-stream"
       end
 
       def destroy

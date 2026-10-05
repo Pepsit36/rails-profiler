@@ -1,57 +1,47 @@
-import { useState, useEffect, useRef } from 'preact/hooks'
+import { useEffect, useRef } from 'preact/hooks'
+import { apiFetch } from '../api-fetcher'
+import { startProfileUpdatePoller, type ProfileEventsAnswer } from './profileUpdatePoller'
 
 const BASE = '/_profiler'
 
 /**
- * Opens an SSE connection to receive profile update notifications.
- * Falls back to a polling interval when the SSE connection fails.
+ * Calls onUpdate when the profile of +token+ is saved again after the version +cursor+, which
+ * the toolbar data carries (events_cursor). Checks with short requests the server answers at
+ * once, on the schedule of profileUpdatePoller, and not while the tab is hidden.
  */
 export function useProfileEvents(
   token: string | undefined,
-  collectors: string[],
+  cursor: number | undefined,
   onUpdate: () => void
-): { connected: boolean } {
-  const [connected, setConnected] = useState(false)
-  const fallbackRef = useRef<ReturnType<typeof setInterval> | null>(null)
+): void {
+  const onUpdateRef = useRef(onUpdate)
+  onUpdateRef.current = onUpdate
+  const ready = cursor !== undefined
 
   useEffect(() => {
-    if (!token) return
+    if (!token || cursor === undefined) return
 
-    const clearFallback = () => {
-      if (fallbackRef.current !== null) {
-        clearInterval(fallbackRef.current)
-        fallbackRef.current = null
-      }
-    }
-
-    const params = new URLSearchParams()
-    collectors.forEach(c => params.append('collectors[]', c))
-    const url = `${BASE}/api/events/${token}?${params.toString()}`
-
-    const es = new EventSource(url)
-
-    es.addEventListener('profile_update', () => {
-      onUpdate()
+    const poller = startProfileUpdatePoller({
+      cursor,
+      check: since => apiFetch<ProfileEventsAnswer>({
+        url: `${BASE}/api/events/${encodeURIComponent(token)}`,
+        method: 'GET',
+        params: { since },
+      }),
+      onUpdate: () => onUpdateRef.current(),
     })
 
-    es.onopen = () => {
-      setConnected(true)
-      clearFallback()
+    const onVisibilityChange = () => {
+      if (document.hidden) poller.pause()
+      else poller.resume()
     }
-
-    es.onerror = () => {
-      es.close()
-      setConnected(false)
-      if (fallbackRef.current === null) {
-        fallbackRef.current = setInterval(() => onUpdate(), 10_000)
-      }
-    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    if (document.hidden) poller.pause()
 
     return () => {
-      es.close()
-      clearFallback()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      poller.stop()
     }
-  }, [token])
-
-  return { connected }
+    // Started once per token, from the first version the toolbar data gave.
+  }, [token, ready])
 }

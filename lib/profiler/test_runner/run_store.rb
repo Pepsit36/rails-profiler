@@ -21,6 +21,7 @@ module Profiler
       end
 
       TERMINAL_STATUSES = %w[passed failed killed error].freeze
+      NOT_FOUND = { chunks: [].freeze, status: "not_found", position: 0, finished: true }.freeze
 
       def initialize
         @runs  = Concurrent::Hash.new
@@ -97,11 +98,20 @@ module Profiler
         signal(id)
       end
 
-      # Block until new output is available at +position+ or the run terminates.
+      # The output from +position+ on, as it is now, without waiting for more.
       # Returns { chunks: [...], status: "...", position: N, finished: bool }.
+      def read_output(id, position:)
+        run = @runs[id]
+        return NOT_FOUND unless run
+
+        snapshot(run, position)
+      end
+
+      # Block until new output is available at +position+ or the run terminates.
+      # Returns the same as read_output.
       def wait_for_output(id, position:, timeout: 10)
         run = @runs[id]
-        return { chunks: [], status: "not_found", position: 0, finished: true } unless run
+        return NOT_FOUND unless run
 
         lock = @locks[id]
         return snapshot(run, position) unless lock

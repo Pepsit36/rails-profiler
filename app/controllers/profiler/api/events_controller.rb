@@ -2,32 +2,15 @@
 
 module Profiler
   module Api
+    # Tells the toolbar whether its profile was saved again since the version it holds. Answered
+    # at once: the toolbar asks again later, so no server thread waits for a save that may never
+    # come, however many pages are open.
     class EventsController < Profiler::ApplicationController
-      include ActionController::Live
+      def show
+        since = params[:since].to_i
+        cursor = Profiler::SSE.current.version(params[:token])
 
-      def subscribe
-        response.headers["Content-Type"]      = "text/event-stream"
-        response.headers["Cache-Control"]     = "no-cache"
-        response.headers["X-Accel-Buffering"] = "no"
-
-        sse = ActionController::Live::SSE.new(response.stream, retry: 3000, event: "profile_update")
-        id  = Profiler::SSE.current.subscribe(params[:token], Array(params[:collectors]))
-
-        begin
-          loop do
-            event = Profiler::SSE.current.wait_for_event(id, timeout: 30)
-            if event
-              sse.write(event)
-            else
-              sse.write({}, event: "heartbeat")
-            end
-          end
-        rescue ActionController::Live::ClientDisconnected, IOError
-          # Client disconnected — normal exit
-        ensure
-          Profiler::SSE.current.unsubscribe(id)
-          sse.close
-        end
+        render json: { cursor: [cursor, since].max, updated: cursor > since }
       end
     end
   end

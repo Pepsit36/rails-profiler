@@ -1610,9 +1610,15 @@ components:
       type: object
       required:
       - profile
+      - events_cursor
       properties:
         profile:
           "$ref": "#/components/schemas/Profile"
+        events_cursor:
+          type: integer
+          format: int64
+          description: Version of the profile's last save when this data was read, to ask
+            GET /_profiler/api/events/{token}?since= whether it was saved again since.
     FunctionProfilingConfig:
       type: object
       required:

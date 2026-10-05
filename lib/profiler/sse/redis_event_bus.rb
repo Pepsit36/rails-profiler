@@ -1,78 +1,46 @@
 # frozen_string_literal: true
 
 require "singleton"
-require "securerandom"
-require "timeout"
-require "set"
-require "json"
-require "concurrent"
 
 module Profiler
   module SSE
+    # The version of each profile's last save, kept in Redis next to the profiles so that every
+    # process and every machine sharing them counts the same saves (see EventBus). A version is
+    # a counter Redis increments, so versions only compare with versions of the same Redis.
+    #
+    # Nothing waits on Redis beyond its client's own timeouts: there is no subscription and no
+    # listening thread, and a failing Redis reads as no newer save.
     class RedisEventBus
       include Singleton
 
-      CHANNEL_PREFIX = "profiler:events"
+      KEY_PREFIX = "profiler:events"
+      # As long as RedisStore keeps a profile by default: past that, nobody looks at its page.
+      TTL = 24 * 60 * 60
 
-      def initialize
-        @subscriptions = Concurrent::Hash.new
-        @listener_thread = nil
-        @listener_mutex = Mutex.new
+      def broadcast(token)
+        key = key(token)
+        version, _expire = redis.multi do |transaction|
+          transaction.incr(key)
+          transaction.expire(key, TTL)
+        end
+        version
       end
 
-      def subscribe(token, collectors)
-        id = SecureRandom.uuid
-        @subscriptions[id] = { token: token, collectors: Set.new(collectors.map(&:to_s)), queue: Queue.new }
-        ensure_listener_running
-        id
-      end
-
-      def unsubscribe(id)
-        @subscriptions.delete(id)
-      end
-
-      def broadcast(token, collectors)
-        payload = { token: token, collectors: collectors.map(&:to_s), timestamp: Time.now.to_f }.to_json
-        publish_redis_client.publish("#{CHANNEL_PREFIX}:#{token}", payload)
-      end
-
-      def wait_for_event(id, timeout: 30)
-        sub = @subscriptions[id]
-        return nil unless sub
-        Timeout.timeout(timeout) { sub[:queue].pop }
-      rescue Timeout::Error
-        nil
+      # The version of the last save of +token+, 0 when none is known or Redis cannot be read.
+      def version(token)
+        redis.get(key(token)).to_i
+      rescue StandardError
+        0
       end
 
       private
 
-      def publish_redis_client
-        Profiler.storage.redis
+      def key(token)
+        "#{KEY_PREFIX}:#{token}"
       end
 
-      def ensure_listener_running
-        @listener_mutex.synchronize do
-          return if @listener_thread&.alive?
-
-          @listener_thread = Thread.new do
-            # Use a dedicated connection for blocking psubscribe
-            Profiler.storage.redis.dup.psubscribe("#{CHANNEL_PREFIX}:*") do |on|
-              on.pmessage do |_pattern, _channel, message|
-                payload = JSON.parse(message, symbolize_names: true)
-                token = payload[:token]
-                changed = Set.new(payload[:collectors].map(&:to_s))
-
-                @subscriptions.each_value do |sub|
-                  next unless sub[:token] == token
-                  next if sub[:collectors].any? && (sub[:collectors] & changed).empty?
-                  sub[:queue] << { token: token, collectors: changed.to_a, timestamp: payload[:timestamp] }
-                end
-              end
-            end
-          rescue StandardError
-            # Thread restarts on the next subscribe call
-          end
-        end
+      def redis
+        Profiler.storage.redis
       end
     end
   end

@@ -6,86 +6,57 @@ require "profiler/sse/event_bus"
 RSpec.describe Profiler::SSE::EventBus do
   subject(:bus) { described_class.instance }
 
-  # Reset the singleton state between examples
-  before { bus.instance_variable_set(:@subscriptions, Concurrent::Hash.new) }
+  before { bus.reset! }
 
-  describe "subscribe / unsubscribe lifecycle" do
-    it "returns a unique string id" do
-      id = bus.subscribe("tok", [])
-      expect(id).to be_a(String)
-      expect(id).not_to be_empty
+  describe "#version" do
+    it "is 0 for a token never saved" do
+      expect(bus.version("tok")).to eq(0)
     end
 
-    it "removes the subscription on unsubscribe" do
-      id = bus.subscribe("tok", [])
-      bus.unsubscribe(id)
-      expect(bus.instance_variable_get(:@subscriptions)).not_to have_key(id)
-    end
-  end
+    it "is the version the last broadcast returned" do
+      version = bus.broadcast("tok")
 
-  describe "#broadcast routing by token" do
-    it "delivers the event to a matching subscriber" do
-      id = bus.subscribe("tok-a", [])
-      bus.broadcast("tok-a", ["db"])
-      event = bus.wait_for_event(id, timeout: 1)
-      expect(event).not_to be_nil
-      expect(event[:token]).to eq("tok-a")
+      expect(bus.version("tok")).to eq(version)
     end
 
-    it "does not deliver to a subscriber on a different token" do
-      id = bus.subscribe("tok-b", [])
-      bus.broadcast("tok-a", ["db"])
-      event = bus.wait_for_event(id, timeout: 0.1)
-      expect(event).to be_nil
+    it "only moves for the token saved" do
+      bus.broadcast("tok-a")
+
+      expect(bus.version("tok-b")).to eq(0)
+    end
+
+    it "answers at once" do
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      bus.version("tok")
+
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.1
     end
   end
 
-  describe "#broadcast collector filtering" do
-    it "delivers when the collector intersection is non-empty" do
-      id = bus.subscribe("tok", ["db", "cache"])
-      bus.broadcast("tok", ["db"])
-      event = bus.wait_for_event(id, timeout: 1)
-      expect(event).not_to be_nil
+  describe "#broadcast" do
+    it "gives every save a newer version, even within one microsecond" do
+      versions = Array.new(50) { bus.broadcast("tok") }
+
+      expect(versions.each_cons(2)).to all(satisfy { |older, newer| newer > older })
     end
 
-    it "does not deliver when the collector intersection is empty" do
-      id = bus.subscribe("tok", ["cache"])
-      bus.broadcast("tok", ["db"])
-      event = bus.wait_for_event(id, timeout: 0.1)
-      expect(event).to be_nil
+    it "gives versions that the other worker processes of the machine can compare with" do
+      # The time of the save, so a version from another process is not mistaken for newer.
+      before_save = Process.clock_gettime(Process::CLOCK_REALTIME, :microsecond)
+      version = bus.broadcast("tok")
+
+      expect(version).to be >= before_save
+      expect(version).to be <= Process.clock_gettime(Process::CLOCK_REALTIME, :microsecond)
     end
 
-    it "delivers to a match-all subscriber (empty collector set) regardless of changed collectors" do
-      id = bus.subscribe("tok", [])
-      bus.broadcast("tok", ["db"])
-      event = bus.wait_for_event(id, timeout: 1)
-      expect(event).not_to be_nil
-    end
-  end
+    it "forgets the oldest saved tokens past MAX_TOKENS" do
+      stub_const("#{described_class}::MAX_TOKENS", 3)
+      %w[a b c].each { |token| bus.broadcast(token) }
+      bus.broadcast("a")
+      bus.broadcast("d")
 
-  describe "#wait_for_event timeout" do
-    it "returns nil when no event arrives within the timeout" do
-      id = bus.subscribe("tok", [])
-      result = bus.wait_for_event(id, timeout: 0.05)
-      expect(result).to be_nil
-    end
-
-    it "returns nil for an unknown subscription id" do
-      result = bus.wait_for_event("does-not-exist", timeout: 0.05)
-      expect(result).to be_nil
-    end
-  end
-
-  describe "multiple concurrent subscribers" do
-    it "each subscriber receives the event independently" do
-      id_a = bus.subscribe("tok", [])
-      id_b = bus.subscribe("tok", [])
-      bus.broadcast("tok", ["views"])
-      event_a = bus.wait_for_event(id_a, timeout: 1)
-      event_b = bus.wait_for_event(id_b, timeout: 1)
-      expect(event_a).not_to be_nil
-      expect(event_b).not_to be_nil
-      expect(event_a[:collectors]).to eq(event_b[:collectors])
+      expect(bus.version("b")).to eq(0)
+      expect([bus.version("a"), bus.version("c"), bus.version("d")]).to all(be > 0)
     end
   end
 end
