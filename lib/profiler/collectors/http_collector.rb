@@ -39,13 +39,13 @@ module Profiler
         claim_thread_slot(:profiler_http_collector, self)
       end
 
-      # The Net::HTTP patch installed by subscribe stays: it is installed once per process and
-      # records nothing when no collector holds the thread-local slot.
       # Collect reads only what the collector gathered itself.
       def collect_from_any_thread?
         true
       end
 
+      # The Net::HTTP patch installed by subscribe stays: it is installed once per process and
+      # records nothing when no collector holds the thread-local slot.
       def unsubscribe
         restore_thread_slots
       end

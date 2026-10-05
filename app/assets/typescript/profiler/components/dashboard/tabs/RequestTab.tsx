@@ -42,8 +42,9 @@ function buildCurl(profile: Profile): string {
   return parts.join(' \\\n')
 }
 
-// Bodies are kept up to max_captured_body_bytes. The flags are on the profile, and in the
-// request collector's data for the stores that rebuild a profile from it.
+// Bodies are kept up to max_captured_body_bytes, and a long stream's collectors may be released
+// before it ends. The flags are on the profile, and in the request collector's data for the
+// stores that rebuild a profile from it.
 function truncationNotes(profile: Profile, routeData: RequestData): string[] {
   const notes: string[] = []
   const describe = (what: string, truncated?: boolean | null, size?: number | null, minimum?: boolean | null) => {
@@ -58,6 +59,10 @@ function truncationNotes(profile: Profile, routeData: RequestData): string[] {
   describe('Response', profile.response_body_truncated ?? routeData.response_body_truncated,
     profile.response_body_size ?? routeData.response_body_size,
     profile.response_body_size_is_minimum ?? routeData.response_body_size_is_minimum)
+  const releasedAfter = profile.collectors_released_after_seconds ?? routeData.collectors_released_after_seconds
+  if (releasedAfter != null) {
+    notes.push(`Incomplete profile: the collectors of this stream were released after ${releasedAfter} s, before the server closed it; what it did later is missing.`)
+  }
   return notes
 }
 

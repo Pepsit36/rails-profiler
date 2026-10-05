@@ -380,4 +380,17 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "response bodies" do
       expect { app.call(env) }.to raise_error(IOError, "read failed")
     end
   end
+
+  # Rails 7.0 frames a streamed template itself (Transfer-Encoding: chunked), and Rack::ETag
+  # may hand the profiler those frames as an Array: a toolbar put among them breaks the framing.
+  describe "a body already framed with Transfer-Encoding" do
+    it "goes out as a stream, untouched" do
+      frames = ["1f\r\n<html><body>hello</body></html>\r\n", "0\r\n\r\n"]
+      headers = { "content-type" => "text/html", "transfer-encoding" => "chunked" }
+      _status, _out_headers, body = middleware(headers: headers, body: frames).call(env)
+
+      expect(body).not_to respond_to(:to_ary)
+      expect(serve(body)).to eq(frames.join)
+    end
+  end
 end

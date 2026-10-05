@@ -86,6 +86,21 @@ module Profiler
         restore_thread_slots
       end
 
+      # Puts the slots subscribe claimed back, for a while, on the thread (or fiber) that
+      # iterates a streamed body: the logs, outbound HTTP calls and measures it makes belong to
+      # this profile. Returns what the slots held there, for return_thread_slots.
+      def lend_thread_slots
+        (@thread_slot_values || {}).to_h do |key, value|
+          previous = Thread.current[key]
+          Thread.current[key] = value
+          [key, previous]
+        end
+      end
+
+      def return_thread_slots(previous)
+        previous&.each { |key, value| Thread.current[key] = value }
+      end
+
       def toolbar_summary
         # Override in subclasses to provide summary for toolbar
         ""
@@ -119,6 +134,7 @@ module Profiler
       def claim_thread_slot(key, value)
         @claimed_thread_slots ||= {}
         @claimed_thread_slots[key] = Thread.current[key] unless @claimed_thread_slots.key?(key)
+        (@thread_slot_values ||= {})[key] = value
         Thread.current[key] = value
       end
 

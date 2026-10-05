@@ -19,6 +19,7 @@ module Profiler
                     :response_body, :response_body_encoding,
                     :request_body_size, :request_body_truncated, :request_body_size_is_minimum,
                     :response_body_size, :response_body_truncated, :response_body_size_is_minimum,
+                    :collectors_released_after_seconds,
                     :gem_version
 
       def initialize(request = nil)
@@ -144,6 +145,7 @@ module Profiler
           response_body_size: @response_body_size,
           response_body_truncated: @response_body_truncated,
           response_body_size_is_minimum: @response_body_size_is_minimum,
+          collectors_released_after_seconds: @collectors_released_after_seconds,
           collectors_data: @collectors_data,
           tabs: @collectors_metadata,
           parent_token: @parent_token,
@@ -190,6 +192,7 @@ module Profiler
         profile.response_body_size = data[:response_body_size]
         profile.response_body_truncated = data[:response_body_truncated]
         profile.response_body_size_is_minimum = data[:response_body_size_is_minimum]
+        profile.collectors_released_after_seconds = data[:collectors_released_after_seconds]
         profile.parent_token = data[:parent_token]
         profile.is_ajax = data[:is_ajax] || false
         profile.profile_type = data[:profile_type] || "http"

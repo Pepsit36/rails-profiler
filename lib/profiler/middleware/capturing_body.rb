@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "../redaction"
-require_relative "../current_context"
 
 module Profiler
   module Middleware
@@ -18,15 +17,15 @@ module Profiler
       # body was iterated to its end (if not, the size is only a minimum), and the
       # application's error if there was one. It runs once, after the body has been closed.
       #
-      # While the server iterates the body, its thread carries the profile's token
-      # (CurrentContext), as the request's thread did: what the body does then, a template
-      # streamed by `render stream: true` for one, belongs to this profile.
-      def initialize(body, limit:, token: nil, &on_close)
+      # +context+ (StreamedProfile) is entered while the server iterates the body: what the body
+      # does then, a template streamed by `render stream: true` for one, belongs to this profile.
+      def initialize(body, limit:, context: nil, &on_close)
         @body = body
         @limit = limit
-        @token = token
+        @context = context
         @on_close = on_close
         @complete = false
+        @profile_finished = false
         @captured = String.new(encoding: Encoding::BINARY)
         @encoding = nil
         @size = 0
@@ -35,8 +34,7 @@ module Profiler
       end
 
       def each
-        previous_token = CurrentContext.token
-        CurrentContext.token = @token if @token
+        state = @context&.enter
         begin
           @body.each do |chunk|
             capture(chunk)
@@ -52,7 +50,7 @@ module Profiler
           @error ||= e unless e.equal?(@server_error)
           raise
         ensure
-          CurrentContext.token = previous_token
+          @context&.leave(state)
         end
       end
 
@@ -73,17 +71,14 @@ module Profiler
         begin
           @body.close if @body.respond_to?(:close)
         ensure
-          @on_close.call(captured, @size, @complete, @error)
+          finish_profile
         end
       end
 
-      # The server left the body without closing it: the profile is finished with what was
-      # captured, and the application's body is left to whoever holds it.
+      # The server seems to have left the body: the profile is finished with what was captured.
+      # The body is not closed here: a close that comes later still closes it, once.
       def abandon
-        return if @closed
-
-        @closed = true
-        @on_close.call(captured, @size, @complete, @error)
+        finish_profile
       end
 
       def closed?
@@ -91,6 +86,13 @@ module Profiler
       end
 
       private
+
+      def finish_profile
+        return if @profile_finished
+
+        @profile_finished = true
+        @on_close.call(captured, @size, @complete, @error)
+      end
 
       def capture(chunk)
         chunk = chunk.to_s
