@@ -64,6 +64,34 @@ RSpec.describe Profiler::Storage::PrivateFiles do
     end
   end
 
+  context "with restrict_storage_permissions = false" do
+    before { Profiler.configuration.restrict_storage_permissions = false }
+
+    it "follows a symbolic link in place of the SQLite database, as before" do
+      FileUtils.mkdir_p(@tmp_path)
+      elsewhere = File.join(@root, "elsewhere.db")
+      File.symlink(elsewhere, @tmp_path.join("profiler.db"))
+
+      store = Profiler::Storage::SqliteStore.new
+      profile = build_profile
+      store.save(profile.token, profile)
+
+      expect(store.load(profile.token).token).to eq(profile.token)
+      expect(File.size(elsewhere)).to be > 0
+      expect(File.symlink?(@tmp_path.join("profiler.db"))).to be true
+    end
+
+    it "follows a symbolic link in place of the env overrides lock, as before" do
+      FileUtils.mkdir_p(@tmp_path)
+      File.symlink(File.join(@root, "elsewhere.lock"), @tmp_path.join("env_overrides.json.lock"))
+
+      Profiler::EnvOverrideStore.new.set("PROFILER_SPEC_LINK", "1")
+      expect(Profiler::EnvOverrideStore.new.all_overrides).to have_key("PROFILER_SPEC_LINK")
+    ensure
+      ENV.delete("PROFILER_SPEC_LINK")
+    end
+  end
+
   describe "an existing tmp_path that other users can write to" do
     before do
       FileUtils.mkdir_p(@tmp_path)

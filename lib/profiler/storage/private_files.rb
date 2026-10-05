@@ -12,8 +12,8 @@ module Profiler
     module PrivateFiles
       DIR_MODE = 0o700
       FILE_MODE = 0o600
-      # Where the platform has it: a symbolic link placed where the profiler expects its own file
-      # is not followed (ELOOP) instead of being written through.
+      # Where the platform has it, and while the modes are restricted: a symbolic link placed where
+      # the profiler expects its own file is not followed (ELOOP) instead of being written through.
       NOFOLLOW = defined?(File::NOFOLLOW) ? File::NOFOLLOW : 0
 
       @warned = {}
@@ -72,14 +72,14 @@ module Profiler
 
       # Opens path for reading and writing, creating it 0600 when missing.
       def open(path, &block)
-        File.open(path.to_s, File::RDWR | File::CREAT | NOFOLLOW, new_file_mode, &block)
+        File.open(path.to_s, File::RDWR | File::CREAT | nofollow, new_file_mode, &block)
       end
 
       # Creates an empty file 0600 when missing, or brings an existing one back to 0600.
       def touch(path)
         path = path.to_s
         refuse_link(path)
-        File.open(path, File::WRONLY | File::CREAT | NOFOLLOW, new_file_mode) { |file| file.chmod(FILE_MODE) if restricted? }
+        File.open(path, File::WRONLY | File::CREAT | nofollow, new_file_mode) { |file| file.chmod(FILE_MODE) if restricted? }
       end
 
       # Brings an existing file back to 0600; a missing one is left missing.
@@ -95,7 +95,8 @@ module Profiler
         return unless restricted? && File.symlink?(path)
 
         raise Profiler::Error, "Refusing to use #{path}: it is a symbolic link, where the profiler expects " \
-                               "a file of its own. Remove it, or set config.restrict_storage_permissions = false."
+                               "a file of its own. Remove it, or set config.restrict_storage_permissions = false, " \
+                               "which follows such links and creates the files with the modes of the umask."
       end
 
       # Says once per directory when an existing tmp_path belongs to another user or can be written
@@ -120,6 +121,10 @@ module Profiler
 
       def reset_warnings!
         @warn_mutex.synchronize { @warned = {} }
+      end
+
+      def nofollow
+        restricted? ? NOFOLLOW : 0
       end
 
       def new_file_mode
