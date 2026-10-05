@@ -281,6 +281,19 @@ RSpec.describe Profiler::Cluster::Security do
     end
   end
 
+  describe ".escape_segment" do
+    it "refuses a dot segment or a value holding a slash" do
+      ["../../admin", "..", ".", "", "a/b", "a\\b"].each do |value|
+        expect { described_class.escape_segment(value) }.to raise_error(Profiler::Error, /path segment/)
+      end
+    end
+
+    it "keeps a question mark, a hash and a percent sign inside the segment" do
+      expect(described_class.escape_segment("x?all_types=1#frag")).to eq("x%3Fall_types%3D1%23frag")
+      expect(described_class.escape_segment("a b%")).to eq("a%20b%25")
+    end
+  end
+
   describe ".secret_required?" do
     it "is true by default, and whenever a secret is configured" do
       expect(described_class.secret_required?).to be(true)

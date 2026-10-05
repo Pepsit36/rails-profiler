@@ -12,6 +12,12 @@ module Profiler
           return render json: { error: "Missing parent_token or child_token" }, status: :bad_request
         end
 
+        # The parent token is written into the child profile: a value the gem never issues is
+        # refused rather than stored. A malformed child token is not found by the storage.
+        unless Profiler::Storage::Token.valid?(parent_token)
+          return render json: { error: "Invalid parent_token" }, status: :bad_request
+        end
+
         # Load child profile
         child_profile = Profiler.storage.load(child_token)
         unless child_profile
