@@ -258,13 +258,15 @@ RSpec.describe Profiler::Collectors::MailerCollector do
     end
 
     context "thread isolation" do
-      it "ignores events fired from a different thread" do
-        collector.subscribe
-
+      it "ignores events fired from another request's thread" do
+        go = Queue.new
         other_thread = Thread.new do
+          go.pop
           fire_process_event(mailer: "UserMailer", action: "welcome_email")
           fire_deliver_event(mailer_class: "UserMailer")
         end
+        collector.subscribe
+        go << true
         other_thread.join
 
         collector.collect
@@ -272,6 +274,15 @@ RSpec.describe Profiler::Collectors::MailerCollector do
 
         expect(data[:total]).to eq(0)
         expect(data[:emails]).to be_empty
+      end
+
+      it "records a mail delivered by a thread the request started" do
+        collector.subscribe
+
+        Thread.new { fire_deliver_event(mailer_class: "UserMailer") }.join
+
+        collector.collect
+        expect(profile.collector_data("mailer")[:total]).to eq(1)
       end
     end
 

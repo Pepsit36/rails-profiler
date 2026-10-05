@@ -23,8 +23,8 @@ RSpec.describe Profiler::Collectors::RoutesCollector do
         collector.collect
       end
 
-      it "stores empty routes list" do
-        expect(collector.panel_content[:routes]).to eq([])
+      it "stores no matched route" do
+        expect(collector.panel_content[:matched]).to be_nil
       end
 
       it "stores total of 0" do
@@ -66,16 +66,22 @@ RSpec.describe Profiler::Collectors::RoutesCollector do
         expect(collector.panel_content[:matched][:controller_action]).to eq("UsersController#show")
       end
 
-      it "marks route as matched in routes list" do
-        expect(collector.panel_content[:routes].first[:matched]).to be true
+      it "stores the matched route, not the table" do
+        expect(collector.panel_content).not_to have_key(:routes)
+        expect(collector.panel_content[:matched]).to include(pattern: "/users/:id", verb: "GET", name: "user", matched: true)
       end
 
       it "strips format suffix from route pattern" do
-        expect(collector.panel_content[:routes].first[:pattern]).to eq("/users/:id")
+        expect(collector.panel_content[:matched][:pattern]).to eq("/users/:id")
       end
 
-      it "does not include covered field" do
-        expect(collector.panel_content[:routes].first).not_to have_key(:covered)
+      it "gets the table back, the matched route marked, when the profile is displayed" do
+        Profiler::ProcessSnapshot.hydrate(profile)
+
+        routes = profile.collector_data("routes")[:routes]
+        expect(routes.size).to eq(1)
+        expect(routes.first).to include(pattern: "/users/:id", matched: true)
+        expect(routes.first).not_to have_key(:covered)
       end
     end
 
@@ -95,8 +101,8 @@ RSpec.describe Profiler::Collectors::RoutesCollector do
         expect(collector.panel_content[:matched]).to be_nil
       end
 
-      it "stores empty routes list" do
-        expect(collector.panel_content[:routes]).to eq([])
+      it "stores a total of 0" do
+        expect(collector.panel_content[:total]).to eq(0)
       end
     end
   end
@@ -114,5 +120,40 @@ RSpec.describe Profiler::Collectors::RoutesCollector do
       allow(collector).to receive(:panel_content).and_return({ total: 10, matched: nil })
       expect(collector.toolbar_summary[:text]).to eq("—")
     end
+  end
+end
+
+RSpec.describe Profiler::Collectors::RoutesCollector, "with several routes to one action" do
+  def route(verb, pattern)
+    double("route #{verb}", defaults: { controller: "users", action: "update" }, verb: verb, name: nil,
+                            path: double(spec: double(to_s: "#{pattern}(.:format)")))
+      .tap { |r| allow(r).to receive(:respond_to?).with(:internal).and_return(false) }
+  end
+
+  let(:table) { [route("PATCH", "/users/:id"), route("PUT", "/users/:id")] }
+
+  before do
+    routes = double("routes", routes: table)
+    allow(routes).to receive(:recognize_path).and_return({ controller: "users", action: "update" })
+    stub_const("Rails", double("Rails", application: double(routes: routes), respond_to?: true))
+  end
+
+  def collected(method)
+    profile = build_profile(path: "/users/1", method: method)
+    described_class.new(profile).collect
+    profile
+  end
+
+  it "gives the route of the request's verb, not the first one of the action" do
+    expect(collected("PUT").collector_data("routes")[:matched]).to include(verb: "PUT")
+    expect(collected("PATCH").collector_data("routes")[:matched]).to include(verb: "PATCH")
+  end
+
+  it "marks every route of the action in the table, as before" do
+    profile = collected("PUT")
+    Profiler::ProcessSnapshot.hydrate(profile)
+
+    expect(profile.collector_data("routes")[:routes].map { |r| [r[:verb], r[:matched]] })
+      .to eq([["PATCH", true], ["PUT", true]])
   end
 end

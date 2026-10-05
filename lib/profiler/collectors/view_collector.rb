@@ -34,7 +34,7 @@ module Profiler
       def subscribe
         return unless defined?(ActiveSupport::Notifications)
 
-        @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("render_template.action_view") do |name, started, finished, unique_id, payload|
+        @subscriptions << subscribe_notification("render_template.action_view") do |name, started, finished, unique_id, payload|
           duration = ((finished - started) * 1000).round(2)
           @views << {
             identifier: payload[:identifier],
@@ -43,7 +43,7 @@ module Profiler
           }
         end
 
-        @subscriptions << ActiveSupport::Notifications.monotonic_subscribe("render_partial.action_view") do |name, started, finished, unique_id, payload|
+        @subscriptions << subscribe_notification("render_partial.action_view") do |name, started, finished, unique_id, payload|
           duration = ((finished - started) * 1000).round(2)
           @partials << {
             identifier: payload[:identifier],

@@ -162,4 +162,46 @@ RSpec.describe Profiler::Instrumentation::ThreadContextPropagation do
       expect(thread_arguments).to include([:ipv4, "localhost", port, anything])
     end
   end
+
+  # A request whose collectors only listen to notifications (a job, a test, a console
+  # expression) has a notification scope and none of PROPAGATED_KEYS: the wrapper runs then too.
+  describe "while only notifications are scoped to the request" do
+    let(:described_scope_key) { Profiler::Collectors::ScopedNotifications::STATE_KEY }
+
+    def with_notification_scope
+      handle = Profiler::Collectors::ScopedNotifications.subscribe("sql.active_record") { |*| }
+      yield
+    ensure
+      Profiler::Collectors::ScopedNotifications.unsubscribe(handle)
+    end
+
+    it "hands the scope to the child thread, and takes it back once its block has returned" do
+      with_notification_scope do
+        scope = Profiler::Collectors::ScopedNotifications.current
+        child = Thread.new { [Profiler::Collectors::ScopedNotifications.current, Thread.current] }
+        seen, thread = child.value
+
+        expect(seen).to equal(scope)
+        expect(thread.active_support_execution_state.to_h[described_scope_key]).to be_nil
+      end
+    end
+
+    it "keeps the arguments of Thread.new, keyword arguments included" do
+      with_notification_scope do
+        expect(Thread.new(1, key: 2) { |*args, **kwargs| [args, kwargs] }.value).to eq([[1], { key: 2 }])
+        expect(Thread.new(1, 2, 3) { |*args| args }.value).to eq([1, 2, 3])
+      end
+    end
+
+    it "connects to a local server addressed by hostname, which Ruby 3.4 resolves in threads" do
+      server = TCPServer.new("127.0.0.1", 0)
+      with_notification_scope do
+        socket = Socket.tcp("localhost", server.addr[1], resolv_timeout: 2, connect_timeout: 2)
+        expect(socket).to be_a(Socket)
+        socket.close
+      end
+    ensure
+      server&.close
+    end
+  end
 end

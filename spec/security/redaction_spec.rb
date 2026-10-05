@@ -213,9 +213,12 @@ RSpec.describe "Sensitive data redaction" do
       ENV["RAILS_ENV"] = previous
     end
 
-    it "masks variables outside the allowlist in the Env collector" do
+    it "masks variables outside the allowlist in the Env collector, as the profile is displayed" do
       profile = build_profile
       Profiler::Collectors::EnvCollector.new(profile).collect
+      expect(profile.collector_data("env").to_json).not_to include(PLANTED[:env])
+
+      Profiler::ProcessSnapshot.hydrate(profile)
       variables = profile.collector_data("env")[:variables]
 
       expect(variables["PROFILER_SPEC_UNLISTED_VAR"]).to eq(MASK)

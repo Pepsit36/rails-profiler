@@ -48,6 +48,9 @@ export interface FunctionStat {
 
 export interface FunctionProfileData {
   enabled: boolean
+  // Set when sampling was asked for but the stackprof gem is not installed (see
+  // Profiler.function_profiling_tracepoint_fallback).
+  reason?: 'stackprof_missing'
   mode?: 'full' | 'lite'
   clock?: 'wall' | 'cpu' | 'object'
   elapsed_wall_ms?: number
