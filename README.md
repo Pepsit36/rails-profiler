@@ -299,6 +299,10 @@ hold:
   `config/initializers/profiler.rb`). Set `config.apply_env_overrides_when_disabled = true` to
   apply them while the profiler is disabled, as versions before 0.30.8 did.
 
+When the file cannot be read or written, the Env tab and the MCP env tools answer an error and
+leave `ENV` unchanged. At boot, before a Sidekiq job and before a console evaluation, the error is
+only printed as a warning: an override never makes the application fail.
+
 Where they are left out, resetting an override from the UI or MCP still updates the file, but
 puts back in `ENV` only a variable this process changed itself, to the value it had before; it
 never writes the "original" values the file carries, which come from the machine that wrote it.
@@ -602,7 +606,8 @@ config.storage_options = { max_profiles: 100 }
 
 ### File (recommended for development)
 
-Persistent, stored in `tmp/profiler/`. Survives restarts.
+Persistent, survives restarts. One JSON file per profile, named after its token, in
+`tmp_path/profiles` (`tmp/rails-profiler/profiles`) unless `path` is given.
 
 ```ruby
 config.storage = :file
@@ -611,6 +616,11 @@ config.storage_options = {
   max_size: 100.megabytes
 }
 ```
+
+`path` is the directory that holds the profile files themselves, used as given: no `profiles`
+subdirectory is added to it. Only the files named after a profile token (32 hexadecimal
+characters, then `.json`) are read, listed, evicted or cleared there, so a directory shared with
+other files is safe, `tmp_path` included.
 
 ### Redis (recommended for multi-server)
 
@@ -632,8 +642,43 @@ Single-server persistence, no external dependency.
 ```ruby
 config.storage = :sqlite
 config.storage_options = {
-  path: Rails.root.join('db', 'profiler.db')
+  database: Rails.root.join('db', 'profiler.db'), # tmp_path/profiler.db by default
+  blob_path: Rails.root.join('db', 'profiler-blobs') # tmp_path/blobs by default
 }
+```
+
+### Files under `tmp_path`
+
+`config.tmp_path` (`tmp/rails-profiler` under the Rails root, or under the current directory
+outside Rails) is always a `Pathname`, even when it is set from a `String`. By default it holds:
+
+| Path | Written by |
+|------|-----------|
+| `profiles/<token>.json` | the file store |
+| `profiler.db`, `profiler.db-wal`, `profiler.db-shm` | the SQLite store |
+| `blobs/<token>/` | the SQLite store, for the large bodies |
+| `mcp-cache/<token>/` | the MCP tools, for the bodies they save with `save_bodies` |
+| `env_overrides.json`, `env_overrides.json.lock` | the [environment variable overrides](#environment-variable-overrides) |
+
+Each part only reads, lists and removes its own files: clearing the profiles never removes the
+env overrides, and the hourly cleanup of the MCP cache only removes the token directories under
+`mcp-cache`.
+
+A profile token is the 32 hexadecimal characters the profiler generates. Every storage backend
+checks a token against that format before it turns it into a file name, a directory or a key: any
+other value is not found (a `404` from the API), and nothing outside the storage is read, written
+or deleted. There is no option to accept other tokens, since the profiler never issues them.
+
+The profiles hold cookies, tokens and environment values, so the directories the profiler creates
+are `0700` and its files (profiles, blobs, the SQLite database and its `-wal` and `-shm` files, the
+env overrides, their lock and temporary files, the MCP cache) are `0600`, whatever the umask. A
+directory that already exists keeps its mode: for one created by an earlier version, run
+`chmod 700 tmp/rails-profiler`. When the web process and the workers that read the env overrides
+or a shared file or SQLite store run as two different users (two containers with different uids
+on one volume, for instance), restore the modes of the umask:
+
+```ruby
+config.restrict_storage_permissions = false # true by default
 ```
 
 ## Creating Custom Collectors
@@ -815,6 +860,9 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - Sensitive data masked before it is stored, using your `config.filter_parameters`; see [Sensitive data](#sensitive-data)
 - Env overrides saved from the UI or MCP are never applied in production, nor while the profiler
   is disabled (`apply_env_overrides_when_disabled`)
+- Profile tokens are checked by every storage backend: a malformed one is not found and never
+  becomes a path; see [Files under `tmp_path`](#files-under-tmp_path)
+- The profiler's directories are created `0700` and its files `0600` (`restrict_storage_permissions`)
 - EXPLAIN runs read-only statements only, in a transaction always rolled back (see [Explaining a query](#explaining-a-query))
 
 ### Sensitive data
