@@ -10,6 +10,10 @@ require_relative "profiler/allocation_counter"
 module Profiler
   class Error < StandardError; end
 
+  # The longest error message, in bytes, a log line carries: a parser error can quote what it
+  # was parsing.
+  LOG_ERROR_MESSAGE_LIMIT = 1000
+
   class << self
     attr_writer :configuration
     attr_accessor :function_profiling_enabled
@@ -50,18 +54,18 @@ module Profiler
       nil
     end
 
-    # The longest error message a log line carries: a parser error can quote what it was parsing.
-    LOG_ERROR_MESSAGE_LIMIT = 1000
-
-    # The profiler's own messages, to config.logger when the application sets one (read on each
-    # message), else to Rails.logger, else to $stderr. Prefixed [Profiler], with the profiler's
-    # credentials masked. Never raises: a logger that fails sends the line to $stderr instead.
-    def log(level, message, error = nil, backtrace: false)
+    # The profiler's own messages, to +logger+ when given, else to config.logger when the
+    # application sets one (read on each message), else to Rails.logger, else to $stderr.
+    # Prefixed [Profiler], with the profiler's credentials masked. Never raises: a logger that
+    # fails sends the line to $stderr instead. While the line is written, the thread is marked
+    # (Thread.current[:profiler_logging]) so that the Logs tab of a profile being recorded does
+    # not take it for one of the application's lines.
+    def log(level, message, error = nil, backtrace: false, logger: nil)
       line = log_line(message, error, backtrace)
-      logger = current_logger
+      logger ||= current_logger
       if logger
         begin
-          return logger.public_send(level, line)
+          return write_log(logger, level, line)
         rescue StandardError
           # Below, to $stderr: the message is not lost.
         end
@@ -76,8 +80,8 @@ module Profiler
       log(:error, message, error, backtrace: backtrace)
     end
 
-    def log_warn(message, error = nil)
-      log(:warn, message, error)
+    def log_warn(message, error = nil, logger: nil)
+      log(:warn, message, error, logger: logger)
     end
 
     def log_info(message)
@@ -163,15 +167,36 @@ module Profiler
       nil
     end
 
+    def write_log(logger, level, line)
+      previous = Thread.current[:profiler_logging]
+      Thread.current[:profiler_logging] = true
+      logger.public_send(level, line)
+    ensure
+      Thread.current[:profiler_logging] = previous
+    end
+
+    # Masked whole, then cut: a cut first could leave the start of a credential, which the
+    # masking by value would no longer find.
     def log_line(message, error, backtrace)
       line = +"[Profiler] #{message}"
       if error
-        text = error.message.to_s
-        text = "#{text[0, LOG_ERROR_MESSAGE_LIMIT]}..." if text.length > LOG_ERROR_MESSAGE_LIMIT
-        line << ": #{error.class}: #{text}"
+        line << ": #{error.class}"
+        text = error_text(error)
+        line << ": #{text}" unless text.empty?
         line << "\n#{error.backtrace.join("\n")}" if backtrace && error.backtrace
       end
       Redaction.hide_credentials(line)
+    end
+
+    # The error's message, masked, then cut at LOG_ERROR_MESSAGE_LIMIT bytes. A message that
+    # raises leaves the class alone.
+    def error_text(error)
+      text = Redaction.hide_credentials(error.message.to_s)
+      return text if text.bytesize <= LOG_ERROR_MESSAGE_LIMIT
+
+      "#{Redaction.cut_bytes(text, LOG_ERROR_MESSAGE_LIMIT).scrub("")}..."
+    rescue StandardError
+      ""
     end
 
     public

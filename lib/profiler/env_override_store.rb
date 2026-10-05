@@ -108,8 +108,8 @@ module Profiler
 
       @boot_warning_logged = true
       noun, verb = count == 1 ? %w[override was] : %w[overrides were]
-      logger&.warn("[Profiler] #{count} persisted environment #{noun} in #{override_file_path} " \
-                   "#{verb} not applied: #{BLOCKED_REASONS.fetch(reason)}.")
+      Profiler.log_warn("#{count} persisted environment #{noun} in #{override_file_path} " \
+                        "#{verb} not applied: #{BLOCKED_REASONS.fetch(reason)}.", logger: logger)
     rescue => e
       Profiler.log_error("EnvOverrideStore: failed to check overrides at boot", e)
     end

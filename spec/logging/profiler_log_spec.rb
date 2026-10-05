@@ -96,6 +96,27 @@ RSpec.describe "Profiler's own log messages" do
       expect(io.string).not_to include(secret)
     end
 
+    it "masks the cluster secret before cutting a long error message, also when the cut falls inside it" do
+      secret = "s3cr3t-cluster-value-0123456789abcdef"
+      Profiler.configuration.cluster_secret = secret
+      with_rails_logger(logger)
+
+      [10, 20, 29, 39].each do |inside|
+        message = "#{"x" * (Profiler::LOG_ERROR_MESSAGE_LIMIT - inside)}#{secret} and more"
+        Profiler.log_error("Somewhere", RuntimeError.new(message))
+      end
+      expect(io.string).not_to include(secret[0, 12])
+    end
+
+    it "keeps the error's class when its message raises" do
+      with_rails_logger(logger)
+      error = RuntimeError.new("boom")
+      error.define_singleton_method(:message) { raise ArgumentError, "no message" }
+
+      expect { Profiler.log_error("Somewhere", error) }.not_to raise_error
+      expect(io.string).to include("[Profiler] Somewhere: RuntimeError")
+    end
+
     it "adds the backtrace when asked" do
       with_rails_logger(logger)
       error = RuntimeError.new("boom")
@@ -130,6 +151,30 @@ RSpec.describe "Profiler's own log messages" do
 
       expect { Profiler::Middleware::ProfilerMiddleware.new(html_app).call(request_env) }.not_to output.to_stderr
       expect(io.string).to match(/ERROR -- : \[Profiler\] ProfilerMiddleware: collector .* failed: ArgumentError: collector broke/)
+    end
+  end
+
+  describe "the Logs tab of the request being profiled" do
+    it "does not record the profiler's own messages, nor count them as the application's errors" do
+      require "active_support/logger"
+      require "active_support/broadcast_logger"
+      require "profiler/collectors/log_collector"
+      rails_logger = ActiveSupport::BroadcastLogger.new(Logger.new(io))
+      with_rails_logger(rails_logger)
+      Profiler.instance_variable_set(:@storage, Profiler::Storage::MemoryStore.new)
+      Profiler.configuration.collectors = [Profiler::Collectors::LogCollector]
+      app = lambda do |_env|
+        Rails.logger.info("the application's line")
+        Profiler.log_error("Somewhere: could not save profile", Errno::ENOSPC.new)
+        [200, Rack::Headers["content-type" => "text/plain"], ["ok"]]
+      end
+
+      _status, headers, = Profiler::Middleware::ProfilerMiddleware.new(app).call(request_env)
+      logs = Profiler.storage.load(headers["x-profiler-token"]).collector_data("logs")
+
+      expect(io.string).to include("[Profiler] Somewhere: could not save profile")
+      expect(logs["logs"].map { |line| line["message"] }).to eq(["the application's line"])
+      expect(logs["errors"]).to eq(0)
     end
   end
 
@@ -226,6 +271,8 @@ RSpec.describe "Profiler's own log messages" do
           config.profiler.enabled = true
           config.profiler.storage = :memory
           config.profiler.no_such_option = 1
+        # A cluster node without a usable secret: the boot warns about it.
+        config.profiler.cluster_master = true
         end
         Profiler.configuration.memory_warning_threshold = 40
         ProbeApp.initialize!
@@ -239,6 +286,7 @@ RSpec.describe "Profiler's own log messages" do
       expect(output).to include("booted"), output
       expect(output).to include("[Profiler] config.profiler.no_such_option is not a profiler option, ignored")
       expect(output).to include("[Profiler] memory_warning_threshold is deprecated")
+      expect(output).to include("[Profiler] Cluster: No config.cluster_secret is configured")
       expect(status).to be_success
     end
   end
