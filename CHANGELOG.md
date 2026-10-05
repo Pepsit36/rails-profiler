@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-10-05
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Middleware:** Stream responses through instead of buffering them. The profiler read every
