@@ -30,8 +30,9 @@ every commit of every tag interval is accounted for one way or the other.
   `ActiveSupport::Notifications` bus without looking at the thread, so on a multi-threaded server
   (Puma, Sidekiq) a profile could show the queries of a concurrent request, another user's
   included. Each collector now records the events of its own request: its thread, the threads it
-  starts with `Thread.new`, the thread `ActionController::Live` runs the action in, the server
-  thread iterating a streamed body, and the queries of `load_async`, which Rails reports on the
+  starts with `Thread.new`, the thread `ActionController::Live` runs the action in, the fibers
+  it creates (Ruby 3.2+, the layout of `render stream: true` under Falcon), the server thread
+  iterating a streamed body, and the queries of `load_async`, which Rails reports on the
   request's thread. The process holds one subscriber per event instead of one per profiled request,
   so an SQL event costs the same however many requests are profiled at once (6 us with 8 requests
   profiled, 260 us before, measured). A job performed inline still shows in both profiles; one
