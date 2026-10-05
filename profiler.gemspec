@@ -10,13 +10,13 @@ Gem::Specification.new do |spec|
 
   spec.summary = "Rails profiler with web toolbar and profiling UI"
   spec.description = "A comprehensive Rails profiler with web debug toolbar, profiling UI, SQL analysis, performance timeline, and MCP server integration"
-  spec.homepage = "https://git.duplessy.eu/sebastien/rails-profiler-gem"
+  spec.homepage = "https://github.com/Pepsit36/rails-profiler"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = spec.homepage
-  spec.metadata["changelog_uri"] = "#{spec.homepage}/-/blob/master/CHANGELOG.md"
+  spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/master/CHANGELOG.md"
 
   spec.files = Dir.glob("{lib,config,exe}/**/*", base: __dir__).select { |f| File.file?(File.join(__dir__, f)) } +
                Dir.glob("app/{assets/builds,controllers,helpers,views,mailers}/**/*", base: __dir__).select { |f| File.file?(File.join(__dir__, f)) } +
