@@ -117,6 +117,26 @@ RSpec.describe "Profiler's own log messages" do
       expect(io.string).to include("[Profiler] Somewhere: RuntimeError")
     end
 
+    it "writes the boot warnings given Rails.logger to config.logger when it is set" do
+      require "profiler/cluster/security"
+      boot_io = StringIO.new
+      Profiler.configure do |c|
+        c.logger = logger
+        c.cluster_master = true
+      end
+
+      Profiler::Cluster::Security.warn_about_configuration(Logger.new(boot_io))
+      allow(Profiler.env_override_store).to receive(:blocked_reason).and_return(:disabled)
+      allow(Profiler.env_override_store).to receive(:all_overrides).and_return("A" => { "value" => "1" })
+      Profiler.env_override_store.apply_at_boot!(Logger.new(boot_io))
+
+      expect(io.string).to include("[Profiler] Cluster: No config.cluster_secret is configured")
+      expect(io.string).to include("persisted environment override")
+      expect(boot_io.string).to be_empty
+    ensure
+      Profiler.env_override_store.instance_variable_set(:@boot_warning_logged, nil)
+    end
+
     it "adds the backtrace when asked" do
       with_rails_logger(logger)
       error = RuntimeError.new("boom")
