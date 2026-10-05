@@ -871,14 +871,25 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - What a stream records: the collectors that only gather what notifications and the logger hand
   them (SQL, views, cache, exceptions, timeline, logs, outbound HTTP) stay subscribed until the
   server closes the body, so the queries, views and logs of the stream are in its profile, and so
-  are its allocated objects. The collectors that keep state in the request's thread (dumps,
-  mailers, I18n, function profiling) are read when the application returns. Like every
-  subscription, these see what other threads do meanwhile. The profile is saved when the server
-  closes the body, also when the client went away: until then it is not listed, and a request
-  for its token answers 404, so an endless event stream is never listed and the toolbar of an
-  XHR that streams finds its profile only at the end. A body the server never closes (against
-  the Rack rules) is finished when its thread starts its next profiled request, and its
-  subscriptions are dropped after 5 minutes at the latest
+  are its allocated objects. While the server iterates the body, its thread (or fiber) carries
+  the profile: the log lines, the outbound `Net::HTTP` calls and the `Profiler.measure` blocks it
+  runs then, a `render stream: true` template or an enumerator for instance, are recorded, and
+  what that thread held before is given back afterwards. An `ActionController::Live` action runs
+  in a thread of its own, to which Rails copies the request's thread-local values: its log lines
+  and HTTP calls are recorded too. The collectors that keep state in the request's thread (dumps, mailers, I18n,
+  function profiling) are read when the application returns. Like every subscription, these see
+  what other threads do meanwhile. The profile is saved when the server closes the body, also
+  when the client went away: until then it is not listed, and a request for its token answers
+  404, so an endless event stream is never listed and the toolbar of an XHR that streams finds
+  its profile only at the end. A body the server never closes (against the Rack rules) is
+  finished when the fiber that started it starts its next profiled request (a threaded server
+  runs each request in its thread's root fiber; a fiber-based server such as Falcon gives each
+  its own, so a stream there is never cut by the next request), and its subscriptions are
+  dropped after 5 minutes at the latest: the profile then says "collectors released after 300
+  s", what the stream did later is missing. The server still closes the application's body,
+  whatever happened to the profile
+- A response already framed for the wire (`Transfer-Encoding`, as Rails 7.0 sends a
+  `render stream: true` template) goes out untouched, without the toolbar
 - Allocated objects: the profiles report `allocated_objects`, the number of objects Ruby
   allocated while the request, job, command or test ran (`GC.stat(:total_allocated_objects)`
   before and after). The counter belongs to the process: on a multi-threaded server (Puma with
