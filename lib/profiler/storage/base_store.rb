@@ -1,12 +1,16 @@
 # frozen_string_literal: true
 
+require_relative "token"
+
 module Profiler
   module Storage
     class BaseStore
       # Public interface: persists the profile then records the save, for the pages showing it
       # to see it changed (Profiler::SSE).
-      # Subclasses implement #do_save, not #save.
+      # Subclasses implement #do_save, not #save. The token must be one the gem issued
+      # (Storage::Token); every other public method answers "not found" for any other token.
       def save(token, profile)
+        Token.validate!(token)
         result = do_save(token, profile)
         broadcast_event(token)
         result

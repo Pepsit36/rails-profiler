@@ -37,7 +37,7 @@ RSpec.describe "Profile page escaping", type: :request do
       config.track_http = false
     end
     Profiler.instance_variable_set(:@storage, storage)
-    storage.save("tok", build_profile(token: "tok", params: { "q" => payload }, headers: { "X-Note" => payload }))
+    storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", params: { "q" => payload }, headers: { "X-Note" => payload }))
   end
 
   after do
@@ -49,7 +49,7 @@ RSpec.describe "Profile page escaping", type: :request do
       before { ActiveSupport.escape_html_entities_in_json = setting }
 
       it "never lets a captured value close the script element" do
-        get "/_profiler/profiles/tok", {}, local
+        get "/_profiler/profiles/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", {}, local
 
         expect(last_response.status).to eq(200)
         expect(last_response.body).not_to include("</script><script>")
@@ -60,16 +60,16 @@ RSpec.describe "Profile page escaping", type: :request do
       end
 
       it "still hands the front end valid JSON with the original values" do
-        get "/_profiler/profiles/tok", {}, local
+        get "/_profiler/profiles/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", {}, local
 
         profile = embedded_profile
         expect(profile["params"]).to eq("q" => payload)
         expect(profile["headers"]).to eq("X-Note" => payload)
-        expect(profile["token"]).to eq("tok")
+        expect(profile["token"]).to eq("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")
       end
 
       it "escapes the embedded page too" do
-        get "/_profiler/profiles/tok", { embed: "true" }, local
+        get "/_profiler/profiles/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", { embed: "true" }, local
 
         expect(last_response.body).not_to include("</script><script>")
         expect(embedded_profile["params"]).to eq("q" => payload)

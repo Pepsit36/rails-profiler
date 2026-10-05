@@ -33,6 +33,8 @@ module Profiler
           ENV[key] = value
 
           [{ type: "text", text: "Set #{key}=#{value}" }]
+        rescue Profiler::EnvOverrideStore::Error => e
+          ::MCP::Tool::Response.new([{ type: "text", text: "Error: #{e.message}; #{key} was left unchanged." }], error: true)
         end
       end
     end

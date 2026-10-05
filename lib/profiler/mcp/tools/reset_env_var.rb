@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "mcp"
 require_relative "../slave_support"
 
 require "uri"
@@ -27,6 +28,8 @@ module Profiler
 
           done = restored ? "original value restored" : "ENV left unchanged"
           [{ type: "text", text: "Reset #{key}: override removed, #{done} in this process." }]
+        rescue Profiler::EnvOverrideStore::Error => e
+          ::MCP::Tool::Response.new([{ type: "text", text: "Error: #{e.message}; #{key} was left unchanged." }], error: true)
         end
       end
     end

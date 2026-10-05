@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "pathname"
 require_relative "local_request"
 
 module Profiler
@@ -39,7 +40,7 @@ module Profiler
                   :track_http, :slow_http_threshold, :http_skip_hosts, :http_backtrace_depth,
                   :track_jobs,
                   :track_console,
-                  :apply_env_overrides_when_disabled,
+                  :apply_env_overrides_when_disabled, :restrict_storage_permissions,
                   :test_runner_allow_undiscovered_files,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
                   :compress_bodies, :compress_body_threshold,
@@ -48,8 +49,6 @@ module Profiler
                   :cluster_heartbeat_interval, :cluster_offline_threshold,
                   :cluster_master, :cluster_secret, :cluster_require_secret,
                   :cluster_allow_insecure_http
-
-    attr_writer :tmp_path
 
     attr_reader :authorize_block, :enabled, :track_tests
 
@@ -100,6 +99,9 @@ module Profiler
       @filter_parameters = DEFAULT_FILTER_PARAMETERS.dup
       @env_allowlist = DEFAULT_ENV_ALLOWLIST.dup
       @tmp_path = nil
+      # The profiler's directories 0700 and files 0600 (Profiler::Storage::PrivateFiles). false
+      # leaves the modes to the umask, for a web process and workers running under two users.
+      @restrict_storage_permissions = true
       @name = nil
       @master_url = nil
       @self_url = nil
@@ -113,8 +115,13 @@ module Profiler
       @cluster_allow_insecure_http = false
     end
 
+    # Always a Pathname, whether set from a String or left to its default.
     def tmp_path
       @tmp_path || default_tmp_path
+    end
+
+    def tmp_path=(value)
+      @tmp_path = value.nil? ? nil : Pathname.new(value)
     end
 
     attr_reader :cluster_allowed_slave_urls
@@ -226,7 +233,7 @@ module Profiler
       if defined?(Rails) && Rails.respond_to?(:root) && Rails.root
         Rails.root.join("tmp", "rails-profiler")
       else
-        File.expand_path("tmp/rails-profiler", Dir.pwd)
+        Pathname.new(File.expand_path("tmp/rails-profiler", Dir.pwd))
       end
     end
 

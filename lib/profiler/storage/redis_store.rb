@@ -29,6 +29,8 @@ module Profiler
       end
 
       def load(token)
+        return nil unless Token.valid?(token)
+
         key = profile_key(token)
         json_data = @redis.get(key)
         return nil unless json_data
@@ -50,6 +52,8 @@ module Profiler
       end
 
       def find_by_parent(parent_token)
+        return [] unless Token.valid?(parent_token)
+
         # Get all tokens from the sorted set
         tokens = @redis.zrange(list_key, 0, -1)
 
@@ -61,6 +65,8 @@ module Profiler
       end
 
       def delete(token)
+        return unless Token.valid?(token)
+
         @redis.del(profile_key(token))
         @redis.zrem(list_key, token)
       end

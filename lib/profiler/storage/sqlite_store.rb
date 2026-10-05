@@ -4,6 +4,8 @@ require "json"
 require "fileutils"
 require_relative "base_store"
 require_relative "blob_store"
+require_relative "private_files"
+require_relative "token"
 require_relative "../models/profile"
 
 module Profiler
@@ -12,12 +14,12 @@ module Profiler
       def initialize(options = {})
         require "sqlite3"
 
-        db_path = options[:database] || default_db_path
-        blob_path = options[:blob_path] || default_blob_path
+        db_path = (options[:database] || default_db_path).to_s
+        blob_path = options[:blob_path] || PrivateFiles.tmp_dir("blobs")
 
-        FileUtils.mkdir_p(File.dirname(db_path))
+        prepare_database_file(db_path, default: options[:database].nil?)
 
-        @db = SQLite3::Database.new(db_path.to_s)
+        @db = SQLite3::Database.new(db_path)
         @db.results_as_hash = true
         @db.busy_timeout = 5000
         @db.execute("PRAGMA journal_mode=WAL")
@@ -83,6 +85,8 @@ module Profiler
       end
 
       def load(token)
+        return nil unless Token.valid?(token)
+
         row = @db.get_first_row(
           "SELECT * FROM profiler_profiles WHERE token = :token", token: token
         )
@@ -103,6 +107,8 @@ module Profiler
       end
 
       def find_by_parent(parent_token)
+        return [] unless Token.valid?(parent_token)
+
         rows = @db.execute(
           "SELECT * FROM profiler_profiles WHERE parent_token = :parent_token ORDER BY started_at ASC",
           parent_token: parent_token
@@ -111,6 +117,8 @@ module Profiler
       end
 
       def delete(token)
+        return unless Token.valid?(token)
+
         @db.execute("DELETE FROM profiler_profiles WHERE token = :token", token: token)
         @blob_store.delete(token)
       end
@@ -264,13 +272,23 @@ module Profiler
         default
       end
 
-      def default_db_path
-        File.join(Profiler.configuration.tmp_path.to_s, "profiler.db")
+      # SQLite gives the -wal and -shm files the mode of the database file: create it 0600 before
+      # SQLite does, and bring an older one, and its companions, back to 0600. An in-memory or URI
+      # database is left to SQLite.
+      def prepare_database_file(db_path, default:)
+        return if db_path == ":memory:" || db_path.start_with?("file:")
+
+        default ? PrivateFiles.tmp_dir : PrivateFiles.mkdir(File.dirname(db_path))
+        # A link in place of one of them is refused: SQLite would follow it.
+        %w[-wal -shm].each { |suffix| PrivateFiles.refuse_link("#{db_path}#{suffix}") }
+        PrivateFiles.touch(db_path)
+        %w[-wal -shm].each { |suffix| PrivateFiles.restrict("#{db_path}#{suffix}") }
       end
 
-      def default_blob_path
-        File.join(Profiler.configuration.tmp_path.to_s, "blobs")
+      def default_db_path
+        Profiler.configuration.tmp_path.join("profiler.db")
       end
+
     end
   end
 end

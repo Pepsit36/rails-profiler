@@ -2,9 +2,16 @@
 
 require "json"
 require "fileutils"
+require_relative "storage/private_files"
 
 module Profiler
   class EnvOverrideStore
+    # Raised by the methods a caller asked for (set, delete, reset, reset_all, clear and
+    # all_overrides) when the overrides file cannot be read or written. The caller then knows that
+    # nothing was changed. apply! and apply_at_boot! still only warn: they run at boot and before
+    # the application's jobs, where an override must never make the application fail.
+    class Error < Profiler::Error; end
+
     DELETED_SENTINEL = "__profiler_deleted__"
     RESTORE_SENTINEL = "__profiler_restore__"
 
@@ -30,53 +37,53 @@ module Profiler
     end
 
     def set(key, value)
-      remember_process_original(key)
-      update_overrides do |overrides|
-        overrides[key] = { "value" => value.to_s, "original" => original_for(overrides, key) }
+      surfacing("set #{key}") do
+        remember_process_original(key)
+        update_overrides do |overrides|
+          overrides[key] = { "value" => value.to_s, "original" => original_for(overrides, key) }
+        end
       end
-    rescue => e
-      warn "[Profiler] EnvOverrideStore: failed to set #{key}: #{e.message}"
     end
 
     def delete(key)
-      remember_process_original(key)
-      update_overrides do |overrides|
-        overrides[key] = { "value" => DELETED_SENTINEL, "original" => original_for(overrides, key) }
+      surfacing("delete #{key}") do
+        remember_process_original(key)
+        update_overrides do |overrides|
+          overrides[key] = { "value" => DELETED_SENTINEL, "original" => original_for(overrides, key) }
+        end
       end
-    rescue => e
-      warn "[Profiler] EnvOverrideStore: failed to delete #{key}: #{e.message}"
     end
 
     # Returns whether ENV was written in this process.
     def reset(key)
       entry = nil
-      update_overrides do |overrides|
-        entry = overrides[key]
-        # Keep a RESTORE entry so Sidekiq workers pick it up on next job
-        overrides[key] = { "value" => RESTORE_SENTINEL, "original" => entry["original"] } if entry
+      surfacing("reset #{key}") do
+        update_overrides do |overrides|
+          entry = overrides[key]
+          # Keep a RESTORE entry so Sidekiq workers pick it up on next job
+          overrides[key] = { "value" => RESTORE_SENTINEL, "original" => entry["original"] } if entry
+        end
       end
 
       # Apply immediately to the current (web) process
       restore_env(key, entry, blocked: blocked_reason)
-    rescue => e
-      warn "[Profiler] EnvOverrideStore: failed to reset #{key}: #{e.message}"
     end
 
     def reset_all
       originals = {}
-      update_overrides do |overrides|
-        overrides.each do |key, entry|
-          originals[key] = entry.is_a?(Hash) ? entry["original"] : nil
-          # Leave a RESTORE sentinel for Sidekiq workers to pick up
-          overrides[key] = { "value" => RESTORE_SENTINEL, "original" => originals[key] }
+      surfacing("reset the overrides") do
+        update_overrides do |overrides|
+          overrides.each do |key, entry|
+            originals[key] = entry.is_a?(Hash) ? entry["original"] : nil
+            # Leave a RESTORE sentinel for Sidekiq workers to pick up
+            overrides[key] = { "value" => RESTORE_SENTINEL, "original" => originals[key] }
+          end
         end
       end
 
       # Apply immediately to the current (web) process
       blocked = blocked_reason
       originals.each { |key, original| restore_env(key, { "original" => original }, blocked: blocked) }
-    rescue => e
-      warn "[Profiler] EnvOverrideStore: failed to reset all: #{e.message}"
     end
 
     # Why the persisted overrides must not reach ENV in this process, or nil when they may.
@@ -154,26 +161,35 @@ module Profiler
       warn "[Profiler] EnvOverrideStore: failed to apply overrides: #{e.message}"
     end
 
-    # Returns active overrides (excludes RESTORE entries — already being reverted)
+    # Returns active overrides (excludes RESTORE entries, already being reverted)
+    # A file that does not parse reads as no override; one that cannot be read raises Error.
     def all_overrides
-      load_overrides.reject do |_, entry|
-        value = entry.is_a?(Hash) ? entry["value"] : entry
-        value == RESTORE_SENTINEL
-      end.transform_values do |entry|
-        entry.is_a?(Hash) ? entry : { "value" => entry, "original" => nil }
+      surfacing("read the overrides") do
+        load_overrides.reject do |_, entry|
+          value = entry.is_a?(Hash) ? entry["value"] : entry
+          value == RESTORE_SENTINEL
+        end.transform_values do |entry|
+          entry.is_a?(Hash) ? entry : { "value" => entry, "original" => nil }
+        end
       end
-    rescue => e
-      warn "[Profiler] EnvOverrideStore: failed to load overrides: #{e.message}"
-      {}
     end
 
     def clear
-      with_lock { FileUtils.rm_f(override_file_path) }
-    rescue => e
-      warn "[Profiler] EnvOverrideStore: failed to clear: #{e.message}"
+      surfacing("clear the overrides") { with_lock { FileUtils.rm_f(override_file_path) } }
     end
 
     private
+
+    # The message names the file relative to tmp_path, and an Errno by its description only: it
+    # goes back to the Env tab, the MCP tools and the test runner output, without absolute paths.
+    def surfacing(action)
+      yield
+    rescue Error
+      raise
+    rescue StandardError => e
+      reason = e.is_a?(SystemCallError) ? e.class.new.message : e.class.name
+      raise Error, "could not #{action} in env_overrides.json under tmp_path: #{reason}"
+    end
 
     def remember_process_original(key)
       @process_originals_lock.synchronize do
@@ -227,8 +243,8 @@ module Profiler
     # An exclusive flock on a file next to the overrides file. Not reentrant: never nest it.
     def with_lock
       path = override_file_path
-      FileUtils.mkdir_p(path.dirname)
-      File.open("#{path}.lock", File::RDWR | File::CREAT, 0o644) do |lock|
+      Storage::PrivateFiles.tmp_dir
+      Storage::PrivateFiles.open("#{path}.lock") do |lock|
         lock.flock(File::LOCK_EX)
         yield
       end
@@ -237,12 +253,7 @@ module Profiler
     # Written to a temporary file then renamed over the old one, so that a reader never sees a
     # half-written file, which would parse as no override at all.
     def save_overrides(overrides)
-      path = override_file_path
-      tmp = "#{path}.#{Process.pid}.#{Thread.current.object_id}.tmp"
-      File.write(tmp, JSON.generate(overrides))
-      File.rename(tmp, path)
-    ensure
-      FileUtils.rm_f(tmp) if tmp
+      Storage::PrivateFiles.write(override_file_path, JSON.generate(overrides))
     end
   end
 end
