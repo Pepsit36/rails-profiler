@@ -90,6 +90,7 @@ RSpec.describe "Railtie honoring enabled from the application's initializers" do
         "enabled" => Profiler.configuration.enabled,
         "storage" => Profiler.configuration.storage.to_s,
         "track_tests" => Profiler.configuration.track_tests,
+        "max_profiles" => Profiler.configuration.max_profiles,
         "middleware" => profiler_middlewares,
         "stack_top" => ProbeApp.middleware.map(&:name).first(3),
         "sidekiq" => Sidekiq::CALLS,
@@ -171,6 +172,22 @@ RSpec.describe "Railtie honoring enabled from the application's initializers" do
       expect(result["irb"]).to be(true)
       expect(result["token_header"]).to be_a(String)
       expect(result["profiles"]).to be >= 1
+    end
+  end
+
+  # One test profile per example: the report at the end of a suite must see all of them.
+  context "max_profiles" do
+    it "has no cap on the count in the test environment" do
+      expect(boot(rails_env: "test", initializer: nil)["max_profiles"]).to be_nil
+    end
+
+    it "keeps 100 profiles in development" do
+      expect(boot(rails_env: "development", initializer: nil)["max_profiles"]).to eq(100)
+    end
+
+    it "keeps the value the application sets, in the test environment too" do
+      result = boot(rails_env: "test", initializer: "Profiler.configure { |c| c.max_profiles = 300 }")
+      expect(result["max_profiles"]).to eq(300)
     end
   end
 
