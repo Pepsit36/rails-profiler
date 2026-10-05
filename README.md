@@ -635,13 +635,15 @@ removes every profile past it, the first saved first: of 3,000 profiles of 17 KB
 0.31.1, about 80 remain, and that first save takes about a second, during which the other
 processes writing to the same file store wait. The Redis store does it on first use, a save or a
 list, in the one process that indexes the data of the earlier version (about 0.4 s for 20,000
-profiles); the other processes go on meanwhile. To keep them, set `config.max_profiles` (to a
+profiles); the other processes go on meanwhile. With no cap on the count, that indexing reads
+every profile once, in that one request: about 5 s for 20,000 profiles, paid once. To keep them, set `config.max_profiles` (to a
 higher number, or `nil`) **before** upgrading.
 
 A store that cannot be created (its index or lock replaced by a symbolic link, a directory it
-cannot write) is reported once per process, as a warning: the profiles are not saved, the
-dashboard shows the cause, and the store is created again on the next request once the cause is
-gone.
+cannot write) is reported once per process, as a warning: the profiles are not saved and no
+toolbar is added to the pages, the dashboard and its API answer `503` with the cause in one line
+(no path), the MCP tools an error with it, and the store is created again on the next request
+once the cause is gone.
 
 With no cap on the count (`nil`, the default in the test environment), the file store index can
 grow large: with 30,000 profiles it is about 16 MB, read in about a second by the first list of
