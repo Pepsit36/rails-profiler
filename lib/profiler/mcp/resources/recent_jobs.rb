@@ -5,8 +5,8 @@ module Profiler
     module Resources
       class RecentJobs
         def self.call
-          profiles = Profiler.storage.list(limit: 200)
-          jobs = profiles.select { |p| p.profile_type == "job" }.first(50)
+          profiles = Profiler.storage.list(limit: 50, type: "job")
+          jobs = profiles.select { |p| p.profile_type == "job" }
 
           data = jobs.map do |profile|
             job_data = profile.collector_data("job") || {}

@@ -4,20 +4,16 @@ module Profiler
   module Api
     class ProfilesController < ApplicationController
       def index
-        limit  = (params[:limit]  || 50).to_i
-        offset = (params[:offset] || 0).to_i
-        all    = Profiler.storage.list(limit: 1000, offset: 0)
         # all_types is an opt-in used by the cluster proxy so it can mirror the full
-        # storage.list contract; the dashboard relies on the default http-only filter.
-        scope  = all_types? ? all : all.select { |p| p.profile_type == "http" }
-        scope  = scope.select { |p| p.parent_token == params[:parent_token] } if params[:parent_token].present?
-        page   = scope.drop(offset).first(limit + 1)
-        render json: {
-          profiles: page.first(limit).map(&:to_h),
-          limit:    limit,
-          offset:   offset,
-          has_more: page.size > limit
-        }
+        # storage.list contract (every type, or the one given as type, full profiles); the
+        # dashboard relies on the default: http profiles, as summaries.
+        if params[:parent_token].present?
+          render_children_page
+        elsif all_types?
+          render_profile_page(type: profile_type_param, summary: false)
+        else
+          render_profile_page(type: "http")
+        end
       end
 
       def show
@@ -57,22 +53,16 @@ module Profiler
         %w[1 true].include?(params[:all_types].to_s)
       end
 
-      def recalculate_ajax_data(profile)
-        # Find AJAX collector in the configured collectors
-        ajax_collector_class = Profiler::Collectors::AjaxCollector
+      def profile_type_param
+        params[:type].to_s.match?(/\A[a-z_]{1,32}\z/) ? params[:type].to_s : nil
+      end
 
-        if Profiler.configuration.collectors.include?(ajax_collector_class)
-          collector = ajax_collector_class.new(profile)
-          collector.collect
-
-          # Update tab metadata to reflect has_data status
-          if profile.instance_variable_get(:@collectors_metadata)
-            ajax_tab = profile.instance_variable_get(:@collectors_metadata).find { |tab| tab[:key] == 'ajax' }
-            if ajax_tab
-              ajax_tab[:has_data] = collector.has_data?
-            end
-          end
-        end
+      # The children of a page, oldest last, read through the store's parent index.
+      def render_children_page
+        limit, offset = page_params
+        children = Profiler.storage.find_by_parent(params[:parent_token].to_s).reverse
+        children = children.select { |p| p.profile_type == "http" } unless all_types?
+        render_page(children.drop(offset).first(limit + 1), limit, offset)
       end
     end
   end

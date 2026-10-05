@@ -24,26 +24,6 @@ module Profiler
           events_cursor: events_cursor
         }
       end
-
-      private
-
-      def recalculate_ajax_data(profile)
-        # Find AJAX collector in the configured collectors
-        ajax_collector_class = Profiler::Collectors::AjaxCollector
-
-        if Profiler.configuration.collectors.include?(ajax_collector_class)
-          collector = ajax_collector_class.new(profile)
-          collector.collect
-
-          # Update tab metadata to reflect has_data status
-          if profile.instance_variable_get(:@collectors_metadata)
-            ajax_tab = profile.instance_variable_get(:@collectors_metadata).find { |tab| tab[:key] == 'ajax' }
-            if ajax_tab
-              ajax_tab[:has_data] = collector.has_data?
-            end
-          end
-        end
-      end
     end
   end
 end

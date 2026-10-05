@@ -33,11 +33,13 @@ module Profiler
 
       # Storage-compatible interface for MCP query tools
 
-      def list(limit: 50, offset: 0, **)
-        # all_types mirrors Profiler.storage.list, which returns every profile type;
-        # without it the proxy would only ever see http profiles (see ProfilesController#index).
-        data = get_json("/_profiler/api/profiles", limit: limit, offset: offset, all_types: true)
-        Array(data["profiles"]).map { |h| profile_from_api(h) }
+      def list(limit: 50, offset: 0, type: nil, **)
+        # all_types mirrors Profiler.storage.list, which returns every profile type, or the one
+        # given as type; without it the proxy would only ever see http profiles (see
+        # ProfilesController#index). A slave of an earlier version ignores type: filtered here too.
+        data = get_json("/_profiler/api/profiles", limit: limit, offset: offset, all_types: true, type: type)
+        profiles = Array(data["profiles"]).map { |h| profile_from_api(h) }
+        type ? profiles.select { |p| p.profile_type == type.to_s } : profiles
       end
 
       # A token that is not one the gem issues is not found, without asking the slave.

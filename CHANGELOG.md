@@ -19,6 +19,62 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.31.4] - 2026-10-05
+
+<!-- stamped -->
+
+### Fixed
+
+- **Storage:** A save into the file store costs the same whatever the number of profiles on disk:
+  it listed the directory and read the size of every file on each save, about 5 ms with 500
+  profiles and 100 ms with 10,000, now under 1 ms. The store keeps an index next to the profiles
+  (`.profiles-index.jsonl`, with its lock `.profiles-index.lock`), which the processes writing to
+  the directory share; a missing or damaged one is rebuilt from the profile files, so the profiles
+  already saved are found without any migration. Temporary files left by a killed process are now
+  removed. The index relies on `flock`: a file store shared between hosts over NFS is not
+  supported, use Redis there.
+- **Storage:** `config.max_profiles` (100) is honoured by every backend, the first saved profiles
+  evicted first (a job saved when it ends counts as new, whenever it started): only the memory
+  store applied it, so the file store grew to `max_size` (100 MB,
+  tens of thousands of profiles), SQLite without limit and Redis up to its TTL. In the test
+  environment, where every example saves a profile, there is no cap on the count unless the
+  application sets one.
+- **Storage:** Finding the children of a page (its AJAX sub-requests and its jobs) reads only
+  them, through an index of their parent, instead of reading and parsing every stored profile
+  (about 260 ms with 1,500 profiles of 17 KB in the file store, now under 1 ms). Every profile page
+  and toolbar paid it, once for the child jobs and once more for the AJAX tab; they now read the
+  children once.
+- **Dashboard:** The HTTP, job, console and test lists are filtered and paged by the storage, and
+  list summaries of the profiles (without the bodies, params, headers and nested collector data):
+  they loaded the 1,000 newest profiles in full on every page (about 200 ms with 1,500 profiles of
+  17 KB, now under 10 ms), showed nothing past the thousandth, said there was no next page there,
+  and missed the profiles of one type behind 1,000 newer ones of another. The MCP tools and
+  resources that list one type of profile (jobs, console, tests) and the test report ask the
+  storage for that type too, and found nothing behind 500 newer profiles of another type.
+- **AJAX:** The AJAX tab shows the sub-requests of a page whatever `config.collectors` holds: it
+  only appeared with `AjaxCollector` in the list, which the default list does not have. The jobs a
+  page enqueued are no longer counted as AJAX requests: they stay under its child jobs. The MCP
+  tool `get_profile_ajax` finds the sub-requests too: it read the AJAX data saved with the page,
+  before any sub-request.
+- **Storage:** The storage is created once, under a lock: the first requests of a threaded server
+  could each create their own store (16 for 16 threads in the spec), and with the memory store the
+  profiles saved in all but one were lost. Several file, SQLite or Redis stores share their data
+  and lost nothing.
+- **Storage:** A store that cannot be created (its index or lock replaced by a symbolic link, say)
+  is reported once per process instead of with a backtrace on every request: the profiles are not
+  saved and no toolbar is added, the dashboard and its API answer `503` with the cause in one line
+  (no path) instead of a `500`, the MCP tools an error with it, and the store is created again
+  once the cause is gone.
+- **Upgrading:** the file, SQLite and Redis stores now keep 100 profiles outside the test
+  environment, and **the first save after the upgrade removes the profiles past the cap**, the
+  first saved first: of 3,000 profiles written by 0.31.1 in the file store, about 80 remain, and
+  that first save takes about a second, during which the other processes writing to the store
+  wait. To keep them, set `config.max_profiles` (or `storage_options[:max_profiles]`) **before**
+  upgrading: to a higher number, or to `nil` for the earlier behaviour, no cap on the count (the
+  file store then keeps up to `max_size`, Redis up to its TTL). The memory store keeps 100 with
+  `nil`, as before. A Redis store written by an earlier version is indexed once, by one process,
+  on first use, which also removes the profiles past the cap then (about 0.4 s for 20,000).
+
 ## [0.31.3] - 2026-10-05
 
 <!-- stamped -->

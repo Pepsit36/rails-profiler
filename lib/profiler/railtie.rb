@@ -15,6 +15,9 @@ module Profiler
         config.default(:enabled, development_or_test)
         config.default(:storage, development_or_test ? :file : :memory)
         config.default(:track_tests, Rails.env.test?)
+        # One test profile per example: no cap on the count in the test environment, so that the
+        # report at the end of a suite sees all of them.
+        config.default(:max_profiles, Rails.env.test? ? nil : 100)
 
         app.config.profiler.each do |key, value|
           if config.respond_to?("#{key}=")

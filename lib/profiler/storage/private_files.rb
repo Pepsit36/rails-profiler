@@ -70,6 +70,19 @@ module Profiler
         FileUtils.rm_f(tmp) if tmp
       end
 
+      # Appends data to path in one write, creating it 0600 when missing: lines appended by
+      # several processes this way do not interleave.
+      def append(path, data)
+        File.open(path.to_s, File::WRONLY | File::APPEND | File::CREAT | nofollow, new_file_mode) do |file|
+          file.write(data)
+        end
+      end
+
+      # Opens path for reading, refusing a symbolic link while the modes are restricted.
+      def open_for_reading(path, &block)
+        File.open(path.to_s, File::RDONLY | nofollow, &block)
+      end
+
       # Opens path for reading and writing, creating it 0600 when missing.
       def open(path, &block)
         File.open(path.to_s, File::RDWR | File::CREAT | nofollow, new_file_mode, &block)

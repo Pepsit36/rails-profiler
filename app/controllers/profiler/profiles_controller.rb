@@ -144,22 +144,6 @@ module Profiler
       end
     end
 
-    def recalculate_ajax_data(profile)
-      ajax_collector_class = Profiler::Collectors::AjaxCollector
-
-      if Profiler.configuration.collectors.include?(ajax_collector_class)
-        collector = ajax_collector_class.new(profile, storage: @resolved_storage || Profiler.storage)
-        collector.collect
-
-        if profile.instance_variable_get(:@collectors_metadata)
-          ajax_tab = profile.instance_variable_get(:@collectors_metadata).find { |tab| tab[:key] == 'ajax' }
-          if ajax_tab
-            ajax_tab[:has_data] = collector.has_data?
-          end
-        end
-      end
-    end
-
     def filter_profiles(profiles)
       filtered = profiles
 

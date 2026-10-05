@@ -14,7 +14,7 @@ module Profiler
 
           storage = MCP::SlaveSupport.resolve_storage(params)
           profile = if token == "latest"
-            profiles = storage.list(limit: 200)
+            profiles = storage.list(limit: 1, type: "test")
             profiles.find { |p| p.profile_type == "test" }
           else
             storage.load(token)

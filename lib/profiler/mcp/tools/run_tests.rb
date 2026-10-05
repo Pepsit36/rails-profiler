@@ -114,7 +114,7 @@ module Profiler
         end
 
         def self.collect_run_profiles(since)
-          Profiler.storage.list(limit: 500).select do |p|
+          Profiler.storage.list(limit: 500, type: "test").select do |p|
             p.profile_type == "test" && p.started_at && p.started_at >= since
           end.map(&:token)
         rescue

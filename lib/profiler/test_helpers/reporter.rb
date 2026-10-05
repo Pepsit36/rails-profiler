@@ -8,7 +8,7 @@ module Profiler
       def self.print
         return unless Profiler.enabled?
 
-        profiles = Profiler.storage.list(limit: 1000).select { |p| p.profile_type == "test" }
+        profiles = Profiler.storage.list(limit: 1000, type: "test").select { |p| p.profile_type == "test" }
         return if profiles.empty?
 
         passed  = profiles.count { |p| test_status(p) == "passed" }

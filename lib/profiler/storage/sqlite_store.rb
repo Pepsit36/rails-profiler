@@ -5,14 +5,20 @@ require "fileutils"
 require_relative "base_store"
 require_relative "blob_store"
 require_relative "private_files"
+require_relative "summary"
 require_relative "token"
 require_relative "../models/profile"
 
 module Profiler
   module Storage
     class SqliteStore < BaseStore
+      # Past max_profiles, the oldest profiles are evicted down to this share of it.
+      LOW_WATER = 0.8
+
       def initialize(options = {})
         require "sqlite3"
+
+        @max_profiles = options.key?(:max_profiles) ? options[:max_profiles] : Profiler.configuration.max_profiles
 
         db_path = (options[:database] || default_db_path).to_s
         blob_path = options[:blob_path] || PrivateFiles.tmp_dir("blobs")
@@ -55,11 +61,11 @@ module Profiler
             INSERT OR REPLACE INTO profiler_profiles (
               token, profile_type, gem_version, path, method, status, duration, memory,
               started_at, finished_at, parent_token, is_ajax,
-              tabs, params, headers, response_headers, collectors_meta
+              tabs, params, headers, response_headers, collectors_meta, summary
             ) VALUES (
               :token, :profile_type, :gem_version, :path, :method, :status, :duration, :memory,
               :started_at, :finished_at, :parent_token, :is_ajax,
-              :tabs, :params, :headers, :response_headers, :collectors_meta
+              :tabs, :params, :headers, :response_headers, :collectors_meta, :summary
             )
           SQL
           token:            token,
@@ -78,8 +84,10 @@ module Profiler
           params:           JSON.generate(data[:params] || {}),
           headers:          JSON.generate(data[:headers] || {}),
           response_headers: JSON.generate(data[:response_headers] || {}),
-          collectors_meta:  JSON.generate(collectors_meta)
+          collectors_meta:  JSON.generate(collectors_meta),
+          summary:          JSON.generate(Summary.build(data))
         )
+        evict_oldest
 
         token
       end
@@ -98,12 +106,18 @@ module Profiler
         nil
       end
 
-      def list(limit: 50, offset: 0)
+      # Newest first. summary: true reads the summary column only, for the rows that have it.
+      def list(limit: 50, offset: 0, type: nil, summary: false)
+        where = type ? "WHERE profile_type = :type" : ""
+        # The summaries need neither the params, headers and tabs nor the collector data.
+        columns = summary ? "token, summary" : "*"
         rows = @db.execute(
-          "SELECT * FROM profiler_profiles ORDER BY started_at DESC LIMIT :limit OFFSET :offset",
-          limit: limit, offset: offset
+          "SELECT #{columns} FROM profiler_profiles #{where} ORDER BY started_at DESC, rowid DESC LIMIT :limit OFFSET :offset",
+          { limit: limit, offset: offset }.merge(type ? { type: type.to_s } : {})
         )
-        rows.map { |row| row_to_profile(row, load_blobs: false) }.compact
+        return rows.filter_map { |row| row_to_profile(row, load_blobs: false) } unless summary
+
+        rows.filter_map { |row| row_to_summary(row) }
       end
 
       def find_by_parent(parent_token)
@@ -146,6 +160,40 @@ module Profiler
       end
 
       private
+
+      # In the order the profiles were written (rowid: INSERT OR REPLACE gives a saved again
+      # profile a new one), not started: a job saved when it ends is a new profile, and the one
+      # just written is never evicted. One query on the rowid tells whether the table holds more
+      # than max_profiles.
+      def evict_oldest
+        return unless @max_profiles
+        return unless @db.get_first_value(
+          "SELECT 1 FROM profiler_profiles ORDER BY rowid DESC LIMIT 1 OFFSET :max", max: @max_profiles
+        )
+
+        keep = [(@max_profiles * LOW_WATER).floor, 1].max
+        tokens = @db.execute(
+          "SELECT token FROM profiler_profiles ORDER BY rowid DESC LIMIT -1 OFFSET :keep", keep: keep
+        ).map { |r| r["token"] }
+        tokens.each_slice(500) do |slice|
+          @db.execute("DELETE FROM profiler_profiles WHERE token IN (#{(["?"] * slice.size).join(",")})", slice)
+        end
+        tokens.each { |token| @blob_store.delete(token) }
+      end
+
+      # A row written before the summary column falls back to the whole row, summarized.
+      def row_to_summary(row)
+        if row["summary"].nil? || row["summary"].empty?
+          full = @db.get_first_row("SELECT * FROM profiler_profiles WHERE token = :token", token: row["token"])
+          profile = full && row_to_profile(full, load_blobs: false)
+          return profile && Summary.to_profile(Summary.build(profile))
+        end
+
+        Summary.to_profile(JSON.parse(row["summary"]))
+      rescue JSON::ParserError => e
+        warn "SqliteStore: failed to read the summary of #{row["token"]}: #{e.message}"
+        nil
+      end
 
       def save_http_response_bodies(token, requests)
         bodies = requests.map do |req|
@@ -213,8 +261,8 @@ module Profiler
             ON profiler_profiles(profile_type);
         SQL
 
-        begin
-          @db.execute("ALTER TABLE profiler_profiles ADD COLUMN gem_version TEXT")
+        %w[gem_version summary].each do |column|
+          @db.execute("ALTER TABLE profiler_profiles ADD COLUMN #{column} TEXT")
         rescue SQLite3::Exception
           # column already exists
         end

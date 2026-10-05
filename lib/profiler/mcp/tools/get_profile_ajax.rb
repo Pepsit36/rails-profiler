@@ -22,6 +22,8 @@ module Profiler
             return [{ type: "text", text: "Profile not found: #{token}" }]
           end
 
+          # The sub-requests are saved after the page: computed from its children, as the page does.
+          Profiler::AjaxData.attach(profile, storage.find_by_parent(profile.token))
           ajax_data = profile.collector_data("ajax")
           unless ajax_data && ajax_data["total_requests"].to_i > 0
             return [{ type: "text", text: "No AJAX requests found in this profile" }]

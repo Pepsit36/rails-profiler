@@ -8,6 +8,9 @@ paths:
   "/_profiler/api/console":
     get:
       summary: List console profiles
+      description: Newest first, filtered and paged by the storage, has_more right at any offset.
+        Each profile is a summary - no params, headers, bodies or tabs, and only the scalar values
+        of each collector - the full profile is at the show endpoint.
       operationId: listConsoles
       tags:
       - Console
@@ -263,6 +266,9 @@ paths:
   "/_profiler/api/jobs":
     get:
       summary: List job profiles
+      description: Newest first, filtered and paged by the storage, has_more right at any offset.
+        Each profile is a summary - no params, headers, bodies or tabs, and only the scalar values
+        of each collector - the full profile is at the show endpoint.
       operationId: listJobs
       tags:
       - Jobs
@@ -347,6 +353,9 @@ paths:
   "/_profiler/api/profiles":
     get:
       summary: List HTTP profiles
+      description: Newest first, filtered and paged by the storage, has_more right at any offset.
+        Each profile is a summary - no params, headers, bodies or tabs, and only the scalar values
+        of each collector - the full profile is at the show endpoint.
       operationId: listProfiles
       tags:
       - Profiles
@@ -496,6 +505,9 @@ paths:
   "/_profiler/api/tests":
     get:
       summary: List test profiles
+      description: Newest first, filtered and paged by the storage, has_more right at any offset.
+        Each profile is a summary - no params, headers, bodies or tabs, and only the scalar values
+        of each collector - the full profile is at the show endpoint.
       operationId: listTests
       tags:
       - Tests

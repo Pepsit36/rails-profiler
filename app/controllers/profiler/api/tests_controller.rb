@@ -4,17 +4,7 @@ module Profiler
   module Api
     class TestsController < ApplicationController
       def index
-        limit  = (params[:limit]  || 50).to_i
-        offset = (params[:offset] || 0).to_i
-        all    = Profiler.storage.list(limit: 1000, offset: 0)
-        tests  = all.select { |p| p.profile_type == "test" }
-        page   = tests.drop(offset).first(limit + 1)
-        render json: {
-          profiles: page.first(limit).map(&:to_h),
-          limit:    limit,
-          offset:   offset,
-          has_more: page.size > limit
-        }
+        render_profile_page(type: "test")
       end
 
       def show

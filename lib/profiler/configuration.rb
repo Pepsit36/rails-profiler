@@ -29,13 +29,15 @@ module Profiler
 
     # Options whose default depends on the Rails environment: the railtie sets them only when
     # the application has not assigned them itself (see #default).
-    RAILS_DEFAULTED = %i[enabled storage track_tests].freeze
+    RAILS_DEFAULTED = %i[enabled storage track_tests max_profiles].freeze
+
+    BACKEND_LOCK = Mutex.new
 
     attr_accessor :storage_options, :collectors,
                   :skip_paths, :slow_query_threshold, :max_queries_warning, :sql_backtrace,
                   :track_memory, :allocated_objects_warning_threshold,
                   :mcp_enabled, :mcp_transport, :mcp_port,
-                  :authorization_mode, :max_profiles, :extension_cors_enabled,
+                  :authorization_mode, :extension_cors_enabled,
                   :cors_allowed_origins, :api_forgery_protection, :frame_ancestors,
                   :track_ajax, :ajax_skip_paths,
                   :track_http, :slow_http_threshold, :http_skip_hosts, :http_backtrace_depth,
@@ -51,7 +53,7 @@ module Profiler
                   :cluster_master, :cluster_secret, :cluster_require_secret,
                   :cluster_allow_insecure_http
 
-    attr_reader :authorize_block, :enabled, :track_tests
+    attr_reader :authorize_block, :enabled, :track_tests, :max_profiles
 
     def initialize
       @assigned = []
@@ -181,6 +183,13 @@ module Profiler
       @track_tests = value
     end
 
+    # How many profiles a store keeps, the oldest evicted first; nil for no cap on the count (the
+    # memory store still keeps 100). The railtie leaves it nil in the test environment.
+    def max_profiles=(value)
+      @assigned |= [:max_profiles]
+      @max_profiles = value
+    end
+
     # Sets one of RAILS_DEFAULTED to value unless the application assigned it, in
     # config/application.rb for instance, which runs before the railtie's initializers.
     def default(option, value)
@@ -246,8 +255,10 @@ module Profiler
       @storage_backend = nil
     end
 
+    # Under a lock of its own, for a caller that asks the configuration directly; Profiler.storage
+    # takes it inside its own, always in that order.
     def storage_backend
-      @storage_backend ||= build_storage_backend
+      @storage_backend || BACKEND_LOCK.synchronize { @storage_backend ||= build_storage_backend }
     end
 
     private
