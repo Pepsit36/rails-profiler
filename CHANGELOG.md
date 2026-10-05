@@ -23,6 +23,46 @@ every commit of every tag interval is accounted for one way or the other.
 
 <!-- stamped -->
 
+### Fixed
+
+- **Storage:** Keep the file store's profiles in `tmp_path/profiles` by default, and take only the
+  files named after a profile token for profiles. Profiles shared `tmp_path` with
+  `env_overrides.json`, which the store listed as a profile with no token and deleted when the
+  profiles were cleared. An application that sets `storage_options[:path]` keeps its directory,
+  used as given (no subdirectory is added).
+- **MCP:** Keep the bodies saved by the MCP tools in `tmp_path/mcp-cache`, and let their hourly
+  cleanup remove only the token directories it wrote there. It removed every directory of
+  `tmp_path` older than an hour, the SQLite store's blobs included, at random (one save in
+  twenty), which lost the stored HTTP response bodies.
+- **Configuration:** `config.tmp_path` is always a `Pathname`: it was a `String` outside Rails, and
+  kept a `String` assigned to it, which made every env override operation fail with only a
+  warning. A failure to read or write the env overrides now reaches the Env tab (`500` with the
+  error, `ENV` left unchanged) and the MCP env tools (an error answer) instead of reporting a
+  success; at boot, before a Sidekiq job and before a console evaluation it is still a warning,
+  so an override never makes the application fail.
+- **Upgrading:** for the default `tmp_path`; adapt the paths if you set one.
+  - Profiles saved by the file store in `tmp/rails-profiler` itself are no longer listed, and are
+    not moved. To remove them, with the old MCP body cache, run from the application root:
+    ```sh
+    LC_ALL=C find tmp/rails-profiler -maxdepth 1 -type f -name '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json' -delete
+    LC_ALL=C find tmp/rails-profiler -mindepth 1 -maxdepth 1 -type d -name '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]' -exec rm -rf {} +
+    ```
+    Both only match names made of 32 lower-case hexadecimal digits, a profile token (`LC_ALL=C`
+    keeps `[0-9a-f]` from matching upper-case letters in some locales): `env_overrides.json`, the
+    SQLite database, `blobs`, `profiles` and `mcp-cache` are left alone.
+  - To keep reading the old profiles instead, set
+    `config.storage_options = { path: Rails.root.join("tmp", "rails-profiler") }`, and then do
+    **not** run the first command: it would delete the current profiles.
+  - The directory `tmp/rails-profiler` created by an earlier version keeps its mode: run
+    `chmod 700 tmp/rails-profiler` to restrict it.
+  - If the web process and the workers reading the env overrides or a shared file or SQLite store
+    run as two different users, set `config.restrict_storage_permissions = false` to create new
+    files with the modes of the umask, as before. It does not reopen what was already created
+    `0700` and `0600`: run `chmod -R u=rwX,go=rX tmp/rails-profiler` for the modes earlier
+    versions created with the usual umask (`0755` and `0644`). A worker under another user that
+    also writes there (it opens `env_overrides.json.lock` for writing) needs a group shared with
+    the web process, a umask of `002`, and `chmod -R ug=rwX,o=rX tmp/rails-profiler`.
+
 ### Security
 
 - **Storage:** Check every profile token against the format the profiler issues (32 hexadecimal
@@ -46,49 +86,6 @@ every commit of every tag interval is accounted for one way or the other.
   symbolic link placed where the profiler keeps its SQLite database, its `-wal` or `-shm` file or
   the lock of the env overrides is refused instead of followed, and an existing `tmp_path` that
   belongs to another user or that group or others can write to is reported once with a warning.
-
-### Fixed
-
-- **Storage:** Keep the file store's profiles in `tmp_path/profiles` by default, and take only the
-  files named after a profile token for profiles. Profiles shared `tmp_path` with
-  `env_overrides.json`, which the store listed as a profile with no token and deleted when the
-  profiles were cleared. An application that sets `storage_options[:path]` keeps its directory,
-  used as given (no subdirectory is added).
-- **MCP:** Keep the bodies saved by the MCP tools in `tmp_path/mcp-cache`, and let their hourly
-  cleanup remove only the token directories it wrote there. It removed every directory of
-  `tmp_path` older than an hour, the SQLite store's blobs included, at random (one save in
-  twenty), which lost the stored HTTP response bodies.
-- **Configuration:** `config.tmp_path` is always a `Pathname`: it was a `String` outside Rails, and
-  kept a `String` assigned to it, which made every env override operation fail with only a
-  warning. A failure to read or write the env overrides now reaches the Env tab (`500` with the
-  error, `ENV` left unchanged) and the MCP env tools (an error answer) instead of reporting a
-  success; at boot, before a Sidekiq job and before a console evaluation it is still a warning,
-  so an override never makes the application fail.
-
-**Upgrading:** profiles saved by the file store in `tmp/rails-profiler` itself are no longer
-listed, and are not moved. To remove them, with the old MCP body cache, run from the application
-root (for the default `tmp_path`; adapt the path if you set one):
-
-```sh
-LC_ALL=C find tmp/rails-profiler -maxdepth 1 -type f -name '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json' -delete
-LC_ALL=C find tmp/rails-profiler -mindepth 1 -maxdepth 1 -type d -name '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]' -exec rm -rf {} +
-```
-
-Both only match names made of 32 lower-case hexadecimal digits, a profile token (`LC_ALL=C` keeps
-`[0-9a-f]` from matching upper-case letters in some locales): `env_overrides.json`, the SQLite
-database, `blobs`, `profiles` and `mcp-cache` are left alone. To keep reading the old profiles
-instead, set `config.storage_options = { path: Rails.root.join("tmp", "rails-profiler") }`, and then
-do **not** run the first command: it would delete the current profiles.
-
-The directory `tmp/rails-profiler` created by an earlier version keeps its mode: run
-`chmod 700 tmp/rails-profiler` to restrict it. If the web process and the workers reading the env
-overrides or a shared file or SQLite store run as two different users, set
-`config.restrict_storage_permissions = false` to create new files with the modes of the umask, as
-before. It does not reopen what was already created `0700` and `0600`: run
-`chmod -R u=rwX,go=rX tmp/rails-profiler` for the modes earlier versions created with the usual
-umask (`0755` and `0644`). A worker under another user that also writes there (it opens
-`env_overrides.json.lock` for writing) needs a group shared with the web process, a umask of `002`,
-and `chmod -R ug=rwX,o=rX tmp/rails-profiler`.
 
 ## [0.31.0] - 2026-10-05
 
