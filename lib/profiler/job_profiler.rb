@@ -71,7 +71,7 @@ module Profiler
 
       exception_collector = collectors.find { |c| c.is_a?(Collectors::ExceptionCollector) }
 
-      memory_before = current_memory if Profiler.configuration.track_memory
+      allocations_before = AllocationCounter.current if Profiler.configuration.track_memory
 
       job_status = "completed"
       error_message = nil
@@ -92,7 +92,7 @@ module Profiler
         Thread.current[:profiler_current_job_class] = previous_job_class
         Profiler::CurrentContext.token = previous_token
         if Profiler.configuration.track_memory
-          profile.memory = current_memory - memory_before
+          profile.allocated_objects = AllocationCounter.current - allocations_before
         end
 
         job_collector.update_status(job_status, error_message)
@@ -129,19 +129,6 @@ module Profiler
         end
       rescue
         arg.to_s
-      end
-    end
-
-    def current_memory
-      return 0 unless defined?(GC.stat)
-
-      stats = GC.stat
-      if stats.key?(:total_allocated_size)
-        stats[:total_allocated_size]
-      elsif stats.key?(:total_allocated_objects)
-        stats[:total_allocated_objects] * 40
-      else
-        0
       end
     end
   end

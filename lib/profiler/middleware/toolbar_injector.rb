@@ -129,17 +129,10 @@ module Profiler
         end
       end
 
+      # The middleware hands over the page it has already read: an Array of parts, or a String.
+      # Never a body to iterate, which would drain a stream and close it.
       def extract_content(body)
-        if body.respond_to?(:body)
-          body.body
-        elsif body.respond_to?(:each)
-          parts = []
-          body.each { |part| parts << part }
-          body.close if body.respond_to?(:close)
-          parts.join
-        else
-          body.to_s
-        end
+        body.is_a?(String) ? body : Array(body).join
       end
 
       def toolbar_html

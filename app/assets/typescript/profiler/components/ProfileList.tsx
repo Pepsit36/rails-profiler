@@ -10,7 +10,7 @@ import {
   useDeleteTest, useClearTests,
 } from '../generated/api'
 import type { Profile, HttpRequest, ProfilesResponse } from '../dashboard/types'
-import { getGemVersion } from '../dashboard/utils'
+import { getGemVersion, allocatedObjects, formatAllocations, ALLOCATIONS_HINT } from '../dashboard/utils'
 import { HttpRequestDetail } from './dashboard/tabs/HttpTab'
 import { EnvTab } from './dashboard/tabs/EnvTab'
 import { TestRunnerContent } from './test-runner/TestRunnerContent'
@@ -62,11 +62,6 @@ function durationClass(duration: number): string {
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en', { hour12: false })
-}
-
-function formatMemory(bytes?: number): string {
-  if (!bytes) return '-'
-  return (bytes / 1024 / 1024).toFixed(2) + ' MB'
 }
 
 const PRESETS = [
@@ -353,7 +348,7 @@ export function ProfileList() {
         let av: number, bv: number
         switch (httpSort.col) {
           case 'duration': av = a.duration; bv = b.duration; break
-          case 'memory': av = a.memory ?? 0; bv = b.memory ?? 0; break
+          case 'memory': av = allocatedObjects(a) ?? 0; bv = allocatedObjects(b) ?? 0; break
           case 'status': av = a.status; bv = b.status; break
           case 'queries': av = a.collectors_data?.database?.total_queries ?? 0; bv = b.collectors_data?.database?.total_queries ?? 0; break
           default: return 0
@@ -572,8 +567,8 @@ export function ProfileList() {
                         <th class={`sortable${httpSort.col === 'queries' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('queries')}>
                           Queries {sortIcon(httpSort.col, httpSort.dir, 'queries')}
                         </th>
-                        <th class={`sortable${httpSort.col === 'memory' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('memory')}>
-                          Memory {sortIcon(httpSort.col, httpSort.dir, 'memory')}
+                        <th class={`sortable${httpSort.col === 'memory' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('memory')} title={ALLOCATIONS_HINT}>
+                          Allocations {sortIcon(httpSort.col, httpSort.dir, 'memory')}
                         </th>
                         <th class={`sortable${httpSort.col === 'status' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('status')}>
                           Status {sortIcon(httpSort.col, httpSort.dir, 'status')}
@@ -595,7 +590,7 @@ export function ProfileList() {
                           </td>
                           <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
                           <td>{p.collectors_data?.database?.total_queries ?? '—'}</td>
-                          <td>{formatMemory(p.memory ?? undefined)}</td>
+                          <td>{formatAllocations(allocatedObjects(p))}</td>
                           <td><span class={statusClass(p.status)}>{p.status}</span></td>
                           <td class="profiler-text--xs profiler-text--mono profiler-text--muted">
                             <button class="token-copy" onClick={() => copyToken(p.token)} title="Copy full token">

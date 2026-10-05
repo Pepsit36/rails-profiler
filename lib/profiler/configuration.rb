@@ -2,6 +2,7 @@
 
 require "pathname"
 require_relative "local_request"
+require_relative "allocation_counter"
 
 module Profiler
   # Header the profiler's own clients send on every request. A page on another origin cannot
@@ -32,7 +33,7 @@ module Profiler
 
     attr_accessor :storage_options, :collectors,
                   :skip_paths, :slow_query_threshold, :max_queries_warning,
-                  :track_memory, :memory_warning_threshold,
+                  :track_memory, :allocated_objects_warning_threshold,
                   :mcp_enabled, :mcp_transport, :mcp_port,
                   :authorization_mode, :max_profiles, :extension_cors_enabled,
                   :cors_allowed_origins, :api_forgery_protection, :frame_ancestors,
@@ -43,7 +44,7 @@ module Profiler
                   :apply_env_overrides_when_disabled, :restrict_storage_permissions,
                   :test_runner_allow_undiscovered_files,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
-                  :compress_bodies, :compress_body_threshold,
+                  :compress_bodies, :compress_body_threshold, :max_captured_body_bytes,
                   :redact_sensitive_data, :filter_parameters, :env_allowlist,
                   :name, :master_url, :self_url,
                   :cluster_heartbeat_interval, :cluster_offline_threshold,
@@ -62,7 +63,9 @@ module Profiler
       @slow_query_threshold = 100 # milliseconds
       @max_queries_warning = 50
       @track_memory = true
-      @memory_warning_threshold = 100 * 1024 * 1024 # 100 MB
+      # Not compared with anything yet. The default is the former 100 MB memory threshold read
+      # as the objects it stood for.
+      @allocated_objects_warning_threshold = 100 * 1024 * 1024 / AllocationCounter::LEGACY_BYTES_PER_OBJECT
       @mcp_enabled = false
       @mcp_transport = :stdio
       @mcp_port = 3001
@@ -95,6 +98,9 @@ module Profiler
       @mailer_skip_actions = []
       @compress_bodies = true
       @compress_body_threshold = 10 * 1024 # 10 KB
+      # The request and response bodies kept in a profile stop at this many bytes; the
+      # application still reads and sends all of them. nil keeps whole bodies.
+      @max_captured_body_bytes = 256 * 1024
       @redact_sensitive_data = true
       @filter_parameters = DEFAULT_FILTER_PARAMETERS.dup
       @env_allowlist = DEFAULT_ENV_ALLOWLIST.dup
@@ -125,6 +131,19 @@ module Profiler
     end
 
     attr_reader :cluster_allowed_slave_urls
+
+    # Deprecated: the figure it was meant for was never a byte count (see AllocationCounter).
+    # Read and written as allocated_objects_warning_threshold times the bytes per object the
+    # former figure used.
+    def memory_warning_threshold
+      @allocated_objects_warning_threshold&.*(AllocationCounter::LEGACY_BYTES_PER_OBJECT)
+    end
+
+    def memory_warning_threshold=(bytes)
+      warn "[Profiler] memory_warning_threshold is deprecated, set allocated_objects_warning_threshold " \
+           "(a number of objects) instead"
+      @allocated_objects_warning_threshold = bytes && bytes / AllocationCounter::LEGACY_BYTES_PER_OBJECT
+    end
 
     # :any, or a list of slave URLs and anchored Regexp patterns (see Profiler::Cluster::Security).
     # A Regexp that is not anchored with \A and \z is refused here, at boot, rather than ignored.

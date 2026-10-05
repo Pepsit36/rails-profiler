@@ -87,7 +87,7 @@ module Profiler
           lines << "**Request:** #{profile.method} #{profile.path}"
           lines << "**Status:** #{profile.status}"
           lines << "**Duration:** #{profile.duration.round(2)} ms"
-          lines << "**Memory:** #{(profile.memory / 1024.0 / 1024.0).round(2)} MB" if profile.memory
+          lines << "**Allocated objects:** #{profile.allocated_objects}" if profile.allocated_objects
           lines << "**Time:** #{profile.started_at}"
           if profile.gem_version
             if profile.gem_version != Profiler::VERSION
@@ -184,6 +184,7 @@ module Profiler
           req_body = req_data["request_body"]
           if req_body && !req_body.empty?
             lines << "## Request Body"
+            lines << truncation_note(req_data["request_body_size"]) if req_data["request_body_truncated"]
             formatted = BodyFormatter.format_body(
               profile.token,
               "request_body",
@@ -209,6 +210,8 @@ module Profiler
           resp_body = profile.response_body
           if resp_body && !resp_body.empty?
             lines << "## Response Body"
+            response_data = profile.collector_data("request") || {}
+            lines << truncation_note(response_data["response_body_size"]) if response_data["response_body_truncated"]
             formatted = BodyFormatter.format_body(
               profile.token,
               "response_body",
@@ -220,6 +223,10 @@ module Profiler
             lines << ""
           end
           lines
+        end
+
+        def self.truncation_note(size)
+          "_Truncated: the body was #{size || "?"} bytes, only its beginning was kept (max_captured_body_bytes)._"
         end
 
         def self.section_curl(profile)

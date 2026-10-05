@@ -631,9 +631,18 @@ components:
         duration:
           type: number
           format: float
+        allocated_objects:
+          type: integer
+          nullable: true
+          description: Objects allocated during the request, job, command or test. The counter
+            is the process's, so on a multi-threaded server it includes what other threads
+            allocated meanwhile.
         memory:
           type: integer
           nullable: true
+          deprecated: true
+          description: allocated_objects times 40. Never a measured byte count; kept for older
+            readers, use allocated_objects.
         started_at:
           type: string
           format: date-time
@@ -688,6 +697,22 @@ components:
           - text
           - base64
           nullable: true
+        request_body_size:
+          type: integer
+          nullable: true
+          description: Size in bytes of the whole request body, when it was cut at max_captured_body_bytes.
+        request_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the request body were kept.
+        response_body_size:
+          type: integer
+          nullable: true
+          description: Size in bytes of the whole response body seen by the profiler.
+        response_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the response body were kept.
         collectors_data:
           "$ref": "#/components/schemas/CollectorsData"
           nullable: true
@@ -903,6 +928,22 @@ components:
           - text
           - base64
           nullable: true
+        request_body_size:
+          type: integer
+          nullable: true
+          description: Size in bytes of the whole request body, when it was cut at max_captured_body_bytes.
+        request_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the request body were kept.
+        response_body_size:
+          type: integer
+          nullable: true
+          description: Size in bytes of the whole response body seen by the profiler.
+        response_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the response body were kept.
         route_name:
           type: string
           nullable: true

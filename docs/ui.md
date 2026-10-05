@@ -71,7 +71,7 @@ Navigate to `/_profiler` to see all recorded profiles. The list is split into fo
 | Path | Clickable link to profile detail |
 | Duration | Color-coded response time |
 | Queries | SQL query count |
-| Memory | Memory delta for the request |
+| Allocations | Objects allocated while the request ran, by the whole process (other threads included on a multi-threaded server) |
 | Status | HTTP status badge |
 | Token | Unique profile identifier (click to copy) |
 
@@ -81,7 +81,7 @@ Column headers marked with ⇅ are sortable.
 
 ## Profile Dashboard
 
-Clicking any row opens the **Profile Details** view with a tabbed interface. The header always shows: `METHOD PATH`, Duration, Status, and Memory.
+Clicking any row opens the **Profile Details** view with a tabbed interface. The header always shows: `METHOD PATH`, Duration, Status, and Allocations.
 
 ### Request tab
 
