@@ -96,6 +96,17 @@ module Profiler
       log_error(message, error)
     end
 
+    # Runs the block without recording its outgoing HTTP calls in the current profile: the
+    # profiler's own calls (the cluster's registration and heartbeats, the master's requests to
+    # its slaves) are not the application's.
+    def untracked_http
+      previous = Thread.current[:profiler_http_untracked]
+      Thread.current[:profiler_http_untracked] = true
+      yield
+    ensure
+      Thread.current[:profiler_http_untracked] = previous
+    end
+
     def env_override_store
       @env_override_store ||= EnvOverrideStore.new
     end
