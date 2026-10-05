@@ -32,7 +32,7 @@ module Profiler
     RAILS_DEFAULTED = %i[enabled storage track_tests].freeze
 
     attr_accessor :storage_options, :collectors,
-                  :skip_paths, :slow_query_threshold, :max_queries_warning,
+                  :skip_paths, :slow_query_threshold, :max_queries_warning, :sql_backtrace,
                   :track_memory, :allocated_objects_warning_threshold,
                   :mcp_enabled, :mcp_transport, :mcp_port,
                   :authorization_mode, :max_profiles, :extension_cors_enabled,
@@ -62,6 +62,10 @@ module Profiler
       @skip_paths = [%r{^/_profiler}, /\.well-known/, /favicon\.ico/, /manifest\.json/]
       @slow_query_threshold = 100 # milliseconds
       @max_queries_warning = 50
+      # Where each query comes from: :first_and_slow captures the caller the first time a
+      # statement runs in the request and for every slow query, :all for every query (before
+      # 0.31.1, about 0.1 ms each), :none never.
+      @sql_backtrace = :first_and_slow
       @track_memory = true
       # Not compared with anything yet. The default is the former 100 MB memory threshold read
       # as the objects it stood for.
