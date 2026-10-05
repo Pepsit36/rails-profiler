@@ -19,6 +19,67 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-10-05
+
+<!-- stamped -->
+
+### Security
+
+- **Storage:** Check every profile token against the format the profiler issues (32 hexadecimal
+  characters) in every storage backend (file, memory, Redis, SQLite and its blobs), before it
+  becomes a file name, a directory or a key. A token such as `../../config/important` reached the
+  file store as a path: `DELETE /_profiler/api/profiles/:id` deleted, and
+  `POST /_profiler/api/ajax/link` overwrote, a `.json` file outside the storage directory. A
+  malformed token is now not found (`404` from the API, `nil` from the storage, no exception),
+  whoever asks: the controllers, the cluster proxy, which no longer forwards it to a slave, or the
+  MCP tools. Saving under one raises an `ArgumentError`. `POST /_profiler/api/ajax/link` answers
+  `400` for a malformed `parent_token` instead of storing it. The MCP tools no longer save a body
+  (`save_bodies`) under a token sent by a slave that is not a profile token. There is no option to
+  accept other tokens: the profiler never issues them, and accepting them would reopen the path.
+- **Storage:** Create the profiler's directories `0700` and its files `0600`, whatever the umask:
+  the file store's profiles, the SQLite database and its `-wal` and `-shm` files, the blobs, the
+  env overrides with their lock and temporary files, and the MCP body cache. They were created
+  with the process defaults, usually `0755` and `0644`, readable by every local user although
+  profiles hold cookies, tokens and environment values. A file the profiler writes again (a
+  profile, the SQLite database at startup) is brought back to `0600`; a directory that already
+  exists keeps its mode. Writing a profile now goes through a temporary file renamed over it.
+
+### Fixed
+
+- **Storage:** Keep the file store's profiles in `tmp_path/profiles` by default, and take only the
+  files named after a profile token for profiles. Profiles shared `tmp_path` with
+  `env_overrides.json`, which the store listed as a profile with no token and deleted when the
+  profiles were cleared. An application that sets `storage_options[:path]` keeps its directory,
+  used as given (no subdirectory is added).
+- **MCP:** Keep the bodies saved by the MCP tools in `tmp_path/mcp-cache`, and let their hourly
+  cleanup remove only the token directories it wrote there. It removed every directory of
+  `tmp_path` older than an hour, the SQLite store's blobs included, at random (one save in
+  twenty), which lost the stored HTTP response bodies.
+- **Configuration:** `config.tmp_path` is always a `Pathname`: it was a `String` outside Rails, and
+  kept a `String` assigned to it, which made every env override operation fail with only a
+  warning. A failure to read or write the env overrides now reaches the Env tab (`500` with the
+  error, `ENV` left unchanged) and the MCP env tools (an error answer) instead of reporting a
+  success; at boot, before a Sidekiq job and before a console evaluation it is still a warning,
+  so an override never makes the application fail.
+
+**Upgrading:** profiles saved by the file store in `tmp/rails-profiler` itself are no longer
+listed, and are not moved. To remove them, with the old MCP body cache, run from the application
+root (for the default `tmp_path`; adapt the path if you set one):
+
+```sh
+find tmp/rails-profiler -maxdepth 1 -type f -name '????????????????????????????????.json' -delete
+find tmp/rails-profiler -mindepth 1 -maxdepth 1 -type d -name '????????????????????????????????' -exec rm -rf {} +
+```
+
+Both only match names of 32 characters, the length of a profile token: `env_overrides.json`, the
+SQLite database, `blobs`, `profiles` and `mcp-cache` are left alone. To keep reading the old
+profiles instead, set `config.storage_options = { path: Rails.root.join("tmp", "rails-profiler") }`.
+The directory `tmp/rails-profiler` created by an earlier version keeps its mode: run
+`chmod 700 tmp/rails-profiler` to restrict it. If the web process and the workers reading the env
+overrides or a shared file or SQLite store run as two different users, set
+`config.restrict_storage_permissions = false` to create the files with the modes of the umask, as
+before.
+
 ## [0.31.0] - 2026-10-05
 
 <!-- stamped -->
