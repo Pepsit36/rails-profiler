@@ -167,6 +167,7 @@ RSpec.describe Profiler::Collectors::DatabaseCollector, "backtraces of a real Ac
   # the application and Active Record the same way.
   it "skips the frames of the gems between the application and Active Record" do
     dir = Dir.mktmpdir
+    allow(Gem).to receive(:path).and_return([*Gem.path, dir])
     library = File.join(dir, "gems", "profiler-spec-wrapper-1.0", "lib", "wrapper.rb")
     FileUtils.mkdir_p(File.dirname(library))
     File.write(library, "module ProfilerSpecWrapper; def self.around; yield; end; end\n")
@@ -178,6 +179,24 @@ RSpec.describe Profiler::Collectors::DatabaseCollector, "backtraces of a real Ac
     query = profile.collector_data("database")[:queries].find { |q| q[:sql].include?("profiler_spec_posts") }
     expect(query[:backtrace].first).to include("load_posts")
     expect(query[:backtrace].join).not_to include("profiler-spec-wrapper")
+  ensure
+    FileUtils.remove_entry(dir) if dir
+  end
+
+  # An application may itself live under a directory called gems (/srv/gems/shop): only the
+  # directories gems are installed in are left out.
+  it "keeps the application's frames when its path holds a gems directory" do
+    dir = Dir.mktmpdir
+    app_file = File.join(dir, "gems", "shop", "app", "models", "catalog.rb")
+    FileUtils.mkdir_p(File.dirname(app_file))
+    File.write(app_file, "module ProfilerSpecCatalog; def self.load(&block); block.call; end; end\n")
+    load app_file
+    collector.subscribe
+    ProfilerSpecCatalog.load { load_posts }
+    collector.collect
+
+    query = profile.collector_data("database")[:queries].find { |q| q[:sql].include?("profiler_spec_posts") }
+    expect(query[:backtrace].join("\n")).to include(app_file)
   ensure
     FileUtils.remove_entry(dir) if dir
   end

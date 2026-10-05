@@ -10,8 +10,6 @@ module Profiler
       MAX_SCANNED_FRAMES = 100
       FRAMES_PAST_APPLICATION = 15
 
-      # Where Ruby's own libraries live.
-      LIBRARY_PATHS = [RbConfig::CONFIG["rubylibdir"], RbConfig::CONFIG["rubyarchdir"]].compact.map { |dir| "#{dir}/" }.freeze
 
       # Frames between the application's code and the subscriber: the profiler itself, the
       # notifications bus and Active Record.
@@ -222,9 +220,26 @@ module Profiler
         end.first(BACKTRACE_DEPTH)
       end
 
+      # Ruby itself and the directories gems are installed in; an application that lives under a
+      # directory called gems is not one.
       def library_frame?(path)
-        path.start_with?("<internal:") || path.include?("/gems/") || path.include?("/vendor/bundle/") ||
-          LIBRARY_PATHS.any? { |dir| path.start_with?(dir) }
+        path.start_with?("<internal:") || library_prefixes.any? { |dir| path.start_with?(dir) }
+      end
+
+      def library_prefixes
+        @library_prefixes ||= begin
+          dirs = [RbConfig::CONFIG["rubylibdir"], RbConfig::CONFIG["rubyarchdir"], RbConfig::CONFIG["bindir"]]
+          dirs.concat(Gem.path) if defined?(Gem)
+          dirs << bundle_path
+          dirs.compact.reject(&:empty?).map { |dir| File.join(File.expand_path(dir), "") }.uniq.freeze
+        end
+      end
+
+      # Bundler raises without a Gemfile.
+      def bundle_path
+        Bundler.bundle_path.to_s if defined?(Bundler) && Bundler.respond_to?(:bundle_path)
+      rescue StandardError
+        nil
       end
     end
   end
