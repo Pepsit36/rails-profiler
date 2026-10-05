@@ -1,46 +1,47 @@
 # frozen_string_literal: true
 
 require "singleton"
-require "securerandom"
-require "timeout"
-require "set"
-require "concurrent"
 
 module Profiler
   module SSE
+    # Remembers, per profile token, the version of its last save, so that a page showing the
+    # profile can ask whether it changed since the version it holds. Nothing here waits: a
+    # request asking for the version is answered at once, and the toolbar comes back later (see
+    # Api::EventsController).
+    #
+    # A version is the time of the save in microseconds, so that versions from the worker
+    # processes of one machine compare with each other: without Redis, each worker only knows
+    # the saves it made, and a page sees a save when one of its questions reaches that worker.
     class EventBus
       include Singleton
 
+      # The tokens remembered; the oldest saved is forgotten first. A forgotten token reads as
+      # version 0, which is never newer than what a page holds, and its next save is seen again.
+      MAX_TOKENS = 1000
+
       def initialize
-        @subscriptions = Concurrent::Hash.new
+        @versions = {}
+        @mutex = Mutex.new
       end
 
-      def subscribe(token, collectors)
-        id = SecureRandom.uuid
-        @subscriptions[id] = { token: token, collectors: Set.new(collectors.map(&:to_s)), queue: Queue.new }
-        id
-      end
-
-      def unsubscribe(id)
-        @subscriptions.delete(id)
-      end
-
-      def broadcast(token, collectors)
-        changed = Set.new(collectors.map(&:to_s))
-        @subscriptions.each_value do |sub|
-          next unless sub[:token] == token
-          # Empty collector set means "match all"; non-empty set filters by intersection.
-          next if sub[:collectors].any? && (sub[:collectors] & changed).empty?
-          sub[:queue] << { token: token, collectors: changed.to_a, timestamp: Time.now.to_f }
+      def broadcast(token)
+        now = Process.clock_gettime(Process::CLOCK_REALTIME, :microsecond)
+        @mutex.synchronize do
+          # Strictly increasing within the process, even for two saves in one microsecond.
+          version = [now, @versions.delete(token).to_i + 1].max
+          @versions[token] = version
+          @versions.shift while @versions.size > MAX_TOKENS
+          version
         end
       end
 
-      def wait_for_event(id, timeout: 30)
-        sub = @subscriptions[id]
-        return nil unless sub
-        Timeout.timeout(timeout) { sub[:queue].pop }
-      rescue Timeout::Error
-        nil
+      # The version of the last save of +token+ seen by this process, 0 when none was.
+      def version(token)
+        @mutex.synchronize { @versions.fetch(token, 0) }
+      end
+
+      def reset!
+        @mutex.synchronize { @versions.clear }
       end
     end
   end

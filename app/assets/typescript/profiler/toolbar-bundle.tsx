@@ -38,7 +38,7 @@ function ToolbarMount({ token }: ToolbarMountProps) {
     window.__PROFILER_REFRESH_TOOLBAR__ = () => { refetch() }
   }, [refetch])
 
-  useProfileEvents(token, [], () => { refetch() })
+  useProfileEvents(token, data?.events_cursor, () => { refetch() })
 
   const profile = data?.profile ?? null
   if (!profile) return null

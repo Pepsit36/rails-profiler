@@ -61,7 +61,9 @@ export function TestRunnerContent() {
     })
 
     es.onerror = () => {
-      es.close()
+      // The server answers each request with the output there is and ends it: the browser asks
+      // again after the retry delay, with the position reached. Only a refused request closes it.
+      if (es.readyState !== EventSource.CLOSED) return
       // Fall back to one final poll to get the terminal state
       fetch(`${BASE}/api/test_runner/runs/${currentRun.id}`)
         .then(r => r.json())
