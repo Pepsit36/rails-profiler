@@ -874,8 +874,10 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 - The route table and `ENV` are not stored in each profile. A profile keeps the route its request
   matched; the Routes tab lists the routes of the process that serves the page, rebuilt when the
   routes are reloaded in development, and the Env tab shows the current `ENV` of that process, not
-  the `ENV` as it was during the request, masked as described under "Sensitive data". Profiles
-  saved by an earlier version keep showing their own table and variables
+  the `ENV` as it was during the request, masked as described under "Sensitive data". The profiles
+  of jobs, console expressions and tests, which run in another process (Sidekiq, the console,
+  rspec), keep the `ENV` of that process, masked, as before. Profiles saved by an earlier version
+  keep showing their own table and variables
 - Text bodies > 10 KB compressed automatically (gzip+base64)
 - Bodies kept in a profile stop at `max_captured_body_bytes` (256 KB by default): `rack.input` is
   read up to that size and rewound for the application, a larger response is kept in part, and

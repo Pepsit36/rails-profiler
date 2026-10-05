@@ -3,6 +3,8 @@
 require "spec_helper"
 require_relative "../support/rails_app"
 require "profiler/mcp/tools/get_profile_detail"
+require "profiler/console_profiler"
+require "profiler/test_profiler"
 
 class ProfilerSpecWidgetsController < ActionController::Base
   def show
@@ -192,6 +194,49 @@ RSpec.describe "Routes and Env tabs", type: :request do
       )
 
       expect(text).not_to include("PROFILER_SPEC_VISIBLE")
+    end
+  end
+
+  # A job, a console expression or a test runs in another process than the one that serves the
+  # dashboard (Sidekiq, the console, rspec): its profile keeps that process's ENV, masked, and the
+  # dashboard never shows its own in its place.
+  describe "profiles of jobs, console expressions and tests" do
+    before do
+      Profiler.configure do |config|
+        config.track_jobs = true
+        config.track_console = true
+        config.track_tests = true
+        config.env_allowlist += ["PROFILER_SPEC_WORKER"]
+      end
+      ENV["PROFILER_SPEC_WORKER"] = "the worker's value"
+    end
+
+    after { ENV.delete("PROFILER_SPEC_WORKER") }
+
+    {
+      "job" => -> { Profiler::JobProfiler.profile(job_class: "W", job_id: "1", queue: "q", arguments: [], executions: 0) { :ok } },
+      "console" => -> { Profiler::ConsoleProfiler.profile(expression: "1 + 1") { 2 } },
+      "test" => lambda {
+        Profiler::TestProfiler.profile(test_name: "t", test_file: "spec/t_spec.rb", test_line: 1, framework: "rspec") { :ok }
+      }
+    }.each do |type, run|
+      endpoint = { "job" => "jobs", "console" => "console", "test" => "tests" }[type]
+
+      it "keeps the #{type}'s own ENV, masked, through its API endpoint and the profile page" do
+        run.call
+        token = storage.list(limit: 100).find { |p| p.profile_type == type }.token
+        ENV["PROFILER_SPEC_WORKER"] = "the web process's value"
+
+        get "/_profiler/api/#{endpoint}/#{token}", {}, local
+        env = JSON.parse(last_response.body)["collectors_data"]["env"]
+        expect(env["variables"]["PROFILER_SPEC_WORKER"]).to eq("the worker's value")
+        expect(env["variables"]["PROFILER_SPEC_API_TOKEN"]).to eq(Profiler::Redaction::MASK)
+        expect(env["total"]).to eq(env["variables"].size)
+
+        get "/_profiler/api/profiles/#{token}", {}, local
+        shown = JSON.parse(last_response.body)["collectors_data"]["env"]
+        expect(shown["variables"]["PROFILER_SPEC_WORKER"]).to eq("the worker's value")
+      end
     end
   end
 
