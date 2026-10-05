@@ -27,9 +27,11 @@ every commit of every tag interval is accounted for one way or the other.
   (`.profiles-index.jsonl`, with its lock `.profiles-index.lock`), which the processes writing to
   the directory share; a missing or damaged one is rebuilt from the profile files, so the profiles
   already saved are found without any migration. Temporary files left by a killed process are now
-  removed.
-- **Storage:** `config.max_profiles` (100) is honoured by every backend, the oldest profiles
-  evicted first: only the memory store applied it, so the file store grew to `max_size` (100 MB,
+  removed. The index relies on `flock`: a file store shared between hosts over NFS is not
+  supported, use Redis there.
+- **Storage:** `config.max_profiles` (100) is honoured by every backend, the first saved profiles
+  evicted first (a job saved when it ends counts as new, whenever it started): only the memory
+  store applied it, so the file store grew to `max_size` (100 MB,
   tens of thousands of profiles), SQLite without limit and Redis up to its TTL. In the test
   environment, where every example saves a profile, there is no cap on the count unless the
   application sets one.
@@ -51,13 +53,18 @@ every commit of every tag interval is accounted for one way or the other.
   tool `get_profile_ajax` finds the sub-requests too: it read the AJAX data saved with the page,
   before any sub-request.
 - **Storage:** The storage is created once, under a lock: the first requests of a threaded server
-  each created their own store, and the profiles saved in all but one were lost (33 to 38 of 40
-  with Puma on 8 threads, when the storage was not created before the first burst of requests).
+  could each create their own store (16 for 16 threads in the spec), and with the memory store the
+  profiles saved in all but one were lost. Several file, SQLite or Redis stores share their data
+  and lost nothing.
 - **Upgrading:** the file, SQLite and Redis stores now keep 100 profiles outside the test
-  environment. To keep more, set `config.max_profiles` (or `storage_options[:max_profiles]`) to a
-  higher number; to go back to the earlier behaviour, no cap on the count, set it to `nil`: the
-  file store then keeps up to `max_size`, Redis up to its TTL. The memory store keeps 100 with
-  `nil`, as before.
+  environment, and **the first save after the upgrade removes the profiles past the cap**, the
+  first saved first: of 3,000 profiles written by 0.31.1 in the file store, about 80 remain, and
+  that first save takes about a second, during which the other processes writing to the store
+  wait. To keep them, set `config.max_profiles` (or `storage_options[:max_profiles]`) **before**
+  upgrading: to a higher number, or to `nil` for the earlier behaviour, no cap on the count (the
+  file store then keeps up to `max_size`, Redis up to its TTL). The memory store keeps 100 with
+  `nil`, as before. A Redis store written by an earlier version is indexed once, by one process,
+  on first use.
 
 ## [0.31.3] - 2026-10-05
 
