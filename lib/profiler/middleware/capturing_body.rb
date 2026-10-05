@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../redaction"
+require_relative "../current_context"
 
 module Profiler
   module Middleware
@@ -13,12 +14,19 @@ module Profiler
     # knows what to do with it; it is only noted for the profile. One raised by the server
     # itself in the block (the client went away) is the server's, not the application's.
     class CapturingBody
-      # on_close receives the captured bytes, the size of the whole body seen so far, and the
+      # on_close receives the captured bytes, the size of the body seen so far, whether the
+      # body was iterated to its end (if not, the size is only a minimum), and the
       # application's error if there was one. It runs once, after the body has been closed.
-      def initialize(body, limit:, &on_close)
+      #
+      # While the server iterates the body, its thread carries the profile's token
+      # (CurrentContext), as the request's thread did: what the body does then, a template
+      # streamed by `render stream: true` for one, belongs to this profile.
+      def initialize(body, limit:, token: nil, &on_close)
         @body = body
         @limit = limit
+        @token = token
         @on_close = on_close
+        @complete = false
         @captured = String.new(encoding: Encoding::BINARY)
         @encoding = nil
         @size = 0
@@ -27,18 +35,25 @@ module Profiler
       end
 
       def each
-        @body.each do |chunk|
-          capture(chunk)
-          begin
-            yield chunk
-          rescue Exception => e # rubocop:disable Lint/RescueException
-            @server_error = e
-            raise
+        previous_token = CurrentContext.token
+        CurrentContext.token = @token if @token
+        begin
+          @body.each do |chunk|
+            capture(chunk)
+            begin
+              yield chunk
+            rescue Exception => e # rubocop:disable Lint/RescueException
+              @server_error = e
+              raise
+            end
           end
+          @complete = true
+        rescue => e
+          @error ||= e unless e.equal?(@server_error)
+          raise
+        ensure
+          CurrentContext.token = previous_token
         end
-      rescue => e
-        @error ||= e unless e.equal?(@server_error)
-        raise
       end
 
       def to_path
@@ -58,8 +73,17 @@ module Profiler
         begin
           @body.close if @body.respond_to?(:close)
         ensure
-          @on_close.call(captured, @size, @error)
+          @on_close.call(captured, @size, @complete, @error)
         end
+      end
+
+      # The server left the body without closing it: the profile is finished with what was
+      # captured, and the application's body is left to whoever holds it.
+      def abandon
+        return if @closed
+
+        @closed = true
+        @on_close.call(captured, @size, @complete, @error)
       end
 
       def closed?

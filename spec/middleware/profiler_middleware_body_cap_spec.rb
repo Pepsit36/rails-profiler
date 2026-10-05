@@ -3,6 +3,8 @@
 require "spec_helper"
 require "rack"
 require "stringio"
+require "tmpdir"
+require "fileutils"
 
 # The bodies kept in a profile are capped by max_captured_body_bytes; the application still
 # reads and sends every byte.
@@ -125,5 +127,95 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "captured body size" do
       expect(profile.request_body.bytesize).to eq(upload.bytesize)
       expect(profile.collector_data("request")["response_body_truncated"]).to be(false)
     end
+  end
+
+  context "with a cap, when the whole size is not known" do
+    before { Profiler.configure { |c| c.max_captured_body_bytes = cap } }
+
+    it "says the size of a request body without Content-Length is a minimum" do
+      env = post_env("x" * (cap * 3))
+      env.delete("CONTENT_LENGTH")
+      app = ->(_env) { [200, Rack::Headers["content-type" => "text/plain"], ["ok"]] }
+      _status, headers, body = described_class.new(app).call(env)
+      serve(body)
+
+      request = Profiler.storage.load(headers["X-Profiler-Token"]).collector_data("request")
+      expect(request["request_body_truncated"]).to be(true)
+      expect(request["request_body_size"]).to eq(cap + 1)
+      expect(request["request_body_size_is_minimum"]).to be(true)
+      expect(request["response_body_size_is_minimum"]).to be(false)
+    end
+
+    it "says the size of a stream the client left part way is a minimum" do
+      stream = Class.new do
+        def each
+          yield "a"
+          yield "b"
+        end
+
+        def close; end
+      end
+      app = ->(_env) { [200, Rack::Headers["content-type" => "text/plain"], stream.new] }
+      _status, headers, body = described_class.new(app).call(post_env(""))
+      expect { body.each { raise Errno::EPIPE } }.to raise_error(Errno::EPIPE)
+      body.close
+
+      request = Profiler.storage.load(headers["X-Profiler-Token"]).collector_data("request")
+      expect(request["response_body_size"]).to eq(1)
+      expect(request["response_body_size_is_minimum"]).to be(true)
+    end
+  end
+
+  # SqliteStore rebuilds a profile from its columns and the request collector's data: the
+  # flags only survive in the latter, and the profile must not claim the body was whole.
+  context "read back from SqliteStore" do
+    let(:dir) { Dir.mktmpdir("profiler-sqlite") }
+
+    before do
+      require "profiler/storage/sqlite_store"
+      Profiler.configure { |c| c.max_captured_body_bytes = cap }
+      Profiler.instance_variable_set(:@storage, Profiler::Storage::SqliteStore.new(
+        database: File.join(dir, "profiles.db"), blob_path: File.join(dir, "blobs")
+      ))
+    end
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "keeps the truncation where the interface finds it" do
+      app = ->(_env) { [200, Rack::Headers["content-type" => "text/plain"], ["z" * (cap * 2)]] }
+      _status, headers, body = described_class.new(app).call(post_env("x" * (cap * 2)))
+      serve(body)
+
+      profile = Profiler.storage.load(headers["X-Profiler-Token"])
+      data = profile.to_h
+      request = profile.collector_data("request")
+      # The interface reads the profile's flag, and the collector's when the flag is null.
+      expect(data[:request_body_truncated].nil? ? request["request_body_truncated"] : data[:request_body_truncated]).to be(true)
+      expect(data[:response_body_truncated].nil? ? request["response_body_truncated"] : data[:response_body_truncated]).to be(true)
+    end
+  end
+
+  it "rewinds rack.input for the application even when reading it fails" do
+    input = StringIO.new("payload")
+    calls = 0
+    allow(input).to receive(:read).and_wrap_original do |original, *args|
+      calls += 1
+      if calls == 1
+        original.call(3) # a read that fails part way
+        raise IOError, "read failed"
+      end
+
+      original.call(*args)
+    end
+    env = post_env("")
+    env["rack.input"] = input
+    seen = nil
+    app = lambda do |e|
+      seen = e["rack.input"].read
+      [200, Rack::Headers["content-type" => "text/plain"], ["ok"]]
+    end
+
+    expect { described_class.new(app).call(env) }.to output(/could not read the request body/).to_stderr
+    expect(seen).to eq("payload")
   end
 end

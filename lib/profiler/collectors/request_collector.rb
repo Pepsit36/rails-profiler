@@ -41,8 +41,10 @@ module Profiler
           response_body_encoding: @profile.response_body_encoding,
           request_body_size: @profile.request_body_size,
           request_body_truncated: @profile.request_body_truncated || false,
+          request_body_size_is_minimum: @profile.request_body_size_is_minimum || false,
           response_body_size: @profile.response_body_size,
           response_body_truncated: @profile.response_body_truncated || false,
+          response_body_size_is_minimum: @profile.response_body_size_is_minimum || false,
           started_at: @profile.started_at&.iso8601,
           finished_at: @profile.finished_at&.iso8601
         }

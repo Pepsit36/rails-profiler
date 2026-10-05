@@ -361,4 +361,23 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "response bodies" do
       serve(body)
     end
   end
+
+  describe "a buffered body whose reading and closing both fail" do
+    it "lets the reading error through" do
+      body = Class.new do
+        def to_ary
+          raise IOError, "read failed"
+        end
+
+        def each; end
+
+        def close
+          raise IOError, "close failed"
+        end
+      end
+      app = described_class.new(->(_env) { [200, Rack::Headers["content-type" => "text/plain"], body.new] })
+
+      expect { app.call(env) }.to raise_error(IOError, "read failed")
+    end
+  end
 end

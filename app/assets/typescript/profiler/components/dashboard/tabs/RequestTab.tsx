@@ -46,15 +46,18 @@ function buildCurl(profile: Profile): string {
 // request collector's data for the stores that rebuild a profile from it.
 function truncationNotes(profile: Profile, routeData: RequestData): string[] {
   const notes: string[] = []
-  const describe = (what: string, truncated?: boolean | null, size?: number | null) => {
+  const describe = (what: string, truncated?: boolean | null, size?: number | null, minimum?: boolean | null) => {
     if (truncated) {
-      notes.push(`${what} body truncated: ${size != null ? `${size.toLocaleString('en')} bytes, ` : ''}only the beginning was kept (max_captured_body_bytes).`)
+      const total = size != null ? `${minimum ? 'at least ' : ''}${size.toLocaleString('en')} bytes, ` : ''
+      notes.push(`${what} body truncated: ${total}only the beginning was kept (max_captured_body_bytes).`)
     }
   }
   describe('Request', profile.request_body_truncated ?? routeData.request_body_truncated,
-    profile.request_body_size ?? routeData.request_body_size)
+    profile.request_body_size ?? routeData.request_body_size,
+    profile.request_body_size_is_minimum ?? routeData.request_body_size_is_minimum)
   describe('Response', profile.response_body_truncated ?? routeData.response_body_truncated,
-    profile.response_body_size ?? routeData.response_body_size)
+    profile.response_body_size ?? routeData.response_body_size,
+    profile.response_body_size_is_minimum ?? routeData.response_body_size_is_minimum)
   return notes
 }
 
