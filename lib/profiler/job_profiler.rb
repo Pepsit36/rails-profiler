@@ -31,14 +31,16 @@ module Profiler
     def self.profile(job_class:, job_id:, queue:, arguments:, executions:, parent_token: nil, &block)
       return block.call unless Profiler.enabled? && Profiler.configuration.track_jobs
 
-      new(
+      profiler = new(
         job_class: job_class,
         job_id: job_id,
         queue: queue,
         arguments: arguments,
         executions: executions,
         parent_token: parent_token
-      ).run(&block)
+      )
+      # Performed by a pool for the request that enqueued it: the job's notifications are its own.
+      Collectors::ScopedNotifications.apart_from_other_threads { profiler.run(&block) }
     end
 
     def initialize(job_class:, job_id:, queue:, arguments:, executions:, parent_token: nil)
