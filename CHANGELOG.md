@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.14] - 2026-10-05
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Railtie:** Honor `config.enabled` set in `config/initializers/profiler.rb`. The profiler
