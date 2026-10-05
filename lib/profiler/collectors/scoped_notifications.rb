@@ -23,6 +23,8 @@ module Profiler
     # old token, receives nothing more.
     module ScopedNotifications
       STATE_KEY = :profiler_notification_scope
+      # Fiber storage, inherited by the fibers and threads a fiber creates: Ruby 3.2+.
+      FIBER_STORAGE = Fiber.respond_to?(:[])
 
       # The handlers of one request, by event name.
       class Scope
@@ -100,16 +102,20 @@ module Profiler
           close_scope(handle.scope) if removed == :last
         end
 
-        # The current context's scope, for ThreadContextPropagation to hand to a new thread.
+        # The current context's scope, for ThreadContextPropagation to hand to a new thread: the
+        # one of its execution state, or else the one a fiber inherited from the fiber that created
+        # it (Fiber storage, Ruby 3.2+). With isolation_level = :fiber, a fiber the request creates
+        # (render stream: true renders the layout in one) has no execution state of its own.
         def current
           scope = state[STATE_KEY]
+          scope = fiber_scope if scope.nil? || scope.closed?
           scope unless scope.nil? || scope.closed?
         end
 
         # The scope the current context's events go to.
         def routed_scope
-          scope = state[STATE_KEY]
-          return scope unless scope.nil? || scope.closed?
+          scope = current
+          return scope if scope
 
           token = CurrentContext.token
           @by_token[token] if token
@@ -117,6 +123,13 @@ module Profiler
 
         def adopt(scope)
           state[STATE_KEY] = scope
+          Fiber[STATE_KEY] = scope if FIBER_STORAGE
+        end
+
+        # A thread a pool creates inherits the Fiber storage of the code that created it, which
+        # may be a request's: it must not keep that request's scope.
+        def forget_inherited_scope
+          Fiber[STATE_KEY] = nil if FIBER_STORAGE && !Fiber[STATE_KEY].nil?
         end
 
         # Runs the block with a scope of its own when the current one was opened by another thread:
@@ -132,13 +145,18 @@ module Profiler
           begin
             yield
           ensure
-            adopt(previous)
+            restore(previous)
           end
         end
 
         # What the current context holds, closed or not, for RequestContext to put back.
         def adopted
-          state[STATE_KEY]
+          [state[STATE_KEY], fiber_scope]
+        end
+
+        def restore(adopted)
+          state[STATE_KEY], inherited = adopted
+          Fiber[STATE_KEY] = inherited if FIBER_STORAGE
         end
 
         private
@@ -151,17 +169,23 @@ module Profiler
           current || open_scope
         end
 
+        def fiber_scope
+          Fiber[STATE_KEY] if FIBER_STORAGE
+        end
+
         def open_scope
           token = CurrentContext.token
           scope = Scope.new(token)
           if token
             @mutex.synchronize { @by_token = @by_token.merge(token => scope).freeze }
           end
-          state[STATE_KEY] = scope
+          adopt(scope)
+          scope
         end
 
         def close_scope(scope)
           state[STATE_KEY] = nil if state[STATE_KEY].equal?(scope)
+          Fiber[STATE_KEY] = nil if FIBER_STORAGE && fiber_scope.equal?(scope)
           return unless scope.token
 
           @mutex.synchronize do

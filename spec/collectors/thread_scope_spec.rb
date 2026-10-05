@@ -240,6 +240,46 @@ RSpec.describe "Collectors scoped to the request thread" do
         ActiveSupport::IsolatedExecutionState.isolation_level = previous
       end
 
+      # render stream: true renders the layout in a Fiber it creates during the request
+      # (ActionView::StreamingTemplateRenderer): what that fiber queries is the request's.
+      it "records a fiber the request creates, and nothing from a fiber of another request" do
+        collector = nil
+        request_profile = Profiler::Models::Profile.new
+        in_fiber do
+          collector = Profiler::Collectors::DatabaseCollector.new(request_profile)
+          collector.subscribe
+          Fiber.new { sql("SELECT 'streamed layout'") }.resume
+        end
+        in_fiber { Fiber.new { sql("SELECT 'another request'") }.resume }
+        collector.collect
+
+        expect(request_profile.collector_data("database")[:queries].map { |q| q[:sql] })
+          .to eq(["SELECT 'streamed layout'"])
+      end
+
+      it "records nothing more in a fiber that outlives the request" do
+        collector = nil
+        request_profile = Profiler::Models::Profile.new
+        lingering = nil
+        in_fiber do
+          collector = Profiler::Collectors::DatabaseCollector.new(request_profile)
+          collector.subscribe
+          lingering = Fiber.new { Fiber.yield sql("SELECT 'during'"); sql("SELECT 'after the request'") }
+          lingering.resume
+          collector.collect
+        end
+        next_profile = Profiler::Models::Profile.new
+        next_request = Profiler::Collectors::DatabaseCollector.new(next_profile)
+        in_fiber do
+          next_request.subscribe
+          lingering.resume
+          next_request.collect
+        end
+
+        expect(request_profile.collector_data("database")[:queries].map { |q| q[:sql] }).to eq(["SELECT 'during'"])
+        expect(next_profile.collector_data("database")[:queries]).to eq([])
+      end
+
       it "keeps the requests of one thread apart, and records the fiber iterating the body" do
         collector = nil
         request_profile = Profiler::Models::Profile.new
