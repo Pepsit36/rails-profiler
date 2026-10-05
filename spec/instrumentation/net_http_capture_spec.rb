@@ -19,10 +19,19 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
         client = server.accept
         head = +""
         head << client.readline until head.end_with?("\r\n\r\n")
-        length = head[/content-length: *(\d+)/i, 1].to_i
-        received << client.read(length)
+        if head.match?(/transfer-encoding: *chunked/i)
+          body = +""
+          while (size = client.readline.to_i(16)).positive?
+            body << client.read(size)
+            client.readline
+          end
+          client.readline
+          received << body
+        else
+          received << client.read(head[/content-length: *(\d+)/i, 1].to_i)
+        end
         extra = headers.map { |name, value| "#{name}: #{value}\r\n" }.join
-        client.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n#{extra}" \
+        client.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\n#{extra}" \
                      "Content-Length: #{response_body.bytesize}\r\nConnection: close\r\n\r\n")
         client.write(response_body)
         client.close
@@ -89,6 +98,12 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
       Net::HTTP.get(URI("http://127.0.0.1:#{@port}/neighbour"))
 
       expect(entries.size).to eq(1)
+    end
+  end
+
+  describe "SKIP_HOSTS" do
+    it "stays, deprecated, as the former list" do
+      expect(described_class.const_get(:SKIP_HOSTS)).to eq(Profiler::Configuration::LOCAL_HTTP_HOSTS)
     end
   end
 
@@ -215,6 +230,92 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
       entry = entries.first
       expect(entry["response_body"].bytesize).to eq(1024)
       expect(entry["response_body_truncated"]).to be(true)
+    end
+
+    it "keeps the text of a body_stream in UTF-8" do
+      req = Net::HTTP::Post.new("/upload")
+      req["Content-Type"] = "text/plain; charset=utf-8"
+      req["Content-Length"] = "héllo".bytesize.to_s
+      req.body_stream = StringIO.new("héllo")
+      Net::HTTP.new("127.0.0.1", @port).request(req)
+
+      expect(entries.first["request_body"]).to eq("héllo")
+    end
+
+    it "keeps the text of a gzip response in UTF-8",
+       server: { response_body: Zlib.gzip("héllo"), headers: { "Content-Encoding" => "gzip" } } do
+      req = Net::HTTP::Get.new("/zip")
+      req["Accept-Encoding"] = "gzip"
+      Net::HTTP.new("127.0.0.1", @port).request(req)
+
+      expect(entries.first["response_body"]).to eq("héllo")
+    end
+
+    it "gives the whole size of a chunked body_stream whose size the stream knows" do
+      payload = "k" * 10_000
+      req = Net::HTTP::Post.new("/upload")
+      req["Content-Type"] = "text/plain"
+      req["Transfer-Encoding"] = "chunked"
+      req.body_stream = StringIO.new(payload)
+      Net::HTTP.new("127.0.0.1", @port).request(req)
+
+      entry = entries.first
+      expect(@received.first).to eq(payload)
+      expect(entry["request_size"]).to eq(10_000)
+      expect(entry["request_size_is_minimum"]).to be(false)
+      expect(entry["request_body_truncated"]).to be(true)
+    end
+
+    it "says the size is only a minimum when neither the stream nor a Content-Length gives it" do
+      payload = "m" * 10_000
+      stream = StringIO.new(payload)
+      stream.singleton_class.send(:undef_method, :size)
+      stream.singleton_class.send(:undef_method, :length)
+      req = Net::HTTP::Post.new("/upload")
+      req["Content-Type"] = "text/plain"
+      req["Transfer-Encoding"] = "chunked"
+      req.body_stream = stream
+      Net::HTTP.new("127.0.0.1", @port).request(req)
+
+      entry = entries.first
+      expect(@received.first).to eq(payload)
+      expect(entry["request_size"]).to eq(1025)
+      expect(entry["request_size_is_minimum"]).to be(true)
+      expect(entry["request_body"].bytesize).to eq(1024)
+    end
+
+    it "reads no more of a body_stream than its Content-Length announces" do
+      stream = StringIO.new("d" * 10_000)
+      allow(stream).to receive(:read).and_call_original
+      req = Net::HTTP::Post.new("/upload")
+      req["Content-Type"] = "text/plain"
+      req["Content-Length"] = "100"
+      req.body_stream = stream
+      http = Net::HTTP.new("127.0.0.1", @port)
+      http.read_timeout = 3
+      begin
+        http.request(req)
+      rescue Net::ReadTimeout, EOFError, Errno::ECONNRESET, Errno::EPIPE
+        nil # the server reads 100 bytes; what Net::HTTP does with the rest is not the point
+      end
+
+      expect(stream).to have_received(:read).with(100)
+      expect(stream).not_to have_received(:read).with(1025)
+    end
+
+    it "inflates a deflate answer no further than the cap, give or take one inflater buffer" do
+      bomb = Zlib::Deflate.deflate("z" * 20_000_000)
+      inflated = described_class.decompress_body(bomb, "deflate", 1024)
+
+      expect(inflated.bytesize).to be > 1024
+      expect(inflated.bytesize).to be <= 1024 + 16 * 1024
+    end
+
+    it "inflates a gzip answer no further than the cap, give or take one inflater buffer" do
+      bomb = Zlib.gzip("z" * 20_000_000)
+      inflated = described_class.decompress_body(bomb, "gzip", 1024)
+
+      expect(inflated.bytesize).to be <= 1024 + 16 * 1024
     end
 
     it "keeps whole bodies when max_captured_body_bytes is nil", server: { response_body: "w" * 5_000 } do

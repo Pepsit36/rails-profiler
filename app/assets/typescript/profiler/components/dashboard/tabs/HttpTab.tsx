@@ -122,7 +122,7 @@ export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest,
 
       <div class="profiler-ajax-card__row">
         <span class="profiler-text--xs profiler-text--muted">
-          ↑ {req.request_size == null ? 'size unknown' : formatBytes(req.request_size)} · ↓ {formatBytes(req.response_size)}
+          ↑ {req.request_size == null ? 'size unknown' : `${req.request_size_is_minimum ? 'at least ' : ''}${formatBytes(req.request_size)}`} · ↓ {formatBytes(req.response_size)}
         </span>
         {req.backtrace && req.backtrace.length > 0 && (
           <span class="profiler-text--xs profiler-text--muted" style="margin-left:12px">{req.backtrace[0]}</span>
