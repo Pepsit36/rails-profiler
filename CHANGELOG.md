@@ -32,6 +32,9 @@ every commit of every tag interval is accounted for one way or the other.
   about 0.7 ms. The profile page, its API, the job, console and test APIs, the lists the cluster
   proxy reads and the MCP tools still give the bodies as text; the toolbar, which shows no body,
   gets them as stored (86 KB instead of 171 KB for that page).
+- **Storage:** The profile list summaries kept by the file, SQLite and Redis stores no longer
+  carry the first 500 characters of the request and response bodies. Summaries written by 0.31.4
+  and 0.31.5 keep them until their profiles are evicted; no list shows them.
 - **Upgrading:** the profiles already stored, all as text, are read as before, with no migration.
   An earlier version reading a store written by this one shows the compressed bodies as text too,
   and a cluster master and its slaves may run either version: the profile API they read still
