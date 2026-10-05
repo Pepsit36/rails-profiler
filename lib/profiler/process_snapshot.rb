@@ -61,7 +61,7 @@ module Profiler
         end
         profile
       rescue StandardError => e
-        warn "Profiler: could not add the routes and ENV to profile #{profile.token}: #{e.message}"
+        Profiler.log_error("could not add the routes and ENV to profile #{profile.token}", e)
         profile
       end
 
