@@ -72,6 +72,38 @@ RSpec.describe Profiler::TestRunner::RunStore do
     it "does nothing for unknown id" do
       expect { store.append_output("unknown", "text") }.not_to raise_error
     end
+
+    # The runner reads the process 256 bytes at a time, in binary: a character can be cut in two.
+    context "with output read in binary pieces" do
+      let(:run) { store.create(files: [], framework: "rspec") }
+
+      it "keeps a character cut between two pieces whole" do
+        store.append_output(run.id, "a\xC3".b)
+        store.append_output(run.id, "\xA9b".b)
+
+        expect(run.output_lines).to all(satisfy { |line| line.encoding == Encoding::UTF_8 && line.valid_encoding? })
+        expect(run.output_lines.join).to eq("a\u00e9b")
+      end
+
+      it "gives UTF-8 text that JSON takes as it is" do
+        store.append_output(run.id, "caf\xC3\xA9\n".b)
+
+        expect { expect(JSON.generate(run.to_h)).to include("caf\u00e9") }.not_to output.to_stderr
+      end
+
+      it "replaces bytes that are not UTF-8" do
+        store.append_output(run.id, "\xFFok".b)
+
+        expect(run.output_lines.join).to eq("\uFFFDok")
+      end
+
+      it "replaces a cut character that nothing completes once the output is over" do
+        store.append_output(run.id, "a\xC3".b)
+        store.finish_output(run.id)
+
+        expect(run.output_lines.join).to eq("a\uFFFD")
+      end
+    end
   end
 
   describe "#wait_for_output" do

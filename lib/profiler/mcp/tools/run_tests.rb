@@ -96,11 +96,12 @@ module Profiler
           loop do
             break if Time.now > deadline && (timed_out = true)
             run_data = proxy.get_json("/_profiler/api/test_runner/runs/#{run_id}")
-            break if %w[completed failed cancelled].include?(run_data["status"])
+            break if Profiler::TestRunner::RunStore::TERMINAL_STATUSES.include?(run_data["status"])
             sleep 2
           end
 
-          output = run_data["output_lines"]&.join.to_s
+          # The slave answers with RunStore::Run#to_h, which carries the whole output as "output".
+          output = run_data["output"].to_s
           output = "…(truncated)\n" + output[-(max_output)..] if output.length > max_output
 
           text = "# Test Run on slave '#{params["slave"]}' #{timed_out ? "(timed out)" : ""}\n\n"

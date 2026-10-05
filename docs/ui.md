@@ -23,6 +23,11 @@ The toolbar appears as a fixed bar at the bottom of every profiled HTML page. It
 
 Clicking the **Profiler** logo at the right opens the full profile in the dashboard.
 
+The toolbar updates itself when its profile is saved again after the page was sent, for instance
+when an outgoing HTTP request started in a background thread finishes. It checks with short
+requests, often at first and then every 30 seconds, not while the tab is hidden, and stops after
+10 minutes without a change; see "Performance" in the README.
+
 ---
 
 ## Profiler Selector (Cluster)
