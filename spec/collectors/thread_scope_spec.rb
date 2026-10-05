@@ -341,7 +341,7 @@ RSpec.describe "Collectors scoped to the request thread" do
       collector = Profiler::Collectors::DatabaseCollector.new(profile)
       collector.subscribe
 
-      expect { sql }.to output(/collector bug/).to_stderr
+      expect(capture_profiler_log { sql }).to match(/\[Profiler\] collector failed on sql\.active_record: RuntimeError: collector bug/)
       expect(collected(collector)[:total_queries]).to eq(1)
     ensure
       Profiler::Collectors::ScopedNotifications.unsubscribe(failing)
