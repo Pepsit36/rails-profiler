@@ -33,6 +33,10 @@ module Profiler
 
     BACKEND_LOCK = Mutex.new
 
+    # The hosts earlier versions always left out of the outbound HTTP tab. Add them back with
+    # config.http_skip_hosts += Profiler::Configuration::LOCAL_HTTP_HOSTS.
+    LOCAL_HTTP_HOSTS = [/\A127\.0\.0\.1\z/, /\Alocalhost\z/i, /\A::1\z/].freeze
+
     attr_accessor :storage_options, :collectors,
                   :skip_paths, :slow_query_threshold, :max_queries_warning, :sql_backtrace,
                   :track_memory, :allocated_objects_warning_threshold,
@@ -89,6 +93,8 @@ module Profiler
       @ajax_skip_paths = [/^\/_profiler/]
       @track_http = true
       @slow_http_threshold = 500 # milliseconds
+      # Every host whose outbound calls are left out (Strings and Regexps matched against the host).
+      # The profiler's own calls (cluster, slave proxy) are never recorded, whatever this says.
       @http_skip_hosts = []
       @http_backtrace_depth = 40
       @track_jobs = true

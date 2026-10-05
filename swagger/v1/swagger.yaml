@@ -1186,6 +1186,17 @@ components:
           nullable: true
         request_size:
           type: integer
+          nullable: true
+          description: Size in bytes of the whole request body; null for a body_stream that was not read and
+            announced no Content-Length.
+        request_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the request body were kept.
+        request_body_not_captured:
+          type: boolean
+          nullable: true
+          description: Whether the request body was a stream that cannot be rewound, sent without being read.
         response_headers:
           type: object
           additionalProperties:
@@ -1201,6 +1212,10 @@ components:
           nullable: true
         response_size:
           type: integer
+        response_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the response body were kept.
         backtrace:
           type: array
           items:
@@ -1858,6 +1873,17 @@ components:
           nullable: true
         request_size:
           type: integer
+          nullable: true
+          description: Size in bytes of the whole request body; null for a body_stream that was not read and
+            announced no Content-Length.
+        request_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the request body were kept.
+        request_body_not_captured:
+          type: boolean
+          nullable: true
+          description: Whether the request body was a stream that cannot be rewound, sent without being read.
         response_headers:
           type: object
           additionalProperties:
@@ -1870,6 +1896,10 @@ components:
           nullable: true
         response_size:
           type: integer
+        response_body_truncated:
+          type: boolean
+          nullable: true
+          description: Whether only the first max_captured_body_bytes of the response body were kept.
         backtrace:
           type: array
           items:
