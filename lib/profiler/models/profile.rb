@@ -117,9 +117,15 @@ module Profiler
       end
       private :collector_metadata
 
-      def to_h
-        req_body,  req_enc  = decode_body(@request_body,  @request_body_encoding)
-        resp_body, resp_enc = decode_body(@response_body, @response_body_encoding)
+      # The profile as the stores keep it: a body compressed by compress_bodies stays gzip+base64.
+      # decode_bodies: true gives the bodies as text, for the responses that show them.
+      def to_h(decode_bodies: false)
+        req_body,  req_enc  = @request_body,  @request_body_encoding
+        resp_body, resp_enc = @response_body, @response_body_encoding
+        if decode_bodies
+          req_body,  req_enc  = self.class.decode_body(req_body, req_enc)
+          resp_body, resp_enc = self.class.decode_body(resp_body, resp_enc)
+        end
 
         {
           profile_type: @profile_type,
@@ -155,6 +161,7 @@ module Profiler
         }
       end
 
+      # The stored form, as #to_h.
       def to_json(*args)
         to_h.to_json(*args)
       end
@@ -212,6 +219,18 @@ module Profiler
         profile
       end
 
+      # A body kept gzip+base64 as text, with its encoding then "text"; any other body as it is.
+      # One that cannot be decompressed (cut, damaged) is returned as it is: unreadable at worst.
+      def self.decode_body(body, encoding)
+        return [body, encoding] unless encoding == "gzip+base64"
+        return [body, encoding] if body.nil? || body.empty?
+
+        decoded = Zlib::Inflate.inflate(Base64.strict_decode64(body))
+        [decoded.force_encoding(Encoding::UTF_8).scrub, "text"]
+      rescue Zlib::Error, ArgumentError
+        [body, encoding]
+      end
+
       def self.deep_stringify_keys(obj)
         case obj
         when Hash
@@ -235,7 +254,8 @@ module Profiler
         else
           text = Redaction.filter_body(raw, content_type).encode("UTF-8", invalid: :replace, undef: :replace)
           if compress_body?(text)
-            { body: Base64.strict_encode64(Zlib::Deflate.deflate(text)), encoding: "gzip+base64" }
+            # The fastest level: paid on the request, a quarter larger than the default level.
+            { body: Base64.strict_encode64(Zlib::Deflate.deflate(text, Zlib::BEST_SPEED)), encoding: "gzip+base64" }
           else
             { body: text, encoding: "text" }
           end
@@ -251,16 +271,6 @@ module Profiler
       def compress_body?(text)
         Profiler.configuration.compress_bodies &&
           text.bytesize > Profiler.configuration.compress_body_threshold
-      end
-
-      def decode_body(body, encoding)
-        return [body, encoding] unless encoding == "gzip+base64"
-        return [body, encoding] if body.nil? || body.empty?
-
-        decoded = Zlib::Inflate.inflate(Base64.strict_decode64(body))
-        [decoded, "text"]
-      rescue Zlib::Error, ArgumentError
-        [body, encoding]
       end
 
       def binary_content_type?(ct)

@@ -28,7 +28,7 @@ module Profiler
         # The route table and ENV are the process's, not stored in the profile
         Profiler::ProcessSnapshot.hydrate(profile)
 
-        render json: profile.to_h.merge(
+        render json: profile.to_h(decode_bodies: true).merge(
           child_jobs: build_child_jobs(profile),
           parent_profile: build_parent_summary(profile)
         )
