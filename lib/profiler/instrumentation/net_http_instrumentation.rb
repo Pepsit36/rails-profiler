@@ -103,9 +103,10 @@ module Profiler
         end
       end
 
-      # Deprecated: the hosts earlier versions always left out, kept for code that read them.
-      # They are left out only when listed in config.http_skip_hosts now.
-      SKIP_HOSTS = Profiler::Configuration::LOCAL_HTTP_HOSTS
+      # Deprecated, as it was: the hosts earlier versions always left out, kept for code that read
+      # them. They are left out only when listed in config.http_skip_hosts now
+      # (Profiler::Configuration::LOCAL_HTTP_HOSTS).
+      SKIP_HOSTS = %w[127.0.0.1 localhost ::1].freeze
       deprecate_constant :SKIP_HOSTS
 
       TEXT_CONTENT_TYPES   = /\A(text\/|application\/(json|xml|xhtml|javascript|x-www-form-urlencoded)|image\/svg)/i
