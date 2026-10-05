@@ -6,10 +6,21 @@ require_relative "../models/sql_query"
 module Profiler
   module Collectors
     class DatabaseCollector < BaseCollector
+      BACKTRACE_DEPTH = 10
+
+      # Frames between the application's code and the subscriber: the profiler itself, the
+      # notifications bus and Active Record.
+      INTERNAL_FRAMES = [
+        File.expand_path("..", __dir__) + "/",
+        "/active_support/notifications",
+        "/active_record/"
+      ].freeze
+
       def initialize(profile)
         super
         @queries = []
         @subscriptions = []
+        @seen_statements = {}
       end
 
       def icon
@@ -34,6 +45,9 @@ module Profiler
       def subscribe
         return unless defined?(ActiveSupport::Notifications)
 
+        @backtrace_mode = Profiler.configuration.sql_backtrace&.to_sym
+        @slow_query_threshold = Profiler.configuration.slow_query_threshold
+
         @subscriptions << subscribe_notification("sql.active_record") do |name, started, finished, unique_id, payload|
           duration = ((finished - started) * 1000).round(2) # milliseconds
 
@@ -47,7 +61,7 @@ module Profiler
             binds: extract_binds(payload[:binds]),
             name: payload[:name],
             connection: payload[:connection],
-            backtrace: extract_backtrace
+            backtrace: backtrace?(payload[:sql], duration) ? extract_backtrace : []
           )
 
           @queries << query
@@ -115,10 +129,53 @@ module Profiler
         binds.map { Profiler::Redaction::MASK }
       end
 
+      # Capturing the caller costs tens of microseconds. The first run of a statement locates
+      # it, an N+1 loop included (its repeats are the same statement with other values); a slow
+      # query is always located.
+      def backtrace?(sql, duration)
+        case @backtrace_mode
+        when :all then true
+        when :none then false
+        else
+          key = statement_key(sql)
+          first = !@seen_statements.key?(key)
+          @seen_statements[key] = true if first
+          first || duration > @slow_query_threshold
+        end
+      end
+
+      # The statement with its values left out, exactly as the N+1 detection of the Database tab
+      # (DatabaseTab.tsx) and of the MCP (Resources::N1Patterns) groups queries: the first query
+      # of each group is then always one whose caller was captured, values inlined in the SQL
+      # (MySQL) included.
+      def statement_key(sql)
+        sql.to_s
+           .gsub(/\$\d+/, "?")
+           .gsub(/\b\d+\b/, "?")
+           .gsub(/'[^']*'/, "?")
+           .gsub(/"[^"]*"/, "?")
+           .strip
+      end
+
+      # The first frames outside the profiler, the notifications bus and Active Record: the
+      # code that ran the query. Read a few at a time, as the stack can be deep.
       def extract_backtrace
-        caller_locations(5, 10)
-          .reject { |loc| loc.path.include?("active_record") }
-          .map { |loc| "#{loc.path}:#{loc.lineno}:in `#{loc.label}`" }
+        frames = []
+        start = 1
+        while frames.size < BACKTRACE_DEPTH
+          chunk = caller_locations(start, 20)
+          break if chunk.nil? || chunk.empty?
+
+          chunk.each do |loc|
+            path = loc.path.to_s
+            next if INTERNAL_FRAMES.any? { |internal| path.include?(internal) }
+
+            frames << "#{path}:#{loc.lineno}:in `#{loc.label}`"
+            break if frames.size == BACKTRACE_DEPTH
+          end
+          start += chunk.size
+        end
+        frames
       end
     end
   end

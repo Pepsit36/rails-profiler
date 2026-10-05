@@ -16,6 +16,9 @@ module Profiler
     attr_accessor :function_profiling_max_frames
     attr_accessor :function_profiling_mode
     attr_accessor :function_profiling_clock
+    # Without stackprof, the function profiler stays off unless this is true: it then traces
+    # every method call of the request's thread with a TracePoint, several times slower.
+    attr_accessor :function_profiling_tracepoint_fallback
 
     def configuration
       @configuration ||= Configuration.new
@@ -114,6 +117,7 @@ module Profiler
   self.function_profiling_max_frames = 2000
   self.function_profiling_mode = "lite"
   self.function_profiling_clock = "wall"
+  self.function_profiling_tracepoint_fallback = false
 end
 
 # Require core components
