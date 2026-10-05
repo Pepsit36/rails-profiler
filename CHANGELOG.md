@@ -37,10 +37,13 @@ every commit of every tag interval is accounted for one way or the other.
   what notifications and the logger hand them (SQL, views, cache, exceptions, timeline, logs,
   outbound HTTP) stay subscribed until then, so the queries and views of a `render stream: true`
   page or of an enumerator are still recorded; dumps, mailers, I18n and function profiling are
-  read when the application returns. Until it is saved, a streamed profile is not listed and its
-  token answers 404: an endless event stream is never listed. A body the server never closes is
-  finished when its thread starts its next profiled request, and its subscriptions are dropped
-  after 5 minutes at the latest. Rails 7.0 pages, whose body has no `to_ary`, and pages a `Live`
+  read when the application returns. While the server iterates the body, the log lines, outbound
+  HTTP calls and `Profiler.measure` blocks it runs are recorded as well. Until it is saved, a
+  streamed profile is not listed and its token answers 404: an endless event stream is never
+  listed. A body the server never closes is finished when the fiber that started it starts its
+  next profiled request, never cutting a stream that a fiber-based server such as Falcon runs
+  alongside, and its subscriptions are dropped after 5 minutes at the latest, which the profile
+  and the Request tab then say; the server still closes the application's body. Rails 7.0 pages, whose body has no `to_ary`, and pages a `Live`
   controller renders whole still get the toolbar. The toolbar is only injected in pages returned
   whole, so a `render stream: true` page has none.
 - **Middleware:** Stop turning an error raised while a response body is iterated (a stream that
@@ -66,6 +69,9 @@ every commit of every tag interval is accounted for one way or the other.
   `memory_warning_threshold`, which nothing ever compared with, is deprecated for
   `allocated_objects_warning_threshold`, a number of objects, still without effect; setting the
   old one warns and converts it.
+- **Toolbar:** Leave a response already framed with `Transfer-Encoding` untouched. Under Rails
+  7.0, a `render stream: true` page arrives chunked, and the toolbar was put among the chunks,
+  which broke the framing: the browser got an empty or cut page.
 - **Toolbar:** Correct the `Content-Length` of a page the toolbar is injected into. It kept the
   length of the page without the toolbar, so a server that honours it cut the page short.
 - **Toolbar:** Inject the toolbar into a page whose headers are a plain `Hash` with a lower-case
