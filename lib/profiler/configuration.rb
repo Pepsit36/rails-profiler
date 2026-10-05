@@ -51,7 +51,7 @@ module Profiler
                   :name, :master_url, :self_url,
                   :cluster_heartbeat_interval, :cluster_offline_threshold,
                   :cluster_master, :cluster_secret, :cluster_require_secret,
-                  :cluster_allow_insecure_http
+                  :cluster_allow_insecure_http, :logger
 
     attr_reader :authorize_block, :enabled, :track_tests, :max_profiles
 
@@ -125,6 +125,9 @@ module Profiler
       @cluster_require_secret = true
       @cluster_allowed_slave_urls = []
       @cluster_allow_insecure_http = false
+      # Where the profiler's own errors go (Profiler.log): Rails.logger when nil, or $stderr when
+      # there is none.
+      @logger = nil
     end
 
     # Always a Pathname, whether set from a String or left to its default.
@@ -146,8 +149,8 @@ module Profiler
     end
 
     def memory_warning_threshold=(bytes)
-      warn "[Profiler] memory_warning_threshold is deprecated, set allocated_objects_warning_threshold " \
-           "(a number of objects) instead"
+      Profiler.log_warn("memory_warning_threshold is deprecated, set allocated_objects_warning_threshold " \
+                        "(a number of objects) instead")
       @allocated_objects_warning_threshold = bytes && bytes / AllocationCounter::LEGACY_BYTES_PER_OBJECT
     end
 

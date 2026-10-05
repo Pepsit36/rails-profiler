@@ -90,7 +90,7 @@ module Profiler
           end
         end
       rescue => e
-        warn "LogCollector#subscribe failed: #{e.message}"
+        Profiler.log_error("LogCollector: subscribe failed", e)
       end
 
       # Collect reads only what the collector gathered itself.

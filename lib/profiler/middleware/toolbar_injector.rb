@@ -124,7 +124,7 @@ module Profiler
           path = File.join(__dir__, "..", "..", "..", "app", "assets", "javascript", "profiler-ajax-interceptor.js")
           File.read(path)
         rescue => e
-          warn "Failed to load AJAX interceptor script: #{e.message}"
+          Profiler.log_error("ToolbarInjector: could not load the AJAX interceptor script", e)
           ""
         end
       end

@@ -100,7 +100,7 @@ module Profiler
         json_data = File.read(file_path)
         Models::Profile.from_json(json_data)
       rescue StandardError => e
-        warn "Failed to load profile #{token}: #{e.message}"
+        Profiler.log_error("FileStore: could not load profile #{token}", e)
         nil
       end
 

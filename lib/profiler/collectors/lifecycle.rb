@@ -13,7 +13,7 @@ module Profiler
         collectors.each { |collector| collector.subscribe if collector.respond_to?(:subscribe) }
         true
       rescue => e
-        warn "Profiler #{label}: Collector subscribe failed: #{e.message}"
+        Profiler.log_error("#{label}: collector subscribe failed", e)
         release_all(collectors)
         false
       end
@@ -23,7 +23,7 @@ module Profiler
         collectors&.each do |collector|
           collector.unsubscribe if collector.respond_to?(:unsubscribe)
         rescue => e
-          warn "Profiler: Collector #{collector.class} release failed: #{e.message}"
+          Profiler.log_error("collector #{collector.class} release failed", e)
         end
       end
     end

@@ -46,8 +46,54 @@ module Profiler
     def save_profile(profile, from:)
       storage.save(profile.token, profile)
     rescue StandardError => e
-      warn "[Profiler] #{from}: could not save profile #{profile.token}: #{e.class}: #{e.message}"
+      log_error("#{from}: could not save profile #{profile.token}", e)
       nil
+    end
+
+    # The longest error message a log line carries: a parser error can quote what it was parsing.
+    LOG_ERROR_MESSAGE_LIMIT = 1000
+
+    # The profiler's own messages, to config.logger when the application sets one (read on each
+    # message), else to Rails.logger, else to $stderr. Prefixed [Profiler], with the profiler's
+    # credentials masked. Never raises: a logger that fails sends the line to $stderr instead.
+    def log(level, message, error = nil, backtrace: false)
+      line = log_line(message, error, backtrace)
+      logger = current_logger
+      if logger
+        begin
+          return logger.public_send(level, line)
+        rescue StandardError
+          # Below, to $stderr: the message is not lost.
+        end
+      end
+      $stderr.write("#{line}\n")
+      nil
+    rescue StandardError
+      nil
+    end
+
+    def log_error(message, error = nil, backtrace: false)
+      log(:error, message, error, backtrace: backtrace)
+    end
+
+    def log_warn(message, error = nil)
+      log(:warn, message, error)
+    end
+
+    def log_info(message)
+      log(:info, message)
+    end
+
+    # Like log_error, once per +site+ and error class: for the paths called again and again (a
+    # store read on every poll), where the same failure would otherwise fill the log.
+    def log_error_once(site, message, error)
+      key = [site, error.class]
+      @logged_once_mutex.synchronize do
+        return nil if @logged_once.include?(key)
+
+        @logged_once << key
+      end
+      log_error(message, error)
     end
 
     def env_override_store
@@ -94,6 +140,31 @@ module Profiler
       result
     end
 
+    private
+
+    def current_logger
+      configured = configuration.logger
+      return configured if configured
+      return nil unless defined?(::Rails) && ::Rails.respond_to?(:logger)
+
+      ::Rails.logger
+    rescue StandardError
+      nil
+    end
+
+    def log_line(message, error, backtrace)
+      line = +"[Profiler] #{message}"
+      if error
+        text = error.message.to_s
+        text = "#{text[0, LOG_ERROR_MESSAGE_LIMIT]}..." if text.length > LOG_ERROR_MESSAGE_LIMIT
+        line << ": #{error.class}: #{text}"
+        line << "\n#{error.backtrace.join("\n")}" if backtrace && error.backtrace
+      end
+      Redaction.hide_credentials(line)
+    end
+
+    public
+
     # Dump a variable to the profiler
     # Usage: Profiler.dump(variable, "optional label")
     def dump(value, label = nil)
@@ -121,6 +192,9 @@ module Profiler
       value
     end
   end
+
+  @logged_once = Set.new
+  @logged_once_mutex = Mutex.new
 
   self.function_profiling_enabled = true
   self.function_profiling_max_frames = 2000

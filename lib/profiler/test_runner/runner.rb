@@ -51,7 +51,7 @@ module Profiler
         root = project_root
         allowed = if Profiler.configuration.test_runner_allow_undiscovered_files
                     warn_once(:undiscovered,
-                              "[Profiler] config.test_runner_allow_undiscovered_files is enabled: the test runner " \
+                              "config.test_runner_allow_undiscovered_files is enabled: the test runner " \
                               "runs any file under the Rails root, not only the discovered tests.")
                     nil
                   else
@@ -101,11 +101,7 @@ module Profiler
           @warned[key] = true
         end
 
-        if defined?(Rails) && Rails.respond_to?(:logger) && Rails.logger
-          Rails.logger.warn(message)
-        else
-          warn(message)
-        end
+        Profiler.log_warn(message)
       end
 
       def self.reset_warnings!
@@ -227,7 +223,7 @@ module Profiler
 
         unless left_out.empty?
           warn_once([:env, left_out.sort],
-                    "[Profiler] Environment overrides not passed to the test runner, because they make it " \
+                    "Environment overrides not passed to the test runner, because they make it " \
                     "load other code: #{left_out.sort.join(", ")}.")
         end
 

@@ -96,7 +96,7 @@ RSpec.describe "Allocated objects" do
 
     it "still takes the deprecated memory_warning_threshold, read as objects times 40" do
       config = Profiler::Configuration.new
-      expect { config.memory_warning_threshold = 40 * 1000 }.to output(/deprecated/).to_stderr
+      expect(capture_profiler_log { config.memory_warning_threshold = 40 * 1000 }).to match(/WARN -- : \[Profiler\] .*deprecated/)
       expect(config.allocated_objects_warning_threshold).to eq(1000)
       expect(config.memory_warning_threshold).to eq(40 * 1000)
     end
