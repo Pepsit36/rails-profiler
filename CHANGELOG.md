@@ -35,6 +35,9 @@ every commit of every tag interval is accounted for one way or the other.
 - **Storage:** The profile list summaries kept by the file, SQLite and Redis stores no longer
   carry the first 500 characters of the request and response bodies. Summaries written by 0.31.4
   and 0.31.5 keep them until their profiles are evicted; no list shows them.
+- **MCP:** The `curl` command of `get_profile_detail` carries the request body as it was sent: a
+  body larger than `compress_body_threshold` came out as its compressed base64 form, and a binary
+  body as base64 text. A binary body is now left out of the command.
 - **Upgrading:** the profiles already stored, all as text, are read as before, with no migration.
   An earlier version reading a store written by this one shows the compressed bodies as text too,
   and a cluster master and its slaves may run either version: the profile API they read still
