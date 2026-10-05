@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.31.6] - 2026-10-05
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Storage:** With `config.compress_bodies` (on by default), a text body larger than
