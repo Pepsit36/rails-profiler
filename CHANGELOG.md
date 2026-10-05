@@ -32,28 +32,35 @@ every commit of every tag interval is accounted for one way or the other.
   `Profiler.log_error`, to `config.logger` when the application sets one (read on each message),
   otherwise `Rails.logger`, otherwise `$stderr`. Every line starts with `[Profiler]` (the cluster's
   lines, `[Profiler Cluster]` before, now start with `[Profiler] Cluster:`), carries the error's
-  class and message, cut at 1,000 characters, and has the cluster secret masked. A logger that
+  class and message, masked then cut at 1,000 bytes, and has the cluster secret masked. A logger that
   raises never fails a request, a job or the boot: the line then goes to `$stderr`. A slave whose
   `Rails.logger` was still nil raised instead of logging. Several failures that left no trace at
-  all are now logged, once per place and error class: a store lookup or broadcast, the Redis
+  all are now logged, once per place and error class for the life of the process: a store lookup or broadcast, the Redis
   version read of the toolbar, the MCP body cache, the mailer collector reading a mail, the route
   lookup of the Request tab, the deletion of a file profile. The request middleware saves its
-  profiles through `Profiler.save_profile`, like jobs, console commands and tests, so a storage
-  error no longer costs the page its toolbar.
+  profiles through `Profiler.save_profile`, like jobs, console commands and tests; a page whose
+  profile could not be saved gets neither the `X-Profiler-Token` header nor the toolbar, which
+  would point to a missing profile. The profiler's own lines no longer appear in the Logs tab of
+  the request during which they are written, nor count as its errors.
 - **Outbound HTTP:** Record the calls to services on the same machine. `127.0.0.1`, `localhost`
   and `::1` were always left out, so in development the calls to a neighbouring service never
   showed. `config.http_skip_hosts` is now the whole list, empty by default. The profiler's own
   calls are never recorded, whatever the list says: a slave's registration and heartbeats, and the
   master's requests to its slaves (the slave proxy, the fan-out of the profile pages and the MCP
   tools that query a slave), marked where they are made, and any call to the host and port of
-  `config.master_url`.
+  `config.master_url`. `NetHttpInstrumentation::SKIP_HOSTS` stays, deprecated, as an alias of
+  `LOCAL_HTTP_HOSTS`.
 - **Outbound HTTP:** Keep the bodies of outbound `Net::HTTP` calls to the first
   `config.max_captured_body_bytes`, sent and received, instead of copying them whole; a compressed
-  answer is inflated only up to that size. A `body_stream` is read only when it can be put back
-  where it was (a `StringIO`, a file), up to that size: a pipe or a socket was read whole and then
-  sent empty, it is now sent unread and its body is not captured. The HTTP tab and the
-  `get_profile_http` MCP tool say when a body was cut or not captured; each call carries
-  `request_body_truncated`, `response_body_truncated` and `request_body_not_captured`.
+  answer is inflated only up to that size, give or take one 16 KB buffer. A `body_stream` is read
+  only when it can be put back where it was (a `StringIO`, a file), up to that size and no further
+  than its `Content-Length`: a pipe or a socket was read whole and then sent empty, it is now sent
+  unread and its body is not captured. A `body_stream` without `pos`, such as a Faraday multipart
+  body or a `RestClient::Payload`, is not captured either, where earlier versions replaced it with
+  a copy read whole. The size is the `Content-Length` or the stream's own size, otherwise a
+  minimum. The HTTP tab and the `get_profile_http` MCP tool say when a body was cut or not
+  captured; each call carries `request_body_truncated`, `response_body_truncated`,
+  `request_body_not_captured` and `request_size_is_minimum`. Text bodies read in part stay UTF-8.
 - **Middleware:** Cap the `params` a profile keeps at `config.max_captured_body_bytes`: long values
   are cut and the entries past it left out, with a `"[profiler]"` key saying so, and the profile
   carries `params_truncated`. The application still gets all of its params. With the log line

@@ -184,7 +184,10 @@ The profiler's own messages (a profile it could not save, a collector that faile
 node it cannot reach) go to the application's log: `config.logger` when it is set, read on each
 message, otherwise `Rails.logger`, otherwise `$stderr` when there is no logger yet (early in the
 boot, or outside Rails). Each line starts with `[Profiler]`, the cluster secret is masked in it,
-and an error message is cut at 1,000 characters. A logger that raises never fails a request, a
+and an error message is cut at 1,000 bytes after masking. A failure the profiler meets again and
+again (a store read on every poll) is logged once per place and error class for the life of the
+process. These lines are not recorded in the Logs tab of the request during which they are
+written. A logger that raises never fails a request, a
 job or the boot: the line then goes to `$stderr`. Earlier versions wrote most of these messages to
 `$stderr`; to keep them there, set `config.logger = Logger.new($stderr)`.
 
@@ -1017,8 +1020,10 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
   times, about 15 MB in its profile
 - Outbound `Net::HTTP` bodies are capped by `max_captured_body_bytes` as well, sent and received:
   the HTTP tab and the `get_profile_http` MCP tool say when a body was cut. A compressed answer is
-  inflated only up to that size. A `body_stream` is read only when it can be put back where it
-  was (a `StringIO`, a file); a pipe or a socket is sent unread and its body is not captured.
+  inflated only up to that size, give or take one 16 KB buffer. A `body_stream` is read only when
+  it can be put back where it was (a `StringIO`, a file), and no further than its
+  `Content-Length`; a pipe, a socket or a stream without `pos` (a Faraday multipart body, a
+  `RestClient::Payload`) is sent unread and its body is not captured.
   Earlier versions read any `body_stream` whole, which sent an empty body for a pipe
 - Streamed responses go out as they are produced: a body that does not answer `to_ary` (an
   `ActionController::Live` or `response.stream` action that writes to the stream,
