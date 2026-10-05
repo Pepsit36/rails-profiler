@@ -57,7 +57,7 @@ module Profiler
         when :stdio
           ::MCP::Server::Transports::StdioTransport.new(@server).open
         when :http
-          $stderr.puts "MCP HTTP transport active — endpoint: /_profiler/mcp"
+          Profiler.log_info("MCP: HTTP transport active, endpoint /_profiler/mcp")
         else
           raise Error, "Unknown transport: #{transport}"
         end

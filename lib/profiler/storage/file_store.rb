@@ -100,7 +100,7 @@ module Profiler
         json_data = File.read(file_path)
         Models::Profile.from_json(json_data)
       rescue StandardError => e
-        warn "Failed to load profile #{token}: #{e.message}"
+        Profiler.log_error("FileStore: could not load profile #{token}", e)
         nil
       end
 
@@ -345,9 +345,14 @@ module Profiler
         json = PrivateFiles.open_for_reading(profile_file_path(token), &:read)
         record = put_record(token, Models::Profile.from_json(json).to_h, json.bytesize)
         Entry.new(token, record["at"], record["type"], record["parent"], record["bytes"], record["summary"])
-      rescue StandardError
+      rescue StandardError => e
         # Unreadable: kept in the count, so that it is evicted in turn; listed by no one.
-        stat = File.lstat(profile_file_path(token)) rescue nil
+        Profiler.log_error_once(:file_store_entry, "FileStore: could not read profile #{token} to index it", e)
+        stat = begin
+          File.lstat(profile_file_path(token))
+        rescue SystemCallError
+          nil
+        end
         Entry.new(token, stat ? stat.mtime.to_f : 0.0, nil, nil, stat ? stat.size : 0, nil)
       end
 

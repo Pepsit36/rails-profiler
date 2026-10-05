@@ -219,7 +219,7 @@ module Profiler
               handler.call(name, started, finished, id, payload)
             rescue StandardError => e
               # Never into the application's query, nor at the expense of the other collectors.
-              warn "Profiler: a collector failed on #{event}: #{e.class}: #{e.message}"
+              Profiler.log_error("collector failed on #{event}", e)
             end
           end
         end

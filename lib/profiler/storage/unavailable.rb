@@ -21,8 +21,7 @@ module Profiler
           key = [Process.pid, error.class.name, error.message]
           first = @mutex.synchronize { @said[key] ? false : (@said[key] = true) }
           if first
-            warn "[Profiler] storage unavailable, profiles are not saved until it is fixed: " \
-                 "#{error.class}: #{error.message}"
+            Profiler.log_warn("storage unavailable, profiles are not saved until it is fixed", error)
           end
           new(error)
         end

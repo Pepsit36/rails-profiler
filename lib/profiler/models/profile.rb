@@ -19,7 +19,7 @@ module Profiler
                     :response_body, :response_body_encoding,
                     :request_body_size, :request_body_truncated, :request_body_size_is_minimum,
                     :response_body_size, :response_body_truncated, :response_body_size_is_minimum,
-                    :collectors_released_after_seconds,
+                    :collectors_released_after_seconds, :params_truncated,
                     :gem_version
 
       def initialize(request = nil)
@@ -34,7 +34,8 @@ module Profiler
         if request
           @path = request.path
           @method = request.request_method
-          @params = sanitize_params(request.params)
+          @params, @params_truncated = cap_params(sanitize_params(request.params),
+                                                  Profiler.configuration.max_captured_body_bytes)
           @headers = extract_headers(request.env)
         end
       end
@@ -133,6 +134,7 @@ module Profiler
           started_at: @started_at&.iso8601,
           finished_at: @finished_at&.iso8601,
           params: @params,
+          params_truncated: @params_truncated,
           headers: @headers,
           response_headers: @response_headers,
           request_body: req_body,
@@ -178,6 +180,7 @@ module Profiler
         profile.started_at = data[:started_at] ? Time.parse(data[:started_at]) : nil
         profile.finished_at = data[:finished_at] ? Time.parse(data[:finished_at]) : nil
         profile.params = data[:params]
+        profile.params_truncated = data[:params_truncated]
         profile.headers = data[:headers]
         profile.response_headers = data[:response_headers]
         profile.request_body = data[:request_body]
@@ -265,6 +268,61 @@ module Profiler
       end
 
       LEGACY_FILTERED_PARAMS = %w[password password_confirmation token secret].freeze
+
+      # The key added to params cut at max_captured_body_bytes, so that the cut shows wherever
+      # the params are read.
+      PARAMS_TRUNCATED_KEY = "[profiler]"
+
+      # A copy of +params+ whose JSON stays within about +limit+ bytes: long strings are cut, and
+      # the entries past the limit left out. The application's own params are never touched.
+      # Returns the params and whether they were cut.
+      def cap_params(params, limit)
+        return [params, false] if limit.nil? || !params.is_a?(Hash)
+
+        budget = [limit]
+        cut = [false]
+        capped = cap_value(params, budget, cut)
+        return [capped, false] unless cut[0]
+
+        capped[PARAMS_TRUNCATED_KEY] = "params truncated at #{limit} bytes (max_captured_body_bytes)"
+        [capped, true]
+      end
+
+      def cap_value(value, budget, cut)
+        case value
+        when Hash
+          value.each_with_object({}) do |(key, item), out|
+            cost = key.to_s.bytesize + 4
+            if cost >= budget[0]
+              cut[0] = true
+              break out
+            end
+            budget[0] -= cost
+            out[key] = cap_value(item, budget, cut)
+          end
+        when Array
+          value.each_with_object([]) do |item, out|
+            if budget[0] <= 1
+              cut[0] = true
+              break out
+            end
+            budget[0] -= 1
+            out << cap_value(item, budget, cut)
+          end
+        when String
+          cost = value.bytesize + 2
+          if cost > budget[0]
+            cut[0] = true
+            value = Redaction.cut_bytes(value, [budget[0] - 2, 0].max).scrub("")
+            cost = value.bytesize + 2
+          end
+          budget[0] -= cost
+          value
+        else
+          budget[0] -= value.to_s.bytesize
+          value
+        end
+      end
 
       def sanitize_params(params)
         return {} unless params

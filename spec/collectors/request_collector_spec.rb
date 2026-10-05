@@ -94,7 +94,7 @@ RSpec.describe Profiler::Collectors::RequestCollector do
 
         rails_app = double("rails_app")
         allow(rails_app).to receive(:routes).and_return(routes_double)
-        stub_const("Rails", double("Rails", application: rails_app, respond_to?: true))
+        stub_const("Rails", double("Rails", application: rails_app, respond_to?: true, logger: Logger.new(nil)))
 
         collector.collect
       end

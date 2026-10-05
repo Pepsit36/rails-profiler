@@ -19,6 +19,79 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.31.5] - 2026-10-05
+
+<!-- stamped -->
+
+### Fixed
+
+- **Logging:** Send the profiler's own errors and warnings to the application's log instead of
+  `$stderr`. A profile that could not be saved, a collector that failed, a store that could not be
+  read, a cluster node out of reach: about thirty places wrote to `$stderr`, which is not where
+  `log/development.log` is, so these errors went unseen. They now go through one entry point,
+  `Profiler.log_error`, to `config.logger` when the application sets one (read on each message),
+  otherwise `Rails.logger`, otherwise `$stderr`. Every line starts with `[Profiler]` (the cluster's
+  lines, `[Profiler Cluster]` before, now start with `[Profiler] Cluster:`), carries the error's
+  class and message, masked then cut at 1,000 bytes, and has the cluster secret masked. A logger that
+  raises never fails a request, a job or the boot: the line then goes to `$stderr`. A slave whose
+  `Rails.logger` was still nil raised instead of logging. Several failures that left no trace at
+  all are now logged, once per place and error class for the life of the process: a store lookup or broadcast, the Redis
+  version read of the toolbar, the MCP body cache, the mailer collector reading a mail, the route
+  lookup of the Request tab, a file profile that cannot be read to rebuild the index. The request middleware saves its
+  profiles through `Profiler.save_profile`, like jobs, console commands and tests; a page whose
+  profile could not be saved gets neither the `X-Profiler-Token` header nor the toolbar, which
+  would point to a missing profile. The profiler's own lines no longer appear in the Logs tab of
+  the request during which they are written, nor count as its errors. The same holds while the store is
+  unavailable, for pages and for streamed responses, which no longer send `X-Profiler-Token` for a
+  profile that will be dropped. The storage warnings (a store that cannot be created, said once
+  per cause; a Redis profile that cannot be indexed; a SQLite summary that cannot be read) go to
+  the application's log too, and the `run_tests` MCP tool answers an unavailable store as an error
+  instead of a run without profiles.
+- **Outbound HTTP:** Record the calls to services on the same machine. `127.0.0.1`, `localhost`
+  and `::1` were always left out, so in development the calls to a neighbouring service never
+  showed. `config.http_skip_hosts` is now the whole list, empty by default. The profiler's own
+  calls are never recorded, whatever the list says: a slave's registration and heartbeats, and the
+  master's requests to its slaves (the slave proxy, the fan-out of the profile pages and the MCP
+  tools that query a slave), marked where they are made, and any call to the host and port of
+  `config.master_url`. `NetHttpInstrumentation::SKIP_HOSTS` stays, deprecated, with its former value
+  (`%w[127.0.0.1 localhost ::1]`); nothing reads it any more.
+- **Outbound HTTP:** Keep the bodies of outbound `Net::HTTP` calls to the first
+  `config.max_captured_body_bytes`, sent and received, instead of copying them whole; a compressed
+  answer is inflated only up to that size, give or take one 16 KB buffer. A `body_stream` is read
+  only when it can be put back where it was (a `StringIO`, a file), up to that size and no further
+  than its `Content-Length`: a pipe or a socket was read whole and then sent empty, it is now sent
+  unread and its body is not captured. A `body_stream` without `pos`, such as a Faraday multipart
+  body or a `RestClient::Payload`, is not captured either, where earlier versions replaced it with
+  a copy read whole. The size is the `Content-Length` or the stream's own size, otherwise a
+  minimum. The HTTP tab and the `get_profile_http` MCP tool say when a body was cut or not
+  captured; each call carries `request_body_truncated`, `response_body_truncated`,
+  `request_body_not_captured` and `request_size_is_minimum`. Text bodies read in part stay UTF-8.
+- **Middleware:** Cap the `params` a profile keeps at `config.max_captured_body_bytes`: long values
+  are cut and the entries past it left out, with a `"[profiler]"` key saying so, and the profile
+  carries `params_truncated`. The application still gets all of its params. With the log line
+  capped below, a 5 MB JSON request no longer takes about 15 MB in its profile.
+- **Logs:** Cap what a profile keeps of its request's log lines at the new
+  `config.max_captured_log_bytes` (1 MB by default). A request, or a stream held open, that logged
+  without end grew its thread's buffer without bound; a single line, such as the
+  `Parameters: ...` line of a large request, is cut at the cap. The Logs tab ends with the number
+  of lines left out, and the collected data carries `truncated` and `dropped`.
+- **Dump:** `Profiler.dump` returns its argument when the profiler is disabled too; it returned
+  `nil`, so a call left in the code changed the value of the expression in production.
+- **Engine:** Stop failing the boot of an application that loads `ActionController::API` (an
+  `api_only` application, or a single API controller): the engine called `helper` on it, which
+  `ActionController::API` does not have (`NoMethodError`).
+- **Toolbar:** Find where the toolbar goes about four times faster on a page of many tags (0.8 ms
+  instead of 4 ms for a page of 20 KB and 4,000 tags, 10 ms instead of 25 ms for 320 KB of tags
+  with attributes): ordinary text and tags are skipped in one pass. The place is the same, and a
+  `</body>` in an attribute, a comment, a script or a CDATA section, an unclosed quote or a
+  `<plaintext>` are handled as before.
+- **Upgrading:** to get the previous behaviour back, in `config/initializers/profiler.rb`:
+  - the profiler's messages on `$stderr`: `config.logger = Logger.new($stderr)`;
+  - the local hosts left out of the HTTP tab:
+    `config.http_skip_hosts += Profiler::Configuration::LOCAL_HTTP_HOSTS`;
+  - whole outbound bodies and params: `config.max_captured_body_bytes = nil` (also keeps the
+    incoming bodies whole); every log line: `config.max_captured_log_bytes = nil`.
+
 ## [0.31.4] - 2026-10-05
 
 <!-- stamped -->

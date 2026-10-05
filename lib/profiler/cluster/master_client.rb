@@ -14,7 +14,7 @@ module Profiler
           register!
           @registered = true
         rescue => e
-          log_warn("Could not register with master at startup: #{e.message} — will retry in heartbeat loop")
+          log_warn("could not register with master at startup, will retry in the heartbeat loop", e)
         end
         start_heartbeat_thread
       end
@@ -25,7 +25,7 @@ module Profiler
         config = Profiler.configuration
         uri = master_uri("register")
         body = { name: config.resolved_name, url: config.self_url }.to_json
-        resp = Net::HTTP.post(uri, body, request_headers)
+        resp = Profiler.untracked_http { Net::HTTP.post(uri, body, request_headers) }
         unless resp.code.to_i.between?(200, 299)
           raise "Master returned #{resp.code}: #{resp.body.to_s.slice(0, 200)}"
         end
@@ -37,7 +37,7 @@ module Profiler
         config = Profiler.configuration
         uri = master_uri("heartbeat")
         body = { name: config.resolved_name }.to_json
-        resp = Net::HTTP.post(uri, body, request_headers)
+        resp = Profiler.untracked_http { Net::HTTP.post(uri, body, request_headers) }
         raise "Heartbeat rejected #{resp.code}" unless resp.code.to_i.between?(200, 299)
       end
 
@@ -74,25 +74,17 @@ module Profiler
             end
           rescue => e
             @registered = false
-            log_warn("Cluster communication failed: #{e.message} — will retry")
+            log_warn("communication with the master failed, will retry", e)
           end
         end
       end
 
       def log_info(msg)
-        if defined?(Rails)
-          Rails.logger.info("[Profiler Cluster] #{msg}")
-        else
-          $stderr.puts("[Profiler Cluster] #{msg}")
-        end
+        Profiler.log_info("Cluster: #{msg}")
       end
 
-      def log_warn(msg)
-        if defined?(Rails)
-          Rails.logger.warn("[Profiler Cluster] #{msg}")
-        else
-          $stderr.puts("[Profiler Cluster] WARN #{msg}")
-        end
+      def log_warn(msg, error = nil)
+        Profiler.log_warn("Cluster: #{msg}", error)
       end
     end
   end

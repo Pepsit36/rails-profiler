@@ -31,35 +31,38 @@ RSpec.describe "Storage errors on the application's paths" do
 
   it "lets a job succeed" do
     result = nil
-    expect do
+    log = capture_profiler_log do
       result = Profiler::JobProfiler.profile(job_class: "W", job_id: "1", queue: "q", arguments: [], executions: 0) { :done }
-    end.to output(/\[Profiler\].*JobProfiler.*could not save.*No space left/).to_stderr
+    end
+    expect(log).to match(/\[Profiler\].*JobProfiler.*could not save.*No space left/)
     expect(result).to eq(:done)
   end
 
   it "keeps the job's own exception" do
-    expect do
+    log = capture_profiler_log do
       expect do
         Profiler::JobProfiler.profile(job_class: "W", job_id: "1", queue: "q", arguments: [], executions: 0) do
           raise ArgumentError, "the job's own"
         end
       end.to raise_error(ArgumentError, "the job's own")
-    end.to output(/could not save/).to_stderr
+    end
+    expect(log).to match(/could not save/)
   end
 
   it "lets a console command succeed" do
     result = nil
-    expect { result = Profiler::ConsoleProfiler.profile(expression: "1 + 1") { 2 } }
-      .to output(/\[Profiler\].*ConsoleProfiler.*could not save/).to_stderr
+    expect(capture_profiler_log { result = Profiler::ConsoleProfiler.profile(expression: "1 + 1") { 2 } })
+      .to match(/\[Profiler\].*ConsoleProfiler.*could not save/)
     expect(result).to eq(2)
   end
 
   it "lets a test succeed" do
     result = nil
-    expect do
+    log = capture_profiler_log do
       result = Profiler::TestProfiler.profile(test_name: "t", test_file: "spec/t_spec.rb", test_line: 1,
                                               framework: :rspec) { :passed }
-    end.to output(/\[Profiler\].*TestProfiler.*could not save/).to_stderr
+    end
+    expect(log).to match(/\[Profiler\].*TestProfiler.*could not save/)
     expect(result).to eq(:passed)
   end
 
@@ -68,8 +71,8 @@ RSpec.describe "Storage errors on the application's paths" do
     collector.collect
 
     entry = nil
-    expect { entry = collector.register_pending(method: "GET", url: "http://example.test/") }
-      .to output(/\[Profiler\].*HttpCollector.*could not save/).to_stderr
+    expect(capture_profiler_log { entry = collector.register_pending(method: "GET", url: "http://example.test/") })
+      .to match(/\[Profiler\].*HttpCollector.*could not save/)
     expect(entry).to include(url: "http://example.test/")
   end
 end

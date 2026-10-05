@@ -33,6 +33,7 @@ module Profiler
           allocated_objects: @profile.allocated_objects,
           memory: @profile.memory, # deprecated, see Profile#memory
           params: @profile.params,
+          params_truncated: @profile.params_truncated || false,
           headers: @profile.headers,
           response_headers: @profile.response_headers,
           request_body: @profile.request_body,
@@ -103,7 +104,11 @@ module Profiler
           route_params:      Profiler::Redaction.filter_hash(route_params),
           controller_action: controller_action
         }
-      rescue StandardError
+      rescue StandardError => e
+        # A path no route matches (a 404) has no route to show.
+        unless defined?(ActionController::RoutingError) && e.is_a?(ActionController::RoutingError)
+          Profiler.log_error_once(:request_route, "RequestCollector: could not read the matched route", e)
+        end
         {}
       end
 

@@ -36,7 +36,11 @@ module Profiler
         candidates.find { |route| route[:verb].split("|").include?(verb) } ||
           candidates.find { |route| route[:verb] == "ANY" } ||
           candidates.first
-      rescue StandardError
+      rescue StandardError => e
+        # A path no route matches (a 404) has no route to show.
+        unless defined?(ActionController::RoutingError) && e.is_a?(ActionController::RoutingError)
+          Profiler.log_error_once(:snapshot_route, "could not find the route of a profile", e)
+        end
         nil
       end
 
@@ -61,7 +65,7 @@ module Profiler
         end
         profile
       rescue StandardError => e
-        warn "Profiler: could not add the routes and ENV to profile #{profile.token}: #{e.message}"
+        Profiler.log_error("could not add the routes and ENV to profile #{profile.token}", e)
         profile
       end
 
@@ -84,7 +88,8 @@ module Profiler
           @routes = build_snapshot(fingerprint, list) unless @routes && @routes[0] == fingerprint
           @routes
         end
-      rescue StandardError
+      rescue StandardError => e
+        Profiler.log_error_once(:snapshot_routes, "could not read the application's routes", e)
         [nil, [].freeze, {}.freeze]
       end
 

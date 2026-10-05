@@ -33,6 +33,10 @@ module Profiler
 
     BACKEND_LOCK = Mutex.new
 
+    # The hosts earlier versions always left out of the outbound HTTP tab. Add them back with
+    # config.http_skip_hosts += Profiler::Configuration::LOCAL_HTTP_HOSTS.
+    LOCAL_HTTP_HOSTS = [/\A127\.0\.0\.1\z/, /\Alocalhost\z/i, /\A::1\z/].freeze
+
     attr_accessor :storage_options, :collectors,
                   :skip_paths, :slow_query_threshold, :max_queries_warning, :sql_backtrace,
                   :track_memory, :allocated_objects_warning_threshold,
@@ -46,12 +50,12 @@ module Profiler
                   :apply_env_overrides_when_disabled, :restrict_storage_permissions,
                   :test_runner_allow_undiscovered_files,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
-                  :compress_bodies, :compress_body_threshold, :max_captured_body_bytes,
+                  :compress_bodies, :compress_body_threshold, :max_captured_body_bytes, :max_captured_log_bytes,
                   :redact_sensitive_data, :filter_parameters, :env_allowlist,
                   :name, :master_url, :self_url,
                   :cluster_heartbeat_interval, :cluster_offline_threshold,
                   :cluster_master, :cluster_secret, :cluster_require_secret,
-                  :cluster_allow_insecure_http
+                  :cluster_allow_insecure_http, :logger
 
     attr_reader :authorize_block, :enabled, :track_tests, :max_profiles
 
@@ -89,6 +93,8 @@ module Profiler
       @ajax_skip_paths = [/^\/_profiler/]
       @track_http = true
       @slow_http_threshold = 500 # milliseconds
+      # Every host whose outbound calls are left out (Strings and Regexps matched against the host).
+      # The profiler's own calls (cluster, slave proxy) are never recorded, whatever this says.
       @http_skip_hosts = []
       @http_backtrace_depth = 40
       @track_jobs = true
@@ -107,6 +113,8 @@ module Profiler
       # The request and response bodies kept in a profile stop at this many bytes; the
       # application still reads and sends all of them. nil keeps whole bodies.
       @max_captured_body_bytes = 256 * 1024
+      # What a profile keeps of the lines its request logs, in bytes. nil keeps every line.
+      @max_captured_log_bytes = 1024 * 1024
       @redact_sensitive_data = true
       @filter_parameters = DEFAULT_FILTER_PARAMETERS.dup
       @env_allowlist = DEFAULT_ENV_ALLOWLIST.dup
@@ -125,6 +133,9 @@ module Profiler
       @cluster_require_secret = true
       @cluster_allowed_slave_urls = []
       @cluster_allow_insecure_http = false
+      # Where the profiler's own errors go (Profiler.log): Rails.logger when nil, or $stderr when
+      # there is none.
+      @logger = nil
     end
 
     # Always a Pathname, whether set from a String or left to its default.
@@ -146,8 +157,8 @@ module Profiler
     end
 
     def memory_warning_threshold=(bytes)
-      warn "[Profiler] memory_warning_threshold is deprecated, set allocated_objects_warning_threshold " \
-           "(a number of objects) instead"
+      Profiler.log_warn("memory_warning_threshold is deprecated, set allocated_objects_warning_threshold " \
+                        "(a number of objects) instead")
       @allocated_objects_warning_threshold = bytes && bytes / AllocationCounter::LEGACY_BYTES_PER_OBJECT
     end
 

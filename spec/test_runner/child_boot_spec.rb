@@ -48,7 +48,7 @@ RSpec.describe Profiler::TestRunner::Runner, "test process boot" do
     Profiler.configure { |c| c.tmp_path = tmp_path }
     Profiler.instance_variable_set(:@env_override_store, nil)
     hide_const("Rails")
-    allow(described_class).to receive(:warn)
+    allow(Profiler).to receive(:log_warn)
     stub_const("Profiler::BOOT_ENV", ENV.to_h.except("SPEC_OPTS", "DATABASE_URL", "MY_FEATURE_FLAG").freeze)
   end
 

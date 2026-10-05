@@ -29,7 +29,7 @@ RSpec.describe Profiler::TestRunner::Runner, ".build_env with real overrides" do
     Profiler.instance_variable_set(:@env_override_store, nil)
     # The warning goes to Rails.logger when Rails is loaded (the request specs load it).
     hide_const("Rails")
-    allow(described_class).to receive(:warn)
+    allow(Profiler).to receive(:log_warn)
   end
 
   after do
@@ -220,8 +220,8 @@ RSpec.describe Profiler::TestRunner::Runner, ".build_env with real overrides" do
 
     2.times { build_env }
 
-    expect(described_class).to have_received(:warn).once
-    expect(described_class).to have_received(:warn).with(
+    expect(Profiler).to have_received(:log_warn).once
+    expect(Profiler).to have_received(:log_warn).with(
       satisfy { |message| message.include?("RUBYOPT") && !message.include?("not_a_test.rb") }
     )
   end

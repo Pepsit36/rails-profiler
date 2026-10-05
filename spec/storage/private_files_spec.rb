@@ -99,18 +99,18 @@ RSpec.describe Profiler::Storage::PrivateFiles do
     end
 
     it "is warned about once" do
-      expect { 2.times { Profiler::Storage::FileStore.new } }
-        .to output(/\[Profiler\].*tmp_path.*#{Regexp.escape(@tmp_path.to_s)}.*writable/).to_stderr
-      expect { Profiler::Storage::FileStore.new }.not_to output.to_stderr
+      expect(capture_profiler_log { 2.times { Profiler::Storage::FileStore.new } })
+        .to match(/\A[^\n]*\[Profiler\].*tmp_path.*#{Regexp.escape(@tmp_path.to_s)}.*writable[^\n]*\n\z/)
+      expect(capture_profiler_log { Profiler::Storage::FileStore.new }).to be_empty
     end
 
     it "is not warned about with restrict_storage_permissions = false" do
       Profiler.configuration.restrict_storage_permissions = false
-      expect { Profiler::Storage::FileStore.new }.not_to output.to_stderr
+      expect(capture_profiler_log { Profiler::Storage::FileStore.new }).to be_empty
     end
   end
 
   it "says nothing about a tmp_path of its own" do
-    expect { Profiler::Storage::FileStore.new }.not_to output.to_stderr
+    expect(capture_profiler_log { Profiler::Storage::FileStore.new }).to be_empty
   end
 end

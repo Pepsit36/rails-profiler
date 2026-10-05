@@ -23,7 +23,7 @@ module Profiler
           if config.respond_to?("#{key}=")
             config.public_send("#{key}=", value)
           else
-            Rails.logger&.warn("[Profiler] config.profiler.#{key} is not a profiler option, ignored")
+            Profiler.log_warn("config.profiler.#{key} is not a profiler option, ignored")
           end
         end
       end

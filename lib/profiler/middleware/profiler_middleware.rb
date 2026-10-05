@@ -42,7 +42,7 @@ module Profiler
             env["profiler.collectors"] = collectors
             subscribed = Collectors::Lifecycle.subscribe_all(collectors, "ProfilerMiddleware")
           rescue => e
-            warn "Profiler error: #{e.message}\n#{e.backtrace.join("\n")}"
+            Profiler.log_error("ProfilerMiddleware: could not start profiling the request", e, backtrace: true)
             subscribed = false
           end
 
@@ -104,10 +104,9 @@ module Profiler
         record_response(env, profile, request_body, status, headers, content, content.bytesize, true)
         collect_all(profile, collectors)
 
-        storage = Profiler.storage
-        storage.save(profile.token, profile)
-        # Not saved: no token to send, no toolbar to inject for it.
-        return [status, headers, body] if storage.is_a?(Profiler::Storage::Unavailable)
+        # A profile that was not saved (a store unavailable, a save that failed) gets no token and
+        # no toolbar: both would point to a profile that is not there.
+        return [status, headers, body] unless Profiler.save_profile(profile, from: "ProfilerMiddleware")
 
         set_header(headers, TOKEN_HEADER, profile.token)
 
@@ -122,7 +121,7 @@ module Profiler
         [status, headers, body]
       rescue => e
         # The application has run: its response goes out, profiled or not.
-        warn "Profiler error: #{e.message}\n#{e.backtrace.join("\n")}"
+        Profiler.log_error("ProfilerMiddleware: could not complete the profile", e, backtrace: true)
         [status, headers, body || []]
       end
 
@@ -140,7 +139,6 @@ module Profiler
         collect_all(profile, now)
         # Their tabs keep their place; what they hold is filled in when they are collected.
         kept.each { |collector| profile.add_collector_metadata(collector) }
-        set_header(headers, TOKEN_HEADER, profile.token)
 
         # A Rack 3 streaming body (call without each) writes to the socket itself: nothing to relay.
         unless body.respond_to?(:each)
@@ -148,12 +146,17 @@ module Profiler
             collector.collect if collector.respond_to?(:collect)
             profile.refresh_collector_metadata(collector)
           rescue => e
-            warn "Collector #{collector.class} failed: #{e.message}"
+            Profiler.log_error("ProfilerMiddleware: collector #{collector.class} failed", e)
           end
           record_response(env, profile, request_body, status, profiled_headers, "", nil, false)
-          Profiler.storage.save(profile.token, profile)
+          # Saved before the headers leave: a profile that is not there gets no token.
+          set_header(headers, TOKEN_HEADER, profile.token) if Profiler.save_profile(profile, from: "ProfilerMiddleware")
           return [[status, headers, body], nil]
         end
+
+        # Saved when the server closes the body, after the headers have left: the token is sent
+        # unless the store is already known to be unavailable, where it would be dropped.
+        set_header(headers, TOKEN_HEADER, profile.token) unless Profiler.storage.is_a?(Profiler::Storage::Unavailable)
 
         streamed = StreamedProfile.new(profile, kept) do |captured, size, complete, error|
           finish_streamed(env, streamed, collectors, request_body, allocations_before, status, profiled_headers,
@@ -166,7 +169,7 @@ module Profiler
         StreamedProfile.register(streamed)
         [[status, headers, streamed.body], kept]
       rescue => e
-        warn "Profiler error: #{e.message}\n#{e.backtrace.join("\n")}"
+        Profiler.log_error("ProfilerMiddleware: could not profile a streamed response", e, backtrace: true)
         [[status, headers, body], nil]
       end
 
@@ -189,12 +192,12 @@ module Profiler
           collector.collect
           profile.refresh_collector_metadata(collector)
         rescue => e
-          warn "Collector #{collector.class} failed: #{e.message}"
+          Profiler.log_error("ProfilerMiddleware: collector #{collector.class} failed", e)
         end
 
-        Profiler.storage.save(profile.token, profile)
+        Profiler.save_profile(profile, from: "ProfilerMiddleware")
       rescue => e
-        warn "Profiler error while finishing a streamed response: #{e.message}"
+        Profiler.log_error("ProfilerMiddleware: could not finish the profile of a streamed response", e)
       end
 
       def collect_from_any_thread?(collector)
@@ -241,9 +244,9 @@ module Profiler
           resp_content_type: ""
         )
         collect_all(profile, collectors)
-        Profiler.storage.save(profile.token, profile)
+        Profiler.save_profile(profile, from: "ProfilerMiddleware")
       rescue => e
-        warn "Profiler error while recording a failed request: #{e.message}"
+        Profiler.log_error("ProfilerMiddleware: could not record a failed request", e)
       end
 
       def collect_all(profile, collectors)
@@ -252,7 +255,7 @@ module Profiler
             collector.collect if collector.respond_to?(:collect)
             profile.add_collector_metadata(collector)
           rescue => e
-            warn "Collector #{collector.class} failed: #{e.message}"
+            Profiler.log_error("ProfilerMiddleware: collector #{collector.class} failed", e)
           end
         end
       end
@@ -262,7 +265,7 @@ module Profiler
         kept&.each do |collector|
           collector.release_thread_slots if collector.respond_to?(:release_thread_slots)
         rescue => e
-          warn "Profiler: Collector #{collector.class} release failed: #{e.message}"
+          Profiler.log_error("ProfilerMiddleware: collector #{collector.class} release failed", e)
         end
         Profiler::CurrentContext.clear
       end
@@ -379,7 +382,7 @@ module Profiler
             begin
               close_body(body)
             rescue => e
-              warn "Profiler: closing a body that failed also failed: #{e.message}"
+              Profiler.log_error("ProfilerMiddleware: closing a body that failed also failed", e)
             end
             raise
           end
@@ -413,7 +416,7 @@ module Profiler
         content = Redaction.cut_bytes(content, limit) if limit
         { content: content, size: size, size_is_minimum: size_is_minimum || false }
       rescue => e
-        warn "Profiler: could not read the request body: #{e.message}"
+        Profiler.log_error("ProfilerMiddleware: could not read the request body", e)
         { content: "", size: nil }
       end
     end
