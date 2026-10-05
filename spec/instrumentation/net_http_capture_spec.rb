@@ -103,7 +103,11 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
 
   describe "SKIP_HOSTS" do
     it "stays, deprecated, as the former list" do
-      expect(described_class.const_get(:SKIP_HOSTS)).to eq(Profiler::Configuration::LOCAL_HTTP_HOSTS)
+      skip_hosts = described_class.const_get(:SKIP_HOSTS)
+      expect(skip_hosts).to eq(%w[127.0.0.1 localhost ::1])
+      expect(skip_hosts).to include("localhost")
+      expect(skip_hosts.include?("127.0.0.1")).to be(true)
+      expect(skip_hosts).to be_frozen
     end
   end
 
