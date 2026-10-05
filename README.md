@@ -985,7 +985,9 @@ make build && make test-app
 
 ## Contributing
 
-Bug reports and pull requests are welcome on [GitLab](https://git.duplessy.eu/sebastien/rails-profiler-gem).
+The source is on [GitHub](https://github.com/Pepsit36/rails-profiler), a mirror of the
+[GitLab repository](https://git.duplessy.eu/sebastien/rails-profiler-gem) where development happens.
+Bug reports and merge requests are welcome on GitLab.
 
 ## License
 
