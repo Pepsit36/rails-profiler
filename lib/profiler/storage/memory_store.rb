@@ -19,6 +19,8 @@ module Profiler
       end
 
       def load(token)
+        return nil unless Token.valid?(token)
+
         data = @profiles[token]
         return nil unless data
 
@@ -43,6 +45,8 @@ module Profiler
       end
 
       def find_by_parent(parent_token)
+        return [] unless Token.valid?(parent_token)
+
         @profiles.values
                 .map { |data| deserialize_profile(data) }
                 .select { |profile| profile.parent_token == parent_token }
@@ -50,6 +54,8 @@ module Profiler
       end
 
       def delete(token)
+        return unless Token.valid?(token)
+
         @profiles.delete(token)
       end
 

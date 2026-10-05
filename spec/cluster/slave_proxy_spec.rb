@@ -66,25 +66,25 @@ RSpec.describe Profiler::Cluster::SlaveProxy do
   describe "#load" do
     it "returns nil when the slave has no such profile" do
       allow(proxy).to receive(:get_json).and_return("error" => "Profile not found")
-      expect(proxy.load("missing")).to be_nil
+      expect(proxy.load(SecureRandom.hex(16))).to be_nil
     end
 
     it "builds a Profile from the slave payload" do
       allow(proxy).to receive(:get_json).and_return(
-        "token" => "abc", "profile_type" => "http", "path" => "/x",
+        "token" => "0a1b2c3d4e5f60718293a4b5c6d7e8f9", "profile_type" => "http", "path" => "/x",
         "method" => "GET", "status" => 200, "duration" => 2.0,
         "started_at" => Time.now.iso8601
       )
-      expect(proxy.load("abc")).to be_a(Profiler::Models::Profile)
+      expect(proxy.load("0a1b2c3d4e5f60718293a4b5c6d7e8f9")).to be_a(Profiler::Models::Profile)
     end
   end
 
   describe "#find_by_parent" do
     it "requests profiles filtered by parent_token with all_types" do
       allow(proxy).to receive(:get_json).and_return({ "profiles" => [] })
-      proxy.find_by_parent("parent-tok")
+      proxy.find_by_parent("9f8e7d6c5b4a39281706f5e4d3c2b1a0")
       expect(proxy).to have_received(:get_json).with(
-        "/_profiler/api/profiles", hash_including(parent_token: "parent-tok", all_types: true)
+        "/_profiler/api/profiles", hash_including(parent_token: "9f8e7d6c5b4a39281706f5e4d3c2b1a0", all_types: true)
       )
     end
 
@@ -98,7 +98,7 @@ RSpec.describe Profiler::Cluster::SlaveProxy do
           }
         ]
       )
-      result = proxy.find_by_parent("parent-tok")
+      result = proxy.find_by_parent("9f8e7d6c5b4a39281706f5e4d3c2b1a0")
       expect(result.size).to eq(1)
       expect(result.first).to be_a(Profiler::Models::Profile)
       expect(result.first.profile_type).to eq("job")
