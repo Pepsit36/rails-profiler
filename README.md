@@ -855,9 +855,9 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
   middleware stack and no Sidekiq, ActiveJob, test or console instrumentation is installed
 - Overhead, measured in the default configuration with `script/bench/request_overhead.rb`: on a
   page that runs 20 SQL queries and renders 3 partials and 20 KB of HTML, in an application with
-  210 routes and the memory storage, the profiler adds about 6 to 8 ms per request, with or without
-  stackprof, on Ruby 3.3 and 3.4 (the page itself takes 1 ms). Each further SQL query adds about
-  0.1 ms. The figure depends on the machine: run the script to get yours
+  210 routes and the memory storage, the profiler adds about 11 to 15 ms per request, with or
+  without stackprof, on Ruby 3.3 and 3.4 (the page itself takes 1 ms); about a quarter of it goes
+  to finding where to insert the toolbar in the HTML. Each further SQL query adds about 0.1 ms. The figure depends on the machine: run the script to get yours
   (`bundle exec ruby script/bench/request_overhead.rb [--no-stackprof]`); it is not part of the
   gem and does not run in CI
 - Each collector records the events of its own request only: the thread that runs it, the
