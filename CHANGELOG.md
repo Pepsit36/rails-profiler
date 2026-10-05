@@ -37,7 +37,7 @@ every commit of every tag interval is accounted for one way or the other.
   `Rails.logger` was still nil raised instead of logging. Several failures that left no trace at
   all are now logged, once per place and error class for the life of the process: a store lookup or broadcast, the Redis
   version read of the toolbar, the MCP body cache, the mailer collector reading a mail, the route
-  lookup of the Request tab, the deletion of a file profile. The request middleware saves its
+  lookup of the Request tab, a file profile that cannot be read to rebuild the index. The request middleware saves its
   profiles through `Profiler.save_profile`, like jobs, console commands and tests; a page whose
   profile could not be saved gets neither the `X-Profiler-Token` header nor the toolbar, which
   would point to a missing profile. The profiler's own lines no longer appear in the Logs tab of
@@ -53,8 +53,8 @@ every commit of every tag interval is accounted for one way or the other.
   calls are never recorded, whatever the list says: a slave's registration and heartbeats, and the
   master's requests to its slaves (the slave proxy, the fan-out of the profile pages and the MCP
   tools that query a slave), marked where they are made, and any call to the host and port of
-  `config.master_url`. `NetHttpInstrumentation::SKIP_HOSTS` stays, deprecated, as an alias of
-  `LOCAL_HTTP_HOSTS`.
+  `config.master_url`. `NetHttpInstrumentation::SKIP_HOSTS` stays, deprecated, with its former value
+  (`%w[127.0.0.1 localhost ::1]`); nothing reads it any more.
 - **Outbound HTTP:** Keep the bodies of outbound `Net::HTTP` calls to the first
   `config.max_captured_body_bytes`, sent and received, instead of copying them whole; a compressed
   answer is inflated only up to that size, give or take one 16 KB buffer. A `body_stream` is read
