@@ -49,8 +49,18 @@ module Profiler
           yield
         ensure
           previous_slots.each { |key, value| Thread.current[key] = value }
-          Collectors::ScopedNotifications.adopt(previous_scope)
+          Collectors::ScopedNotifications.restore(previous_scope)
         end
+      end
+
+      # The block of a pool's thread, rid of the request's scope its Fiber storage inherits.
+      def without_inherited(block)
+        wrapper = proc do |*args|
+          Collectors::ScopedNotifications.forget_inherited_scope
+          block.call(*args)
+        end
+        wrapper.ruby2_keywords
+        wrapper
       end
 
       # Whether the thread being created is one of a pool's: then it must not inherit. Only the

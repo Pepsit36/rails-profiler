@@ -17,7 +17,8 @@ module Profiler
         return super if block.nil?
 
         context = RequestContext.capture
-        return super if context.nil? || RequestContext.creating_pool_thread?
+        return super if context.nil?
+        return super(*args, &RequestContext.without_inherited(block)) if RequestContext.creating_pool_thread?
 
         # Thread.new hands its arguments to the block, so the wrapper has to take
         # them and pass them on. Ruby 3.4 depends on it in the stdlib: the Happy
