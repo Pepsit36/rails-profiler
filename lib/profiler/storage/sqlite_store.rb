@@ -279,6 +279,8 @@ module Profiler
         return if db_path == ":memory:" || db_path.start_with?("file:")
 
         default ? PrivateFiles.tmp_dir : PrivateFiles.mkdir(File.dirname(db_path))
+        # A link in place of one of them is refused: SQLite would follow it.
+        %w[-wal -shm].each { |suffix| PrivateFiles.refuse_link("#{db_path}#{suffix}") }
         PrivateFiles.touch(db_path)
         %w[-wal -shm].each { |suffix| PrivateFiles.restrict("#{db_path}#{suffix}") }
       end

@@ -12,6 +12,12 @@ module Profiler
     module PrivateFiles
       DIR_MODE = 0o700
       FILE_MODE = 0o600
+      # Where the platform has it: a symbolic link placed where the profiler expects its own file
+      # is not followed (ELOOP) instead of being written through.
+      NOFOLLOW = defined?(File::NOFOLLOW) ? File::NOFOLLOW : 0
+
+      @warned = {}
+      @warn_mutex = Mutex.new
 
       module_function
 
@@ -39,6 +45,7 @@ module Profiler
       def tmp_dir(*parts)
         dir = Profiler.configuration.tmp_path
         mkdir(dir)
+        warn_if_shared(dir)
         parts.each do |part|
           dir = dir.join(part)
           mkdir(dir)
@@ -65,18 +72,54 @@ module Profiler
 
       # Opens path for reading and writing, creating it 0600 when missing.
       def open(path, &block)
-        File.open(path.to_s, File::RDWR | File::CREAT, new_file_mode, &block)
+        File.open(path.to_s, File::RDWR | File::CREAT | NOFOLLOW, new_file_mode, &block)
       end
 
       # Creates an empty file 0600 when missing, or brings an existing one back to 0600.
       def touch(path)
         path = path.to_s
-        File.open(path, File::WRONLY | File::CREAT, new_file_mode) { |file| file.chmod(FILE_MODE) if restricted? }
+        refuse_link(path)
+        File.open(path, File::WRONLY | File::CREAT | NOFOLLOW, new_file_mode) { |file| file.chmod(FILE_MODE) if restricted? }
       end
 
       # Brings an existing file back to 0600; a missing one is left missing.
       def restrict(path)
-        File.chmod(FILE_MODE, path.to_s) if restricted? && File.exist?(path.to_s)
+        path = path.to_s
+        refuse_link(path)
+        File.chmod(FILE_MODE, path) if restricted? && File.exist?(path)
+      end
+
+      # A symbolic link where the profiler keeps a file of its own would make it change the mode of
+      # (and write to) whatever the link points at. Refused while the permissions are restricted.
+      def refuse_link(path)
+        return unless restricted? && File.symlink?(path)
+
+        raise Profiler::Error, "Refusing to use #{path}: it is a symbolic link, where the profiler expects " \
+                               "a file of its own. Remove it, or set config.restrict_storage_permissions = false."
+      end
+
+      # Says once per directory when an existing tmp_path belongs to another user or can be written
+      # to by others (tmp/rails-profiler under a shared /tmp, outside Rails): they could place files
+      # or links there before the profiler does.
+      def warn_if_shared(dir)
+        return unless restricted?
+
+        stat = File.stat(dir.to_s)
+        return if stat.uid == Process.euid && (stat.mode & 0o022).zero?
+
+        key = dir.to_s
+        first = @warn_mutex.synchronize { @warned[key] ? false : (@warned[key] = true) }
+        return unless first
+
+        warn "[Profiler] tmp_path #{key} belongs to another user or is writable by group or others " \
+             "(mode #{format("%o", stat.mode & 0o777)}): other local users could place files there. Set " \
+             "config.tmp_path to a directory of your own, or run chmod 700 on it."
+      rescue SystemCallError
+        nil
+      end
+
+      def reset_warnings!
+        @warn_mutex.synchronize { @warned = {} }
       end
 
       def new_file_mode
