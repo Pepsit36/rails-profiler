@@ -34,7 +34,9 @@ every commit of every tag interval is accounted for one way or the other.
   thread iterating a streamed body, and the queries of `load_async`, which Rails reports on the
   request's thread. The process holds one subscriber per event instead of one per profiled request,
   so an SQL event costs the same however many requests are profiled at once (6 us with 8 requests
-  profiled, 260 us before, measured). A job performed inline still shows in both profiles. A test
+  profiled, 260 us before, measured). A job performed inline still shows in both profiles; one
+  performed by ActiveJob's `:async` adapter is profiled apart from the request that enqueued it,
+  even while that request still runs. A test
   profile no longer shows the queries the application server runs for a system test in its own
   thread: they are in the profile of that HTTP request.
 - **Instrumentation:** a thread created by a pool while a request ran (a concurrent-ruby worker

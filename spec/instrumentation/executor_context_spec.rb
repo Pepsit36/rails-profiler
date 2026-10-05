@@ -144,7 +144,7 @@ RSpec.describe "Request context and thread pools" do
 
     after { adapter.shutdown(wait: true) }
 
-    it "records each job in the request that enqueued it" do
+    it "records each job in the request that enqueued it, when jobs are not profiled on their own" do
       a = PooledRequest.new
       b = PooledRequest.new
       wait = ->(text) { sleep 0.01 until $profiler_spec_async_done.include?(text) }
@@ -185,6 +185,46 @@ RSpec.describe "Request context and thread pools" do
 
   # Only the thread a pool creates itself is left out: a thread the application starts from
   # inside a task, or from code a pool thread runs (a Rack route on Puma), is the request's.
+  # ActiveJob's :async adapter performs the job in a task of its pool, posted by the request that
+  # enqueued it; the job is profiled on its own (JobProfiler) while the request may still run.
+  describe "a job performed by a pool while the request that enqueued it still runs" do
+    let(:storage) { Profiler::Storage::MemoryStore.new }
+
+    before do
+      Profiler.configure do |c|
+        c.enabled = true
+        c.track_jobs = true
+      end
+      Profiler.instance_variable_set(:@storage, storage)
+    end
+
+    it "keeps the job's queries and the request's apart" do
+      a = PooledRequest.new
+      job_started = Queue.new
+      request_done = Queue.new
+      job_done = Concurrent::Event.new
+
+      a.run do
+        pool.post do
+          Profiler::JobProfiler.profile(job_class: "OverlapJob", job_id: "1", queue: "q", arguments: [], executions: 0) do
+            job_started << true
+            request_done.pop
+            sql("SELECT 'job'")
+          end
+          job_done.set
+        end
+        job_started.pop
+        sql("SELECT 'request while the job runs'")
+        request_done << true
+        job_done.wait(2)
+      end
+
+      job_profile = storage.list(limit: 10).find { |p| p.profile_type == "job" }
+      expect(job_profile.collector_data("database")["queries"].map { |q| q["sql"] }).to eq(["SELECT 'job'"])
+      expect(a.finish).to eq(["SELECT 'request while the job runs'"])
+    end
+  end
+
   describe "a thread the application starts from code a pool runs" do
     it "keeps the request's context when started inside a future" do
       a = PooledRequest.new

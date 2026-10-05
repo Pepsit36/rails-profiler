@@ -26,10 +26,11 @@ module Profiler
 
       # The handlers of one request, by event name.
       class Scope
-        attr_reader :token
+        attr_reader :token, :owner
 
         def initialize(token = nil)
           @token = token
+          @owner = Thread.current
           @mutex = Mutex.new
           @handlers = {}
           @size = 0
@@ -116,6 +117,23 @@ module Profiler
 
         def adopt(scope)
           state[STATE_KEY] = scope
+        end
+
+        # Runs the block with a scope of its own when the current one was opened by another thread:
+        # a job a pool performs for the request that enqueued it (ActiveJob's :async adapter) is
+        # profiled apart from that request, which may still be running. A job performed inline,
+        # on the request's own thread, keeps sharing its scope, as it always did.
+        def apart_from_other_threads
+          scope = current
+          return yield if scope.nil? || scope.owner.equal?(Thread.current)
+
+          previous = adopted
+          adopt(nil)
+          begin
+            yield
+          ensure
+            adopt(previous)
+          end
         end
 
         # What the current context holds, closed or not, for RequestContext to put back.
