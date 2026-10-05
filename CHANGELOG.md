@@ -71,9 +71,10 @@ every commit of every tag interval is accounted for one way or the other.
   process, not the `ENV` as it was during the request, masked as before. The profiles of jobs,
   console expressions and tests, which run in another process, keep that process's `ENV`, masked,
   as before. Profiles saved by an earlier version keep
-  showing their own table and variables. With both changes, the profiler adds about 6 to 8 ms to
-  the reference page of `script/bench/request_overhead.rb` instead of 13.6 ms with stackprof and
-  20.5 ms without it (Ruby 3.3); the README gives this measured cost instead of "< 5ms per request".
+  showing their own table and variables. With both changes, the profiler adds about 11 to 15 ms to
+  the reference page of `script/bench/request_overhead.rb` instead of 21 to 22 ms with stackprof
+  and 26 ms without it in 0.31.2 (Ruby 3.3, measured); the README gives this measured cost instead
+  of "< 5ms per request".
 - **Upgrading:** to get the previous behaviours back, set `config.sql_backtrace = :all` and
   `Profiler.function_profiling_tracepoint_fallback = true` in `config/initializers/profiler.rb`.
   The Routes and Env tabs cannot show the table and the variables of the request's time any more:
