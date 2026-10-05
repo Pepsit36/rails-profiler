@@ -19,6 +19,32 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.14] - 2026-10-05
+
+<!-- stamped -->
+
+### Fixed
+
+- **Railtie:** Honor `config.enabled` set in `config/initializers/profiler.rb`. The profiler
+  decided before the application's initializers had run, so `enabled = false` there still put its
+  middlewares in the stack, configured Sidekiq, included its ActiveJob instrumentation and, in
+  the test environment, loaded the test profiler, and `enabled = true` in production got none of
+  them. Those decisions are now taken once the application's initializers have run. An active
+  profiler keeps its place in the middleware stack, and its Sidekiq middlewares and ActiveJob
+  callbacks stay ahead of the ones the application installs. The profiler is now the outermost
+  layer around a job: it runs before every other Sidekiq middleware, including those of gems
+  loaded before it and those the application prepends (such as `Sidekiq::CurrentAttributes`),
+  and before the callbacks Rails adds to ActiveJob (logging, instrumentation, and on Rails 7.0
+  time zone and locale), so the duration of a profiled job now includes them.
+- **Railtie:** Keep the `enabled`, `storage` and `track_tests` values set with
+  `Profiler.configure` in `config/application.rb`, which the Rails defaults overwrote at boot, and
+  apply `config.profiler` (`config.profiler.enabled = false` in `config/application.rb`), which was
+  accepted and never read. A `config.profiler` key that is not a profiler option logs a warning.
+  `config/initializers/profiler.rb` still has the last word. Check these places when upgrading:
+  an `enabled` set with `Profiler.configure` in `config/application.rb` or in a
+  `config/environments` file, or with `config.profiler.enabled`, now takes effect, in production
+  too, where it was overwritten or ignored before.
+
 ## [0.30.13] - 2026-10-04
 
 <!-- stamped -->

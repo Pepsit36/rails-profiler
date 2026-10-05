@@ -60,6 +60,23 @@ end
 
 ## Configuration
 
+`enabled` defaults to true in development and test, false elsewhere. The profiler reads it once
+the application's `config/initializers` have run: with `enabled = false` it inserts no middleware
+and installs no Sidekiq, ActiveJob, test or console instrumentation, and with `enabled = true` in
+production it gets all of them. The patch that carries the profiling context into new threads
+(`Thread#initialize`) is put in place when the gem is loaded, whatever `enabled` says. The engine
+routes the application mounts stay: while disabled, the API, the MCP mount and the cluster
+endpoints answer `403`, or `404` when the MCP HTTP transport or `cluster_master` is off. The
+engine's static assets (`/_profiler/assets/profiler-toolbar.js`, `profiler.js` and
+`profiler.css`) are still served, to anyone: they hold no application data.
+
+`enabled` is read once, at boot: setting it to true on a running process does not insert the
+middleware nor install the instrumentation. Options can also be set with `Profiler.configure` in
+`config/application.rb` or in `config/environments/*.rb`, or with
+`config.profiler.<option> = value` in `config/application.rb`; from lowest to highest priority:
+the default, `Profiler.configure` in `config/application.rb` or `config/environments`,
+`config.profiler`, then `config/initializers`.
+
 Create `config/initializers/profiler.rb`:
 
 ```ruby
@@ -733,7 +750,8 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 
 ## Performance
 
-- Only active when enabled (development/test by default)
+- Only active when enabled (development/test by default); when disabled, nothing is left in the
+  middleware stack and no Sidekiq, ActiveJob, test or console instrumentation is installed
 - Expected overhead: < 5ms per request
 - Text bodies > 10 KB compressed automatically (gzip+base64)
 - Masking sensitive data adds well under 1 ms to a typical profile. A JSON body in whose text no
