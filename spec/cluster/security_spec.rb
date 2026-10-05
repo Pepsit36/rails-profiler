@@ -143,10 +143,37 @@ RSpec.describe Profiler::Cluster::Security do
 
     it "ignores an unanchored pattern added to the list after configuration" do
       configure(cluster_allowed_slave_urls: [])
-      Profiler.configuration.cluster_allowed_slave_urls << %r{travel-api}
+      # Once wrapped, this pattern would match the whole URL: only the anchoring check refuses it.
+      Profiler.configuration.cluster_allowed_slave_urls << %r{http://travel-api:3000}
 
-      expect(described_class.slave_url_denial("http://evil/travel-api")).to match(/not allowed/)
       expect(described_class.slave_url_denial("http://travel-api:3000")).to match(/not allowed/)
+    end
+
+    it "refuses at configuration time a pattern whose x-mode comment hides the closing \\z" do
+      expect { configure(cluster_allowed_slave_urls: [%r{\Ahttp://travel-api-[a-z0-9-]+:3000 # \z}x]) }
+        .to raise_error(ArgumentError, /cannot be matched against the whole slave URL/)
+    end
+
+    it "accepts an x-mode pattern whose comment ends before the \\z, and applies its options" do
+      configure(cluster_allowed_slave_urls: [%r{\Ahttp://travel-api-[a-z0-9-]+ :3000 # worktrees
+        \z}x, %r{\Ahttps://PAYMENT\.internal\z}i])
+
+      expect(described_class.slave_url_denial("http://travel-api-x:3000")).to be_nil
+      expect(described_class.slave_url_denial("http://travel-api-x:3000/admin")).to match(/not allowed/)
+      expect(described_class.slave_url_denial("https://payment.internal")).to be_nil
+    end
+
+    it "refuses an anchor that is not at the very start" do
+      expect { configure(cluster_allowed_slave_urls: [%r{(\Ahttp://travel-api:3000)\z}]) }
+        .to raise_error(ArgumentError, /must start with/)
+    end
+
+    it "refuses a path segment holding an encoded backslash, without raising" do
+      configure(cluster_allowed_slave_urls: ["http://localhost:3001"])
+      expect(described_class.slave_url_denial("http://localhost:3001/a%5Cb")).to match(/not a valid/)
+
+      configure(cluster_allowed_slave_urls: [%r{\Ahttp://localhost:3001(/.*)?\z}])
+      expect(described_class.slave_url_denial("http://localhost:3001/a%5Cb")).to match(/not a valid/)
     end
 
     it "never reads a String as a pattern" do

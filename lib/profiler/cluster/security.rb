@@ -91,7 +91,8 @@ module Profiler
 
         # Whether a Regexp entry of cluster_allowed_slave_urls is anchored at both ends: its source
         # starts with \A and ends with an unescaped \z. \Z, ^ and $ do not count, since they let a
-        # trailing newline or another line through.
+        # trailing newline or another line through. A check of the written form, so that a pattern
+        # reads as what it does; the match itself is made whole by whole_url_pattern.
         def anchored_pattern?(pattern)
           return false unless pattern.is_a?(Regexp)
 
@@ -162,12 +163,22 @@ module Profiler
           if entry.is_a?(Regexp)
             return false unless registered && anchored_pattern?(entry)
 
-            # Wrapped again so that a top-level alternation (\Aa|b\z) cannot leave one branch
-            # anchored at a single end.
-            Regexp.new("\\A(?:#{entry.source})\\z", entry.options).match?(registered)
+            whole_url_pattern(entry).match?(registered)
           else
             covers?(normalize(entry), target)
           end
+        rescue RegexpError
+          false
+        end
+
+        # The pattern wrapped again in \A(?:...)\z, so that a top-level alternation (\Aa|b\z)
+        # cannot leave one branch anchored at a single end: this wrapping, not anchored_pattern?,
+        # is what makes the match cover the whole URL. Compiled once per pattern. Raises
+        # RegexpError when the wrapping does not compile, for instance when an x-mode comment
+        # swallows the closing \z.
+        def whole_url_pattern(pattern)
+          @whole_url_patterns ||= {}
+          @whole_url_patterns[pattern] ||= Regexp.new("\\A(?:#{pattern.source})\\z", pattern.options)
         end
 
         # Scheme, host and port compared after normalization (case, default port, IPv6 brackets),
@@ -180,8 +191,8 @@ module Profiler
         end
 
         # Returns { scheme:, host:, port:, segments: }, or nil for anything that is not a plain
-        # http(s) URL: user info, a query, a fragment, or a "." or ".." path segment are refused
-        # rather than interpreted.
+        # http(s) URL: user info, a query, a fragment, or a "." or ".." path segment, or one that
+        # decodes to a "/" or a "\\", are refused rather than interpreted.
         def normalize(url)
           uri = URI.parse(url.to_s.strip)
           return nil unless uri.is_a?(URI::HTTP) && uri.host && !uri.host.empty?
@@ -189,7 +200,7 @@ module Profiler
 
           segments = uri.path.to_s.split("/").reject(&:empty?)
           decoded = segments.map { |segment| URI.decode_www_form_component(segment) }
-          return nil if decoded.any? { |segment| segment == "." || segment == ".." || segment.include?("/") }
+          return nil if decoded.any? { |segment| segment == "." || segment == ".." || segment.match?(%r{[/\\]}) }
 
           { scheme: uri.scheme.downcase, host: uri.hostname.downcase, port: uri.port, segments: decoded }
         rescue URI::Error, ArgumentError

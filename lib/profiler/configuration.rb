@@ -125,10 +125,17 @@ module Profiler
       unless value == :any
         require_relative "cluster/security"
         Array(value).grep(Regexp).each do |pattern|
-          next if Profiler::Cluster::Security.anchored_pattern?(pattern)
+          unless Profiler::Cluster::Security.anchored_pattern?(pattern)
+            raise ArgumentError, "config.cluster_allowed_slave_urls: #{pattern.inspect} must start with \\A and " \
+                                 "end with \\z, so that it matches the whole slave URL"
+          end
 
-          raise ArgumentError, "config.cluster_allowed_slave_urls: #{pattern.inspect} must start with \\A and " \
-                               "end with \\z, so that it matches the whole slave URL"
+          begin
+            Profiler::Cluster::Security.whole_url_pattern(pattern)
+          rescue RegexpError => e
+            raise ArgumentError, "config.cluster_allowed_slave_urls: #{pattern.inspect} cannot be matched against " \
+                                 "the whole slave URL (#{e.message}); an x-mode comment must not hide the \\z"
+          end
         end
       end
       @cluster_allowed_slave_urls = value
