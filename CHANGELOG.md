@@ -19,16 +19,6 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
-### Fixed
-
-- **Jobs:** A storage error while saving a profile no longer makes the application fail: a job,
-  a console command, a test, or an outbound HTTP call that ends after its profile was collected
-  now goes on, with its own result or its own exception, and the error is printed as a warning.
-  The save of a job, console or test profile ran with nothing to catch it, so a full disk, a
-  Redis that went away or, from this version, a symbolic link refused in place of the SQLite
-  database made the job fail, or replaced the job's own exception. The HTTP middleware already
-  kept requests going.
-
 ## [0.31.1] - 2026-10-05
 
 <!-- stamped -->
@@ -50,6 +40,13 @@ every commit of every tag interval is accounted for one way or the other.
   error, `ENV` left unchanged) and the MCP env tools (an error answer) instead of reporting a
   success; at boot, before a Sidekiq job and before a console evaluation it is still a warning,
   so an override never makes the application fail.
+- **Jobs:** A storage error while saving a profile no longer makes the application fail: a job,
+  a console command, a test, or an outbound HTTP call that ends after its profile was collected
+  now goes on, with its own result or its own exception, and the error is printed as a warning.
+  The save of a job, console or test profile ran with nothing to catch it, so a full disk, a
+  Redis that went away or, from this version, a symbolic link refused in place of the SQLite
+  database made the job fail, or replaced the job's own exception. The HTTP middleware already
+  kept requests going.
 - **Upgrading:** for the default `tmp_path`; adapt the paths if you set one.
   - Profiles saved by the file store in `tmp/rails-profiler` itself are no longer listed, and are
     not moved. To remove them, with the old MCP body cache, run from the application root:
