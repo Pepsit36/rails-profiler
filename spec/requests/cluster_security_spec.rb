@@ -318,22 +318,32 @@ RSpec.describe "Cluster endpoints", type: :request do
         expect(sent).to eq(["/app/_profiler/api/profiles?limit=5"])
       end
 
-      it "keeps the fan-out of a profile page under the API prefix" do
+      it "sends no malformed token in the fan-out of a profile page" do
         get "/_profiler/profiles/%2E%2E%2F%2E%2E%2Fadmin%3Fx=1", {}, local
         get "/_profiler/profiles/abc%3Fall_types=1", {}, local
+
+        expect(sent).to be_empty
+      end
+
+      it "keeps the fan-out of a profile page under the API prefix" do
+        token = SecureRandom.hex(16)
+        get "/_profiler/profiles/#{token}", {}, local
 
         expect(sent).not_to be_empty
         expect(sent).to all(satisfy { |path| escaped_prefix?(path) && !path.include?("?") })
       end
 
-      it "keeps an MCP lookup by token under the API prefix" do
+      it "sends no malformed token in an MCP lookup, and keeps a valid one under the API prefix" do
         require "profiler/mcp/slave_support"
         storage = Profiler::MCP::SlaveSupport.resolve_storage("slave" => "payment")
 
-        expect { storage.load("../../admin") }.to raise_error(Profiler::Error, /path segment/)
-        storage.load("x?all_types=1#frag")
+        expect(storage.load("../../admin")).to be_nil
+        expect(storage.load("x?all_types=1#frag")).to be_nil
+        expect(sent).to be_empty
 
-        expect(sent).to eq(["/app/_profiler/api/profiles/x%3Fall_types%3D1%23frag"])
+        token = SecureRandom.hex(16)
+        storage.load(token)
+        expect(sent).to eq(["/app/_profiler/api/profiles/#{token}"])
       end
     end
 
@@ -433,10 +443,10 @@ RSpec.describe "Cluster endpoints", type: :request do
       client.send(:register!)
       expect(Profiler.slave_registry.all.map { |s| s[:name] }).to eq(["payment"])
 
-      Profiler.storage.save("tok", build_profile(token: "tok"))
+      Profiler.storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
       get "/_profiler/api/slaves/payment/profiles", {}, local
       expect(last_response.status).to eq(200)
-      expect(json["profiles"].map { |p| p["token"] }).to include("tok")
+      expect(json["profiles"].map { |p| p["token"] }).to include("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")
 
       expect { client.send(:heartbeat!) }.not_to raise_error
     end

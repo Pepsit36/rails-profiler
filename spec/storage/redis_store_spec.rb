@@ -76,9 +76,9 @@ RSpec.describe Profiler::Storage::RedisStore do
 
   describe "#find_by_parent" do
     it "loads all profiles and filters by parent_token" do
-      parent_token = "par456"
+      parent_token = SecureRandom.hex(16)
       child = build_profile(parent_token: parent_token)
-      other = build_profile(parent_token: "other")
+      other = build_profile(parent_token: SecureRandom.hex(16))
 
       allow(redis).to receive(:zrange).with("test_profiler:list", 0, -1)
                                       .and_return([child.token, other.token])

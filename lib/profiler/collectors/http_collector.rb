@@ -125,7 +125,7 @@ module Profiler
           build_data(@requests)
         end
         store_data(data)
-        Profiler.storage.save(@profile.token, @profile)
+        Profiler.save_profile(@profile, from: "HttpCollector")
       end
 
       def group_by_host(requests)

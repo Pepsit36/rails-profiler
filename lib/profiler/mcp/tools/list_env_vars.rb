@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "mcp"
 require_relative "../slave_support"
 require_relative "../../env_override_store"
 require_relative "../../redaction"
@@ -61,6 +62,8 @@ module Profiler
           end
 
           [{ type: "text", text: text }]
+        rescue Profiler::EnvOverrideStore::Error => e
+          ::MCP::Tool::Response.new([{ type: "text", text: "Error: #{e.message}." }], error: true)
         end
 
         private

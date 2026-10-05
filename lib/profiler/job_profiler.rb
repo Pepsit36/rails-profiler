@@ -107,7 +107,7 @@ module Profiler
           end
         end
 
-        Profiler.storage.save(profile.token, profile)
+        Profiler.save_profile(profile, from: "JobProfiler")
       end
     ensure
       # After collect, and also when collect or the storage failed.

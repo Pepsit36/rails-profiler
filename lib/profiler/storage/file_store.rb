@@ -3,28 +3,38 @@
 require "fileutils"
 require "json"
 require_relative "base_store"
+require_relative "private_files"
+require_relative "token"
 require_relative "../models/profile"
 
 module Profiler
   module Storage
-    # File-based profile storage backend. Persists each profile as a JSON file
-    # under tmp_path and evicts the oldest files when total size exceeds max_size.
+    # File-based profile storage backend. Persists each profile as a JSON file named after its
+    # token, under tmp_path/profiles by default or the directory given as options[:path], and
+    # evicts the oldest files when total size exceeds max_size. Only the files named after a
+    # token are taken for profiles, so a path shared with other files (tmp_path itself, where the
+    # env overrides live) is safe.
     class FileStore < BaseStore
       def initialize(options = {})
         super()
-        @path = options[:path] || default_path
         @max_size = options[:max_size] || (100 * 1024 * 1024) # 100 MB
-        ensure_directory_exists
+        if options[:path]
+          @path = options[:path].to_s
+          PrivateFiles.mkdir(@path)
+        else
+          @path = PrivateFiles.tmp_dir("profiles").to_s
+        end
       end
 
       def do_save(token, profile)
-        file_path = profile_file_path(token)
-        File.write(file_path, profile.to_json)
+        PrivateFiles.write(profile_file_path(token), profile.to_json)
         cleanup_if_needed
         token
       end
 
       def load(token)
+        return nil unless Token.valid?(token)
+
         file_path = profile_file_path(token)
         return nil unless File.exist?(file_path)
 
@@ -55,6 +65,8 @@ module Profiler
       end
 
       def find_by_parent(parent_token)
+        return [] unless Token.valid?(parent_token)
+
         profile_files
           .map { |f| load(File.basename(f, ".json")) }
           .compact
@@ -63,6 +75,8 @@ module Profiler
       end
 
       def delete(token)
+        return unless Token.valid?(token)
+
         FileUtils.rm_f(profile_file_path(token))
       end
 
@@ -85,20 +99,12 @@ module Profiler
 
       private
 
-      def default_path
-        Profiler.configuration.tmp_path
-      end
-
-      def ensure_directory_exists
-        FileUtils.mkdir_p(@path) unless File.directory?(@path)
-      end
-
       def profile_file_path(token)
         File.join(@path, "#{token}.json")
       end
 
       def profile_files
-        Dir.glob(File.join(@path, "*.json"))
+        Dir.glob(File.join(@path, "*.json")).select { |f| Token.valid?(File.basename(f, ".json")) }
       end
 
       def cleanup_if_needed # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity

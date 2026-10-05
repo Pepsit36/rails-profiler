@@ -40,12 +40,12 @@ RSpec.describe Profiler::Storage::MemoryStore do
     end
 
     it "respects limit" do
-      5.times { |i| store.save("token#{i}", build_profile(path: "/p#{i}")) }
+      5.times { |i| store.save(SecureRandom.hex(16), build_profile(path: "/p#{i}")) }
       expect(store.list(limit: 2).size).to eq(2)
     end
 
     it "respects offset" do
-      3.times { |i| store.save("token#{i}", build_profile(path: "/p#{i}")) }
+      3.times { |i| store.save(SecureRandom.hex(16), build_profile(path: "/p#{i}")) }
       full = store.list
       offset_result = store.list(offset: 1)
       expect(offset_result.size).to eq(full.size - 1)
@@ -69,10 +69,10 @@ RSpec.describe Profiler::Storage::MemoryStore do
 
   describe "#find_by_parent" do
     it "returns profiles with matching parent_token sorted by started_at" do
-      parent_token = "parent123"
+      parent_token = SecureRandom.hex(16)
       child1 = build_profile(parent_token: parent_token, started_at: Time.now - 10)
       child2 = build_profile(parent_token: parent_token, started_at: Time.now)
-      other = build_profile(parent_token: "other")
+      other = build_profile(parent_token: SecureRandom.hex(16))
 
       store.save(child1.token, child1)
       store.save(child2.token, child2)

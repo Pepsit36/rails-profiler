@@ -32,35 +32,35 @@ RSpec.describe "Profiler update endpoints", type: :request do
 
   describe "GET /_profiler/api/events/:token" do
     it "answers version 0 and no update for a profile never saved" do
-      get "/_profiler/api/events/tok", {}, local
+      get "/_profiler/api/events/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", {}, local
 
       expect(last_response.status).to eq(200)
       expect(json).to eq("cursor" => 0, "updated" => false)
     end
 
     it "tells a toolbar holding an older version that the profile was saved again" do
-      storage.save("tok", build_profile(token: "tok"))
-      seen = Profiler::SSE.current.version("tok")
-      storage.save("tok", build_profile(token: "tok"))
+      storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
+      seen = Profiler::SSE.current.version("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")
+      storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
 
-      get "/_profiler/api/events/tok", { since: seen }, local
+      get "/_profiler/api/events/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", { since: seen }, local
 
       expect(json["updated"]).to be(true)
       expect(json["cursor"]).to be > seen
     end
 
     it "tells a toolbar holding the current version that nothing changed" do
-      storage.save("tok", build_profile(token: "tok"))
-      seen = Profiler::SSE.current.version("tok")
+      storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
+      seen = Profiler::SSE.current.version("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")
 
-      get "/_profiler/api/events/tok", { since: seen }, local
+      get "/_profiler/api/events/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", { since: seen }, local
 
       expect(json).to eq("cursor" => seen, "updated" => false)
     end
 
     it "keeps the version a toolbar holds when this process knows an older one" do
       # Without Redis, each worker only knows its own saves: the toolbar keeps the newest.
-      get "/_profiler/api/events/tok", { since: 42 }, local
+      get "/_profiler/api/events/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", { since: 42 }, local
 
       expect(json).to eq("cursor" => 42, "updated" => false)
     end
@@ -69,20 +69,20 @@ RSpec.describe "Profiler update endpoints", type: :request do
     # it "updated" would reload its toolbar on every check, for nothing.
     ["NaN", "", "abc", "12abc", "-1", nil].each do |since|
       it "gives the current version without an update for since=#{since.inspect}" do
-        storage.save("tok", build_profile(token: "tok"))
+        storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
         params = since.nil? ? {} : { since: since }
 
-        get "/_profiler/api/events/tok", params, local
+        get "/_profiler/api/events/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", params, local
 
         expect(last_response.status).to eq(200)
-        expect(json).to eq("cursor" => Profiler::SSE.current.version("tok"), "updated" => false)
+        expect(json).to eq("cursor" => Profiler::SSE.current.version("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"), "updated" => false)
       end
     end
 
     it "only tells the profile whose token was saved" do
-      storage.save("other", build_profile(token: "other"))
+      storage.save("0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b", build_profile(token: "0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b"))
 
-      get "/_profiler/api/events/tok", { since: 0 }, local
+      get "/_profiler/api/events/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", { since: 0 }, local
 
       expect(json["updated"]).to be(false)
     end
@@ -90,12 +90,12 @@ RSpec.describe "Profiler update endpoints", type: :request do
 
   describe "GET /_profiler/api/toolbar/:token" do
     it "gives the version the toolbar data reflects" do
-      storage.save("tok", build_profile(token: "tok"))
+      storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
 
-      get "/_profiler/api/toolbar/tok", {}, local
+      get "/_profiler/api/toolbar/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", {}, local
 
       expect(last_response.status).to eq(200)
-      expect(json["events_cursor"]).to eq(Profiler::SSE.current.version("tok"))
+      expect(json["events_cursor"]).to eq(Profiler::SSE.current.version("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
       expect(json["events_cursor"]).to be > 0
     end
   end

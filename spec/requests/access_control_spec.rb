@@ -51,26 +51,26 @@ RSpec.describe "Profiler access control", type: :request do
     end
 
     it "is refused on a profile page" do
-      storage.save("tok", build_profile(token: "tok"))
-      get "/_profiler/profiles/tok", {}, local
+      storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
+      get "/_profiler/profiles/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", {}, local
       expect(last_response.status).to eq(403)
     end
 
     it "is refused on the API listing, with a JSON error" do
-      storage.save("tok", build_profile(token: "tok"))
+      storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
       get "/_profiler/api/profiles", {}, local
 
       expect(last_response.status).to eq(403)
       expect(json["error"]).to match(/not authorized/i)
-      expect(last_response.body).not_to include("tok")
+      expect(last_response.body).not_to include("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")
     end
 
     it "is refused on profile deletion, even with the forgery header" do
-      storage.save("tok", build_profile(token: "tok"))
+      storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
       delete "/_profiler/api/profiles/clear", {}, local.merge(profiler_header)
 
       expect(last_response.status).to eq(403)
-      expect(storage.load("tok")).not_to be_nil
+      expect(storage.load("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")).not_to be_nil
     end
 
     it "is refused on an ENV write" do
@@ -82,7 +82,7 @@ RSpec.describe "Profiler access control", type: :request do
 
     it "is refused on the toolbar update check" do
       expect(Profiler::SSE).not_to receive(:current)
-      get "/_profiler/api/events/tok", {}, local
+      get "/_profiler/api/events/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", {}, local
       expect(last_response.status).to eq(403)
     end
 
@@ -99,8 +99,8 @@ RSpec.describe "Profiler access control", type: :request do
     end
 
     it "is refused on the toolbar" do
-      storage.save("tok", build_profile(token: "tok"))
-      get "/_profiler/api/toolbar/tok", {}, local
+      storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
+      get "/_profiler/api/toolbar/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", {}, local
       expect(last_response.status).to eq(403)
     end
 
@@ -188,8 +188,8 @@ RSpec.describe "Profiler access control", type: :request do
     end
 
     it "refuses the toolbar, even for a profile left in storage" do
-      storage.save("tok", build_profile(token: "tok", headers: { "Cookie" => "session=secret" }))
-      get "/_profiler/api/toolbar/tok", {}, local
+      storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", headers: { "Cookie" => "session=secret" }))
+      get "/_profiler/api/toolbar/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", {}, local
 
       expect(last_response.status).to eq(403)
       expect(last_response.body).not_to include("secret")
@@ -262,11 +262,11 @@ RSpec.describe "Profiler access control", type: :request do
 
   describe "the toolbar of an enabled profiler" do
     it "serves the profile to an authorized request" do
-      storage.save("tok", build_profile(token: "tok"))
-      get "/_profiler/api/toolbar/tok", {}, local
+      storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
+      get "/_profiler/api/toolbar/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", {}, local
 
       expect(last_response.status).to eq(200)
-      expect(json.dig("profile", "token")).to eq("tok")
+      expect(json.dig("profile", "token")).to eq("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")
     end
   end
 
@@ -509,21 +509,21 @@ RSpec.describe "Profiler access control", type: :request do
   end
 
   describe "forgery protection" do
-    before { storage.save("tok", build_profile(token: "tok")) }
+    before { storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")) }
 
     it "refuses a JSON mutation without the header" do
       delete "/_profiler/api/profiles/clear", {}, local.merge("CONTENT_TYPE" => "application/json")
 
       expect(last_response.status).to eq(403)
       expect(json["error"]).to include("X-Profiler-Request")
-      expect(storage.load("tok")).not_to be_nil
+      expect(storage.load("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")).not_to be_nil
     end
 
     it "refuses a form POST turned into a DELETE by _method" do
       post "/_profiler/api/profiles/clear", { "_method" => "delete" }, local
 
       expect(last_response.status).to eq(403)
-      expect(storage.load("tok")).not_to be_nil
+      expect(storage.load("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")).not_to be_nil
     end
 
     it "refuses a form POST turned into a PATCH of ENV by _method" do
@@ -534,17 +534,17 @@ RSpec.describe "Profiler access control", type: :request do
     end
 
     it "refuses a plain form POST" do
-      post "/_profiler/api/ajax/link", { "parent_token" => "a", "child_token" => "tok" }, local
+      post "/_profiler/api/ajax/link", { "parent_token" => "9a8b7c6d5e4f30211203f4e5d6c7b8a9", "child_token" => "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d" }, local
 
       expect(last_response.status).to eq(403)
-      expect(storage.load("tok").parent_token).to be_nil
+      expect(storage.load("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d").parent_token).to be_nil
     end
 
     it "accepts a mutation carrying the header" do
       delete "/_profiler/api/profiles/clear", {}, local.merge(profiler_header)
 
       expect(last_response.status).to eq(204)
-      expect(storage.load("tok")).to be_nil
+      expect(storage.load("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")).to be_nil
     end
 
     it "accepts a mutation carrying the Rails CSRF token" do
@@ -570,7 +570,7 @@ RSpec.describe "Profiler access control", type: :request do
         post "/_profiler/api/profiles/clear", { "_method" => "delete" }, local
 
         expect(last_response.status).to eq(403)
-        expect(storage.load("tok")).not_to be_nil
+        expect(storage.load("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d")).not_to be_nil
       end
 
       it "still accepts a mutation carrying the header" do
@@ -604,8 +604,8 @@ RSpec.describe "Profiler access control", type: :request do
     end
 
     it "keeps the same policy on the embedded profile page" do
-      storage.save("tok", build_profile(token: "tok"))
-      get "/_profiler/profiles/tok", { embed: "true" }, local
+      storage.save("5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", build_profile(token: "5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d"))
+      get "/_profiler/profiles/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", { embed: "true" }, local
 
       expect(last_response.status).to eq(200)
       expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: devtools:")

@@ -4,6 +4,7 @@ require "net/http"
 require "json"
 require "uri"
 require_relative "security"
+require_relative "../storage/token"
 
 module Profiler
   module Cluster
@@ -39,7 +40,10 @@ module Profiler
         Array(data["profiles"]).map { |h| profile_from_api(h) }
       end
 
+      # A token that is not one the gem issues is not found, without asking the slave.
       def load(token)
+        return nil unless Storage::Token.valid?(token)
+
         data = get_json("/_profiler/api/profiles/#{Security.escape_segment(token)}")
         return nil unless data["token"] || data["profile"]
 
@@ -48,6 +52,8 @@ module Profiler
       end
 
       def find_by_parent(parent_token)
+        return [] unless Storage::Token.valid?(parent_token)
+
         data = get_json("/_profiler/api/profiles", parent_token: parent_token, all_types: true)
         Array(data["profiles"]).map { |h| profile_from_api(h) }
       end

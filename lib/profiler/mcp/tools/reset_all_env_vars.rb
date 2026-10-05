@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "mcp"
 require_relative "../slave_support"
 
 module Profiler
@@ -22,6 +23,8 @@ module Profiler
           Profiler.env_override_store.reset_all
 
           [{ type: "text", text: "Reset #{count} environment variable#{"s" if count != 1} to original values." }]
+        rescue Profiler::EnvOverrideStore::Error => e
+          ::MCP::Tool::Response.new([{ type: "text", text: "Error: #{e.message}; nothing was changed." }], error: true)
         end
       end
     end

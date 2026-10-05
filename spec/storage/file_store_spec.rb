@@ -40,8 +40,9 @@ RSpec.describe Profiler::Storage::FileStore do
     end
 
     it "returns nil for corrupted JSON" do
-      File.write(File.join(@tmpdir, "badtoken.json"), "not valid json {{{}}")
-      expect(store.load("badtoken")).to be_nil
+      token = SecureRandom.hex(16)
+      File.write(File.join(@tmpdir, "#{token}.json"), "not valid json {{{}}")
+      expect(store.load(token)).to be_nil
     end
   end
 
@@ -118,9 +119,9 @@ RSpec.describe Profiler::Storage::FileStore do
 
   describe "#find_by_parent" do
     it "returns profiles with matching parent_token" do
-      parent_token = "par123"
+      parent_token = SecureRandom.hex(16)
       child = build_profile(parent_token: parent_token)
-      other = build_profile(parent_token: "other")
+      other = build_profile(parent_token: SecureRandom.hex(16))
 
       store.save(child.token, child)
       store.save(other.token, other)

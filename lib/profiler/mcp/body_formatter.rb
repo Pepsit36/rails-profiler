@@ -9,10 +9,10 @@ module Profiler
       # Formats a body string for MCP output.
       #
       # params keys used:
-      #   "save_bodies"   (boolean) — save to ./tmp/rails-profiler/{token}/{name} and return path
-      #   "max_body_size" (number)  — truncate inline body at N chars
-      #   "json_path"     (string)  — JSONPath to extract from body when save_bodies is true
-      #   "xml_path"      (string)  — XPath to extract from body when save_bodies is true
+      #   "save_bodies"   (boolean): save to {tmp_path}/mcp-cache/{token}/{name} and return path
+      #   "max_body_size" (number):  truncate inline body at N chars
+      #   "json_path"     (string):  JSONPath to extract from body when save_bodies is true
+      #   "xml_path"      (string):  XPath to extract from body when save_bodies is true
       #
       # Returns a formatted string ready to embed in markdown, or nil if body is blank.
       def self.format_body(token, name, body, encoding, params)

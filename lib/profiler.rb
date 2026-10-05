@@ -28,6 +28,15 @@ module Profiler
       @storage ||= configuration.storage_backend
     end
 
+    # Saves a profile from a path of the application (a job, a console command, a test, an
+    # outbound HTTP call): a storage error loses the profile, never the application's work.
+    def save_profile(profile, from:)
+      storage.save(profile.token, profile)
+    rescue StandardError => e
+      warn "[Profiler] #{from}: could not save profile #{profile.token}: #{e.class}: #{e.message}"
+      nil
+    end
+
     def env_override_store
       @env_override_store ||= EnvOverrideStore.new
     end
@@ -124,6 +133,8 @@ require_relative "profiler/collectors/i18n_collector"
 require_relative "profiler/collectors/env_collector"
 require_relative "profiler/collectors/mailer_collector"
 
+require_relative "profiler/storage/token"
+require_relative "profiler/storage/private_files"
 require_relative "profiler/env_override_store"
 require_relative "profiler/instrumentation/thread_context_propagation"
 require_relative "profiler/sse/event_bus"
