@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.30.15] - 2026-10-05
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Toolbar:** Stop the toolbar from holding a server thread for as long as its page stays open.
