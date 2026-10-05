@@ -9,6 +9,10 @@ module Profiler
     # Profiler.storage tries to create the store again on its next call, so fixing the cause is
     # enough.
     class Unavailable
+      # What the reads raise: the cause in one line, without a path (the profiler's routes answer
+      # it as a 503, the MCP tools as an error).
+      class Error < Profiler::Error; end
+
       @said = {}
       @mutex = Mutex.new
 
@@ -29,7 +33,17 @@ module Profiler
       end
 
       def initialize(error)
-        @error = error
+        @error = Error.new("The profiler storage is unavailable: #{self.class.short_cause(error)}")
+      end
+
+      # First line of the message, absolute paths replaced, credentials masked, at most 300
+      # characters.
+      def self.short_cause(error)
+        line = error.message.to_s.lines.first.to_s.strip
+        line = line.gsub(%r{(?<=\A|[\s'"(=])(?:[A-Za-z]:)?[/\\][^\s'"]*[^\s'":,.;)]}, "[path]")
+        line = Redaction.hide_credentials(line) if defined?(Redaction)
+        line = line[0, 300]
+        line.empty? ? error.class.name : line
       end
 
       def save(token, _profile)

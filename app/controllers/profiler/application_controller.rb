@@ -6,6 +6,9 @@ module Profiler
   class ApplicationController < ActionController::Base
     layout "profiler/application"
 
+    # A store that cannot be created: the cause in one line, as a 503, for every page and API.
+    rescue_from Profiler::Storage::Unavailable::Error, with: :storage_unavailable
+
     before_action :check_authorization
     before_action :authorize_request
     # Declared after the access checks, so that an unauthorized request gets its 403 first.
@@ -46,6 +49,14 @@ module Profiler
 
     def handle_unverified_request
       deny("Missing #{Profiler::FORGERY_PROTECTION_HEADER} header or CSRF token")
+    end
+
+    def storage_unavailable(error)
+      if controller_path.start_with?("profiler/api/")
+        render json: { error: error.message }, status: :service_unavailable
+      else
+        render plain: error.message, status: :service_unavailable
+      end
     end
 
     def deny(message)
