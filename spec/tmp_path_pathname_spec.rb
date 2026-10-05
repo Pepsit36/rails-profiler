@@ -61,6 +61,14 @@ RSpec.describe "Configuration#tmp_path and the env overrides" do
         expect { store.clear }.to raise_error(Profiler::EnvOverrideStore::Error)
       end
 
+      it "names the file relative to tmp_path, once, and no absolute path" do
+        expect { store.set("PROFILER_SPEC_TMP_PATH", "1") }.to raise_error(Profiler::EnvOverrideStore::Error) do |error|
+          expect(error.message).to include("env_overrides.json")
+          expect(error.message).not_to include(@root)
+          expect(error.message.scan("env_overrides.json").size).to eq(1)
+        end
+      end
+
       it "makes the MCP tool answer an error and leave ENV alone" do
         response = Profiler::MCP::Tools::SetEnvVar.call("key" => "PROFILER_SPEC_TMP_PATH", "value" => "1")
         expect(response).to be_a(MCP::Tool::Response)
