@@ -28,8 +28,13 @@ module Profiler
       yield(configuration)
     end
 
+    STORAGE_LOCK = Mutex.new
+
+    # Built once, under a lock: the first requests of a threaded server ask for it together, and
+    # a profile saved into a store that another thread replaced would be lost. Read without the
+    # lock once it exists.
     def storage
-      @storage ||= configuration.storage_backend
+      @storage || STORAGE_LOCK.synchronize { @storage ||= configuration.storage_backend }
     end
 
     # Saves a profile from a path of the application (a job, a console command, a test, an
