@@ -55,7 +55,7 @@ Profiler::Engine.routes.draw do
     get    "test_runner/runs/:id",        to: "test_runner#show",   as: :test_runner_run
     get    "test_runner/runs/:id/stream", to: "test_runner#stream", as: :test_runner_run_stream
     delete "test_runner/runs/:id",        to: "test_runner#destroy"
-    get    "events/:token",               to: "events#subscribe",  as: :profile_events
+    get    "events/:token",               to: "events#show",       as: :profile_events
 
     # Cluster endpoints (master-side), routed only on a node with cluster_master set
     constraints(->(_request) { Profiler.configuration.cluster_master? }) do

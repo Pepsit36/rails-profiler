@@ -3,11 +3,12 @@
 module Profiler
   module Storage
     class BaseStore
-      # Public interface: persists the profile then fires an SSE broadcast.
+      # Public interface: persists the profile then records the save, for the pages showing it
+      # to see it changed (Profiler::SSE).
       # Subclasses implement #do_save, not #save.
       def save(token, profile)
         result = do_save(token, profile)
-        broadcast_event(token, profile)
+        broadcast_event(token)
         result
       end
 
@@ -47,9 +48,8 @@ module Profiler
 
       private
 
-      def broadcast_event(token, profile)
-        collectors = profile.collectors_data.keys
-        Profiler::SSE.current.broadcast(token, collectors)
+      def broadcast_event(token)
+        Profiler::SSE.current.broadcast(token)
       rescue StandardError
         # Never let a broadcast failure prevent profile persistence
       end

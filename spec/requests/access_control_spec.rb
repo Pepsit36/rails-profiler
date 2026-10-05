@@ -80,7 +80,7 @@ RSpec.describe "Profiler access control", type: :request do
       expect(ENV).not_to have_key("PROFILER_SPEC_VAR")
     end
 
-    it "is refused on the SSE stream" do
+    it "is refused on the toolbar update check" do
       expect(Profiler::SSE).not_to receive(:current)
       get "/_profiler/api/events/tok", {}, local
       expect(last_response.status).to eq(403)
