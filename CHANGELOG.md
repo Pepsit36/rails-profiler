@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **MCP:** `run_tests` with a `slave` (FAB-20) returns as soon as the run on the slave is over, with
+  its output. It waited for statuses the test runner never gives (`completed`, `cancelled`), so a
+  run that passed was reported as timed out after `timeout_seconds` (120 by default), holding a
+  server thread of the master all that time, and it read the output from a field the slave does
+  not send, so the output was always empty.
+
 ## [0.30.14] - 2026-10-05
 
 <!-- stamped -->
