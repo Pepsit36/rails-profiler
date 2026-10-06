@@ -84,58 +84,58 @@ RSpec.describe Profiler::Cluster::Security do
   end
 
   describe ".slave_url_denial with Regexp entries" do
-    let(:pattern) { %r{\Ahttp://travel-api-[a-z0-9-]+:3000\z} }
+    let(:pattern) { %r{\Ahttp://myapp-[a-z0-9-]+:3000\z} }
 
     before { configure(cluster_allow_insecure_http: true) }
 
     it "accepts a URL an anchored pattern matches" do
       configure(cluster_allowed_slave_urls: [pattern])
 
-      expect(described_class.slave_url_denial("http://travel-api-feature-42:3000")).to be_nil
+      expect(described_class.slave_url_denial("http://myapp-feature-42:3000")).to be_nil
     end
 
     it "matches the URL as the registry keeps it: lower-case host, no trailing slash" do
       configure(cluster_allowed_slave_urls: [pattern])
 
-      expect(described_class.slave_url_denial("HTTP://Travel-API-feature-42:3000/")).to be_nil
+      expect(described_class.slave_url_denial("HTTP://MyApp-feature-42:3000/")).to be_nil
     end
 
     it "refuses a URL the pattern does not match" do
       configure(cluster_allowed_slave_urls: [pattern])
 
-      expect(described_class.slave_url_denial("http://travel-api-x:3001")).to match(/not allowed/)
-      expect(described_class.slave_url_denial("http://travel-api-x:3000/admin")).to match(/not allowed/)
-      expect(described_class.slave_url_denial("http://evil/travel-api-x:3000")).to match(/not allowed/)
-      expect(described_class.slave_url_denial("http://travel-api-x.evil.example:3000")).to match(/not allowed/)
+      expect(described_class.slave_url_denial("http://myapp-x:3001")).to match(/not allowed/)
+      expect(described_class.slave_url_denial("http://myapp-x:3000/admin")).to match(/not allowed/)
+      expect(described_class.slave_url_denial("http://evil/myapp-x:3000")).to match(/not allowed/)
+      expect(described_class.slave_url_denial("http://myapp-x.evil.example:3000")).to match(/not allowed/)
     end
 
     it "refuses user info, a query, a fragment or a dot segment before the pattern is tried" do
       configure(cluster_allowed_slave_urls: [%r{\Ahttp://.*\z}])
 
-      expect(described_class.slave_url_denial("http://travel-api-x:3000")).to be_nil
-      expect(described_class.slave_url_denial("http://evil@travel-api-x:3000")).to match(/not a valid/)
-      expect(described_class.slave_url_denial("http://travel-api-x:3000?x=1")).to match(/not a valid/)
-      expect(described_class.slave_url_denial("http://travel-api-x:3000#x")).to match(/not a valid/)
-      expect(described_class.slave_url_denial("http://travel-api-x:3000/a/../b")).to match(/not a valid/)
+      expect(described_class.slave_url_denial("http://myapp-x:3000")).to be_nil
+      expect(described_class.slave_url_denial("http://evil@myapp-x:3000")).to match(/not a valid/)
+      expect(described_class.slave_url_denial("http://myapp-x:3000?x=1")).to match(/not a valid/)
+      expect(described_class.slave_url_denial("http://myapp-x:3000#x")).to match(/not a valid/)
+      expect(described_class.slave_url_denial("http://myapp-x:3000/a/../b")).to match(/not a valid/)
     end
 
     it "keeps the HTTPS rule: a matching plain HTTP URL to a remote host still needs cluster_allow_insecure_http" do
       configure(cluster_allow_insecure_http: false, cluster_allowed_slave_urls: [pattern])
 
-      expect(described_class.slave_url_denial("http://travel-api-x:3000")).to match(/HTTPS/)
+      expect(described_class.slave_url_denial("http://myapp-x:3000")).to match(/HTTPS/)
     end
 
     it "matches the whole URL even when the pattern alternates at the top level" do
-      configure(cluster_allowed_slave_urls: [%r{\Ahttp://travel-api-a:3000|http://travel-api-b:3000\z}])
+      configure(cluster_allowed_slave_urls: [%r{\Ahttp://myapp-a:3000|http://myapp-b:3000\z}])
 
-      expect(described_class.slave_url_denial("http://travel-api-a:3000")).to be_nil
-      expect(described_class.slave_url_denial("http://travel-api-b:3000")).to be_nil
-      expect(described_class.slave_url_denial("http://travel-api-a:3000/admin")).to match(/not allowed/)
+      expect(described_class.slave_url_denial("http://myapp-a:3000")).to be_nil
+      expect(described_class.slave_url_denial("http://myapp-b:3000")).to be_nil
+      expect(described_class.slave_url_denial("http://myapp-a:3000/admin")).to match(/not allowed/)
     end
 
     it "refuses an unanchored pattern at configuration time" do
-      [%r{travel-api}, %r{\Ahttp://travel-api}, %r{travel-api:3000\z}, %r{^http://travel-api:3000$},
-       %r{\Ahttp://travel-api:3000\Z}, %r{\Ahttp://travel-api:3000\\z}].each do |unanchored|
+      [%r{myapp}, %r{\Ahttp://myapp}, %r{myapp:3000\z}, %r{^http://myapp:3000$},
+       %r{\Ahttp://myapp:3000\Z}, %r{\Ahttp://myapp:3000\\z}].each do |unanchored|
         expect { configure(cluster_allowed_slave_urls: [unanchored]) }
           .to raise_error(ArgumentError, /must start with \\A and end with \\z/)
       end
@@ -144,27 +144,27 @@ RSpec.describe Profiler::Cluster::Security do
     it "ignores an unanchored pattern added to the list after configuration" do
       configure(cluster_allowed_slave_urls: [])
       # Once wrapped, this pattern would match the whole URL: only the anchoring check refuses it.
-      Profiler.configuration.cluster_allowed_slave_urls << %r{http://travel-api:3000}
+      Profiler.configuration.cluster_allowed_slave_urls << %r{http://myapp:3000}
 
-      expect(described_class.slave_url_denial("http://travel-api:3000")).to match(/not allowed/)
+      expect(described_class.slave_url_denial("http://myapp:3000")).to match(/not allowed/)
     end
 
     it "refuses at configuration time a pattern whose x-mode comment hides the closing \\z" do
-      expect { configure(cluster_allowed_slave_urls: [%r{\Ahttp://travel-api-[a-z0-9-]+:3000 # \z}x]) }
+      expect { configure(cluster_allowed_slave_urls: [%r{\Ahttp://myapp-[a-z0-9-]+:3000 # \z}x]) }
         .to raise_error(ArgumentError, /cannot be matched against the whole slave URL/)
     end
 
     it "accepts an x-mode pattern whose comment ends before the \\z, and applies its options" do
-      configure(cluster_allowed_slave_urls: [%r{\Ahttp://travel-api-[a-z0-9-]+ :3000 # worktrees
+      configure(cluster_allowed_slave_urls: [%r{\Ahttp://myapp-[a-z0-9-]+ :3000 # worktrees
         \z}x, %r{\Ahttps://PAYMENT\.internal\z}i])
 
-      expect(described_class.slave_url_denial("http://travel-api-x:3000")).to be_nil
-      expect(described_class.slave_url_denial("http://travel-api-x:3000/admin")).to match(/not allowed/)
+      expect(described_class.slave_url_denial("http://myapp-x:3000")).to be_nil
+      expect(described_class.slave_url_denial("http://myapp-x:3000/admin")).to match(/not allowed/)
       expect(described_class.slave_url_denial("https://payment.internal")).to be_nil
     end
 
     it "refuses an anchor that is not at the very start" do
-      expect { configure(cluster_allowed_slave_urls: [%r{(\Ahttp://travel-api:3000)\z}]) }
+      expect { configure(cluster_allowed_slave_urls: [%r{(\Ahttp://myapp:3000)\z}]) }
         .to raise_error(ArgumentError, /must start with/)
     end
 
@@ -177,16 +177,16 @@ RSpec.describe Profiler::Cluster::Security do
     end
 
     it "never reads a String as a pattern" do
-      configure(cluster_allowed_slave_urls: ['\Ahttp://travel-api-[a-z0-9-]+:3000\z', "/travel-api/", "%r{.*}"])
+      configure(cluster_allowed_slave_urls: ['\Ahttp://myapp-[a-z0-9-]+:3000\z', "/myapp/", "%r{.*}"])
 
-      expect(described_class.slave_url_denial("http://travel-api-x:3000")).to match(/not allowed/)
+      expect(described_class.slave_url_denial("http://myapp-x:3000")).to match(/not allowed/)
     end
 
     it "mixes URLs and patterns in one list" do
       configure(cluster_allowed_slave_urls: ["https://payment.internal", pattern])
 
       expect(described_class.slave_url_denial("https://payment.internal/app")).to be_nil
-      expect(described_class.slave_url_denial("http://travel-api-x:3000")).to be_nil
+      expect(described_class.slave_url_denial("http://myapp-x:3000")).to be_nil
       expect(described_class.slave_url_denial("https://other.internal")).to match(/not allowed/)
     end
 
@@ -195,7 +195,7 @@ RSpec.describe Profiler::Cluster::Security do
       expect(described_class.slave_url_denial("http://anything.example:1234")).to be_nil
 
       configure(cluster_allowed_slave_urls: [])
-      expect(described_class.slave_url_denial("http://travel-api-x:3000")).to match(/not allowed/)
+      expect(described_class.slave_url_denial("http://myapp-x:3000")).to match(/not allowed/)
     end
   end
 

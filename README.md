@@ -505,7 +505,7 @@ Docker network): an entry of `cluster_allowed_slave_urls` can be a `Regexp` inst
 # master
 config.cluster_master = true
 config.cluster_secret = ENV.fetch("PROFILER_CLUSTER_SECRET")
-config.cluster_allowed_slave_urls = [%r{\Ahttp://travel-api-[a-z0-9-]+:3000\z}]
+config.cluster_allowed_slave_urls = [%r{\Ahttp://myapp-[a-z0-9-]+:3000\z}]
 config.cluster_allow_insecure_http = true  # plain HTTP to a non-loopback host, inside the Docker network only
 ```
 
@@ -617,7 +617,7 @@ which turns Rails' check off, allows nothing more. For hosts outside `config.hos
 Profiler.configure do |config|
   config.mcp_enabled = true
   config.mcp_transport = :http
-  config.mcp_allowed_hosts = ["api.travel.local.swile.co", %r{\Atravel-api[a-z0-9-]*\z}]
+  config.mcp_allowed_hosts = ["api.myapp.test", %r{\Amyapp[a-z0-9-]*\z}]
 end
 ```
 

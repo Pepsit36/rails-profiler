@@ -49,48 +49,48 @@ RSpec.describe "MCP HTTP endpoint behind a reverse proxy", type: :request do
     end
 
     it "refuses any other host, as before" do
-      mcp_post("api.travel.local.swile.co")
+      mcp_post("api.myapp.test")
 
       expect(last_response.status).to eq(403)
-      expect(last_response.body).to include("Host api.travel.local.swile.co is not allowed")
+      expect(last_response.body).to include("Host api.myapp.test is not allowed")
     end
   end
 
   context "with config.mcp_allowed_hosts" do
     before do
-      Profiler.configuration.mcp_allowed_hosts = ["api.travel.local.swile.co", %r{\Atravel-api[a-z0-9-]*\z}]
+      Profiler.configuration.mcp_allowed_hosts = ["api.myapp.test", %r{\Amyapp[a-z0-9-]*\z}]
     end
 
     it "accepts a listed host name, whatever its case and port" do
-      %w[api.travel.local.swile.co API.Travel.Local.Swile.co:443].each do |host|
+      %w[api.myapp.test API.MyApp.Test:443].each do |host|
         mcp_post(host)
         expect(last_response.status).to eq(200), "#{host}: #{last_response.status}"
       end
     end
 
     it "accepts a host the anchored Regexp matches as a whole" do
-      %w[travel-api travel-api-dev:3000 travel-api-feature-42].each do |host|
+      %w[myapp myapp-dev:3000 myapp-feature-42].each do |host|
         mcp_post(host)
         expect(last_response.status).to eq(200), "#{host}: #{last_response.status}"
       end
     end
 
     it "refuses every other host" do
-      %w[evil.example travel-api.evil.example xtravel-api api.travel.local.swile.co.evil.example].each do |host|
+      %w[evil.example myapp.evil.example xmyapp api.myapp.test.evil.example].each do |host|
         mcp_post(host)
         expect(last_response.status).to eq(403), "#{host}: #{last_response.status}"
       end
     end
 
     it "still refuses a foreign Origin on an allowed host" do
-      mcp_post("api.travel.local.swile.co", "HTTP_ORIGIN" => "https://evil.example")
+      mcp_post("api.myapp.test", "HTTP_ORIGIN" => "https://evil.example")
 
       expect(last_response.status).to eq(403)
       expect(last_response.body).to include("Origin https://evil.example is not allowed")
     end
 
     it "accepts the browser's own Origin when TLS ends at the proxy" do
-      mcp_post("api.travel.local.swile.co", "HTTP_ORIGIN" => "https://api.travel.local.swile.co")
+      mcp_post("api.myapp.test", "HTTP_ORIGIN" => "https://api.myapp.test")
 
       expect(last_response.status).to eq(200)
     end
@@ -98,11 +98,11 @@ RSpec.describe "MCP HTTP endpoint behind a reverse proxy", type: :request do
 
   context "with Rails config.hosts" do
     it "accepts the hosts the application lists, with nothing else to set" do
-      Rails.application.config.hosts << "api.travel.local.swile.co" << /\Atravel-api[a-z0-9-]*\z/
+      Rails.application.config.hosts << "api.myapp.test" << /\Amyapp[a-z0-9-]*\z/
 
-      mcp_post("api.travel.local.swile.co")
+      mcp_post("api.myapp.test")
       expect(last_response.status).to eq(200)
-      mcp_post("travel-api-dev")
+      mcp_post("myapp-dev")
       expect(last_response.status).to eq(200)
       mcp_post("evil.example")
       expect(last_response.status).to eq(403)
@@ -125,14 +125,14 @@ RSpec.describe Profiler::Configuration, "#mcp_allowed_hosts=" do
   end
 
   it "refuses an unanchored Regexp" do
-    [/travel-api/, /\Atravel-api/, /travel-api\z/, /^travel-api$/].each do |pattern|
+    [/myapp/, /\Amyapp/, /myapp\z/, /^myapp$/].each do |pattern|
       expect { config.mcp_allowed_hosts = [pattern] }
         .to raise_error(ArgumentError, /must start with \\A and end with \\z/)
     end
   end
 
   it "refuses a wildcard or a blank String, and anything else than a String or a Regexp" do
-    ["*", "*.swile.co", " ", :any, nil].each do |entry|
+    ["*", "*.myapp.test", " ", :any, nil].each do |entry|
       expect { config.mcp_allowed_hosts = [entry] }.to raise_error(ArgumentError)
     end
   end

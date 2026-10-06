@@ -30,7 +30,7 @@ every commit of every tag interval is accounted for one way or the other.
   in `config.hosts` (when that list is not empty), so an application behind Traefik usually has
   nothing to set, and the entries of the new `config.mcp_allowed_hosts` (default `[]`): a host name
   or `host:port`, or a `Regexp` anchored with `\A` and `\z`, matched against the whole host name,
-  for example `["api.travel.local.swile.co", %r{\Atravel-api[a-z0-9-]*\z}]`. With mcp 1.x the
+  for example `["api.myapp.test", %r{\Amyapp[a-z0-9-]*\z}]`. With mcp 1.x the
   transport only accepted the loopback names and answered `Forbidden: Invalid Host header` behind
   a proxy. The profiler now makes the check itself, before the transport, for every kind of entry,
   and keeps the transport's `Origin` check (same origin or `cors_allowed_origins`), whatever
