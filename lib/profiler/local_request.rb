@@ -85,6 +85,18 @@ module Profiler
         false
       end
 
+      # When the application restricts config.hosts, ActionDispatch::HostAuthorization has
+      # already refused every other host; a host it lists is one the developer trusts.
+      def permitted_by_rails_hosts?(host)
+        return false unless defined?(Rails) && Rails.respond_to?(:application) && Rails.application
+        return false unless defined?(ActionDispatch::HostAuthorization::Permissions)
+
+        hosts = Rails.application.config.hosts
+        return false if hosts.nil? || hosts.empty?
+
+        ActionDispatch::HostAuthorization::Permissions.new(hosts).allows?(host)
+      end
+
       private
 
       def host_denial_reason(request)
@@ -143,17 +155,6 @@ module Profiler
         permitted_by_rails_hosts?(host)
       end
 
-      # When the application restricts config.hosts, ActionDispatch::HostAuthorization has
-      # already refused every other host; a host it lists is one the developer trusts.
-      def permitted_by_rails_hosts?(host)
-        return false unless defined?(Rails) && Rails.respond_to?(:application) && Rails.application
-        return false unless defined?(ActionDispatch::HostAuthorization::Permissions)
-
-        hosts = Rails.application.config.hosts
-        return false if hosts.nil? || hosts.empty?
-
-        ActionDispatch::HostAuthorization::Permissions.new(hosts).allows?(host)
-      end
     end
   end
 end
