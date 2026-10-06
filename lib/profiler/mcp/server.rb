@@ -46,10 +46,19 @@ module Profiler
 
       def http_transport
         @http_transport ||= begin
-          t = ::MCP::Server::Transports::StreamableHTTPTransport.new(@server)
+          t = ::MCP::Server::Transports::StreamableHTTPTransport.new(@server, **http_transport_options)
           @server.transport = t
           t
         end
+      end
+
+      # HttpGuard checks the Host and Origin headers of every request before the transport sees
+      # it, with config.hosts, config.mcp_allowed_hosts and Regexp entries, which the transport's
+      # own check (exact names only) cannot express. Older mcp versions have no such check, nor
+      # the option.
+      def http_transport_options
+        params = ::MCP::Server::Transports::StreamableHTTPTransport.instance_method(:initialize).parameters
+        params.any? { |_type, name| name == :dns_rebinding_protection } ? { dns_rebinding_protection: false } : {}
       end
 
       def start(transport: :stdio)

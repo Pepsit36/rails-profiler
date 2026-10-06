@@ -132,6 +132,7 @@ module Profiler
       @cluster_secret = nil
       @cluster_require_secret = true
       @cluster_allowed_slave_urls = []
+      @mcp_allowed_hosts = []
       @cluster_allow_insecure_http = false
       # Where the profiler's own errors go (Profiler.log): Rails.logger when nil, or $stderr when
       # there is none.
@@ -147,7 +148,16 @@ module Profiler
       @tmp_path = value.nil? ? nil : Pathname.new(value)
     end
 
-    attr_reader :cluster_allowed_slave_urls
+    attr_reader :cluster_allowed_slave_urls, :mcp_allowed_hosts
+
+    # Host names the MCP HTTP endpoint accepts beyond the loopback ones and config.hosts: a String
+    # (a host name, any port, or a host:port) or a Regexp anchored with \A and \z, matched
+    # against the host name without its port. A wildcard String is refused.
+    def mcp_allowed_hosts=(value)
+      require_relative "cluster/security"
+      Array(value).each { |entry| validate_mcp_allowed_host(entry) }
+      @mcp_allowed_hosts = Array(value)
+    end
 
     # Deprecated: the figure it was meant for was never a byte count (see AllocationCounter).
     # Read and written as allocated_objects_warning_threshold times the bytes per object the
@@ -299,6 +309,29 @@ module Profiler
       else
         raise Error, "Unknown storage backend: #{@storage}"
       end
+    end
+
+    def validate_mcp_allowed_host(entry)
+      case entry
+      when String
+        return unless entry.strip.empty? || entry.include?("*")
+
+        raise ArgumentError, "config.mcp_allowed_hosts: #{entry.inspect} is not a host name; list each host, " \
+                             "or use an anchored Regexp"
+      when Regexp then validate_mcp_allowed_host_pattern(entry)
+      else raise ArgumentError, "config.mcp_allowed_hosts: #{entry.inspect} must be a String or a Regexp"
+      end
+    end
+
+    def validate_mcp_allowed_host_pattern(pattern)
+      unless Profiler::Cluster::Security.anchored_pattern?(pattern)
+        raise ArgumentError, "config.mcp_allowed_hosts: #{pattern.inspect} must start with \\A and end with \\z, " \
+                             "so that it matches the whole host name"
+      end
+      Profiler::Cluster::Security.whole_url_pattern(pattern)
+    rescue RegexpError => e
+      raise ArgumentError, "config.mcp_allowed_hosts: #{pattern.inspect} cannot be matched against the whole " \
+                           "host name (#{e.message})"
     end
   end
 end
