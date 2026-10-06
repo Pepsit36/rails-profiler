@@ -605,6 +605,28 @@ preflight, which the profiler does not grant. A refused request gets a `403` bef
 handshake, so none of the tools (including the ones that write `ENV`, clear profiles or run tests)
 is reachable without passing these checks.
 
+**Behind a reverse proxy.** The `Host` header of an MCP request must name a loopback address
+(`localhost`, `127.0.0.1`, `::1`), a host your application lists in `config.hosts`, or an entry of
+`config.mcp_allowed_hosts`; any other host gets a `403`, which keeps a DNS rebinding page from
+reaching the tools. An application behind Traefik already lists its domain in `config.hosts` (Rails
+refuses the other hosts in development), so it usually has nothing to set. An empty `config.hosts`,
+which turns Rails' check off, allows nothing more. For hosts outside `config.hosts`:
+
+```ruby
+# config/initializers/profiler.rb, for an API reached through Traefik and from other containers
+Profiler.configure do |config|
+  config.mcp_enabled = true
+  config.mcp_transport = :http
+  config.mcp_allowed_hosts = ["api.travel.local.swile.co", %r{\Atravel-api[a-z0-9-]*\z}]
+end
+```
+
+A String names a host (any port) or a `host:port`, compared without case; `*` is refused. A
+`Regexp` must start with `\A` and end with `\z`, and is matched against the whole host name,
+without the port; any other `Regexp` raises an `ArgumentError` when it is assigned. Through a proxy
+the request also has to pass `authorization_mode`: with the default, `:allow_local`, see
+[Access control](#access-control) for Docker and proxies.
+
 In earlier versions, `/_profiler/mcp` was routed in every application, whatever `mcp_enabled` and
 `mcp_transport` said, and answered anyone. An installation that used the HTTP endpoint while
 `mcp_transport` was left at its default, `:stdio`, now has to set `config.mcp_enabled = true` and
