@@ -55,7 +55,10 @@ module Profiler
           return true if LOOPBACK_HOSTS.include?(name)
           return true if Array(config.mcp_allowed_hosts).any? { |entry| host_entry_allows?(entry, name, full) }
 
-          Profiler::LocalRequest.permitted_by_rails_hosts?(name)
+          # Rails matches config.hosts against the whole Host header (an entry may carry a port);
+          # the bare name covers entries written without one.
+          Profiler::LocalRequest.permitted_by_rails_hosts?(full) ||
+            Profiler::LocalRequest.permitted_by_rails_hosts?(name)
         end
 
         private
@@ -87,11 +90,11 @@ module Profiler
           false
         end
 
-        # "[::1]:3000" gives "::1", "app.local:3000" gives "app.local".
+        # "[::1]:3000" gives "::1", "app.local:3000" gives "app.local". Anything else (two hosts, a
+        # port that is not a number, text after the brackets) gives "", which is refused.
         def host_name(host)
-          return host[/\A\[([^\]]+)\]/, 1].to_s if host.start_with?("[")
-
-          host.split(":").first.to_s
+          match = host.match(/\A\[([^\]]+)\](?::\d+)?\z/) || host.match(/\A([^:\s,]+)(?::\d+)?\z/)
+          match ? match[1] : ""
         end
 
         # The Origin check of the transport, kept whatever api_forgery_protection says: a

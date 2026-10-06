@@ -82,6 +82,22 @@ RSpec.describe "MCP HTTP endpoint behind a reverse proxy", type: :request do
       end
     end
 
+    it "refuses a host that only ends like a listed one, and malformed Host headers" do
+      ["evilapi.myapp.test", "localhost:3000, evil.example", "localhost:evil.example", "[::1]evil",
+       "api.myapp.test evil.example"].each do |host|
+        mcp_post(host)
+        expect(last_response.status).to eq(403), "#{host}: #{last_response.status}"
+      end
+    end
+
+    it "checks the Origin even with api_forgery_protection off" do
+      Profiler.configuration.api_forgery_protection = false
+      mcp_post("api.myapp.test", "HTTP_ORIGIN" => "https://evil.example")
+
+      expect(last_response.status).to eq(403)
+      expect(last_response.body).to include("Origin https://evil.example is not allowed")
+    end
+
     it "still refuses a foreign Origin on an allowed host" do
       mcp_post("api.myapp.test", "HTTP_ORIGIN" => "https://evil.example")
 
@@ -105,6 +121,15 @@ RSpec.describe "MCP HTTP endpoint behind a reverse proxy", type: :request do
       mcp_post("myapp-dev")
       expect(last_response.status).to eq(200)
       mcp_post("evil.example")
+      expect(last_response.status).to eq(403)
+    end
+
+    it "honours a config.hosts entry written with a port" do
+      Rails.application.config.hosts << "api.local:3000"
+
+      mcp_post("api.local:3000")
+      expect(last_response.status).to eq(200)
+      mcp_post("api.local:4000")
       expect(last_response.status).to eq(403)
     end
 
