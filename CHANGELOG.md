@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-10-06
+
+<!-- stamped -->
+
 ### Added
 
 - **MCP:** The HTTP endpoint at `/_profiler/mcp` accepts the `Host` headers of a reverse proxy
