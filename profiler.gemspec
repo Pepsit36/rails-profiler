@@ -20,7 +20,7 @@ Gem::Specification.new do |spec|
 
   spec.files = Dir.glob("{lib,config,exe}/**/*", base: __dir__).select { |f| File.file?(File.join(__dir__, f)) } +
                Dir.glob("app/{assets/builds,controllers,helpers,views,mailers}/**/*", base: __dir__).select { |f| File.file?(File.join(__dir__, f)) } +
-               ["CHANGELOG.md"]
+               ["CHANGELOG.md", "LICENSE", "THIRD-PARTY-NOTICES.md"]
   spec.bindir = "exe"
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
