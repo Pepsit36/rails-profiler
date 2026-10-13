@@ -31,6 +31,13 @@ module Profiler
             test_line:  line,
             framework:  :minitest
           ) { super }
+        rescue StandardError => e
+          # Test#run captures what the test raises, so this comes from the
+          # profiler. Escaping, it would stop the whole run: it fails this
+          # test instead, as it does an RSpec example, without running it again.
+          self.time ||= 0
+          capture_exceptions { raise e }
+          Minitest::Result.from(self)
         end
 
         private

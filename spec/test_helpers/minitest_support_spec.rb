@@ -103,10 +103,15 @@ RSpec.describe "Profiler::TestHelpers::MinitestSupport" do
     expect(data["skip_reason"]).to eq("later")
   end
 
-  it "does not run a test a second time when the profiler fails after it" do
+  it "fails a test the profiler fails after, once, and runs the next ones" do
     result = run_suite(<<~RUBY, prelude: <<~PRELUDE)
       def test_counted
         $body_runs["test_counted"] += 1
+        assert true
+      end
+
+      def test_other
+        $body_runs["test_other"] += 1
         assert true
       end
     RUBY
@@ -119,7 +124,47 @@ RSpec.describe "Profiler::TestHelpers::MinitestSupport" do
       end)
     PRELUDE
 
-    expect(result["body_runs"]).to eq("test_counted" => 1)
-    expect(result["output"]).to include("profiler bug")
+    expect(result["body_runs"]).to eq("test_counted" => 1, "test_other" => 1)
+    expect(result["output"]).to include("NoMethodError: profiler bug")
+    expect(result["output"]).to include("2 runs, 2 assertions, 0 failures, 2 errors")
+  end
+
+  it "fails a test the profiler fails before, without running it" do
+    result = run_suite(<<~RUBY, prelude: <<~PRELUDE)
+      def test_counted
+        $body_runs["test_counted"] += 1
+        assert true
+      end
+    RUBY
+      Profiler::TestProfiler.prepend(Module.new do
+        def run(&)
+          raise NoMethodError, "profiler bug"
+        end
+      end)
+    PRELUDE
+
+    expect(result["body_runs"]).to eq({})
+    expect(result["output"]).to include("1 runs, 0 assertions, 0 failures, 1 errors")
+  end
+
+  it "profiles a test whose method has no location as passed, running it once" do
+    result = run_suite(<<~RUBY)
+      def self.runnable_methods = super + ["test_ghost"]
+
+      def respond_to_missing?(name, include_private = false) = name.to_s == "test_ghost" || super
+
+      def method_missing(name, *args)
+        return super unless name.to_s == "test_ghost"
+
+        $body_runs["test_ghost"] += 1
+        assert true
+      end
+    RUBY
+
+    data = result["profiles"].fetch("SampleTest#test_ghost")
+    expect(data["status"]).to eq("passed")
+    expect(data["test_file"]).to eq("")
+    expect(data["test_line"]).to eq(0)
+    expect(result["body_runs"]).to eq("test_ghost" => 1)
   end
 end
