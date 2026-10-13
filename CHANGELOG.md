@@ -19,6 +19,22 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.32.2] - 2026-10-13
+
+<!-- stamped -->
+
+### Fixed
+
+- **Test profiling:** `Profiler::TestHelpers::RSpecSupport.install` no longer makes every RSpec
+  example fail with `NoMethodError: undefined method 'line_number'`. The workaround documented
+  for 0.32.1, a hand-written `around` hook, can be replaced by `install` again.
+- **Test profiling:** Failing and pending RSpec examples are recorded with their real status,
+  `failed` or `pending`, instead of `passed`, in the test profiles and in the report printed
+  after the suite. A failure keeps its message, and an example marked `pending` or `skip` in its
+  body keeps its reason.
+- **Test profiling:** With Minitest, an error raised by the profiler after a test has run no
+  longer runs that test a second time, unprofiled, while hiding the error.
+
 ## [0.32.1] - 2026-10-13
 
 <!-- stamped -->
