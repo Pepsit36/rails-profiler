@@ -25,7 +25,8 @@ grep -q '^gem "json"' "$APP/Gemfile" || echo 'gem "json", "~> 2.9"' >> "$APP/Gem
 cd "$APP"
 bundle install --quiet
 bin/rails db:prepare db:seed >/dev/null
-RAILS_ENV=test DATABASE_URL=sqlite3:storage/test.sqlite3 bin/rails db:prepare >/dev/null
+# The demo specs expect an empty test database: db:prepare would also load the seeds.
+RAILS_ENV=test DATABASE_URL=sqlite3:storage/test.sqlite3 bin/rails db:create db:schema:load >/dev/null
 rm -rf tmp/profiler
 
 # 3. Two servers with an empty environment: nothing of this machine reaches the Env tab.

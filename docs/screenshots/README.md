@@ -66,6 +66,11 @@ path, user or machine name of the host reaches the Env tab. The application live
 - `spec/demo_helper.rb` sets up the test profiling itself instead of calling
   `Profiler::TestHelpers::RSpecSupport.install`, which, as of 0.32.1, fails every example under
   RSpec 3.13 (`example.line_number` is not defined on the object an `around` hook receives).
-  The demo specs all pass: a failing example is recorded as passed by the same integration.
+  The demo specs all pass, and must: a failing example is recorded as passed by the same
+  integration, so the Test Runner would show a failed run next to a report of passed tests.
 - `test_app`'s `config/initializers/dev_env_vars.rb` points `DATABASE_URL` at the development
-  database in every environment; the demo specs and `run.sh` use `storage/test.sqlite3`.
+  database in every environment; the demo specs and `run.sh` use `storage/test.sqlite3`, which
+  `run.sh` creates from the schema without the seeds the demo specs do not expect.
+- `tab-database.png`, `tab-env.png`, `tab-mailer.png` and `test-profile-database.png` show a
+  dash that the profiler's UI itself writes (the N+1 banner, the Env snapshot notice, the
+  subject next to a mailer action), not the demo data.

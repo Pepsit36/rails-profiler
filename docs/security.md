@@ -168,7 +168,7 @@ What is masked:
 | Job arguments (Active Job, Sidekiq) | values of filtered keys inside hash arguments |
 | Mailer arguments (`assigns`) | arguments whose parameter name matches the filter, and values of filtered keys inside hash arguments |
 
-The cluster's `cluster_secret` is also masked **by value**, whatever name it travels under, and
+The cluster's `cluster_secret` is also masked **by value**, under whatever name it appears, and
 even with `config.redact_sensitive_data = false`: a value equal to it becomes `[FILTERED]`, and the
 secret inside a longer string is replaced by `[FILTERED]`. This covers what the table above lists
 (params, bodies, headers, URLs, `ENV`, SQL binds, job and mailer arguments), the data of every
