@@ -700,8 +700,14 @@ paths:
       - Test Runner
       parameters: []
       responses:
+        '201':
+          description: run started
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/TestRun"
         '422':
-          description: no files selected
+          description: no files selected, or a file that is not a discovered test file
           content:
             application/json:
               schema:
@@ -736,6 +742,12 @@ paths:
       tags:
       - Test Runner
       responses:
+        '200':
+          description: run status and output so far
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/TestRun"
         '404':
           description: run not found
           content:
@@ -751,6 +763,8 @@ paths:
       tags:
       - Test Runner
       responses:
+        '204':
+          description: run killed
         '404':
           description: run not found
   "/_profiler/api/tests":

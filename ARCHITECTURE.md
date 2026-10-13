@@ -145,8 +145,9 @@ cannot describe them truthfully:
 
 - `GET /_profiler/api/test_runner/runs/:id/stream` answers `text/event-stream` (Server-Sent
   Events frames: `output` events with a numeric `id`, a final `done` event, a `retry:` hint),
-  resumable through the `Last-Event-ID` header or the `position` parameter. The payload is a
-  sequence of events that the client consumes with `EventSource`, not one request/response
+  resumable through the `Last-Event-ID` header or the `position` parameter. Each response
+  carries the output produced so far and then ends; the client's `EventSource` reconnects after
+  the `retry:` delay with the position it reached. The payload is a sequence of events, not one
   JSON document, and a generated client cannot model it.
 - `ANY /_profiler/api/slaves/:slave_name/*path` is the cluster proxy. It accepts an arbitrary
   path and forwards `GET`, `POST`, `PATCH` and `DELETE` to the same path under the slave's
