@@ -388,7 +388,7 @@ Shows template and partial rendering:
 - **Templates**: each rendered template with its file path and duration
 - **Partials**: each rendered partial with its file path and duration
 
-Duration badges are color-coded: green (under 10 ms), yellow (under 50 ms), red (50 ms or more).
+Every duration shows in a green badge, whatever its value: this tab does not mark slow templates.
 A collection rendered with `render partial: ..., collection: ...` is one Action View event of its
 own, which this tab does not count as partials.
 
@@ -500,9 +500,10 @@ the variables the filter shows as a `.env` file.
 
 The Env tab of an HTTP profile shows the current `ENV` of the process that serves the page, not
 the `ENV` as it was during the request (the hint above the table says "Snapshot taken at request
-time", which is only true of jobs, console expressions and tests). The profile of a job, a console
-expression or a test keeps the `ENV` of the process it ran in. To change variables, use the
-[Env section](#env-section).
+time", which is only true of jobs and console expressions). The profile of a job, a console
+expression or a test keeps the `ENV` of the process it ran in; the tab shows it for jobs and
+console expressions, not for tests (see [Test Profiles](#test-profiles)). To change variables,
+use the [Env section](#env-section).
 
 ---
 
@@ -537,12 +538,14 @@ its **Job Profile**. The header shows the job class, duration, status (Completed
 allocations and version, and, under **Triggered by**, the request or the job that enqueued it
 with a **View** link to its profile.
 
-The **Job** tab opens first: class, job ID, queue, executions and status, then the arguments
-(masked like request parameters) and, for a failed job, its error. Next to it, **Database**,
-**Cache**, **Timeline** and **Env** are always there, and **Outbound HTTP**, **Jobs** (the jobs it
-enqueued in turn), **Dumps**, **Mailers** and **Exception** appear when the job has something to
-show in them. As of 0.32.1 the **Logs** tab does not appear on a job profile, although its log
-lines are recorded: the dashboard looks for a field the log collector does not write.
+The **Job** tab opens first, unless the job raised: class, job ID, queue, executions and status,
+then the arguments (masked like request parameters) and, for a failed job, its error. Next to it,
+**Database**, **Cache**, **Timeline** and **Env** are always there, and **Outbound HTTP**, **Jobs**
+(the jobs it enqueued in turn), **Dumps**, **Mailers** and **Exception** appear when the job has
+something to show in them; a job that raised opens on its Exception tab. As of 0.32.1 the **Logs**
+tab does not appear on a job profile, although its log lines are recorded: the dashboard looks for
+a field the log collector does not write. Adding `?tab=logs` to the URL of the job profile still
+shows them.
 
 ---
 
@@ -612,11 +615,14 @@ framework in its header, and opens with its own tabs:
 
   ![The Database tab of a test profile](screenshots/test-profile-database.png)
 
-- **Dumps** when the test produced some, and **Exception** when it raised
-- **Env**: the `ENV` of the test process; unlike the other profiles, this tab shows the editing
-  buttons of the [Env section](#env-section), which act on the server process, not on the test
+- **Exception** when it raised
+- **Env**: the profile keeps the `ENV` of the test process, but as soon as the tab opens it reads
+  the `ENV` of the server process again and shows that one instead; unlike the other profiles, it
+  also shows the editing buttons of the [Env section](#env-section), which act on the server
+  process, not on the test
 
-As for jobs, the **Logs** tab does not appear on a test profile as of 0.32.1.
+The test profiler records neither `Profiler.dump()` calls nor log lines, so a test profile never
+has a **Dumps** or a **Logs** tab.
 
 The MCP tools `query_test_profiles` and `get_test_profile`, and the resources
 `profiler://slow-tests` and `profiler://failing-tests`, read the same profiles.
