@@ -1,17 +1,25 @@
-# Rails Profiler — MCP Server Guide
+# MCP Server Guide
 
 The Rails Profiler ships an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that lets AI assistants like Claude query profiling data directly from your Rails app. This enables AI-assisted performance debugging, N+1 analysis, and request inspection without switching tools.
 
+It has 21 tools and 7 resources, all listed below; `lib/profiler/mcp/server.rb` registers them.
+
 ## Setup
 
-### 1. Enable MCP in the initializer
+### 1. Pick a transport
+
+The **stdio** transport is a process the MCP client starts itself, `bundle exec rake
+profiler:mcp`, in the application's directory. It needs no option, no route and no network
+access: prefer it when the client runs on the same machine.
+
+The **HTTP** transport answers at `/_profiler/mcp` on the running application, only once both
+options are set (see [HTTP transport](#http-transport-alternative) below):
 
 ```ruby
 # config/initializers/profiler.rb
 Profiler.configure do |config|
   config.mcp_enabled = true
-  config.mcp_transport = :stdio  # default — for Claude Desktop / Claude Code
-  # config.mcp_transport = :http  # alternative — exposed at /_profiler/mcp
+  config.mcp_transport = :http
 end
 ```
 
@@ -36,15 +44,20 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 
 ### 3. Configure Claude Code
 
-Add to your project's `.claude/settings.json` or run from within Claude Code:
+From the root of the Rails application:
+
+```bash
+claude mcp add rails-profiler -- bundle exec rake profiler:mcp
+```
+
+Or, to share it with the project, in a `.mcp.json` file at the root of the application:
 
 ```json
 {
   "mcpServers": {
     "rails-profiler": {
       "command": "bundle",
-      "args": ["exec", "rake", "profiler:mcp"],
-      "cwd": "/path/to/your/rails/app"
+      "args": ["exec", "rake", "profiler:mcp"]
     }
   }
 }
@@ -54,20 +67,28 @@ Add to your project's `.claude/settings.json` or run from within Claude Code:
 
 The endpoint `/_profiler/mcp` is routed only when **both** `config.mcp_enabled = true` and
 `config.mcp_transport = :http` are set; otherwise it answers `404`. The stdio transport does not
-depend on it. An application that used the HTTP endpoint with `mcp_transport` left at
-its default (`:stdio`) has to set `config.mcp_transport = :http`.
+depend on it.
 
 Each request goes through the profiler's own checks before the MCP server sees it, and gets a `403`
-otherwise:
+otherwise (`lib/profiler/mcp/http_guard.rb`):
 
 - the profiler is enabled;
-- the request passes `authorization_mode` (`:allow_local` by default: from this machine only);
-- a `POST` carries `Content-Type: application/json`, and an `Origin` header, when present, is the
-  profiler's own or one of `cors_allowed_origins`. MCP clients send JSON already; a page on another
-  site cannot without a CORS preflight. `config.api_forgery_protection = false` turns this check off.
+- the `Host` header names a loopback address (`localhost`, `127.0.0.1`, `::1`), a host your
+  application lists in `config.hosts`, or an entry of `config.mcp_allowed_hosts` (see
+  [Behind a reverse proxy](#behind-a-reverse-proxy)), which keeps a DNS rebinding page from
+  reaching the tools;
+- the request passes `authorization_mode` (`:allow_local` by default: from this machine only; see
+  [Access control](security.md#access-control));
+- an `Origin` header, when present, is the profiler's own or one of `cors_allowed_origins`,
+  whatever `extension_cors_enabled` and `api_forgery_protection` say;
+- a `POST` carries `Content-Type: application/json`. MCP clients send JSON already; a page on
+  another site cannot without a CORS preflight. `config.api_forgery_protection = false` turns this
+  last check off.
 
-MCP clients that run inside a web page are not supported: `cors_allowed_origins = ["*"]` applies to
-the API, not to the MCP endpoint, whose `Origin` must be the profiler's own or listed by name.
+None of the tools (including the ones that write `ENV`, clear profiles or run tests) is reachable
+without passing these checks. MCP clients that run inside a web page are not supported:
+`cors_allowed_origins = ["*"]` opens the API, not the MCP endpoint, whose `Origin` must be the
+profiler's own or listed by name.
 
 A Claude Code entry for a local server:
 
@@ -84,13 +105,45 @@ A Claude Code entry for a local server:
 
 Prefer the stdio transport when the client runs on the same machine: it opens no endpoint at all.
 
+#### Behind a reverse proxy
+
+An application behind Traefik already lists its domain in `config.hosts` (Rails refuses the other
+hosts in development), so it usually has nothing to set. An empty `config.hosts`, which turns
+Rails' check off, allows nothing more. For hosts outside `config.hosts`:
+
+```ruby
+# config/initializers/profiler.rb, for an API reached through Traefik and from other containers
+Profiler.configure do |config|
+  config.mcp_enabled = true
+  config.mcp_transport = :http
+  config.mcp_allowed_hosts = ["api.myapp.test", %r{\Amyapp[a-z0-9-]*\z}]
+end
+```
+
+A String names a host (any port) or a `host:port`, compared without case; `*` is refused. A
+`Regexp` must start with `\A` and end with `\z`, and is matched against the whole host name,
+without the port; any other `Regexp` raises an `ArgumentError` when it is assigned. Through a proxy
+the request also has to pass `authorization_mode`: with the default, `:allow_local`, see
+[Access control](security.md#access-control) for Docker and proxies.
+
+#### Upgrading from versions that always routed it
+
+In earlier versions, `/_profiler/mcp` was routed in every application, whatever `mcp_enabled` and
+`mcp_transport` said, and answered anyone. An installation that used the HTTP endpoint while
+`mcp_transport` was left at its default, `:stdio`, now has to set `config.mcp_enabled = true` and
+`config.mcp_transport = :http`. There is no setting that routes it without the checks. Two general
+settings loosen them: `config.authorization_mode = :allow_all` (anyone who can reach the
+application can then read and change everything the profiler exposes, through the MCP tools as
+well as the API) and `config.api_forgery_protection = false`, which drops the `Content-Type`
+check only: the `Origin` check stays.
+
 ---
 
 ## Cluster (Master/Slave)
 
-When running multiple Rails instances (e.g. git worktrees or microservices), connect them as a cluster so the master MCP server can query any slave.
+When running multiple Rails instances (for example git worktrees or microservices), connect them as a cluster so the master MCP server can query any slave.
 
-All tools accept an optional `slave` parameter: pass the slave's name to target it instead of the local profiler.
+Every tool but `list_slaves` accepts an optional `slave` parameter: pass the slave's name to target it instead of the local profiler.
 
 ```
 # Local profiler (default)
@@ -105,13 +158,13 @@ list_slaves
 
 The master reaches a slave only if the slave registered with the shared `cluster_secret` and its
 URL is allowed by `cluster_allowed_slave_urls`; otherwise the tool returns an error and no request
-is sent. See [Cluster setup](../README.md#cluster-multi-instance) for configuration details.
+is sent. See [Cluster](cluster.md) for configuration details.
 
 ---
 
 ## Tools
 
-> **Cluster note:** All tools accept an optional `slave: "<name>"` parameter. When provided, the master proxies the request to the named slave profiler and returns its data. Omit `slave` to query the local profiler. Use `list_slaves` to see available slaves and their status.
+> **Cluster note:** Every tool but `list_slaves` accepts an optional `slave: "<name>"` parameter. When provided, the master proxies the request to the named slave profiler and returns its data. Omit `slave` to query the local profiler. Use `list_slaves` to see available slaves and their status.
 
 ### `list_slaves`
 
@@ -154,7 +207,7 @@ Get the full detail of a specific profile. Use `"latest"` as token to get the mo
 | `token` | string | Profile token or `"latest"` **(required)** |
 | `sections` | array | Sections to include: `overview`, `exception`, `job`, `console`, `request`, `response`, `curl`, `database`, `performance`, `views`, `cache`, `ajax`, `http`, `mailers`, `routes`, `dumps`, `logs`, `env`, `i18n`, `related_jobs` |
 | `log_min_level` | string | Minimum log level when using the `logs` section: `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL` |
-| `env_filter` | string | Required when using the `env` section — case-insensitive substring filter on ENV key name (e.g. `"RAILS"`, `"DATABASE"`) |
+| `env_filter` | string | Required when using the `env` section: case-insensitive substring filter on ENV key name (e.g. `"RAILS"`, `"DATABASE"`) |
 | `save_bodies` | boolean | Save request/response bodies to temp files; return paths instead of inline content |
 | `max_body_size` | number | Truncate inline body at N characters |
 | `json_path` | string | JSONPath expression to extract from response body (e.g. `$.data.items[0]`) |
@@ -193,7 +246,7 @@ Analyze SQL queries for N+1 patterns, duplicates, and slow queries. Use `"latest
 Run `EXPLAIN ANALYZE` on a specific query from a profile and return the execution plan.
 Only read-only statements (`SELECT`, `WITH ... SELECT`, `TABLE`, `VALUES`) are explained, in a
 transaction always rolled back; any other query returns an error. See
-[Explaining a query](../README.md#explaining-a-query).
+[Explaining a query](usage.md#explaining-a-query).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -324,7 +377,7 @@ Get full detail for a single test profile. Use `"latest"` to get the most recent
 
 ### `run_tests`
 
-Run test files and wait for results. Synchronous — blocks until tests complete or timeout is reached. Returns output, status, and tokens of test profiles created during the run.
+Run test files and wait for results. Synchronous: blocks until tests complete or timeout is reached. Returns output, status, and tokens of test profiles created during the run.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -333,7 +386,7 @@ Run test files and wait for results. Synchronous — blocks until tests complete
 | `timeout_seconds` | number | Max wait time in seconds (default: 120). |
 | `max_output` | number | Max characters of output returned (tail, default: 4000). |
 
-**Returns:** run summary (status, duration, exit code), truncated output, and the token list of test profiles created — use these with `get_test_profile` or `analyze_queries` to drill in.
+**Returns:** run summary (status, duration, exit code), truncated output, and the token list of test profiles created; use these with `get_test_profile` or `analyze_queries` to drill in.
 
 **Example prompts:**
 > "Run spec/models/user_spec.rb and show me the results"
@@ -414,7 +467,7 @@ Set an environment variable and persist the override across app restarts.
 
 The override reaches the processes started by `run_tests`, except for variables that make them load
 or run other code (`RUBYOPT`, `SPEC_OPTS`, `BUNDLE_*`, `PATH`, `BASH_ENV`...): those processes keep
-the value from the shell that started Rails. The full list is in the README, section "Test runner".
+the value from the shell that started Rails. The full list is in [Tests](testing.md#test-runner).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -512,7 +565,7 @@ MCP resources are read-only data feeds that Claude can subscribe to or read on d
 ## Rake tasks
 
 ```bash
-# Start the MCP server (stdio transport — for Claude Desktop / Claude Code)
+# Start the MCP server (stdio transport, for Claude Desktop and Claude Code)
 bundle exec rake profiler:mcp
 
 # List recent profiles
