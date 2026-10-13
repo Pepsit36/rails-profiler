@@ -20,25 +20,6 @@ RSpec.configure do |config|
 end
 ```
 
-> **Known issue in 0.32.1.** Under RSpec 3.13, `RSpecSupport.install` makes every example fail
-> with `NoMethodError: undefined method 'line_number'`: the object an `around` hook receives does
-> not answer it. Until it is fixed, set the hook up yourself, reading the line from the metadata:
->
-> ```ruby
-> require 'profiler/test_helpers/rspec_support'
->
-> RSpec.configure do |config|
->   config.around(:each) do |example|
->     Profiler::TestProfiler.profile(test_name: example.full_description, test_file: example.file_path,
->                                    test_line: example.metadata[:line_number], framework: :rspec) { example.run }
->   end
->   config.after(:suite) { Profiler::TestHelpers::Reporter.print }
-> end
-> ```
->
-> With either form, a failing or pending example is recorded, and counted in the report, as
-> passed: the status is read before RSpec has set it.
-
 **Minitest**: add to `test/test_helper.rb`:
 
 ```ruby

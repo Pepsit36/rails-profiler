@@ -12,16 +12,5 @@ require "profiler/test_helpers/rspec_support"
 RSpec.configure do |config|
   config.use_transactional_fixtures = true
 
-  # What Profiler::TestHelpers::RSpecSupport.install(config) sets up, except for the line
-  # number: as of 0.32.1, install reads example.line_number, which an RSpec 3.13 around hook
-  # does not answer (NoMethodError in every example), so it is read from the metadata here.
-  config.around(:each) do |example|
-    Profiler::TestProfiler.profile(
-      test_name: example.full_description,
-      test_file: example.file_path,
-      test_line: example.metadata[:line_number],
-      framework: :rspec
-    ) { example.run }
-  end
-  config.after(:suite) { Profiler::TestHelpers::Reporter.print }
+  Profiler::TestHelpers::RSpecSupport.install(config)
 end

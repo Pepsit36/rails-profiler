@@ -24,14 +24,32 @@ module Profiler
 
       module RunWrapper
         def run
+          file, line = profiler_test_location
           Profiler::TestProfiler.profile(
             test_name: "#{self.class.name}##{name}",
-            test_file:  self.class.instance_method(name).source_location&.first || "",
-            test_line:  self.class.instance_method(name).source_location&.last || 0,
+            test_file:  file,
+            test_line:  line,
             framework:  :minitest
           ) { super }
+        rescue StandardError => e
+          # Test#run captures what the test raises, so this comes from the
+          # profiler. Escaping, it would stop the whole run: it fails this
+          # test instead, as it does an RSpec example, without running it again.
+          self.time ||= 0
+          capture_exceptions { raise e }
+          Minitest::Result.from(self)
+        end
+
+        private
+
+        # Only the lookup is guarded: rescuing around super would run the test
+        # again whenever anything raised a NameError after it, NoMethodError
+        # included.
+        def profiler_test_location
+          location = self.class.instance_method(name).source_location
+          [location&.first || "", location&.last || 0]
         rescue NameError
-          super
+          ["", 0]
         end
       end
     end

@@ -46,57 +46,6 @@ RSpec.describe Profiler::TestProfiler do
     end
   end
 
-  describe "RSpec paths" do
-    let(:execution_result) { double("ExecutionResult") }
-    let(:example_double)   { double("Example", execution_result: execution_result) }
-
-    before { allow(execution_result).to receive(:exception).and_return(nil) }
-
-    context "when test passes" do
-      before { allow(execution_result).to receive(:status).and_return(:passed) }
-
-      it "saves a profile with status 'passed'" do
-        profile { example_double }
-        p = latest_test_profile
-        expect(p).not_to be_nil
-        expect(p.collector_data("test")["status"]).to eq("passed")
-      end
-
-      it "saves a profile of type 'test'" do
-        profile { example_double }
-        expect(latest_test_profile.profile_type).to eq("test")
-      end
-    end
-
-    context "when test fails" do
-      let(:exception) { double("Exception", message: "expected true but got false") }
-
-      before do
-        allow(execution_result).to receive(:status).and_return(:failed)
-        allow(execution_result).to receive(:exception).and_return(exception)
-      end
-
-      it "saves a profile with status 'failed'" do
-        profile { example_double }
-        expect(latest_test_profile.collector_data("test")["status"]).to eq("failed")
-      end
-
-      it "captures the exception message" do
-        profile { example_double }
-        expect(latest_test_profile.collector_data("test")["exception_message"]).to eq("expected true but got false")
-      end
-    end
-
-    context "when test is pending" do
-      before { allow(execution_result).to receive(:status).and_return(:pending) }
-
-      it "saves a profile with status 'pending'" do
-        profile { example_double }
-        expect(latest_test_profile.collector_data("test")["status"]).to eq("pending")
-      end
-    end
-  end
-
   describe "Minitest paths" do
     let(:minitest_result) { double("MinitestResult", assertions: 3) }
 

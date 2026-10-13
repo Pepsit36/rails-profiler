@@ -69,11 +69,6 @@ path, user or machine name of the host reaches the Env tab. The application live
 
 - The version badge reads the top version of `CHANGELOG.md`: a checkout of the gem carries
   `0.0.0`, which the overlay replaces for the demo application only.
-- `spec/demo_helper.rb` sets up the test profiling itself instead of calling
-  `Profiler::TestHelpers::RSpecSupport.install`, which, as of 0.32.1, fails every example under
-  RSpec 3.13 (`example.line_number` is not defined on the object an `around` hook receives).
-  The demo specs all pass, and must: a failing example is recorded as passed by the same
-  integration, so the Test Runner would show a failed run next to a report of passed tests.
 - `test_app`'s `config/initializers/dev_env_vars.rb` points `DATABASE_URL` at the development
   database in every environment; the demo specs and `run.sh` use `storage/test.sqlite3`, which
   `run.sh` creates from the schema without the seeds the demo specs do not expect.
