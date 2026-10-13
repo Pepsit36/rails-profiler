@@ -5,6 +5,219 @@ info:
   version: v1
   description: Internal API for the Rails Profiler dashboard
 paths:
+  "/_profiler/api/ajax/link":
+    post:
+      summary: Link an AJAX profile to the page profile that triggered it
+      description: Called by the script injected in the host page (profiler-ajax-interceptor.js),
+        not by the dashboard. Marks the child profile as an AJAX request and stores the parent
+        token in it, so the AJAX tab of the parent lists it.
+      operationId: linkAjaxProfile
+      tags:
+      - AJAX
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - parent_token
+              - child_token
+              properties:
+                parent_token:
+                  type: string
+                  description: Token of the page profile. A value the gem never issues is refused.
+                child_token:
+                  type: string
+                  description: Token of the AJAX request profile, which must already be stored
+      responses:
+        '200':
+          description: profiles linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: parent_token or child_token missing, or parent_token is not a valid token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: child profile not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: the link could not be saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  "/_profiler/api/cluster/heartbeat":
+    post:
+      summary: Refresh a slave's heartbeat
+      description: "Routed only on a node with cluster_master set. When a cluster secret is required, the request carries it in the X-Profiler-Cluster-Secret header instead of passing the access guard and the forgery header. Keeps a registered slave online. A slave the master does not know (restarted master) gets a 404 and must register again."
+      operationId: clusterHeartbeat
+      tags:
+      - Cluster
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              properties:
+                name:
+                  type: string
+                  description: Name the slave registered under
+      responses:
+        '200':
+          description: heartbeat recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '403':
+          description: access refused (missing or invalid cluster secret, or not authorized)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: unknown slave, register again
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  "/_profiler/api/cluster/register":
+    post:
+      summary: Register a slave profiler with the master
+      description: "Routed only on a node with cluster_master set. When a cluster secret is required, the request carries it in the X-Profiler-Cluster-Secret header instead of passing the access guard and the forgery header. Registers a slave, or updates the URL and heartbeat of one already registered under the same name. The URL is checked against the cluster SSRF rules and stored normalized."
+      operationId: clusterRegister
+      tags:
+      - Cluster
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - url
+              properties:
+                name:
+                  type: string
+                  description: Slave name, used in the proxy path
+                url:
+                  type: string
+                  description: Base URL of the slave, reachable from the master
+      responses:
+        '200':
+          description: slave registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  name:
+                    type: string
+        '403':
+          description: access refused (missing or invalid cluster secret, or not authorized)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '422':
+          description: name or url missing, or the URL is refused
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  "/_profiler/api/cluster/slaves":
+    get:
+      summary: List registered slave profilers
+      description: "Routed only on a node with cluster_master set. Used by the dashboard profiler selector."
+      operationId: listClusterSlaves
+      tags:
+      - Cluster
+      responses:
+        '200':
+          description: registered slaves
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - slaves
+                properties:
+                  slaves:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - name
+                      - url
+                      - status
+                      properties:
+                        name:
+                          type: string
+                        url:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                          - online
+                          - offline
+                          description: offline once no heartbeat arrived within cluster_offline_threshold
+                        registered_at:
+                          type: string
+                          format: date-time
+                        last_heartbeat_at:
+                          type: string
+                          format: date-time
+        '403':
+          description: not authorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
   "/_profiler/api/console":
     get:
       summary: List console profiles
@@ -177,6 +390,44 @@ paths:
                 properties:
                   reset:
                     type: boolean
+  "/_profiler/api/events/{token}":
+    parameters:
+    - name: token
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Check whether a profile was saved again
+      description: A plain JSON poll, answered at once, not a stream. The toolbar and the dashboard
+        ask again later with the cursor they hold. Without a numeric since, the caller gets the
+        current cursor and updated false.
+      operationId: getProfileEvents
+      tags:
+      - Events
+      parameters:
+      - name: since
+        in: query
+        required: false
+        description: Cursor returned by the previous call
+        schema:
+          type: string
+      responses:
+        '200':
+          description: current cursor
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - cursor
+                - updated
+                properties:
+                  cursor:
+                    type: integer
+                  updated:
+                    type: boolean
+                    description: true when the profile was saved again since the given cursor
   "/_profiler/api/explain":
     post:
       summary: Run EXPLAIN ANALYZE on a stored query
@@ -449,8 +700,14 @@ paths:
       - Test Runner
       parameters: []
       responses:
+        '201':
+          description: run started
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/TestRun"
         '422':
-          description: no files selected
+          description: no files selected, or a file that is not a discovered test file
           content:
             application/json:
               schema:
@@ -485,6 +742,12 @@ paths:
       tags:
       - Test Runner
       responses:
+        '200':
+          description: run status and output so far
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/TestRun"
         '404':
           description: run not found
           content:
@@ -500,6 +763,8 @@ paths:
       tags:
       - Test Runner
       responses:
+        '204':
+          description: run killed
         '404':
           description: run not found
   "/_profiler/api/tests":

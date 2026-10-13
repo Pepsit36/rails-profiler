@@ -137,6 +137,30 @@ GET  /_profiler/profiles/:id/:tab - Tab content
 GET  /_profiler/api/toolbar/:token - Toolbar data (AJAX)
 ```
 
+**API contract (OpenAPI):**
+
+`swagger/v1/swagger.yaml` is the contract of the JSON API consumed by the dashboard and the
+browser extension. Two routes are deliberately **outside** it, because an OpenAPI path
+cannot describe them truthfully:
+
+- `GET /_profiler/api/test_runner/runs/:id/stream` answers `text/event-stream` (Server-Sent
+  Events frames: `output` events with a numeric `id`, a final `done` event, a `retry:` hint),
+  resumable through the `Last-Event-ID` header or the `position` parameter. Each response
+  carries the output produced so far and then ends; the client's `EventSource` reconnects after
+  the `retry:` delay with the position it reached. The payload is a sequence of events, not one
+  JSON document, and a generated client cannot model it.
+- `ANY /_profiler/api/slaves/:slave_name/*path` is the cluster proxy. It accepts an arbitrary
+  path and forwards `GET`, `POST`, `PATCH` and `DELETE` to the same path under the slave's
+  `/_profiler/api/`. Its contract is the slave's own contract (this file, read on the slave),
+  so listing it would mean duplicating every endpoint under a wildcard. It is routed only on a
+  node with `cluster_master` set.
+
+The master-side cluster routes (`cluster/register`, `cluster/heartbeat`, `cluster/slaves`),
+`ajax/link` and `events/:token` are in the contract. `events/:token` is a plain JSON poll that
+answers at once, despite its name, so it needs no exception. The `/_profiler/mcp` mount speaks
+the MCP protocol (see `docs/mcp.md`) and the HTML routes of `profiles#*` return pages, not API
+data; neither belongs in an OpenAPI file for the JSON API.
+
 ### 6. Frontend Assets
 
 **TypeScript Modules:**
