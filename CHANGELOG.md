@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-10-13
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Packaging:** The published gem now contains its `LICENSE` file, which the MIT license asks
