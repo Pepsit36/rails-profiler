@@ -162,8 +162,7 @@ in [Configuration](docs/configuration.md#function-profiling) and
 ### Tests
 
 With test profiling hooked into RSpec or Minitest, every example gets a profile, and the dashboard
-can run your tests. See **[Tests](docs/testing.md)**, which also documents a known issue of the
-RSpec integration in 0.32.1.
+can run your tests. See **[Tests](docs/testing.md)**.
 
 ![The Test Runner section](docs/screenshots/test-runner.png)
 
