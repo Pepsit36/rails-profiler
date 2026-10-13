@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Packaging:** The published gem now contains its `LICENSE` file, which the MIT license asks
+  every copy to carry and which was missing from the gem up to 0.32.0, and a new
+  `THIRD-PARTY-NOTICES.md` that reproduces the copyright and license notices of the three MIT
+  packages compiled into the dashboard and toolbar JavaScript: `preact`, `@tanstack/preact-query`
+  and `@tanstack/query-core`. The license of the gem does not change, it stays MIT.
+
 ## [0.32.0] - 2026-10-06
 
 <!-- stamped -->
