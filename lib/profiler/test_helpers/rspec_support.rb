@@ -15,7 +15,7 @@ module Profiler
     #   end
     module RSpecSupport
       def self.install(config)
-        config.around(:each) do |example|
+        hook = proc do |example|
           Profiler::TestProfiler.profile(
             test_name: example.full_description,
             test_file:  example.file_path,
@@ -25,6 +25,23 @@ module Profiler
             example.run
             Outcome.new(example)
           end
+        end
+
+        # config.around would nest this hook inside the config-level around
+        # hooks registered before it, among them the one RSpec registers for
+        # :aggregate_failures when the configuration is created. An aggregated
+        # failure, like one raised by such a hook after the example, is only
+        # set on the example once that hook has returned: the example would be
+        # recorded as passed. Appended, the hook wraps them all. Groups already
+        # defined get it the way config.around gives it to them. config.hooks
+        # is not public API, hence the fallback.
+        if config.respond_to?(:hooks) && config.hooks.respond_to?(:register)
+          config.hooks.register(:append, :around, :example, &hook)
+          RSpec.world.example_groups.each do |group|
+            group.hooks.register(:append, :around, :example, &hook)
+          end
+        else
+          config.around(:example, &hook)
         end
 
         config.after(:suite) do
