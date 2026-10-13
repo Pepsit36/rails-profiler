@@ -30,6 +30,36 @@ class DemoController < ApplicationController
 
   # Outbound HTTP, a custom measure, child jobs and mails, in one request.
   def checkout
+    place_order
+    render json: { ok: true, order: 4211 }
+  end
+
+  # The same order as #checkout, answered with an HTML page: its toolbar shows the HTTP, JOB
+  # and MAIL items.
+  def confirmation
+    place_order
+    @title = t("demo.title")
+    render :confirmation
+  end
+
+  # An HTML page that raises: the development error page gets the toolbar and its 💥 item.
+  def broken
+    Rails.logger.error("Refund requested for an order that was never paid")
+    raise ArgumentError, "Unknown order status: archived"
+  end
+
+  def upstream
+    case params[:path]
+    when "customers/42" then render json: { id: "cus_demo42", name: "Jane Example", plan: "pro" }
+    when "charges" then render json: { id: "ch_demo1", status: "succeeded", amount: 4200 }, status: :created
+    when "slow" then sleep(0.6) && render(json: { ok: true })
+    else render json: { error: "not found" }, status: :not_found
+    end
+  end
+
+  private
+
+  def place_order
     Rails.logger.info("Checkout started for cart #4211")
     customer = User.order(:id).first
     billing_get("/upstream/customers/42")
@@ -44,19 +74,7 @@ class DemoController < ApplicationController
     NotificationMailer.alert(customer, "Payment received for order #4211").deliver_now
     NotificationMailer.welcome(customer).deliver_later
     Profiler.dump({ cart: 4211, total_cents: 4200, items: 3 }, "Cart")
-    render json: { ok: true, order: 4211 }
   end
-
-  def upstream
-    case params[:path]
-    when "customers/42" then render json: { id: "cus_demo42", name: "Jane Example", plan: "pro" }
-    when "charges" then render json: { id: "ch_demo1", status: "succeeded", amount: 4200 }, status: :created
-    when "slow" then sleep(0.6) && render(json: { ok: true })
-    else render json: { error: "not found" }, status: :not_found
-    end
-  end
-
-  private
 
   def billing
     Net::HTTP.new(BILLING_HOST, request.port).tap do |http|

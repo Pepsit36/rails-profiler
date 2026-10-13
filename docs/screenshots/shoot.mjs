@@ -25,6 +25,41 @@ await page.waitForTimeout(2500) // AJAX sub-requests, then the toolbar refresh
 await page.locator('#profiler-toolbar').getByText('DB', { exact: false }).first().hover().catch(() => {})
 await shot('toolbar')
 
+// Toolbar panels, one image each: the same viewport, cut to its bottom 420 px (the toolbar
+// and the open panel). The EVT item has had no data since 0.9.1 and never shows.
+const PANEL_TOP = 380
+const panel = async (item, name) => {
+  await page.mouse.move(640, 100)
+  await page.waitForTimeout(400)
+  await item.hover()
+  const open = page.locator('.profiler-toolbar-panel.is-visible')
+  await open.waitFor()
+  await settle(600)
+  const box = await open.boundingBox()
+  if (box.y < PANEL_TOP) throw new Error(`${name}: the panel is taller than the frame`)
+  await page.screenshot({ path: `${out}/${name}.png`, clip: { x: 0, y: PANEL_TOP, width: 1280, height: 800 - PANEL_TOP } })
+  console.log('shot', name)
+}
+const items = page.locator('.profiler-toolbar-item.profiler-toolbar-hoverable')
+const item = (label) => items.filter({ has: page.locator(`span:text-is("${label}")`) }).first()
+await panel(items.nth(0), 'toolbar-panel-request')
+await panel(items.nth(1), 'toolbar-panel-performance')
+for (const [label, name] of [['DB', 'database'], ['XHR', 'ajax'], ['VIEW', 'views'], ['CACHE', 'cache'], ['DUMP', 'dump'],
+  ['LOG', 'logs'], ['ROUTE', 'routes'], ['I18N', 'i18n'], ['ENV', 'env']]) {
+  await panel(item(label), `toolbar-panel-${name}`)
+}
+// The same order as /checkout, as an HTML page: outbound HTTP, jobs and mails.
+await page.goto(`${MASTER}/orders/confirmation`, { waitUntil: 'networkidle' })
+await page.waitForTimeout(2500)
+for (const [label, name] of [['HTTP', 'http'], ['JOB', 'jobs'], ['MAIL', 'mailer']]) {
+  await panel(item(label), `toolbar-panel-${name}`)
+}
+// A page that raises: the development error page, without the web console drawn over it.
+await page.goto(`${MASTER}/orders/broken`, { waitUntil: 'networkidle' })
+await page.addStyleTag({ content: '#console { display: none !important; }' })
+await page.waitForTimeout(1500)
+await panel(item('💥'), 'toolbar-panel-exception')
+
 const list = (await api('profiles?limit=100')).profiles
 const token = (path, method = 'GET') => list.find(p => p.path === path && p.method === method)?.token
 const show = async (tok, tab, name, after) => {
@@ -43,6 +78,8 @@ await show(token('/api/n_plus_one'), 'database', 'tab-database')
 await show(ordersToken, 'ajax', 'tab-ajax')
 await show(checkout, 'http', 'tab-http', () => page.locator('.profiler-query-card, .profiler-http-card').first().click().catch(() => {}))
 await show(checkout, 'timeline', 'tab-flamegraph')
+await show(checkout, 'timeline', 'tab-function-profiling', () =>
+  page.locator('.profiler-fn-profiling').evaluate(el => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 16)))
 await show(ordersToken, 'views', 'tab-views')
 await show(token('/api/cache_intensive'), 'cache', 'tab-cache')
 await show(checkout, 'logs', 'tab-logs')
@@ -55,6 +92,18 @@ await show(token('/api/raise_named_error'), 'exception', 'tab-exception')
 
 await page.goto(`${MASTER}/_profiler?section=jobs`, { waitUntil: 'networkidle' })
 await shot('profile-list-jobs')
+const jobs = (await api('jobs?limit=50')).profiles
+await show(jobs.find(p => p.collectors_data?.job?.job_class === 'ReportGenerationJob').token, 'job', 'job-profile')
+
+// Console expressions, recorded by run.sh through script/console_profiles.rb.
+await page.goto(`${MASTER}/_profiler?section=console`, { waitUntil: 'networkidle' })
+await shot('profile-list-console')
+const consoles = (await api('console?limit=50')).profiles
+await show(consoles.find(p => p.path.startsWith('Post.includes')).token, 'console', 'console-profile')
+
+await page.goto(`${MASTER}/_profiler?section=outbound`, { waitUntil: 'networkidle' })
+await page.locator('.profiler-ajax-card').nth(1).locator('.profiler-ajax-card__row').first().click()
+await shot('profile-list-outbound')
 
 // Test runner: run the two demo spec files, which also records one test profile per example.
 await page.goto(`${MASTER}/_profiler?section=runner`, { waitUntil: 'networkidle' })
@@ -79,5 +128,16 @@ await page.goto(`${MASTER}/_profiler`, { waitUntil: 'networkidle' })
 await page.locator('.profiler-selector select').selectOption('myapp-billing')
 await page.waitForLoadState('networkidle')
 await shot('cluster-selector')
+await page.locator('.profiler-selector select').selectOption('__local__')
+await page.waitForLoadState('networkidle')
+
+// Last, because it changes the server's ENV: one override, made the way a user does.
+await page.goto(`${MASTER}/_profiler?section=env`, { waitUntil: 'networkidle' })
+await page.getByPlaceholder(/Filter by key/).fill('FEATURE_')
+await page.locator('tr', { hasText: 'FEATURE_BETA_UI' }).locator('button[title^="Click to set"]').click()
+await page.getByText('Reveal all').click()
+await page.waitForTimeout(3500) // the confirmation message goes away after 3 s
+await page.locator('h2', { hasText: 'Environment Variables' }).evaluate(el => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 16))
+await shot('profile-list-env')
 
 await browser.close()
