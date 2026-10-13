@@ -40,6 +40,7 @@ Gemfile.lock
 app/assets/builds/
 
 node_modules/
+yarn-error.log
 
 # Generated TypeScript from OpenAPI spec (regenerate with `yarn codegen`)
 app/assets/typescript/profiler/generated/
