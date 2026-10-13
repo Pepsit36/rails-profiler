@@ -56,6 +56,9 @@ hit() { curl -s -o /dev/null -H "Host: api.myapp.test:$1" -H "X-Request-Id: demo
 for p in /api/users /api/slow_query /api/cache_intensive /api/n_plus_one /checkout /api/raise_named_error; do hit 3000 "$p"; done
 hit 3000 /api/users -X POST -H "Content-Type: application/json" -d '{"name":"Jane Example","email":"jane@myapp.test"}'
 for p in /api/users /api/n_plus_one /checkout; do hit 3001 "$p"; done
+# Console profiles, in the master's store, from the same expressions as an IRB session.
+env -i PATH="$RB/x64/bin:/usr/bin:/bin" HOME="$APP/tmp/home" LANG=C.UTF-8 RAILS_ENV=development \
+  PROFILER_NAME=myapp-web PROFILER_DEMO_VERSION="$VERSION" bin/rails runner script/console_profiles.rb
 sleep 16   # one heartbeat, so that the slave shows online
 
 if [ -n "${SERVE:-}" ]; then

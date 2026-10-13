@@ -23,8 +23,11 @@ path, user or machine name of the host reaches the Env tab. The application live
 | Image | Page |
 |---|---|
 | `toolbar.png` | `/orders`, an HTML page of the demo application, with the Database panel of the toolbar open |
-| `profile-list.png`, `profile-list-jobs.png`, `profile-list-tests.png` | `/_profiler`, sections HTTP Requests, Background Jobs and Tests |
-| `tab-*.png` | one tab each of the profile of `/checkout`, `/orders`, `/api/n_plus_one`, `/api/cache_intensive` or `/api/raise_named_error` |
+| `toolbar-panel-*.png` | one panel of the toolbar each, hovered on `/orders`, on `/orders/confirmation` (the order of `/checkout` as an HTML page: HTTP, jobs and mails) or on `/orders/broken` (the development error page, for the exception); the same 1280x800 viewport, cut to its bottom 420 px |
+| `profile-list.png`, `profile-list-jobs.png`, `profile-list-console.png`, `profile-list-tests.png`, `profile-list-outbound.png`, `profile-list-env.png` | `/_profiler`, sections HTTP Requests, Background Jobs, Console, Tests, Outbound HTTP and Env (after one variable was switched in the page) |
+| `tab-*.png` | one tab each of the profile of `/checkout`, `/orders`, `/api/n_plus_one`, `/api/cache_intensive` or `/api/raise_named_error`; `tab-function-profiling.png` is the Timeline tab of `/checkout`, scrolled to its function profiling |
+| `job-profile.png` | the profile of a `ReportGenerationJob` enqueued by a request |
+| `console-profile.png` | the profile of one of the console expressions of `demo_app/script/console_profiles.rb` |
 | `test-runner.png` | the Test Runner section after running `spec/demo/*_spec.rb` |
 | `test-profile.png`, `test-profile-database.png` | the profile of one of those examples, Test and Database tabs |
 | `cluster-selector.png` | the profile list of the slave `myapp-billing`, read through the master |
@@ -49,8 +52,11 @@ path, user or machine name of the host reaches the Env tab. The application live
      json 3 breaks Rails 7.2 with `unknown keyword: quirks_mode`);
    - starts a cluster master on port 3000 and a slave on port 3001, sharing a random
      `cluster_secret`, each with its own SQLite profile store;
-   - sends the requests that fill the tabs, waits for one heartbeat of the slave, then runs
-     `shoot.mjs`, which also starts the demo test run from the Test Runner page;
+   - sends the requests that fill the tabs, evaluates a few console expressions with
+     `bin/rails runner script/console_profiles.rb` (the same `Profiler::ConsoleProfiler.profile`
+     call as the profiler's IRB hook, so they are listed as console profiles), waits for one
+     heartbeat of the slave, then runs `shoot.mjs`, which also starts the demo test run from the
+     Test Runner page;
    - optimizes the PNGs with `npx oxipng -o 4 --strip safe` and stops both servers.
 
    With `SERVE=1`, it stops after seeding and leaves both servers running, to iterate on
@@ -71,6 +77,13 @@ path, user or machine name of the host reaches the Env tab. The application live
 - `test_app`'s `config/initializers/dev_env_vars.rb` points `DATABASE_URL` at the development
   database in every environment; the demo specs and `run.sh` use `storage/test.sqlite3`, which
   `run.sh` creates from the schema without the seeds the demo specs do not expect.
-- `tab-database.png`, `tab-env.png`, `tab-mailer.png` and `test-profile-database.png` show a
-  dash that the profiler's UI itself writes (the N+1 banner, the Env snapshot notice, the
-  subject next to a mailer action), not the demo data.
+- `tab-database.png`, `tab-env.png`, `tab-mailer.png`, `test-profile-database.png` and
+  `profile-list-env.png` show a dash that the profiler's UI itself writes (the N+1 banner, the
+  Env notices, the subject next to a mailer action), not the demo data.
+- The copy icon of the Env tab and section (U+2398) shows as an empty box: none of the fonts
+  `prepare.sh` installs has it. Adding one that does (Symbola, FreeFont) changes how the emoji or
+  the form controls of every other image are drawn.
+- `toolbar-panel-exception.png` hides the web console that the development error page draws at
+  its bottom (`#console`), which would otherwise cover the panel.
+- The EVT item of the toolbar (and its Events panel) needs data that no collector has written
+  since 0.9.1: it never shows, and has no image.

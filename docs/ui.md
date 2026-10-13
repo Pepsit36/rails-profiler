@@ -5,45 +5,45 @@ The Rails Profiler injects a debug toolbar into every HTML page and provides a w
 Every screenshot of this guide comes from the same fictitious application; see
 [screenshots/README.md](screenshots/README.md) to regenerate them.
 
-- [Toolbar](#toolbar)
+- [Toolbar](#toolbar) and its [panels](#toolbar-panels)
 - [Profiler Selector (Cluster)](#profiler-selector-cluster)
 - [Profile List](#profile-list)
 - [Profile Dashboard](#profile-dashboard): [Request](#request-tab), [Dump](#dump-tab),
   [Database](#database-tab), [AJAX](#ajax-tab), [Outbound HTTP](#outbound-http-tab),
-  [Timeline](#timeline-tab-flame-graph), [Views](#views-tab), [Cache](#cache-tab),
-  [Logs](#logs-tab), [Routes](#routes-tab), [I18n](#i18n-tab), [Jobs](#jobs-tab),
-  [Mailers](#mailers-tab), [Env](#env-tab), [Exception](#exception-tab)
-- [Background Jobs](#background-jobs)
-- [Console Profiles](#console-profiles)
+  [Timeline](#timeline-tab), [Function profiling](#function-profiling), [Views](#views-tab),
+  [Cache](#cache-tab), [Logs](#logs-tab), [Routes](#routes-tab), [I18n](#i18n-tab),
+  [Jobs](#jobs-tab), [Mailers](#mailers-tab), [Env](#env-tab), [Exception](#exception-tab)
+- [Background Jobs](#background-jobs) and the [job profile](#job-profile)
+- [Console Profiles](#console-profiles) and the [console profile](#console-profile)
 - [Test Profiles](#test-profiles) and the [Test Runner](#test-runner)
-- [Outbound HTTP and Env sections](#outbound-http-and-env-sections)
+- [Outbound HTTP section](#outbound-http-section)
+- [Env section](#env-section)
 
 ## Toolbar
 
 ![Toolbar](screenshots/toolbar.png)
 
-The toolbar appears as a fixed bar at the bottom of every profiled HTML page. It shows key metrics
-for the current request at a glance; hovering an item opens a panel with the details, and
-clicking it opens the matching tab of the profile. An item only appears when its collector has
-something to show.
+The toolbar appears as a fixed bar at the bottom of every profiled HTML page, the development
+error page included. It shows key metrics for the current request at a glance; hovering an item
+opens a panel with the details (see [Toolbar panels](#toolbar-panels)), and clicking it opens the
+matching tab of the profile. An item only appears when its collector has something to show.
 
 | Item | Shows |
 |------|-------|
 | **Method and status** | Green (2xx) / Yellow (3xx) / Red (4xx and 5xx) |
-| **Duration** | Green (under 100 ms) / Yellow (under 500 ms) / Red (500 ms or more); the panel adds allocations and start time |
-| **DB** | Query count, slow queries (▲) and total SQL time |
-| **XHR** | AJAX requests made by the page after it loaded, and their total time |
-| **EVT** | Timeline events |
-| **VIEW** | Templates rendered, and partials |
-| **CACHE** | Hit rate |
-| **HTTP** | Outbound HTTP requests, slow ones flagged |
+| **Duration** | Green (under 100 ms) / Yellow (under 500 ms) / Red (500 ms or more) |
+| **DB** | Query count, slow queries (▲) and total SQL time; red when a query is slow |
+| **XHR** | AJAX requests made by the page after it loaded, and their total time; red past 20 requests |
+| **VIEW** | Templates rendered, and partials (`+6p`) |
+| **CACHE** | Hit rate, green above 80%; only when the request read the cache |
+| **HTTP** | Outbound HTTP requests, slow ones (▲) and their total time; red when one is slow or failed |
 | **DUMP** | Number of `Profiler.dump()` calls |
-| **LOG** | Log lines, red when one is an error, yellow for a warning |
+| **LOG** | The number of error lines, red, or else of warnings, yellow, or else of all lines |
 | **💥** | The class of the exception the request raised |
-| **ROUTE** | The matched route |
-| **I18N** | Translation lookups, missing keys flagged |
-| **JOB** | Jobs the request enqueued, red when one failed |
-| **MAIL** | Mails sent, queued with `deliver_later`, or failed |
+| **ROUTE** | The pattern of the matched route |
+| **I18N** | The locale, and the number of missing keys (⚠) |
+| **JOB** | Jobs the request enqueued, red with ✗ when one failed |
+| **MAIL** | Mails sent, `+1q` for mails queued with `deliver_later`, ▲ for failed ones |
 | **ENV** | Number of `ENV` variables |
 
 The **Profiler** link at the right opens the profile list at `/_profiler`; the arrow beside it
@@ -55,6 +55,86 @@ when an outgoing HTTP request started in a background thread finishes, or when t
 AJAX requests. It checks with short requests, often at first and then every 30 seconds, not while
 the tab is hidden, and stops after 10 minutes without a change; see
 [Performance](performance.md).
+
+### Toolbar panels
+
+Each panel opens a little after the pointer enters its item and stays open while the pointer is
+over the item or the panel. Most panels show the first entries only and end with "+ N more"
+when there were more; the tab of the profile has the full list.
+
+**Request** (the method and status item): method, path, status, controller and action, route
+name, route pattern and route parameters, then the request parameters, each value cut to 40
+characters.
+
+![Request panel](screenshots/toolbar-panel-request.png)
+
+**Performance** (the duration item): duration, objects allocated, and the time the request
+started.
+
+![Performance panel](screenshots/toolbar-panel-performance.png)
+
+**Database**: query count and total time, then the first 10 queries with their model, duration
+(red when slow) and SQL.
+
+![Database panel](screenshots/toolbar-panel-database.png)
+
+**AJAX**: request count and total time, then the first 10 requests with their method, path,
+status and duration.
+
+![AJAX panel](screenshots/toolbar-panel-ajax.png)
+
+**Views**: total render time, then every template and every partial with its duration.
+
+![Views panel](screenshots/toolbar-panel-views.png)
+
+**Cache**: hit rate, reads, writes, hits and misses.
+
+![Cache panel](screenshots/toolbar-panel-cache.png)
+
+**Outbound HTTP**: request count and total time, then the first 10 calls with their method, host,
+status (`ERR` for a call that got no answer) and duration; slow calls (500 ms or more) are marked
+in red.
+
+![Outbound HTTP panel](screenshots/toolbar-panel-http.png)
+
+**Dumps**: the first 5 dumps, with their number, label, file and line, and the first line of the
+value.
+
+![Dumps panel](screenshots/toolbar-panel-dump.png)
+
+**Logs**: line count, error or warning count, then the last 5 lines, most recent first, with their
+level.
+
+![Logs panel](screenshots/toolbar-panel-logs.png)
+
+**Exception**: the exception class, its message and the first frame of the application in the
+backtrace.
+
+![Exception panel](screenshots/toolbar-panel-exception.png)
+
+**Routes**: the number of routes, then the pattern, name and controller and action of the matched
+route.
+
+![Routes panel](screenshots/toolbar-panel-routes.png)
+
+**I18n**: the locale and the number of missing keys, then 5 keys, missing ones first.
+
+![I18n panel](screenshots/toolbar-panel-i18n.png)
+
+**Background Jobs**: completed and failed counts, then the first 5 jobs with their class, status
+and duration.
+
+![Background Jobs panel](screenshots/toolbar-panel-jobs.png)
+
+**Mailers**: mail count, `deliver_now`, `deliver_later`, queued, multi-part and failed counts and
+send loops when there are some, then the first 3 mails with their mailer and action, ✅ sent or ❌
+failed.
+
+![Mailers panel](screenshots/toolbar-panel-mailer.png)
+
+**Environment**: the number of `ENV` variables.
+
+![Environment panel](screenshots/toolbar-panel-env.png)
 
 ---
 
@@ -81,16 +161,21 @@ Slaves appear as `(offline)` and cannot be selected if their last heartbeat is o
 
 ![Profile list](screenshots/profile-list.png)
 
-Navigate to `/_profiler` to see all recorded profiles. The list is split into sections:
+Navigate to `/_profiler` to see all recorded profiles. The header shows the version of the gem
+that serves the page, and a ⚠️ next to a profile marks one recorded by another version. The list
+is split into sections:
 
 - **HTTP Requests**: regular web requests
 - **Background Jobs**: Sidekiq and ActiveJob executions (see [Background Jobs](#background-jobs))
 - **Console**: expressions evaluated in `rails console` (see [Console Profiles](#console-profiles))
 - **Tests**: one profile per RSpec or Minitest example (see [Test Profiles](#test-profiles))
 - **Test Runner**: runs your tests from the browser (see [Test Runner](#test-runner))
-- **Outbound HTTP** and **Env**: see [Outbound HTTP and Env sections](#outbound-http-and-env-sections)
+- **Outbound HTTP**: the outgoing calls of every profile (see
+  [Outbound HTTP section](#outbound-http-section))
+- **Env**: the `ENV` of the server process, which you can change (see [Env section](#env-section))
 
 The section is kept in the URL (`/_profiler?section=jobs`), and so are the filters and the sort.
+Clicking the tab of the current section reloads it.
 
 ### Filters
 
@@ -99,6 +184,8 @@ The section is kept in the URL (`/_profiler?section=jobs`), and so are the filte
 - **Method**: GET, POST, PUT, PATCH, DELETE
 - **Status**: 2xx, 3xx, 4xx, 5xx
 - **Duration**: under 100 ms, 100 ms or more, 500 ms or more
+
+While a filter is active, the count of matching profiles shows next to the buttons.
 
 ### Columns
 
@@ -113,8 +200,10 @@ The section is kept in the URL (`/_profiler?section=jobs`), and so are the filte
 | Status | HTTP status badge |
 | Token | Unique profile identifier (click to copy) |
 
-Column headers marked with ⇅ are sortable. **Clear** deletes the profiles of the section, **Clear
-All** every profile, and ↺ reloads the list.
+Column headers marked with ⇅ are sortable, and × at the end of a row deletes that profile.
+**Clear** deletes the profiles of the section; **Clear All** deletes the HTTP, job and console
+profiles, but not the test profiles, which the Tests section clears on its own. ↺ reloads the
+list.
 
 ---
 
@@ -122,9 +211,10 @@ All** every profile, and ↺ reloads the list.
 
 Clicking any row opens the **Profile Details** view with a tabbed interface. The header always
 shows `METHOD PATH`, duration, status, allocations, start time and the version of the gem that
-recorded the profile. Request, Dump, Database, Timeline, Views, Cache and Env are always there;
-the other tabs appear only when the request has something to show in them. When the request
-raised, the Exception tab comes first and opens by default.
+recorded the profile, with a warning when that version is not the one running. Request, Dump,
+Database, Timeline, Views, Cache and Env are always there; the other tabs appear only when the
+request has something to show in them. When the request raised, the Exception tab comes first and
+opens by default. The open tab is kept in the URL (`?tab=database`).
 
 ### Request tab
 
@@ -132,13 +222,14 @@ raised, the Exception tab comes first and opens by default.
 
 Shows the full HTTP context:
 
-- **Path, Method, Status, Duration**: core request metadata
-- **Controller#Action**: the Rails controller and action that handled it
-- **Route Name & Pattern**: matched named route and URL pattern
-- **Request Headers**: filtered list of relevant headers
-- **Response Headers**: full response header set
-- **Response Body**: raw body (compressed bodies are decoded automatically)
-- **Copy URL** and **Copy as cURL**: replay the request from a terminal
+- **Method, path, status and duration**: core request metadata
+- **Controller#Action**, and the route name and pattern it matched
+- **Request**: headers, parameters and body
+- **Response**: headers and body (compressed bodies are decoded automatically)
+- **Copy URL** and **Copy as cURL**: replay the request from a terminal; both are built on
+  `http://localhost:3000`, whatever the host the request was sent to
+- **Truncation notes**: when a body was longer than `max_captured_body_bytes` and only its
+  beginning was kept, or when the collectors of a long stream were released before it ended
 
 Sensitive headers and parameters are already masked in the stored profile; see
 [Sensitive data](security.md#sensitive-data).
@@ -185,7 +276,7 @@ Displays all SQL queries executed during the request:
   - Number, model name, execution time (color-coded)
   - SQL, with the bind values replaced by `?`
   - **N+1** badge when part of a detected pattern
-  - **Explain** button: shows the query plan inline
+  - **Explain** button: opens the query plan in a dialog
 
 Slow queries (above `slow_query_threshold`, default 100 ms) are highlighted in red.
 
@@ -229,7 +320,7 @@ Tracks all outbound HTTP calls made via `Net::HTTP` (so Faraday, RestClient, HTT
 
 ---
 
-### Timeline tab (Flame Graph)
+### Timeline tab
 
 ![Timeline tab](screenshots/tab-flamegraph.png)
 
@@ -238,11 +329,11 @@ A hierarchical flame graph of all instrumented events during the request:
 - **Summary chips**: total events, total duration, count per category
 - **Legend**: Controller, View, Partial, SQL, Cache, HTTP, Custom, Method
 - **Interactive canvas**:
-  - Click a block to zoom in
+  - Click a block to zoom in, **Reset Zoom** to go back
   - Scroll to zoom in/out
   - Drag to pan
   - Hover for tooltip with name, duration, and payload
-- **Search** (Ctrl+F): highlight matching events across the graph
+- **Search** (Ctrl+F): highlight matching events across the graph, with the number of matches
 - **Breadcrumbs**: navigation trail when zoomed in
 
 **Custom instrumentation** via `Profiler.measure()`:
@@ -252,15 +343,38 @@ result = Profiler.measure("payment.stripe_charge", metadata: { amount: 1000 }) d
 end
 ```
 
-Custom events appear nested at the correct position in the hierarchy.
+Custom events appear nested at the correct position in the hierarchy. The
+[Function profiling](#function-profiling) section follows the flame graph, in the same tab.
 
-**Function profiling**, below the flame graph, shows the Ruby methods the request spent its time
-in, as a second flame graph and a table: functions, samples or calls, wall and CPU time, and the
-share of garbage collection. Its controls change the settings of the process that serves the
-page: **Full** or **Lite** mode, the **Wall**, **CPU** or **Alloc** clock of lite mode, the
-maximum number of frames, and on or off. Lite mode needs the `stackprof` gem in the application's
-`Gemfile`; without it the section says so. See [Configuration](configuration.md#function-profiling)
-and what each mode costs in [Performance](performance.md#function-profiling).
+A profile recorded before 0.9.1, which has no flame graph data, shows a plain list of its events
+instead ("Performance Timeline"), each with its duration and payload.
+
+---
+
+### Function profiling
+
+![Function profiling](screenshots/tab-function-profiling.png)
+
+Below the flame graph of the [Timeline tab](#timeline-tab), function profiling shows the Ruby
+methods the request spent its time in, as a second flame graph and a table.
+
+- **Controls**: they change the settings of the process that serves the page, for the next
+  requests: **Full** or **Lite** mode, the **Wall**, **CPU** or **Alloc** clock of lite mode,
+  **Max frames**, and **Enabled** or **Disabled**
+- **Summary**: functions, then samples (lite mode) or calls (full mode), wall time (the
+  allocations with the Alloc clock), and in lite mode the CPU time and its share of the wall
+  time, and the share of garbage collection; full mode adds the objects allocated and the
+  memory
+- **Flame graph of the functions**: click a frame to zoom in and to filter the table to that
+  function and the functions it called (**✕ Clear** removes the filter)
+- **Table**: function, file and line, samples or calls, total and self time (total and self
+  allocations with the Alloc clock), and in full mode objects and memory; every numeric column
+  is sortable, and ↺ marks a recursive function
+- **Frame cap**: a warning when the call tree was cut at **Max frames**
+
+Lite mode needs the `stackprof` gem in the application's `Gemfile`; without it the section says
+so. See [Configuration](configuration.md#function-profiling) and what each mode costs in
+[Performance](performance.md#function-profiling).
 
 ---
 
@@ -274,7 +388,7 @@ Shows template and partial rendering:
 - **Templates**: each rendered template with its file path and duration
 - **Partials**: each rendered partial with its file path and duration
 
-Duration badges are color-coded: green (under 10 ms), yellow (under 50 ms), red (50 ms or more).
+Every duration shows in a green badge, whatever its value: this tab does not mark slow templates.
 A collection rendered with `render partial: ..., collection: ...` is one Action View event of its
 own, which this tab does not count as partials.
 
@@ -287,11 +401,10 @@ own, which this tab does not count as partials.
 Monitors all Rails cache operations:
 
 - **Summary**: read count, write count, delete count, hit rate %
-- **Cache Reads**: each key with HIT/MISS badge and duration
-- **Cache Writes**: each key written with duration
-- **Cache Deletes**: each key deleted
+- **Cache Reads**: each key read, with a HIT or MISS badge and its duration
 
-Hit rate is color-coded: green (80% or more), yellow (50% or more), red (under 50%).
+Writes and deletes are counted in the summary but not listed. The hit rate is green above 80%,
+yellow otherwise.
 
 ---
 
@@ -315,8 +428,10 @@ default; past it, the tab ends with the number of lines left out):
 
 Shows the routes registered in the Rails app:
 
+- **Total routes**
 - **Matched route**: verb, pattern, route name and controller#action
-- **All routes**: HTTP verb, URL pattern, controller#action, route name
+- **All routes**: HTTP verb, URL pattern, controller#action, route name, with a filter on the
+  path, the name or the controller; the matched route is highlighted
 
 The profile keeps only the route its request matched. The table is the one of the process that
 serves the page, as it is now (rebuilt when the routes are reloaded in development).
@@ -381,13 +496,14 @@ tools `get_profile_mailers` and `query_mailers` read the same data.
 Lists the `ENV` variables, grouped by prefix, with a filter on names and values. Values outside
 `config.env_allowlist`, and any value whose name matches the filter of sensitive data, are
 `[FILTERED]` on the server; the eye icons only hide or show values on screen. **Export** saves
-the variables as a `.env` file.
+the variables the filter shows as a `.env` file.
 
 The Env tab of an HTTP profile shows the current `ENV` of the process that serves the page, not
 the `ENV` as it was during the request (the hint above the table says "Snapshot taken at request
-time", which is only true of jobs, console expressions and tests). The profile of a job, a console
-expression or a test keeps the `ENV` of the process it ran in. To change variables, use the
-[Env section](#outbound-http-and-env-sections).
+time", which is only true of jobs and console expressions). The profile of a job, a console
+expression or a test keeps the `ENV` of the process it ran in; the tab shows it for jobs and
+console expressions, not for tests (see [Test Profiles](#test-profiles)). To change variables,
+use the [Env section](#env-section).
 
 ---
 
@@ -398,8 +514,9 @@ expression or a test keeps the `ENV` of the process it ran in. To change variabl
 Appears, first and selected, when an exception occurred during the request:
 
 - **Exception class** and message (highlighted in red)
-- **Application Frames**: only frames from your application code
-- **Full Backtrace**: complete stack trace
+- **Application frames**: only frames from your application code
+- **Full backtrace**: the first 30 frames, application frames highlighted, and **Show all**
+  for the rest
 
 ---
 
@@ -408,19 +525,37 @@ Appears, first and selected, when an exception occurred during the request:
 ![Background jobs list](screenshots/profile-list-jobs.png)
 
 Background jobs (Sidekiq, ActiveJob) are profiled separately and appear under the **Background
-Jobs** section of the profile list, with their class, queue, duration, status and executions,
-filters on class, status and duration. A job profile names, in its header, the request or the
-job that enqueued it, with a link to it, and opens on a **Job** tab (class, job ID, queue,
-executions, status, arguments, error of a failed job), next to Database, Cache, Timeline and Env,
-and, when the job has something to show in them, Outbound HTTP, Jobs (the jobs it enqueued in
-turn), Dumps, Logs, Mailers and Exception. See [Usage](usage.md#background-jobs).
+Jobs** section of the profile list: time, job class, queue, duration, status (Completed or
+Failed), executions and token, with a search on the class and filters on status and duration.
+See [Usage](usage.md#background-jobs).
+
+### Job profile
+
+![A job profile](screenshots/job-profile.png)
+
+Clicking a job, in this list or with **View Job** in the [Jobs tab](#jobs-tab) of a request, opens
+its **Job Profile**. The header shows the job class, duration, status (Completed or Failed),
+allocations and version, and, under **Triggered by**, the request or the job that enqueued it
+with a **View** link to its profile.
+
+The **Job** tab opens first, unless the job raised: class, job ID, queue, executions and status,
+then the arguments (masked like request parameters) and, for a failed job, its error. Next to it,
+**Database**, **Cache**, **Timeline** and **Env** are always there, and **Outbound HTTP**, **Jobs**
+(the jobs it enqueued in turn), **Dumps**, **Mailers** and **Exception** appear when the job has
+something to show in them; a job that raised opens on its Exception tab. As of 0.32.1 the **Logs**
+tab does not appear on a job profile, although its log lines are recorded: the dashboard looks for
+a field the log collector does not write. Adding `?tab=logs` to the URL of the job profile still
+shows them.
 
 ---
 
 ## Console Profiles
 
+![Console profiles list](screenshots/profile-list-console.png)
+
 Expressions evaluated in `rails console` are profiled automatically when `track_console: true`
-(default) and appear under the **Console** section.
+(default) and appear under the **Console** section; see
+[Console profiling](usage.md#console-profiling).
 
 ### Columns
 
@@ -435,6 +570,19 @@ Expressions evaluated in `rails console` are profiled automatically when `track_
 
 Column headers marked with ⇅ are sortable. The Expression column is filterable by substring; a
 Status filter lets you show only errors or successes.
+
+### Console profile
+
+![A console profile](screenshots/console-profile.png)
+
+Clicking an expression opens its **Console Profile**: the expression in the header, duration,
+status (OK, or Error when the expression raised), allocations and version.
+
+The **Console** tab opens first, with the **Expression** and its **Return value** (as `inspect`
+shows it, up to 10,000 characters). **Database**, **Cache**, **Env** and **Timeline** are always
+there, and **HTTP** (the outbound calls), **Dumps** and **Exception** appear when the expression
+made some; an expression that raised opens on its Exception tab. As for jobs, the **Logs** tab
+does not appear on a console profile as of 0.32.1.
 
 ### Env overrides
 
@@ -453,17 +601,28 @@ They are applied only outside production and while the profiler is enabled, unle
 With test profiling set up (see [Tests](testing.md)), every example of a suite run from the
 shell or from the [Test Runner](#test-runner) is listed under the **Tests** section: time, test
 name, file, duration, query count, status and token, with a search on the test name and a
-status filter (Passed, Failed, Pending).
+status filter (Passed, Failed, Pending). Its **Clear All** deletes the test profiles only.
 
 ![A test profile](screenshots/test-profile.png)
 
-A test profile opens with its own tabs:
+A test profile shows the test name, duration, status, allocations, and the file, line and
+framework in its header, and opens with its own tabs:
 
 - **Test**: test name, status, file and line, framework, assertions (Minitest), skip reason and
   exception message
 - **Database**, **Cache** and **Timeline**: as for a request, so an N+1 in a test shows the same
   way as in a page
-- **Dumps** and **Logs**, when the test produced some, **Exception** when it raised, and **Env**
+
+  ![The Database tab of a test profile](screenshots/test-profile-database.png)
+
+- **Exception** when it raised
+- **Env**: the profile keeps the `ENV` of the test process, but as soon as the tab opens it reads
+  the `ENV` of the server process again and shows that one instead; unlike the other profiles, it
+  also shows the editing buttons of the [Env section](#env-section), which act on the server
+  process, not on the test
+
+The test profiler records neither `Profiler.dump()` calls nor log lines, so a test profile never
+has a **Dumps** or a **Logs** tab.
 
 The MCP tools `query_test_profiles` and `get_test_profile`, and the resources
 `profiler://slow-tests` and `profiler://failing-tests`, read the same profiles.
@@ -472,29 +631,56 @@ The MCP tools `query_test_profiles` and `get_test_profile`, and the resources
 
 ![Test runner](screenshots/test-runner.png)
 
-The **Test Runner** section (also at `/_profiler/test_runner`) runs your tests in the `test`
-environment, from the browser:
+The **Test Runner** section (`/_profiler/test_runner` redirects to it) runs your tests in the
+`test` environment, from the browser:
 
 - **RSpec** or **Minitest**, when the application has both
-- **The file tree** of the discovered test files (`spec/**/*_spec.rb`, `test/**/*_test.rb`):
-  tick files or whole directories, or **All** / **None**
+- **The file tree** of the discovered test files (`spec/**/*_spec.rb`, `test/**/*_test.rb`),
+  grouped by directory: tick files or whole directories, click a directory to fold it, or use
+  **All** / **None**; the count of selected files shows next to them
 - **▶ Run Selected** starts the run, **■ Stop** kills it
-- **The output** of the run, with its colors, followed by the profiler's report (slowest tests,
-  N+1 patterns), and **View in Profiler** to open the Tests section
+- **The output** of the run, streamed live with its colors, followed by the profiler's report
+  (slowest tests, N+1 patterns); above it, the status of the run (Running, Passed, Failed, Killed
+  or Error) and its duration, and, once it passed or failed, **View in Profiler** to open the
+  Tests section
 
 Only discovered files can be run, and the environment of the test process follows the rules of
 [Test runner](testing.md#test-runner). The MCP tool `run_tests` starts the same runs.
 
 ---
 
-## Outbound HTTP and Env sections
+## Outbound HTTP section
 
-**Outbound HTTP** lists the outgoing calls of every profile in one place, with a search on the URL
-and filters on method and status; click a call to see its headers and bodies.
+![Outbound HTTP section](screenshots/profile-list-outbound.png)
 
-**Env** lists the `ENV` of the server process and changes it: set, delete or reset a variable,
-reset all of them, or import a `.env` file. Changes are saved as overrides under `tmp_path` and
-applied again at boot, before each job and before each console expression, with the rules of
-[Environment variable overrides](usage.md#environment-variable-overrides). The MCP tools
+**Outbound HTTP** lists the outgoing calls of every profile in one place, most recent first:
+each call with the time and a link to the profile that made it, its method, URL, status,
+duration, sizes and the line of code behind it, and **Copy URL** and **Copy as cURL**. A search on
+the URL and filters on method and status (2xx to 5xx, or Error for a call that got no answer)
+narrow the list; click a call to see its headers and bodies.
+
+---
+
+## Env section
+
+![Env section](screenshots/profile-list-env.png)
+
+**Env** lists the `ENV` of the server process, grouped by prefix with a filter on names and
+values, and changes it:
+
+- **Edit** a value with ✎ (or a click on it), switch a `true`/`false` value with its toggle,
+  delete a variable with ✕, or add one in the last row
+- **↩** resets a changed variable to its original value, and **↩ Reset all** every change
+- **⬆ Import** applies the content of a `.env` file pasted in a text box; values exported while
+  masked are skipped
+- **⬇ Export** saves the variables the filter shows as a `.env` file
+- **↺ Refresh** reads the variables again, and **🔓 Edit** / **🔒 Locked** turns editing off
+  and on
+- a changed variable shows its new value and its original one below it
+
+Values outside `config.env_allowlist`, and values whose name matches the filter of sensitive
+data, are `[FILTERED]`, as in the [Env tab](#env-tab). Changes are saved as overrides under
+`tmp_path` and applied again at boot, before each job and before each console expression, with the
+rules of [Environment variable overrides](usage.md#environment-variable-overrides). The MCP tools
 `list_env_vars`, `set_env_var`, `delete_env_var`, `reset_env_var` and `reset_all_env_vars` do the
 same.
