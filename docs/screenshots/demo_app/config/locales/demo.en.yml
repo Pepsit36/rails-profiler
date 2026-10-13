@@ -1,0 +1,6 @@
+en:
+  demo:
+    title: "MyApp Back Office"
+    orders: "Recent orders"
+    customers: "Customers"
+    empty_cart: "Your cart is empty"
