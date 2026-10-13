@@ -19,7 +19,7 @@ module Profiler
           Profiler::TestProfiler.profile(
             test_name: example.full_description,
             test_file:  example.file_path,
-            test_line:  example.line_number,
+            test_line:  example.metadata[:line_number],
             framework:  :rspec
           ) { example.run }
         end
