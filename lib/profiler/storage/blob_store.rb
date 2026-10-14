@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "json"
+require "set"
 require_relative "private_files"
 require_relative "token"
 
@@ -12,6 +13,8 @@ module Profiler
     # find nothing and writes are refused.
     class BlobStore
       NAME_FORMAT = /\A[a-z0-9_]+\z/
+      # A save writes its blobs before its row: prune leaves the directories this recent alone.
+      PRUNE_GRACE = 60
 
       def initialize(path)
         @path = path.to_s
@@ -44,6 +47,36 @@ module Profiler
 
         dir = token_dir(token)
         FileUtils.rm_rf(dir) if File.directory?(dir)
+      end
+
+      # Removes one blob of token, and its directory once it holds no other.
+      def delete_blob(token, collector_name)
+        return unless valid?(token, collector_name)
+
+        dir = token_dir(token)
+        FileUtils.rm_f(File.join(dir, "#{collector_name}.json"))
+        Dir.rmdir(dir) if File.directory?(dir) && Dir.empty?(dir)
+      rescue SystemCallError => e
+        Profiler.log_error("BlobStore: could not delete #{token}/#{collector_name}", e)
+      end
+
+      # Removes the directories of the tokens not in except_tokens: those whose row was deleted
+      # outside the store, or that a failed save left behind. Only the directories named as a
+      # token and unchanged for grace seconds are considered.
+      def prune(except_tokens, grace: PRUNE_GRACE)
+        keep = except_tokens.to_set
+        cutoff = Time.now - grace
+        Dir.each_child(@path) do |name|
+          next if !Token.valid?(name) || keep.include?(name)
+
+          dir = token_dir(name)
+          stat = File.lstat(dir)
+          FileUtils.rm_rf(dir) if stat.directory? && stat.mtime < cutoff
+        rescue SystemCallError => e
+          Profiler.log_error("BlobStore: could not prune #{name}", e)
+        end
+      rescue SystemCallError => e
+        Profiler.log_error("BlobStore: could not prune #{@path}", e)
       end
 
       def exists?(token, collector_name)

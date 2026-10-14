@@ -127,4 +127,84 @@ RSpec.describe Profiler::Storage::SqliteStore do
       expect(reopened.load(recent_token)).not_to be_nil
     end
   end
+
+  describe "the response body blobs" do
+    let(:blobs) { File.join(@dir, "blobs") }
+
+    def with_body(profile, body)
+      profile.add_collector_data("http", { "requests" => [{ "url" => "https://api.test/", "response_body" => body }] })
+      profile
+    end
+
+    def body_of(token)
+      store.load(token).collectors_data["http"]["requests"].first["response_body"]
+    end
+
+    it "are dropped when the profile is saved again without a body" do
+      profile = save(with_body(profile_started(Time.now), "SECRET-OLD"))
+      expect(body_of(profile.token)).to eq("SECRET-OLD")
+
+      save(with_body(profile, nil))
+
+      expect(body_of(profile.token)).to be_nil
+      expect(File.exist?(File.join(blobs, profile.token))).to be(false)
+    end
+
+    it "are dropped when the profile is saved again without its HTTP requests" do
+      profile = save(with_body(profile_started(Time.now), "SECRET-OLD"))
+      profile.collectors_data.delete("http")
+      save(profile)
+
+      expect(File.exist?(File.join(blobs, profile.token))).to be(false)
+    end
+
+    it "are replaced when the profile is saved again with another body" do
+      profile = save(with_body(profile_started(Time.now), "OLD"))
+      save(with_body(profile, "NEW"))
+
+      expect(body_of(profile.token)).to eq("NEW")
+    end
+
+    describe "left without a row" do
+      def orphan(token, age:)
+        dir = File.join(blobs, token)
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "http_response_bodies.json"), "[]")
+        File.utime(Time.now - age, Time.now - age, dir)
+        dir
+      end
+
+      it "are removed by cleanup, the recent ones and those of a row left alone" do
+        kept = save(with_body(profile_started(Time.now), "KEPT"))
+        File.utime(Time.now - 3600, Time.now - 3600, File.join(blobs, kept.token))
+        old_orphan = orphan("a" * 32, age: 3600)
+        fresh_orphan = orphan("b" * 32, age: 0)
+        unrelated = File.join(blobs, "not-a-token")
+        FileUtils.mkdir_p(unrelated)
+
+        store.cleanup(older_than: 24 * 3600)
+
+        expect(File.exist?(old_orphan)).to be(false)
+        expect(File.exist?(fresh_orphan)).to be(true)
+        expect(File.exist?(unrelated)).to be(true)
+        expect(body_of(kept.token)).to eq("KEPT")
+      end
+
+      it "are removed by cleanup(older_than: 0)" do
+        old_orphan = orphan("a" * 32, age: 3600)
+
+        store.cleanup(older_than: 0)
+
+        expect(File.exist?(old_orphan)).to be(false)
+      end
+
+      it "are removed when the oldest profiles are evicted" do
+        capped = described_class.new(database: File.join(@dir, "profiler.db"), blob_path: blobs, max_profiles: 2)
+        old_orphan = orphan("a" * 32, age: 3600)
+        3.times { p = profile_started(Time.now); capped.save(p.token, p) }
+
+        expect(File.exist?(old_orphan)).to be(false)
+      end
+    end
+  end
 end
