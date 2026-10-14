@@ -166,19 +166,6 @@ can run your tests. See **[Tests](docs/testing.md)**.
 
 ![The Test Runner section](docs/screenshots/test-runner.png)
 
-### MCP server
-
-Let Claude, or any MCP client, query the profiles of your application:
-
-```bash
-claude mcp add rails-profiler -- bundle exec rake profiler:mcp
-```
-
-The stdio transport above needs no option and opens no endpoint. The HTTP transport, routed at
-`/_profiler/mcp` once `config.mcp_enabled = true` and `config.mcp_transport = :http` are set,
-goes through the same access checks as the dashboard. Tools, resources and setup for Claude
-Desktop and Claude Code: **[MCP Guide](docs/mcp.md)**.
-
 ### Cluster
 
 Several applications (microservices, git worktrees) can report to one **master**: its dashboard
@@ -186,6 +173,40 @@ and its MCP server then read the profiles of every **slave**. Nodes authenticate
 shared secret and the master only reaches the slave URLs you allow, since it makes HTTP requests
 to them on your behalf (a server-side request forgery risk if the allow list is too wide). Setup
 and protections: **[Cluster](docs/cluster.md)**.
+
+## AI assistants (MCP)
+
+The profiler ships an [MCP](https://modelcontextprotocol.io) server, so that Claude or any other
+MCP client reads the profiles itself instead of you pasting SQL, logs and response bodies into the
+conversation. Ask about a slow page: the assistant finds the request, reads its queries, spots the
+N+1, explains the query and points at the line, with 21 tools and 7 resources covering requests,
+SQL, jobs, tests, console expressions, `ENV` overrides and the cluster.
+
+Try it from the root of your Rails application, with Claude Code, or with the
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector) to call a tool by hand:
+
+```bash
+claude mcp add rails-profiler -- bundle exec rake profiler:mcp
+npx @modelcontextprotocol/inspector --cli bundle exec rake profiler:mcp --method tools/call --tool-name query_profiles
+```
+
+Asked *"`/api/n_plus_one` feels slow, why?"*, the assistant calls `analyze_queries` on that
+request's profile and reads, among the rest:
+
+~~~text
+### Executed 10 times:
+```sql
+SELECT ?.* FROM ? WHERE ?.? = ? LIMIT ?
+```
+#### Called from:
+  app/controllers/api_test_controller.rb:82:in `block in ApiTestController#n_plus_one`
+~~~
+
+The whole session, from that question to the fix, with the real tool responses, is in the
+**[MCP Guide](docs/mcp.md#a-real-session-finding-and-fixing-an-n1)**, along with what the
+assistant can and cannot do, both transports (stdio, which opens no endpoint, and HTTP, routed at
+`/_profiler/mcp` once `config.mcp_enabled = true` and `config.mcp_transport = :http` are set,
+behind the same access checks as the dashboard) and the reference of every tool.
 
 ## Documentation
 
@@ -195,7 +216,7 @@ and protections: **[Cluster](docs/cluster.md)**.
 | [docs/ui.md](docs/ui.md) | The toolbar, the profile list and every dashboard tab, with screenshots |
 | [docs/usage.md](docs/usage.md) | EXPLAIN, dumps, custom timeline events, jobs, mailers, console, `ENV` overrides |
 | [docs/testing.md](docs/testing.md) | Test profiling for RSpec and Minitest, the test runner |
-| [docs/mcp.md](docs/mcp.md) | MCP setup, the 21 tools and 7 resources, example prompts |
+| [docs/mcp.md](docs/mcp.md) | How the MCP server works, a real session, setup, the 21 tools and 7 resources, example prompts |
 | [docs/storage.md](docs/storage.md) | Memory, file, Redis and SQLite stores, how many profiles are kept, files under `tmp_path` |
 | [docs/security.md](docs/security.md) | Access control, forgery protection, CORS, framing, masking of sensitive data |
 | [docs/cluster.md](docs/cluster.md) | Master and slaves, the shared secret, slave URL allow list |

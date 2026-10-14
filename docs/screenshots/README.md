@@ -65,6 +65,16 @@ path, user or machine name of the host reaches the Env tab. The application live
 4. Look at every image before committing it: the profiler shows whatever the application does,
    and a new tab or a new collector can bring a real value into the frame.
 
+## The MCP session of docs/mcp.md
+
+`mcp-session.sh` replays the session shown in [docs/mcp.md](../mcp.md#a-real-session-finding-and-fixing-an-n1)
+against the same demo application, and prints the text of every tool response. Start the
+application with `SERVE=1 run.sh <test_app dir>`, then run `docs/screenshots/mcp-session.sh`
+(about a minute). The client is the MCP Inspector command line, pinned in the script and fetched
+by `npx`; the server is `bundle exec rake profiler:mcp`, started by the client in `/tmp/myapp`
+with `PROFILER_NAME=myapp-web`, since the demo gives each node its own SQLite store. The script
+applies the fix to the demo copy of the controller and puts the original line back when it exits.
+
 ## Known quirks
 
 - The version badge reads the top version of `CHANGELOG.md`: a checkout of the gem carries
