@@ -304,3 +304,7 @@ bundle exec rake profiler:show TOKEN=abc123...      # one profile
 bundle exec rake profiler:cleanup OLDER_THAN=86400  # remove profiles older than this, in seconds
 bundle exec rake profiler:mcp                       # MCP server, stdio transport (MCP_TRANSPORT overrides it)
 ```
+
+`OLDER_THAN` and `LIMIT` take a whole number (seconds for `OLDER_THAN`, 86400 when it is not set).
+Any other value, an empty one included, stops the task with an error and removes nothing:
+`OLDER_THAN=0` removes every profile, and only when written so.
