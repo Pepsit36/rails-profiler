@@ -146,6 +146,46 @@ RSpec.describe Profiler::JobProfiler do
       end
     end
 
+    context "with the token of the request that enqueued it" do
+      let(:parent) { SecureRandom.hex(16) }
+
+      def run_child_job(&block)
+        described_class.profile(job_class: "ReportJob", job_id: "jid-002", queue: "default",
+                                arguments: [], executions: 0, parent_token: parent, &block)
+      end
+
+      it "is saved running before it performs, for that request to list it" do
+        seen = nil
+        run_child_job do
+          running = Profiler.storage.find_by_parent(parent).first
+          seen = [running.collector_data("job")["status"], running.duration, running.path]
+        end
+        expect(seen).to eq(["running", 0.0, "ReportJob"])
+      end
+
+      it "is saved again, completed, once it has performed" do
+        run_child_job { nil }
+        job = Profiler.storage.find_by_parent(parent)
+        expect(job.size).to eq(1)
+        expect(job.first.collector_data("job")["status"]).to eq("completed")
+        expect(job.first.duration).to be_a(Float)
+      end
+
+      it "is saved again, failed, when it fails" do
+        expect { run_child_job { raise "boom" } }.to raise_error("boom")
+        expect(Profiler.storage.find_by_parent(parent).first.collector_data("job")["status"]).to eq("failed")
+      end
+    end
+
+    context "without a request that enqueued it" do
+      it "is only saved once it has performed" do
+        saved_during = nil
+        run_job { saved_during = Profiler.storage.list.size }
+        expect(saved_during).to eq(0)
+        expect(Profiler.storage.list.size).to eq(1)
+      end
+    end
+
     context "argument sanitization" do
       it "passes through simple types unchanged" do
         run_job(arguments: [1, "hello", true, nil]) { nil }

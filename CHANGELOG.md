@@ -19,6 +19,16 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Jobs:** the toolbar of a request now sees the jobs it enqueued start and end after its
+  response, without a page reload. A job enqueued by a request is saved as `running` as soon as
+  it starts, so it appears in the `child_jobs` of that request while it runs, and every save of
+  the job tells the request's toolbar that its profile changed, so it reads the job again when it
+  ends, `completed` or `failed`. Without Redis storage, this reaches the toolbar only when the job
+  runs in a process serving the profiler's pages (the `async` or `inline` adapters); a job run by
+  another process is still listed on the next reload.
+
 ## [0.32.2] - 2026-10-13
 
 <!-- stamped -->

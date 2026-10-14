@@ -21,6 +21,39 @@ RSpec.describe Profiler::Storage::MemoryStore do
     end
   end
 
+  describe "#save, for the pages showing a profile" do
+    let(:bus) { Profiler::SSE::EventBus.instance }
+    let(:parent) { SecureRandom.hex(16) }
+
+    before do
+      bus.reset!
+      allow(Profiler::SSE).to receive(:current).and_return(bus)
+    end
+
+    it "moves the version of the profile saved" do
+      store.save(profile.token, profile)
+      expect(bus.version(profile.token)).to be > 0
+    end
+
+    it "also moves the version of the request that enqueued a job" do
+      job = build_profile(profile_type: "job", parent_token: parent)
+      store.save(job.token, job)
+      expect(bus.version(parent)).to be > 0
+    end
+
+    it "leaves the page of an AJAX request alone" do
+      ajax = build_profile(parent_token: parent, is_ajax: true)
+      store.save(ajax.token, ajax)
+      expect(bus.version(parent)).to eq(0)
+    end
+
+    it "ignores a job's parent token the gem did not issue" do
+      job = build_profile(profile_type: "job", parent_token: "../not-a-token")
+      expect { store.save(job.token, job) }.not_to raise_error
+      expect(bus.version("../not-a-token")).to eq(0)
+    end
+  end
+
   describe "#load" do
     it "returns nil for unknown token" do
       expect(store.load("nonexistent")).to be_nil

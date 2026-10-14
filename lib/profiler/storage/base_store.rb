@@ -6,13 +6,15 @@ module Profiler
   module Storage
     class BaseStore
       # Public interface: persists the profile then records the save, for the pages showing it
-      # to see it changed (Profiler::SSE).
+      # to see it changed (Profiler::SSE). A job's save is also recorded for the profile that
+      # enqueued it: the toolbar of that request lists its jobs, and has to see them start and end.
       # Subclasses implement #do_save, not #save. The token must be one the gem issued
       # (Storage::Token); every other public method answers "not found" for any other token.
       def save(token, profile)
         Token.validate!(token)
         result = do_save(token, profile)
         broadcast_event(token)
+        broadcast_event(profile.parent_token) if job_with_parent?(profile)
         result
       end
 
@@ -52,6 +54,11 @@ module Profiler
       end
 
       private
+
+      # Not for an AJAX request linked to its page: the toolbar reads those on its own links.
+      def job_with_parent?(profile)
+        profile.profile_type == "job" && Token.valid?(profile.parent_token)
+      end
 
       def broadcast_event(token)
         Profiler::SSE.current.broadcast(token)
