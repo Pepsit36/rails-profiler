@@ -158,10 +158,12 @@ module Profiler
 
     # Hosts whose outbound calls are left out: a String is a host name, matched whole and
     # case-insensitively, or, when it starts with a dot (".internal"), a domain whose subdomains
-    # are left out; a Regexp is matched against the host name. A wildcard String is refused.
+    # are left out; a Regexp is matched against the host name. Any other entry (a wildcard
+    # "*.internal", an empty String, nil) is left out with a warning in the log, the others kept:
+    # the gem is loaded in production too, where a mistake here must not stop the application
+    # from booting.
     def http_skip_hosts=(value)
-      Array(value).each { |entry| validate_http_skip_host(entry) }
-      @http_skip_hosts = Array(value)
+      @http_skip_hosts = Array(value).select { |entry| valid_http_skip_host?(entry) }
     end
 
     # Host names the MCP HTTP endpoint accepts beyond the loopback ones and config.hosts: a String
@@ -337,16 +339,20 @@ module Profiler
       end
     end
 
-    def validate_http_skip_host(entry)
-      case entry
-      when Regexp then nil
-      when String
-        return unless entry.strip.empty? || entry.match?(/[*\s]/)
+    def valid_http_skip_host?(entry)
+      problem =
+        case entry
+        when Regexp then nil
+        when String
+          if entry.strip.empty? || entry.match?(/[*\s]/)
+            "is not a host name; list each host, a domain as \".internal\" for its subdomains, or use a Regexp"
+          end
+        else "must be a String or a Regexp"
+        end
+      return true unless problem
 
-        raise ArgumentError, "config.http_skip_hosts: #{entry.inspect} is not a host name; list each host, " \
-                             "a domain as \".internal\" for its subdomains, or use a Regexp"
-      else raise ArgumentError, "config.http_skip_hosts: #{entry.inspect} must be a String or a Regexp"
-      end
+      Profiler.log_warn("config.http_skip_hosts: #{entry.inspect} #{problem}; ignored")
+      false
     end
 
     def validate_mcp_allowed_host_pattern(pattern)

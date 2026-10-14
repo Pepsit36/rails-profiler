@@ -29,8 +29,11 @@ every commit of every tag interval is accounted for one way or the other.
   ignoring case, instead of a pattern: `"example.com"` no longer leaves out `notexample.com`,
   `exampleXcom` or `example.com.attacker.net`. A String that starts with a dot is a domain whose
   subdomains are left out (`".internal"` leaves out `api.internal`). A Regexp is matched as
-  before. Setting the list now refuses a wildcard String (`"*.internal"`), an empty one, and any
-  entry that is neither a String nor a Regexp, with an `ArgumentError` that says what to write.
+  before. An entry that is not a host name, a wildcard String (`"*.internal"`), an empty one, or
+  anything that is neither a String nor a Regexp (`nil`), is left out when the list is set, with
+  a warning in the log that says what to write, and the other entries are kept. It does not
+  raise: the gem is loaded in production too, where a mistake in this list must not stop the
+  application from booting, even with the profiler disabled.
 - **Dumps:** A dump is stored as its formatted text only: the raw `value` field, which no tab
   read and the API did not document, is no longer part of the dump data.
 

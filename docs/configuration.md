@@ -113,9 +113,11 @@ Profiler.configure do |config|
   # Hosts whose calls are left out. A String is a host name, compared whole and ignoring case
   # ("example.com" leaves out example.com, not api.example.com nor notexample.com); one that
   # starts with a dot is a domain, whose subdomains are left out (".internal" leaves out
-  # api.internal, not internal itself). A wildcard ("*.internal") is refused when set. A Regexp
-  # is matched against the host name. Empty by default: calls to services on the same machine
-  # are recorded. Earlier versions always left out 127.0.0.1, localhost and ::1; to do so again:
+  # api.internal, not internal itself). A Regexp is matched against the host name. An entry
+  # that is none of these (a wildcard "*.internal", an empty String, nil) is left out with a
+  # warning in the log; the application still boots. Empty by default: calls to services on the
+  # same machine are recorded. Earlier versions always left out 127.0.0.1, localhost and ::1; to
+  # do so again:
   #   config.http_skip_hosts += Profiler::Configuration::LOCAL_HTTP_HOSTS
   # The profiler's own calls (a slave's registration and heartbeats, the master's requests to
   # its slaves) are never recorded, whatever this list says.
