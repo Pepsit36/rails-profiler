@@ -2,6 +2,7 @@
 
 require "json"
 require "fileutils"
+require "time"
 require_relative "base_store"
 require_relative "blob_store"
 require_relative "private_files"
@@ -76,8 +77,8 @@ module Profiler
           status:           data[:status],
           duration:         data[:duration],
           memory:           data[:memory],
-          started_at:       data[:started_at],
-          finished_at:      data[:finished_at],
+          started_at:       utc_iso8601(data[:started_at]),
+          finished_at:      utc_iso8601(data[:finished_at]),
           parent_token:     data[:parent_token],
           is_ajax:          data[:is_ajax] ? 1 : 0,
           tabs:             JSON.generate(data[:tabs] || []),
@@ -266,6 +267,26 @@ module Profiler
         rescue SQLite3::Exception
           # column already exists
         end
+
+        migrate_times_to_utc
+      end
+
+      # Version 1 stores the times in UTC. The rows written before it carry the local offset of
+      # the process that saved them, and the default database outlives a restart: they are
+      # rewritten once, by SQLite, which reads the offset. A value it cannot read is left as is.
+      def migrate_times_to_utc
+        return if @db.get_first_value("PRAGMA user_version").to_i >= 1
+
+        @db.transaction do
+          %w[started_at finished_at].each do |column|
+            @db.execute(<<~SQL)
+              UPDATE profiler_profiles
+                 SET #{column} = strftime('%Y-%m-%dT%H:%M:%SZ', #{column})
+               WHERE #{column} NOT LIKE '%Z' AND strftime('%Y-%m-%dT%H:%M:%SZ', #{column}) IS NOT NULL
+            SQL
+          end
+          @db.execute("PRAGMA user_version = 1")
+        end
       end
 
       def row_to_profile(row, load_blobs: true)
@@ -293,8 +314,8 @@ module Profiler
           status:                 row["status"],
           duration:               row["duration"],
           memory:                 row["memory"],
-          started_at:             row["started_at"],
-          finished_at:            row["finished_at"],
+          started_at:             local_iso8601(row["started_at"]),
+          finished_at:            local_iso8601(row["finished_at"]),
           parent_token:           row["parent_token"],
           is_ajax:                row["is_ajax"] == 1,
           tabs:                   parse_json(row["tabs"], []),
@@ -310,6 +331,25 @@ module Profiler
       rescue => e
         Profiler.log_error("SqliteStore: could not deserialize profile #{row["token"]}", e)
         nil
+      end
+
+      # The times are stored in UTC, all in the same form, for the cleanup and the lists to compare
+      # them as text; a profile gives them with the offset of the process that recorded it.
+      def utc_iso8601(value)
+        return value if value.nil?
+
+        Time.iso8601(value.to_s).utc.iso8601
+      rescue ArgumentError
+        value
+      end
+
+      # Read back in local time, as the profile gave them.
+      def local_iso8601(value)
+        return value if value.nil?
+
+        Time.iso8601(value).localtime.iso8601
+      rescue ArgumentError
+        value
       end
 
       def parse_json(value, default)
