@@ -233,6 +233,8 @@ module Profiler
             from { transform: translateY(100%); opacity: 0; }
             to   { transform: translateY(0);    opacity: 1; }
           }
+          @keyframes pfSpin { to { transform: rotate(360deg); } }
+          #profiler-toolbar .profiler-spinner { display: inline-block; animation: pfSpin 1s linear infinite; }
           @keyframes pfPop {
             0%   { transform: scaleX(1);    }
             15%  { transform: scaleX(1.18); }
@@ -303,11 +305,13 @@ module Profiler
           #profiler-toolbar .profiler-text--error::after   { background: var(--pf-error); }
           #profiler-toolbar .profiler-text--warning::after { background: var(--pf-warning); }
           #profiler-toolbar .profiler-text--success::after { background: var(--pf-success); }
+          #profiler-toolbar .profiler-text--info::after    { background: var(--pf-info); }
 
           /* Semantic colors */
           #profiler-toolbar .profiler-text--success { color: var(--pf-success) !important; }
           #profiler-toolbar .profiler-text--warning { color: var(--pf-warning) !important; }
           #profiler-toolbar .profiler-text--error   { color: var(--pf-error)   !important; }
+          #profiler-toolbar .profiler-text--info    { color: var(--pf-info)    !important; }
           #profiler-toolbar .profiler-text--accent  { color: var(--pf-amber)   !important; }
           #profiler-toolbar .profiler-text--muted   { color: var(--pf-muted)   !important; }
 

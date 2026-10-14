@@ -261,7 +261,7 @@ export function ToolbarApp({ profile, token }: Props) {
       {childJobs.length > 0 && (
         <ToolbarItem
           href={`/_profiler/profiles/${token}?tab=jobs`}
-          className={childJobs.some(j => j.status === 'failed') ? 'profiler-text--error' : 'profiler-text--success'}
+          className={childJobs.some(j => j.status === 'failed') ? 'profiler-text--error' : childJobs.some(j => j.status === 'running') ? 'profiler-text--info' : 'profiler-text--success'}
           panelLarge
           panel={<JobsPanel jobs={childJobs} />}
         >
@@ -269,6 +269,9 @@ export function ToolbarApp({ profile, token }: Props) {
           <span>{childJobs.length}</span>
           {childJobs.some(j => j.status === 'failed') && (
             <span class="profiler-text--error profiler-text--xs">✗</span>
+          )}
+          {childJobs.some(j => j.status === 'running') && (
+            <span class="profiler-spinner profiler-text--info profiler-text--xs" aria-hidden="true">◐</span>
           )}
         </ToolbarItem>
       )}

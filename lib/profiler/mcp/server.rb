@@ -230,7 +230,7 @@ module Profiler
             input_schema: {
               properties: {
                 queue: { type: "string", description: "Filter by queue name" },
-                status: { type: "string", description: "Filter by status (completed, failed)" },
+                status: { type: "string", description: "Filter by status (running, completed, failed). A job enqueued by a request is listed as running while it performs." },
                 limit: { type: "number", description: "Maximum number of results (default 20)" },
                 fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, job_class, queue, status, duration, token. Omit for all." },
                 cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen. Returns jobs older than this." },

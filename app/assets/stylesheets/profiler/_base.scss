@@ -490,6 +490,12 @@ table {
   to { transform: rotate(360deg); }
 }
 
+// A job, or anything else, still running: the glyph turns, nothing reads as done.
+.profiler-spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.45; }

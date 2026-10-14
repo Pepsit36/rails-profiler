@@ -32,6 +32,16 @@ every commit of every tag interval is accounted for one way or the other.
   ends, `completed` or `failed`. Without Redis storage, this reaches the toolbar only when the job
   runs in a process serving the profiler's pages (the `async` or `inline` adapters); a job run by
   another process is still listed on the next reload.
+  With several Puma workers and no Redis, the toolbar sees a job start and end only when its
+  polling happens to reach the worker that ran the job.
+- **Jobs:** a job that is still running is shown as running, in the JOB panel of the toolbar and
+  in the Background Jobs list of `/_profiler`: a turning ◐ with `running` and no duration, a blue
+  **Running** badge in the list, instead of a green check mark and a duration of 0 ms that read as
+  an instant success. The JOB item of the toolbar is blue while one of its jobs runs, the list has
+  a **Running** status filter, and its **Completed** filter no longer includes running jobs. The
+  `status` filter of the MCP tool `query_jobs` accepts `running`. A job killed while it performs
+  (`SIGKILL`, out of memory, container stopped) never records its end, so it stays `running` in the
+  toolbar and the list for good.
 
 ## [0.32.2] - 2026-10-13
 

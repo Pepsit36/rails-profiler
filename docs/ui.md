@@ -42,7 +42,7 @@ matching tab of the profile. An item only appears when its collector has somethi
 | **💥** | The class of the exception the request raised |
 | **ROUTE** | The pattern of the matched route |
 | **I18N** | The locale, and the number of missing keys (⚠) |
-| **JOB** | Jobs the request enqueued, red with ✗ when one failed |
+| **JOB** | Jobs the request enqueued, red with ✗ when one failed, blue with a turning ◐ while one runs |
 | **MAIL** | Mails sent, `+1q` for mails queued with `deliver_later`, ▲ for failed ones |
 | **ENV** | Number of `ENV` variables |
 
@@ -121,10 +121,21 @@ route.
 
 ![I18n panel](screenshots/toolbar-panel-i18n.png)
 
-**Background Jobs**: completed and failed counts, then the first 5 jobs with their class, status
-and duration.
+**Background Jobs**: the running count when some jobs run, the completed and failed counts, then
+the first 5 jobs with their class and status: ✓ or ✗ and the duration once a job has ended, a
+turning ◐ and `running` while it performs, with no duration. A job enqueued by the request is
+listed as soon as it starts, and the panel updates when it ends, without a reload. While one of
+its jobs runs, and none failed, the **JOB** item of the toolbar is blue with a ◐.
 
 ![Background Jobs panel](screenshots/toolbar-panel-jobs.png)
+
+![A job of the page still running](screenshots/toolbar-panel-jobs-running.png)
+
+A job killed while it performs (process stopped by `SIGKILL`, out of memory, container shut down)
+never saves its end: it stays `running` in the panel and in the profile list for good. Without
+Redis storage, the toolbar of a page served by several Puma workers only sees its jobs start and
+end when its polling reaches the worker that ran them; the jobs are listed on the next reload
+otherwise.
 
 **Mailers**: mail count, `deliver_now`, `deliver_later`, queued, multi-part and failed counts and
 send loops when there are some, then the first 3 mails with their mailer and action, ✅ sent or ❌
@@ -525,8 +536,10 @@ Appears, first and selected, when an exception occurred during the request:
 ![Background jobs list](screenshots/profile-list-jobs.png)
 
 Background jobs (Sidekiq, ActiveJob) are profiled separately and appear under the **Background
-Jobs** section of the profile list: time, job class, queue, duration, status (Completed or
-Failed), executions and token, with a search on the class and filters on status and duration.
+Jobs** section of the profile list: time, job class, queue, duration, status (Running, Completed
+or Failed), executions and token, with a search on the class and filters on status and duration. A
+job still running has a blue **Running** badge and no duration, and the **Completed** filter
+leaves it out.
 See [Usage](usage.md#background-jobs).
 
 ### Job profile

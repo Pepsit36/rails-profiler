@@ -151,12 +151,14 @@ a.profiler-toolbar-item {
 .profiler-text--success { color: var(--profiler-success) !important; }
 .profiler-text--warning { color: var(--profiler-warning) !important; }
 .profiler-text--error   { color: var(--profiler-error)   !important; }
+.profiler-text--info    { color: var(--profiler-info)    !important; }
 .profiler-text--muted   { color: var(--profiler-text-muted) !important; }
 .profiler-text--accent  { color: var(--profiler-accent)  !important; }
 
 .profiler-toolbar-item.profiler-text--error::after   { background: var(--profiler-error); }
 .profiler-toolbar-item.profiler-text--warning::after { background: var(--profiler-warning); }
 .profiler-toolbar-item.profiler-text--success::after { background: var(--profiler-success); }
+.profiler-toolbar-item.profiler-text--info::after    { background: var(--profiler-info); }
 
 // ============================================================================
 // PANELS — popover detail cards that appear above toolbar items
