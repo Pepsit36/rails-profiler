@@ -123,6 +123,11 @@ config.storage_options = {
 }
 ```
 
+A profile expires a TTL after its last save, and the lists expire a TTL after the last save too.
+On the first save after an upgrade from a version that did not index the saves, a job that started
+more than a TTL ago and was saved recently can drop out of the lists once: it is a one-time effect,
+bounded by the duration of the job.
+
 ## SQLite
 
 Single-server persistence, no external dependency.
@@ -134,6 +139,11 @@ config.storage_options = {
   blob_path: Rails.root.join('db', 'profiler-blobs') # tmp_path/blobs by default
 }
 ```
+
+`cleanup` and the eviction of the oldest profiles remove the blob directories that no row of
+`database` refers to. Give each `database` its own `blob_path`: two stores that share one (a
+development database and a test one, or one database per parallel test worker) remove each other's
+blobs.
 
 ## Files under `tmp_path`
 

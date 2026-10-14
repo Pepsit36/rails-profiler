@@ -41,6 +41,13 @@ every commit of every tag interval is accounted for one way or the other.
   shows the response body of its previous save. The response bodies left on disk by profiles
   removed outside the store are removed by `cleanup` and when the oldest profiles are evicted.
 
+### Limitations
+
+- **Storage:** Two SQLite stores that share a `blob_path` remove each other's response bodies:
+  give each `database` its own `blob_path` (see `docs/storage.md`).
+- **Storage:** On the first save after an upgrade, the Redis store can drop from its lists a job
+  that started more than a TTL ago and was saved recently. It happens once.
+
 ## [0.33.2] - 2026-10-14
 
 <!-- stamped -->
