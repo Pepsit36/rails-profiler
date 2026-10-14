@@ -464,6 +464,10 @@ transaction always rolled back; any other query returns an error. See
 
 Get AJAX sub-request breakdown for a profile (requests triggered by JavaScript during the page load).
 
+Each request gives its method, path, status, duration, token and start time, and a `Turbo` line
+(`frame` or `stream`) when Turbo made it for a `<turbo-frame>` or it was answered with Turbo Stream
+actions; a plain `fetch()` or `XMLHttpRequest` has none.
+
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `token` | string | Profile token or `"latest"` **(required)** |

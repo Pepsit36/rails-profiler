@@ -27,9 +27,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 - **AJAX:** Requests made by Turbo (Hotwire) for a `<turbo-frame>`, and requests answered with
   Turbo Stream actions, carry a `FRAME` or `STREAM` badge in the AJAX panel of the toolbar and in
-  the AJAX tab of the dashboard. The AJAX data of a page, in the API and the MCP tool
-  `get_profile_ajax`, gives each request a `turbo` field: `frame`, `stream` or `null`. The
-  Request tab of a frame request shows its `Turbo-Frame` header.
+  the AJAX tab of the dashboard. The AJAX data of a page in the API gives each request a `turbo`
+  field: `frame`, `stream` or `null`. The MCP tool `get_profile_ajax` gives the same kind on a
+  `Turbo` line of each Turbo request, and none for a plain fetch. The Request tab of a frame
+  request shows its `Turbo-Frame` header.
 
 ### Fixed
 
