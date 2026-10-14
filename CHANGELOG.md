@@ -19,6 +19,35 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.33.3] - 2026-10-14
+
+<!-- stamped -->
+
+### Fixed
+
+- **Rake tasks:** `rake profiler:cleanup` with an empty or non-numeric `OLDER_THAN` (`""`,
+  `abc`) no longer removes every profile, and `OLDER_THAN=1h` is no longer read as one second.
+  `OLDER_THAN` and `LIMIT` take a whole number only; any other value stops the task with an error
+  and removes nothing. `OLDER_THAN=0` still removes every profile, when written so.
+- **Storage:** The SQLite store compares the start times of the profiles in UTC. Outside UTC,
+  `rake profiler:cleanup` and `cleanup` removed recent profiles (America/New_York) or kept old
+  ones (Asia/Tokyo), and the lists were out of order across a clock change. The profiles already
+  in the database are converted once, when the store opens it; the API shows the same times.
+- **Storage:** The Redis store takes expired profiles out of its lists at each save, and its list
+  keys now expire a TTL after the last save. Without `max_profiles`, or between two evictions,
+  the tokens of expired profiles stayed listed until a manual cleanup, and a page of the list
+  came back with fewer profiles than asked.
+- **Storage:** With the SQLite store, a profile saved again without a response body no longer
+  shows the response body of its previous save. The response bodies left on disk by profiles
+  removed outside the store are removed by `cleanup` and when the oldest profiles are evicted.
+
+### Limitations
+
+- **Storage:** Two SQLite stores that share a `blob_path` remove each other's response bodies:
+  give each `database` its own `blob_path` (see `docs/storage.md`).
+- **Storage:** On the first save after an upgrade, the Redis store can drop from its lists a job
+  that started more than a TTL ago and was saved recently. It happens once.
+
 ## [0.33.2] - 2026-10-14
 
 <!-- stamped -->

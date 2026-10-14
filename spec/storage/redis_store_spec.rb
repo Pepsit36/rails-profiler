@@ -181,4 +181,60 @@ RSpec.describe Profiler::Storage::RedisStore do
       expect(store.list(summary: true).map(&:token)).to eq([child.token, parent.token])
     end
   end
+
+  describe "the indexes" do
+    let(:index_keys) { %w[test_profiler:list test_profiler:list:http test_profiler:saved test_profiler:types] }
+
+    # What Redis does a TTL after the save: the profile and its summary are gone, the indexes are not.
+    def expire(token)
+      redis.del("test_profiler:#{token}", "test_profiler:summary:#{token}")
+      redis.zadd("test_profiler:saved", Time.now.to_f - 3600 - 1, token)
+    end
+
+    def indexed?(token)
+      index_keys.first(3).any? { |key| redis.zrange(key, 0, -1).include?(token) }
+    end
+
+    it "expire a TTL after the last save" do
+      store.save(profile.token, profile)
+
+      index_keys.each { |key| expect(redis.ttls[key]).to eq(3600), "no TTL on #{key}" }
+    end
+
+    it "lose the profiles that expired, at the next save" do
+      expired = build_profile(started_at: Time.now - 60)
+      store.save(expired.token, expired)
+      expire(expired.token)
+
+      store.save(profile.token, profile)
+
+      expect(indexed?(expired.token)).to be(false)
+      expect(indexed?(profile.token)).to be(true)
+    end
+
+    it "keep a profile saved again within the TTL" do
+      store.save(profile.token, profile)
+      redis.zadd("test_profiler:saved", Time.now.to_f - 3600 - 1, profile.token)
+      store.save(profile.token, profile)
+      other = build_profile
+      store.save(other.token, other)
+
+      expect(indexed?(profile.token)).to be(true)
+    end
+
+    [false, true].each do |summary|
+      it "lose the expired profiles a list finds, which then fills its page (summary: #{summary})" do
+        uncapped = described_class.new(redis: redis, ttl: 3600, key_prefix: "test_profiler", max_profiles: nil)
+        profiles = Array.new(6) { |i| build_profile(started_at: Time.now - (60 * i)) }
+        profiles.each { |p| uncapped.save(p.token, p) }
+        # Expired without a save since: only a list sees it.
+        profiles.first(2).each { |p| redis.del("test_profiler:#{p.token}", "test_profiler:summary:#{p.token}") }
+
+        page = uncapped.list(limit: 3, summary: summary)
+
+        expect(page.map(&:token)).to eq(profiles[2, 3].map(&:token))
+        profiles.first(2).each { |p| expect(indexed?(p.token)).to be(false) }
+      end
+    end
+  end
 end

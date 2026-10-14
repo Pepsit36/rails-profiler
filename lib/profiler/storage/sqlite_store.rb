@@ -2,6 +2,7 @@
 
 require "json"
 require "fileutils"
+require "time"
 require_relative "base_store"
 require_relative "blob_store"
 require_relative "private_files"
@@ -14,6 +15,7 @@ module Profiler
     class SqliteStore < BaseStore
       # Past max_profiles, the oldest profiles are evicted down to this share of it.
       LOW_WATER = 0.8
+      HTTP_BODIES = "http_response_bodies"
 
       def initialize(options = {})
         require "sqlite3"
@@ -40,13 +42,14 @@ module Profiler
         data = profile.to_h
 
         collectors_meta = {}
+        bodies_saved = false
         (data[:collectors_data] || {}).each do |collector_name, collector_data|
           next unless collector_data.is_a?(Hash)
 
           if collector_name.to_s == "http"
             requests = collector_data["requests"]
             if requests
-              stripped = save_http_response_bodies(token, requests)
+              stripped, bodies_saved = save_http_response_bodies(token, requests)
               collectors_meta[collector_name] = collector_data.merge("requests" => stripped)
             else
               collectors_meta[collector_name] = collector_data
@@ -55,6 +58,9 @@ module Profiler
             collectors_meta[collector_name] = collector_data
           end
         end
+        # A profile saved again without response bodies keeps none of its previous save: they
+        # would be merged into its requests on load.
+        @blob_store.delete_blob(token, HTTP_BODIES) unless bodies_saved
 
         @db.execute(
           <<~SQL,
@@ -76,8 +82,8 @@ module Profiler
           status:           data[:status],
           duration:         data[:duration],
           memory:           data[:memory],
-          started_at:       data[:started_at],
-          finished_at:      data[:finished_at],
+          started_at:       utc_iso8601(data[:started_at]),
+          finished_at:      utc_iso8601(data[:finished_at]),
           parent_token:     data[:parent_token],
           is_ajax:          data[:is_ajax] ? 1 : 0,
           tabs:             JSON.generate(data[:tabs] || []),
@@ -157,6 +163,7 @@ module Profiler
         ).map { |r| r["token"] }
         @db.execute("DELETE FROM profiler_profiles WHERE started_at < :cutoff", cutoff: cutoff)
         tokens.each { |token| @blob_store.delete(token) }
+        prune_blobs
       end
 
       private
@@ -179,6 +186,12 @@ module Profiler
           @db.execute("DELETE FROM profiler_profiles WHERE token IN (#{(["?"] * slice.size).join(",")})", slice)
         end
         tokens.each { |token| @blob_store.delete(token) }
+        prune_blobs
+      end
+
+      # The blobs of the rows deleted outside the store (a database removed or recreated).
+      def prune_blobs
+        @blob_store.prune(@db.execute("SELECT token FROM profiler_profiles").map { |r| r["token"] })
       end
 
       # A row written before the summary column falls back to the whole row, summarized.
@@ -195,24 +208,26 @@ module Profiler
         nil
       end
 
+      # The requests without their response bodies, and whether a blob of bodies was written.
       def save_http_response_bodies(token, requests)
         bodies = requests.map do |req|
           { "response_body" => req["response_body"], "response_body_encoding" => req["response_body_encoding"] }
         end
 
-        return requests unless bodies.any? { |b| !b["response_body"].nil? }
+        return [requests, false] unless bodies.any? { |b| !b["response_body"].nil? }
 
-        @blob_store.write(token, "http_response_bodies", bodies)
+        @blob_store.write(token, HTTP_BODIES, bodies)
 
-        requests.map do |req|
+        stripped = requests.map do |req|
           req.reject { |k, _| %w[response_body response_body_encoding].include?(k) }
         end
+        [stripped, true]
       end
 
       def load_http_response_bodies(token, requests)
         return requests if requests.nil? || requests.empty?
 
-        bodies = @blob_store.read(token, "http_response_bodies")
+        bodies = @blob_store.read(token, HTTP_BODIES)
         return requests if bodies.nil? || bodies.empty?
 
         requests.each_with_index.map do |req, i|
@@ -266,6 +281,26 @@ module Profiler
         rescue SQLite3::Exception
           # column already exists
         end
+
+        migrate_times_to_utc
+      end
+
+      # Version 1 stores the times in UTC. The rows written before it carry the local offset of
+      # the process that saved them, and the default database outlives a restart: they are
+      # rewritten once, by SQLite, which reads the offset. A value it cannot read is left as is.
+      def migrate_times_to_utc
+        return if @db.get_first_value("PRAGMA user_version").to_i >= 1
+
+        @db.transaction do
+          %w[started_at finished_at].each do |column|
+            @db.execute(<<~SQL)
+              UPDATE profiler_profiles
+                 SET #{column} = strftime('%Y-%m-%dT%H:%M:%SZ', #{column})
+               WHERE #{column} NOT LIKE '%Z' AND strftime('%Y-%m-%dT%H:%M:%SZ', #{column}) IS NOT NULL
+            SQL
+          end
+          @db.execute("PRAGMA user_version = 1")
+        end
       end
 
       def row_to_profile(row, load_blobs: true)
@@ -293,8 +328,8 @@ module Profiler
           status:                 row["status"],
           duration:               row["duration"],
           memory:                 row["memory"],
-          started_at:             row["started_at"],
-          finished_at:            row["finished_at"],
+          started_at:             local_iso8601(row["started_at"]),
+          finished_at:            local_iso8601(row["finished_at"]),
           parent_token:           row["parent_token"],
           is_ajax:                row["is_ajax"] == 1,
           tabs:                   parse_json(row["tabs"], []),
@@ -310,6 +345,25 @@ module Profiler
       rescue => e
         Profiler.log_error("SqliteStore: could not deserialize profile #{row["token"]}", e)
         nil
+      end
+
+      # The times are stored in UTC, all in the same form, for the cleanup and the lists to compare
+      # them as text; a profile gives them with the offset of the process that recorded it.
+      def utc_iso8601(value)
+        return value if value.nil?
+
+        Time.iso8601(value.to_s).utc.iso8601
+      rescue ArgumentError
+        value
+      end
+
+      # Read back in local time, as the profile gave them.
+      def local_iso8601(value)
+        return value if value.nil?
+
+        Time.iso8601(value).localtime.iso8601
+      rescue ArgumentError
+        value
       end
 
       def parse_json(value, default)
