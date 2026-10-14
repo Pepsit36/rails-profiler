@@ -42,6 +42,13 @@ class DemoController < ApplicationController
     render :confirmation
   end
 
+  # An HTML page whose job ends after its response: its toolbar sees the job run, then end.
+  def export
+    OrdersExportJob.perform_later(month: "2026-09")
+    @title = t("demo.title")
+    render :export
+  end
+
   # An HTML page that raises: the development error page gets the toolbar and its 💥 item.
   def broken
     Rails.logger.error("Refund requested for an order that was never paid")

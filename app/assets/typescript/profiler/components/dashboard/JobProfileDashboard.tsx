@@ -35,6 +35,7 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
   const [activeTab, setActiveTab] = useState<JobTabKey>(hasException ? 'exception' : defaultTab)
   const jobData = cd['job'] as any
   const isFailed = jobData?.status === 'failed'
+  const isRunning = jobData?.status === 'running'
   const parent = profile.parent_profile
 
   const handleTabClick = (tab: JobTabKey) => (e: MouseEvent) => {
@@ -53,10 +54,10 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
         <h1><a href="/_profiler?section=jobs"><span class="h1-emoji">⚙️</span> Job Profile</a></h1>
         <p>{profile.path}</p>
         <div class="profiler-flex profiler-flex--gap-4 profiler-mt-2">
-          <span>Duration: <strong>{profile.duration.toFixed(2)} ms</strong></span>
+          <span>Duration: <strong>{isRunning ? 'running' : `${profile.duration.toFixed(2)} ms`}</strong></span>
           <span>Status: <strong>
-            <span class={`badge-${isFailed ? 'error' : 'success'}`}>
-              {isFailed ? 'Failed' : 'Completed'}
+            <span class={`badge-${isFailed ? 'error' : isRunning ? 'info' : 'success'}`}>
+              {isFailed ? 'Failed' : isRunning ? 'Running' : 'Completed'}
             </span>
           </strong></span>
           {allocatedObjects(profile) != null && (

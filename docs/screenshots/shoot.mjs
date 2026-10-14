@@ -54,6 +54,21 @@ await page.waitForTimeout(2500)
 for (const [label, name] of [['HTTP', 'http'], ['JOB', 'jobs'], ['MAIL', 'mailer']]) {
   await panel(item(label), `toolbar-panel-${name}`)
 }
+// A page whose job runs after its response: the JOB item, running, then completed in the same
+// page, without a reload (the toolbar is told when the job is saved).
+await page.goto(`${MASTER}/orders/export`, { waitUntil: 'domcontentloaded' })
+await item('JOB').waitFor({ timeout: 10_000 })
+await panel(item('JOB'), 'toolbar-panel-jobs-running')
+const exportDone = Date.now() + 20_000
+for (;;) {
+  await page.mouse.move(640, 100)
+  await page.waitForTimeout(1000)
+  await item('JOB').hover()
+  const open = page.locator('.profiler-toolbar-panel.is-visible')
+  if (/Completed\s*1/.test(await open.innerText())) break
+  if (Date.now() > exportDone) throw new Error('toolbar-panel-jobs-completed: the job never showed completed')
+}
+await panel(item('JOB'), 'toolbar-panel-jobs-completed')
 // A page that raises: the development error page, without the web console drawn over it.
 await page.goto(`${MASTER}/orders/broken`, { waitUntil: 'networkidle' })
 await page.addStyleTag({ content: '#console { display: none !important; }' })

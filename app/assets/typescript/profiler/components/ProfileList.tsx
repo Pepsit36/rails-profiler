@@ -60,6 +60,13 @@ function durationClass(duration: number): string {
   return 'badge-success'
 }
 
+// The job's own status: a job saved while it runs has no HTTP status yet.
+function jobStatusOf(p: Profile): string {
+  const status = (p.collectors_data?.job as any)?.status
+  if (status) return status
+  return p.status === 500 ? 'failed' : 'completed'
+}
+
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en', { hour12: false })
 }
@@ -359,8 +366,7 @@ export function ProfileList() {
 
   const filteredJobs = jobs.filter(p => {
     if (jobSearch && !p.path.toLowerCase().includes(jobSearch.toLowerCase())) return false
-    if (jobStatus === 'failed' && p.status !== 500) return false
-    if (jobStatus === 'completed' && p.status === 500) return false
+    if (jobStatus && jobStatusOf(p) !== jobStatus) return false
     if (jobDuration) {
       if (jobDuration === 'lt100' ? p.duration >= 100 : p.duration < parseInt(jobDuration)) return false
     }
@@ -637,6 +643,7 @@ export function ProfileList() {
                     />
                     <select class="profiler-filter-select" value={jobStatus} onChange={e => setJobStatus((e.target as HTMLSelectElement).value)}>
                       <option value="">All Statuses</option>
+                      <option value="running">Running</option>
                       <option value="completed">Completed</option>
                       <option value="failed">Failed</option>
                     </select>
@@ -683,7 +690,7 @@ export function ProfileList() {
                     <tbody>
                       {sortedJobs.map(p => {
                         const jobData = p.collectors_data?.job as any
-                        const isFailed = p.status === 500
+                        const status = jobStatusOf(p)
                         return (
                           <tr key={p.token}>
                             <td>{formatTime(p.started_at)}</td>
@@ -694,8 +701,18 @@ export function ProfileList() {
                               )}
                             </td>
                             <td><span class="profiler-text--xs profiler-text--mono">{jobData?.queue || '-'}</span></td>
-                            <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
-                            <td><span class={isFailed ? 'badge-error' : 'badge-success'}>{isFailed ? '✗ Failed' : '✓ Completed'}</span></td>
+                            <td>
+                              {status === 'running'
+                                ? <span class="profiler-text--muted">-</span>
+                                : <span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span>}
+                            </td>
+                            <td>
+                              {status === 'running' ? (
+                                <span class="badge-info"><span class="profiler-spinner" aria-hidden="true">◐</span> Running</span>
+                              ) : (
+                                <span class={status === 'failed' ? 'badge-error' : 'badge-success'}>{status === 'failed' ? '✗ Failed' : '✓ Completed'}</span>
+                              )}
+                            </td>
                             <td>{jobData?.executions ?? '-'}</td>
                             <td class="profiler-text--xs profiler-text--mono profiler-text--muted">
                               <button class="token-copy" onClick={() => copyToken(p.token)} title="Copy full token">

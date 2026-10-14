@@ -19,6 +19,31 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.32.3] - 2026-10-14
+
+<!-- stamped -->
+
+### Fixed
+
+- **Jobs:** the toolbar of a request now sees the jobs it enqueued start and end after its
+  response, without a page reload. A job enqueued by a request is saved as `running` as soon as
+  it starts, so it appears in the `child_jobs` of that request while it runs, and every save of
+  the job tells the request's toolbar that its profile changed, so it reads the job again when it
+  ends, `completed` or `failed`. Without Redis storage, this reaches the toolbar only when the job
+  runs in a process serving the profiler's pages (the `async` or `inline` adapters); a job run by
+  another process is still listed on the next reload.
+  With several Puma workers and no Redis, the toolbar sees a job start and end only when its
+  polling happens to reach the worker that ran the job.
+- **Jobs:** a job that is still running is shown as running, in the JOB panel of the toolbar and
+  in the Background Jobs list of `/_profiler`: a turning ◐ with `running` and no duration, a blue
+  **Running** badge in the list, instead of a green check mark and a duration of 0 ms that read as
+  an instant success. The page of the job itself and the Jobs tab of a profile do the same: a blue
+  **Running** badge and no duration. The JOB item of the toolbar is blue while one of its jobs runs, the list has
+  a **Running** status filter, and its **Completed** filter no longer includes running jobs. The
+  `status` filter of the MCP tool `query_jobs` accepts `running`. A job killed while it performs
+  (`SIGKILL`, out of memory, container stopped) never records its end, so it stays `running` in the
+  toolbar and the list for good.
+
 ## [0.32.2] - 2026-10-13
 
 <!-- stamped -->

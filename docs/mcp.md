@@ -510,7 +510,7 @@ Search and filter background job profiles (Sidekiq, ActiveJob).
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `queue` | string | Filter by queue name |
-| `status` | string | `"completed"` or `"failed"` |
+| `status` | string | `"running"`, `"completed"` or `"failed"`; a job enqueued by a request is `running` while it performs |
 | `limit` | number | Max results (default: 20) |
 | `fields` | array | Columns: `time`, `job_class`, `queue`, `status`, `duration`, `token` |
 | `cursor` | string | Pagination cursor |

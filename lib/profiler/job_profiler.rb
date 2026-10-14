@@ -72,6 +72,7 @@ module Profiler
       return block.call unless Collectors::Lifecycle.subscribe_all(collectors, "JobProfiler")
 
       exception_collector = collectors.find { |c| c.is_a?(Collectors::ExceptionCollector) }
+      save_running(profile, job_collector) if @parent_token
 
       allocations_before = AllocationCounter.current if Profiler.configuration.track_memory
 
@@ -117,6 +118,16 @@ module Profiler
     end
 
     private
+
+    # A job enqueued by a request runs after that request's response: saved now, running, the
+    # toolbar of the request lists it before it ends. The save at the end replaces it.
+    def save_running(profile, job_collector)
+      job_collector.collect
+      profile.duration = 0.0
+      Profiler.save_profile(profile, from: "JobProfiler")
+    rescue StandardError => e
+      Profiler.log_error("JobProfiler: could not record job #{@job_class} as running", e)
+    end
 
     def sanitize_arguments(args)
       return [] unless args

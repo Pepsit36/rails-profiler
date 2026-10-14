@@ -43,6 +43,19 @@ RSpec.describe "MCP tools reading the storage" do
 
       expect(text(described_class.call("limit" => 5))).to include(job.token)
     end
+
+    it "tells a running job apart from the completed ones with its status filter" do
+      running = save(0, profile_type: "job", collectors_data: { "job" => { "status" => "running" } })
+      done = save(1, profile_type: "job", collectors_data: { "job" => { "status" => "completed" } })
+
+      running_output = text(described_class.call("status" => "running"))
+      completed_output = text(described_class.call("status" => "completed"))
+
+      expect(running_output).to include(running.token)
+      expect(running_output).not_to include(done.token)
+      expect(completed_output).to include(done.token)
+      expect(completed_output).not_to include(running.token)
+    end
   end
 
   describe Profiler::MCP::Tools::QueryTestProfiles do

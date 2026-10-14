@@ -24,6 +24,7 @@ path, user or machine name of the host reaches the Env tab. The application live
 |---|---|
 | `toolbar.png` | `/orders`, an HTML page of the demo application, with the Database panel of the toolbar open |
 | `toolbar-panel-*.png` | one panel of the toolbar each, hovered on `/orders`, on `/orders/confirmation` (the order of `/checkout` as an HTML page: HTTP, jobs and mails) or on `/orders/broken` (the development error page, for the exception); the same 1280x800 viewport, cut to its bottom 420 px |
+| `toolbar-panel-jobs-running.png`, `toolbar-panel-jobs-completed.png` | the JOB panel of `/orders/export`, whose job runs for 3 seconds after the response: while it runs, then once it has ended, in the same page without a reload |
 | `profile-list.png`, `profile-list-jobs.png`, `profile-list-console.png`, `profile-list-tests.png`, `profile-list-outbound.png`, `profile-list-env.png` | `/_profiler`, sections HTTP Requests, Background Jobs, Console, Tests, Outbound HTTP and Env (after one variable was switched in the page) |
 | `tab-*.png` | one tab each of the profile of `/checkout`, `/orders`, `/api/n_plus_one`, `/api/cache_intensive` or `/api/raise_named_error`; `tab-function-profiling.png` is the Timeline tab of `/checkout`, scrolled to its function profiling |
 | `job-profile.png` | the profile of a `ReportGenerationJob` enqueued by a request |
