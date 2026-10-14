@@ -278,7 +278,8 @@ module Profiler
 
         # Skip profiler's own paths and static assets
         path = env["PATH_INFO"]
-        Profiler.configuration.skip_paths.none? { |pattern| path =~ pattern }
+        # === matches a Regexp against the path and compares a String with it.
+        Profiler.configuration.skip_paths.none? { |pattern| pattern === path }
       end
 
       def build_request(env)

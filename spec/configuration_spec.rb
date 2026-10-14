@@ -41,4 +41,50 @@ RSpec.describe Profiler::Configuration do
       expect { config.default(:track_jobs, false) }.to raise_error(ArgumentError, /track_jobs/)
     end
   end
+
+  describe "#skip_paths=" do
+    it "keeps a list as it is" do
+      config.skip_paths = ["/health", %r{\A/assets/}]
+      expect(config.skip_paths).to eq(["/health", %r{\A/assets/}])
+    end
+
+    it "makes a single pattern a list of one, and nil an empty list" do
+      config.skip_paths = "/health"
+      expect(config.skip_paths).to eq(["/health"])
+      config.skip_paths = nil
+      expect(config.skip_paths).to eq([])
+    end
+  end
+
+  describe "#http_skip_hosts=" do
+    it "accepts host names, domain suffixes and Regexps" do
+      config.http_skip_hosts = ["api.example.com", ".internal", /\Ametrics\./]
+      expect(config.http_skip_hosts).to eq(["api.example.com", ".internal", /\Ametrics\./])
+    end
+
+    it "makes a single entry a list of one" do
+      config.http_skip_hosts = "api.example.com"
+      expect(config.http_skip_hosts).to eq(["api.example.com"])
+    end
+
+    it "refuses a wildcard String, which is not a host name" do
+      expect { config.http_skip_hosts = ["*.internal"] }
+        .to raise_error(ArgumentError, /http_skip_hosts: "\*\.internal" is not a host name.*"\.internal"/)
+    end
+
+    it "refuses an empty String, which would match no host" do
+      expect { config.http_skip_hosts = [" "] }.to raise_error(ArgumentError, /http_skip_hosts: " " is not a host name/)
+    end
+
+    it "refuses an entry that is neither a String nor a Regexp" do
+      expect { config.http_skip_hosts = [:localhost] }
+        .to raise_error(ArgumentError, /http_skip_hosts: :localhost must be a String or a Regexp/)
+    end
+
+    it "keeps the former value when it refuses the new one" do
+      config.http_skip_hosts = ["api.example.com"]
+      expect { config.http_skip_hosts = ["*"] }.to raise_error(ArgumentError)
+      expect(config.http_skip_hosts).to eq(["api.example.com"])
+    end
+  end
 end

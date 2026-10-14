@@ -53,6 +53,48 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware do
     end
   end
 
+  describe "when skip_paths lists a String" do
+    before do
+      Profiler.configure { |c| c.skip_paths = ["/health", %r{\A/assets/}] }
+    end
+
+    it "skips the path equal to it" do
+      get "/health"
+      expect(last_response.status).to eq(200)
+      expect(last_response.headers).not_to have_key("X-Profiler-Token")
+    end
+
+    it "profiles any other path, one that only starts with it included" do
+      get "/health/details"
+      expect(last_response.status).to eq(200)
+      expect(last_response.headers["X-Profiler-Token"]).not_to be_nil
+    end
+
+    it "still matches the Regexps next to it" do
+      get "/assets/application.css"
+      expect(last_response.headers).not_to have_key("X-Profiler-Token")
+    end
+  end
+
+  describe "when skip_paths is set to a single pattern" do
+    it "reads a String as a list of one" do
+      Profiler.configure { |c| c.skip_paths = "/health" }
+
+      get "/health"
+      expect(last_response.status).to eq(200)
+      expect(last_response.headers).not_to have_key("X-Profiler-Token")
+      get "/users"
+      expect(last_response.headers["X-Profiler-Token"]).not_to be_nil
+    end
+
+    it "reads a Regexp as a list of one" do
+      Profiler.configure { |c| c.skip_paths = %r{\A/assets/} }
+
+      get "/assets/application.css"
+      expect(last_response.headers).not_to have_key("X-Profiler-Token")
+    end
+  end
+
   describe "when profiler is enabled on an HTML response" do
     it "adds X-Profiler-Token header" do
       get "/users"
