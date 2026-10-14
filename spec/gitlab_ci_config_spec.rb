@@ -3,9 +3,9 @@
 require "spec_helper"
 require "yaml"
 
-# Guards the two pipeline decisions that cannot be checked by running anything:
-# which branches the [Unreleased] check applies to, and how long the compiled
-# assets stay available for a release re-run.
+# Guards the pipeline decisions that cannot be checked by running anything:
+# which branches the [Unreleased] check applies to, how long the compiled assets
+# stay available for a release re-run, and where the built gem is checked.
 RSpec.describe ".gitlab-ci.yml" do
   let(:config) { YAML.safe_load(File.read(File.expand_path("../.gitlab-ci.yml", __dir__))) }
   let(:changelog_check) { config.fetch("changelog:check") }
@@ -64,6 +64,14 @@ RSpec.describe ".gitlab-ci.yml" do
 
   it "keeps the build artifacts around long enough for a release re-run" do
     expect(config.fetch("build").fetch("artifacts").fetch("expire_in")).to eq("1 week")
+  end
+
+  it "checks the installed gem between the build and the publication" do
+    package_check = config.fetch("package:check")
+    expect(config.fetch("stages")).to eq(%w[test build package publish])
+    expect(package_check.fetch("stage")).to eq("package")
+    expect(package_check.fetch("needs")).to eq(["build"])
+    expect(package_check.fetch("script")).to eq(["ruby script/check-gem-package"])
   end
 
   it "serialises releases and drives them from the versioned script" do

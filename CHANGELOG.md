@@ -19,6 +19,15 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Packaging:** The published gem now contains `app/assets/javascript/profiler-ajax-interceptor.js`,
+  the script the toolbar injects to link the `fetch`, `XMLHttpRequest` and Turbo requests of a page
+  to that page. It was missing from every published version: with the gem installed from a
+  registry, those requests were never linked to their page, and the only trace was the log line
+  `ToolbarInjector: could not load the AJAX interceptor script`. A gem used from a git checkout or
+  a local path was not affected.
+
 ## [0.33.0] - 2026-10-14
 
 <!-- stamped -->
