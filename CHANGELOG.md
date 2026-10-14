@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-10-14
+
+<!-- stamped -->
+
 ### Added
 
 - **AJAX:** Requests made by Turbo (Hotwire) for a `<turbo-frame>`, and requests answered with
