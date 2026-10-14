@@ -10,6 +10,7 @@ declare global {
     __PROFILER_PARENT_TOKEN__?: string
     __PROFILER_INTERCEPTOR_ACTIVE__?: boolean
     __PROFILER_REFRESH_TOOLBAR__?: () => void
+    __PROFILER_TOOLBAR_TEARDOWN__?: () => void
   }
 }
 
@@ -54,16 +55,33 @@ function mountToolbar(): void {
   const token = el.dataset.token
   if (!token) return
 
+  // A Turbo Drive visit replaces the body and runs this script again for the new page: the
+  // toolbar of the previous page is unmounted, which stops its update checks, and its window
+  // and document listeners are removed.
+  window.__PROFILER_TOOLBAR_TEARDOWN__?.()
+  const listeners = new AbortController()
+  const { signal } = listeners
+  const teardown = (): void => {
+    listeners.abort()
+    render(null, el)
+    if (window.__PROFILER_TOOLBAR_TEARDOWN__ === teardown) delete window.__PROFILER_TOOLBAR_TEARDOWN__
+  }
+  window.__PROFILER_TOOLBAR_TEARDOWN__ = teardown
+  // A visit to a page the profiler left alone brings no new toolbar to do it.
+  document.addEventListener('turbo:load', () => {
+    if (!el.isConnected) teardown()
+  }, { signal })
+
   const themeEls = [el, toggleEl]
   applyTheme(themeEls)
 
   window.addEventListener('storage', (e) => {
     if (e.key === 'profiler-theme') applyTheme(themeEls)
-  })
+  }, { signal })
 
   window.addEventListener('profiler:theme-change', ((e: CustomEvent) => {
     if (e.detail?.theme) themeEls.forEach(elem => elem.setAttribute('data-theme', e.detail.theme))
-  }) as EventListener)
+  }) as EventListener, { signal })
 
   let isCollapsed = localStorage.getItem('profiler-toolbar-collapsed') === 'true'
 
@@ -103,14 +121,14 @@ function mountToolbar(): void {
     }
   }
 
-  toggleEl.addEventListener('click', toggleCollapse)
+  toggleEl.addEventListener('click', toggleCollapse, { signal })
 
   document.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.altKey && e.key === 'p') {
       e.preventDefault()
       toggleCollapse()
     }
-  })
+  }, { signal })
 
   render(
     <QueryClientProvider client={toolbarQueryClient}>
