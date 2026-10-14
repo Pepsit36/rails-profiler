@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-10-14
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Packaging:** The published gem now contains `app/assets/javascript/profiler-ajax-interceptor.js`,
