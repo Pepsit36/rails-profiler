@@ -346,7 +346,7 @@ module Profiler
         Accept Accept-Charset Accept-Encoding Accept-Language
         Authorization Cache-Control Connection Content-Length Content-Type
         Cookie Host If-Modified-Since If-None-Match Origin
-        Referer User-Agent
+        Referer User-Agent Turbo-Frame
       ].freeze
 
       def extract_headers(env)

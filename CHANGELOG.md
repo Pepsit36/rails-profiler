@@ -19,6 +19,38 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-10-14
+
+<!-- stamped -->
+
+### Added
+
+- **AJAX:** Requests made by Turbo (Hotwire) for a `<turbo-frame>`, and requests answered with
+  Turbo Stream actions, carry a `FRAME` or `STREAM` badge in the AJAX panel of the toolbar and in
+  the AJAX tab of the dashboard. The AJAX data of a page in the API gives each request a `turbo`
+  field: `frame`, `stream` or `null`. The MCP tool `get_profile_ajax` gives the same kind on a
+  `Turbo` line of each Turbo request, and none for a plain fetch. The Request tab of a frame
+  request shows its `Turbo-Frame` header.
+
+### Fixed
+
+- **AJAX:** A Turbo Drive visit is no longer listed as an AJAX request of the page it leaves,
+  and neither is a link Turbo prefetches on hover: they are the next page, with their own
+  profile. The requests a page reached by a Drive visit makes are linked to that page instead of
+  to the first page of the session.
+- **Toolbar:** After a Turbo Drive visit, the toolbar of the previous page is taken down: it no
+  longer keeps checking for updates of the previous profile, and `Alt+P` toggles the toolbar
+  once instead of once per page visited.
+
+### Limitations
+
+- **Toolbar:** A Turbo 8 page refresh with morphing (`turbo_refreshes_with method: :morph`, or
+  a `broadcasts_refreshes` model) is not handled: it empties the toolbar, which keeps checking
+  for updates of the profile of the page as first loaded, and the requests made after it stay
+  linked to that profile. This predates this release and is left for a later one.
+- **Toolbar:** After going back in the browser history, two toolbar containers are left in the
+  page, only one of them visible. This predates this release too.
+
 ## [0.32.3] - 2026-10-14
 
 <!-- stamped -->

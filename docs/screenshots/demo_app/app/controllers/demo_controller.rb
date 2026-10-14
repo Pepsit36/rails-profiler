@@ -55,6 +55,28 @@ class DemoController < ApplicationController
     raise ArgumentError, "Unknown order status: archived"
   end
 
+  # A Hotwire page: Turbo is loaded as a module, a lazy turbo-frame fetches #turbo_frame and a
+  # form answers with a turbo-stream. Both requests become AJAX sub-requests of this page.
+  def turbo
+    @title = t("demo.title")
+    @customers = User.order(:name).limit(3).to_a
+    render :turbo
+  end
+
+  # The frame request, rendered in the minimal layout turbo-rails uses for a Turbo-Frame request
+  # (DemoController itself has no layout).
+  def turbo_frame
+    @customer = User.order(:id).first
+    @orders = Post.where(author: @customer).order(:id).limit(3).to_a
+    render :turbo_frame, layout: "turbo_rails/frame"
+  end
+
+  def turbo_refund
+    Rails.logger.info("Refund requested for order #4211")
+    @customer = User.order(:id).first
+    render turbo_stream: turbo_stream.update("refund_status", html: "Refund of 42,00 \u20ac queued for order #4211")
+  end
+
   def upstream
     case params[:path]
     when "customers/42" then render json: { id: "cus_demo42", name: "Jane Example", plan: "pro" }

@@ -61,6 +61,7 @@ module Profiler
               lines << "- **Path:** #{req['path']}"
               lines << "- **Status:** #{req['status']}"
               lines << "- **Duration:** #{req['duration'].round(2)} ms"
+              lines << "- **Turbo:** #{req['turbo']}" if req['turbo']
               lines << "- **Token:** #{req['token']}" if req['token']
               lines << "- **Started At:** #{req['started_at']}" if req['started_at']
             end

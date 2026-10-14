@@ -15,6 +15,12 @@ function methodBadgeClass(method: string): string {
   return map[method] || ''
 }
 
+// A request made by Turbo for a <turbo-frame>, or answered with Turbo Stream actions.
+const TURBO_TITLES: Record<string, string> = {
+  frame: 'Turbo Frame request',
+  stream: 'Turbo Stream response',
+}
+
 export function AjaxPanel({ ajaxData }: Props) {
   return (
     <>
@@ -34,6 +40,9 @@ export function AjaxPanel({ ajaxData }: Props) {
               <div class="profiler-ajax-card__row">
                 <div class="profiler-flex profiler-flex--gap-2">
                   <span class={`badge ${methodBadgeClass(req.method)}`}>{req.method}</span>
+                  {req.turbo && (
+                    <span class="badge badge-default" title={TURBO_TITLES[req.turbo]}>{req.turbo.toUpperCase()}</span>
+                  )}
                   <span class="profiler-text--xs profiler-text--truncate">{req.path}</span>
                 </div>
                 <div class="profiler-flex profiler-flex--gap-2">

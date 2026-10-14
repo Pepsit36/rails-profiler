@@ -34,6 +34,21 @@ RSpec.describe "MCP tools reading the storage" do
       expect(output).to include("**Total AJAX Requests:** 1")
       expect(output).to include("/api/items")
     end
+
+    it "gives the turbo kind of a Turbo Frame or Turbo Stream request, and none for a plain fetch" do
+      parent = save(0)
+      save(1, parent_token: parent.token, is_ajax: true, path: "/frame",
+              headers: { "Turbo-Frame" => "customer_card" })
+      save(2, parent_token: parent.token, is_ajax: true, method: "POST", path: "/stream",
+              response_headers: { "content-type" => "text/vnd.turbo-stream.html; charset=utf-8" })
+      save(3, parent_token: parent.token, is_ajax: true, path: "/json",
+              response_headers: { "content-type" => "application/json" })
+
+      requests = text(described_class.call("token" => parent.token)).split("### Request ").drop(1)
+      turbo = requests.to_h { |req| [req[/\*\*Path:\*\* (\S+)/, 1], req[/\*\*Turbo:\*\* (\w+)/, 1]] }
+
+      expect(turbo).to eq("/frame" => "frame", "/stream" => "stream", "/json" => nil)
+    end
   end
 
   describe Profiler::MCP::Tools::QueryJobs do

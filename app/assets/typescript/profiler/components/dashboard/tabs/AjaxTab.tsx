@@ -5,6 +5,12 @@ interface Props {
   ajaxData: AjaxData | undefined
 }
 
+// A request made by Turbo for a <turbo-frame>, or answered with Turbo Stream actions.
+const TURBO_TITLES: Record<string, string> = {
+  frame: 'Turbo Frame request',
+  stream: 'Turbo Stream response',
+}
+
 export function AjaxTab({ ajaxData }: Props) {
   if (!ajaxData?.requests?.length) {
     return (
@@ -55,6 +61,9 @@ export function AjaxTab({ ajaxData }: Props) {
           <div class="profiler-ajax-card__row">
             <div class="profiler-flex profiler-flex--gap-3">
               <span class={`profiler-ajax-card__method badge-${methodBadge(req.method)}`}>{req.method}</span>
+              {req.turbo && (
+                <span class="badge-default" title={TURBO_TITLES[req.turbo]}>{req.turbo.toUpperCase()}</span>
+              )}
               <strong class="profiler-ajax-card__path">{req.path}</strong>
             </div>
             <div class="profiler-flex profiler-flex--gap-2">

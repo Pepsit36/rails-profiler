@@ -105,8 +105,29 @@ module Profiler
           "method" => profile.method,
           "status" => profile.status,
           "duration" => profile.duration,
-          "started_at" => profile.started_at&.iso8601
+          "started_at" => profile.started_at&.iso8601,
+          "turbo" => turbo_kind(profile)
         }
+      end
+
+      TURBO_STREAM_MIME = "text/vnd.turbo-stream.html"
+
+      # "frame" for a request a <turbo-frame> made (Turbo sends its id in Turbo-Frame), "stream"
+      # for one answered with Turbo Stream actions, nil for any other fetch or XHR.
+      def turbo_kind(profile)
+        return "frame" if header_value(profile.headers, "Turbo-Frame").to_s != ""
+        return "stream" if header_value(profile.response_headers, "Content-Type").to_s.start_with?(TURBO_STREAM_MIME)
+
+        nil
+      end
+
+      # Header names keep the case they were saved with: Content-Type from Rack 2, content-type
+      # from Rack 3.
+      def header_value(headers, name)
+        return nil unless headers.respond_to?(:each)
+
+        headers.each { |key, value| return value if key.to_s.casecmp?(name) }
+        nil
       end
     end
   end

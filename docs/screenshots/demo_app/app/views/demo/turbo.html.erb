@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title><%= @title %></title>
+  <%= csrf_meta_tags %>
+  <%= javascript_include_tag "turbo", type: "module" %>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0; background: #f4f5f7; color: #222; }
+    header { background: #1f2937; color: #fff; padding: 18px 40px; font-size: 20px; font-weight: 600; }
+    main { padding: 32px 40px; max-width: 1100px; display: flex; gap: 16px; }
+    .card { background: #fff; border-radius: 8px; padding: 16px 20px; flex: 1; box-shadow: 0 1px 3px rgba(0,0,0,.08); font-size: 14px; }
+    .card h3 { margin: 0 0 12px; font-size: 16px; }
+    button { background: #1f2937; color: #fff; border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header><%= @title %></header>
+  <main>
+    <div class="card">
+      <h3>Customer</h3>
+      <%# A lazy frame: Turbo fetches it with the Turbo-Frame header once the page is shown. %>
+      <turbo-frame id="customer_card" src="/orders/turbo/customer">Loading the customer...</turbo-frame>
+    </div>
+    <div class="card">
+      <h3>Refund</h3>
+      <%# A Turbo form submission, answered with a turbo-stream. %>
+      <form id="refund_form" action="/orders/turbo/refund" method="post">
+        <button type="submit">Refund order #4211</button>
+      </form>
+      <p id="refund_status"></p>
+      <%# A Turbo Drive visit: the next page replaces this one, it is not a sub-request. %>
+      <p><a id="all_orders" href="/orders">All orders</a></p>
+    </div>
+  </main>
+</body>
+</html>

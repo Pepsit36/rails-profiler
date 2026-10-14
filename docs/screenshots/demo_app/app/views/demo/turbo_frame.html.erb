@@ -1,0 +1,4 @@
+<turbo-frame id="customer_card">
+  <p><b><%= @customer&.name %></b></p>
+  <p><%= pluralize(@orders.size, "recent order") %></p>
+</turbo-frame>

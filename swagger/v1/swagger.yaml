@@ -1394,6 +1394,14 @@ components:
         started_at:
           type: string
           format: date-time
+        turbo:
+          type: string
+          enum:
+          - frame
+          - stream
+          nullable: true
+          description: frame for a Turbo Frame request (Turbo-Frame header), stream for a response
+            in text/vnd.turbo-stream.html, null for any other fetch or XHR
     HttpData:
       type: object
       required:

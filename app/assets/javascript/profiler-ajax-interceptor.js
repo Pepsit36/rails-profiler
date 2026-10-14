@@ -5,8 +5,7 @@
   'use strict';
 
   // Get parent token from window variable set by the profiler
-  const parentToken = window.__PROFILER_PARENT_TOKEN__;
-  if (!parentToken) {
+  if (!window.__PROFILER_PARENT_TOKEN__) {
     console.warn('[Profiler] Parent token not found, AJAX tracking disabled');
     return;
   }
@@ -23,6 +22,48 @@
   const originalXHROpen = XMLHttpRequest.prototype.open;
   const originalXHRSend = XMLHttpRequest.prototype.send;
   const pendingXHRRequests = new WeakMap();
+  // The fetches Turbo makes, by the AbortSignal it hands to fetch(): { frame: true } when the
+  // request loads a <turbo-frame>.
+  const turboRequests = new WeakMap();
+  const TURBO_STREAM_MIME = 'text/vnd.turbo-stream.html';
+
+  // The page the sub-requests belong to. Read at each link, not once: a Turbo Drive visit
+  // renders a new page, whose inline script sets the token again, without reloading this one.
+  function currentParentToken() {
+    return window.__PROFILER_PARENT_TOKEN__;
+  }
+
+  function isRequest(input) {
+    return typeof Request !== 'undefined' && input instanceof Request;
+  }
+
+  function hasHeader(headers, name) {
+    if (!headers) return false;
+    if (typeof headers.has === 'function') return headers.has(name);
+    const wanted = name.toLowerCase();
+    return Object.keys(headers).some(key => key.toLowerCase() === wanted && headers[key] != null && headers[key] !== '');
+  }
+
+  // Turbo (7 and 8) announces each of its requests before calling fetch(), with the options it
+  // will pass to it, signal included.
+  document.addEventListener('turbo:before-fetch-request', function(event) {
+    const options = event.detail && event.detail.fetchOptions;
+    if (!options || !options.signal) return;
+    turboRequests.set(options.signal, { frame: hasHeader(options.headers, 'Turbo-Frame') });
+  });
+
+  // A Turbo Drive visit, a prefetch on hover, or a form submission answered with a page is the
+  // next page, which carries its own toolbar: not a sub-request of this one. A <turbo-frame>
+  // load, and any request answered with Turbo Stream actions, update this page: they are.
+  function isNavigation(args, response) {
+    const init = args[1];
+    const signal = (init && init.signal) || (isRequest(args[0]) ? args[0].signal : null);
+    const turbo = signal && turboRequests.get(signal);
+    if (!turbo || turbo.frame) return false;
+
+    const contentType = response.headers.get('Content-Type') || '';
+    return !contentType.startsWith(TURBO_STREAM_MIME);
+  }
 
   // Helper function to check if path should be skipped
   function shouldSkipPath(url) {
@@ -43,6 +84,7 @@
 
   // Helper function to link child profile to parent
   function linkChildProfile(childToken) {
+    const parentToken = currentParentToken();
     if (!childToken || !parentToken) return;
 
     console.debug('[Profiler] Linking AJAX request:', { parent: parentToken, child: childToken });
@@ -89,7 +131,7 @@
 
   // Override fetch()
   window.fetch = async function(...args) {
-    const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+    const url = isRequest(args[0]) ? args[0].url : String(args[0]);
 
     // Skip profiler paths
     if (shouldSkipPath(url)) {
@@ -102,7 +144,7 @@
       // Extract profiler token from response headers
       const profilerToken = response.headers.get('X-Profiler-Token');
 
-      if (profilerToken) {
+      if (profilerToken && !isNavigation(args, response)) {
         linkChildProfile(profilerToken);
       }
 
@@ -147,5 +189,5 @@
     return originalXHRSend.apply(this, args);
   };
 
-  console.debug('[Profiler] AJAX interceptor initialized with parent token:', parentToken);
+  console.debug('[Profiler] AJAX interceptor initialized with parent token:', currentParentToken());
 })();
