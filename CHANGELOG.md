@@ -19,6 +19,47 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.33.2] - 2026-10-14
+
+<!-- stamped -->
+
+### Changed
+
+- **Configuration:** A String in `config.http_skip_hosts` is now a host name, compared whole and
+  ignoring case, instead of a pattern: `"example.com"` no longer leaves out `notexample.com`,
+  `exampleXcom` or `example.com.attacker.net`. A String that starts with a dot is a domain whose
+  subdomains are left out (`".internal"` leaves out `api.internal`). A Regexp is matched as
+  before. An entry that is not a host name, a wildcard String (`"*.internal"`), an empty one, or
+  anything that is neither a String nor a Regexp (`nil`), is left out when the list is set, with
+  a warning in the log that says what to write, and the other entries are kept. It does not
+  raise: the gem is loaded in production too, where a mistake in this list must not stop the
+  application from booting, even with the profiler disabled.
+- **Dumps:** A dump is stored as its formatted text only: the raw `value` field, which no tab
+  read and the API did not document, is no longer part of the dump data.
+
+### Fixed
+
+- **Configuration:** A String in `config.skip_paths` no longer fails every request with a
+  `TypeError`: it skips the path equal to it, and a Regexp is matched as before. A single
+  pattern, a String or a Regexp, set without a list is read as a list of one.
+- **Outbound HTTP:** A String in `config.http_skip_hosts` that is not a valid Regexp, such as
+  `"*.internal"` added with `<<`, no longer fails every `Net::HTTP` call of a profiled request
+  with a `RegexpError`.
+- **Database:** A query that binds bytes, a `blob` or `bytea` column such as an image, no longer
+  loses the profile of its request when it is saved: the bind shows as text when its bytes are
+  valid UTF-8, and as `[binary data, N bytes]` otherwise.
+- **Logs:** A line logged with bytes that are not valid UTF-8 no longer raises an
+  `Encoding::CompatibilityError` in the application's own logger call (Rails 7.1 and later), and
+  a binary line no longer loses the profile when it is saved: the line is kept as UTF-8, what
+  cannot be read replaced with U+FFFD, and a line in another encoding is converted.
+- **Dumps:** `Profiler.dump` of an object that refers to itself, directly or through an instance
+  variable, no longer fails the request with a `SystemStackError` (a 500 with the file store), and
+  an Array or a Hash holding itself no longer loses the profile. An object whose own `inspect`
+  recurses without end shows `[Error formatting value: stack level too deep]`.
+- **Middleware:** A page whose body is made of fragments of different encodings, a binary one
+  among UTF-8 ones, no longer fails with an `Encoding::CompatibilityError` once profiled: its
+  bytes are joined as the application gave them, and it gets its toolbar.
+
 ## [0.33.1] - 2026-10-14
 
 <!-- stamped -->

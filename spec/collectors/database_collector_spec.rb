@@ -132,4 +132,47 @@ RSpec.describe Profiler::Collectors::DatabaseCollector do
       expect(data[:cached_queries]).to eq(1)
     end
   end
+
+  # A blob or bytea column binds bytes that are not text: kept as they are, they failed the JSON
+  # of the whole profile when it was saved, and the request lost its profile.
+  describe "binary bind values" do
+    require "active_record"
+
+    let(:jpeg) { "\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01".b }
+
+    def run_query(binds)
+      collector.subscribe
+      ActiveSupport::Notifications.instrument("sql.active_record",
+        sql: "INSERT INTO images (data, name) VALUES ($1, $2)", name: "Image Create", binds: binds, connection: nil)
+      collector.collect
+      profile.collector_data("database")[:queries].first[:binds]
+    end
+
+    it "keeps the size of bytes that are not text, so that the profile can be saved" do
+      binds = [ActiveRecord::Relation::QueryAttribute.new("data", jpeg, ActiveRecord::Type::Binary.new),
+               ActiveRecord::Relation::QueryAttribute.new("name", "photo.jpg", ActiveRecord::Type::String.new)]
+
+      expect(run_query(binds)).to eq(["[binary data, #{jpeg.bytesize} bytes]", "photo.jpg"])
+      expect { profile.to_h.to_json }.not_to raise_error
+    end
+
+    it "reads the value an adapter hands over as ActiveRecord::Type::Binary::Data" do
+      expect(run_query([ActiveRecord::Type::Binary::Data.new(jpeg)])).to eq(["[binary data, #{jpeg.bytesize} bytes]"])
+      expect { profile.to_h.to_json }.not_to raise_error
+    end
+
+    it "shows bytes that are valid UTF-8 as text" do
+      bind = ActiveRecord::Relation::QueryAttribute.new("data", "caf\u00e9".b, ActiveRecord::Type::Binary.new)
+
+      expect(run_query([bind])).to eq(["caf\u00e9"])
+    end
+
+    it "keeps a text value in another encoding, which JSON converts" do
+      latin = "caf\xE9".dup.force_encoding(Encoding::ISO_8859_1)
+      bind = ActiveRecord::Relation::QueryAttribute.new("name", latin, ActiveRecord::Type::String.new)
+
+      run_query([bind])
+      expect(JSON.parse(profile.to_h.to_json).dig("collectors_data", "database", "queries", 0, "binds")).to eq(["caf\u00e9"])
+    end
+  end
 end

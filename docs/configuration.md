@@ -73,7 +73,8 @@ Profiler.configure do |config|
   # Directories 0700 and files 0600 under tmp_path, whatever the umask.
   config.restrict_storage_permissions = true
 
-  # Requests that are not profiled (Regexps matched against the path).
+  # Requests that are not profiled: a Regexp is matched against the path, a String is compared
+  # with the whole path ("/up" skips /up, not /up/details). A single pattern is a list of one.
   config.skip_paths = [%r{^/_profiler}, /\.well-known/, /favicon\.ico/, /manifest\.json/]
 
   # Database
@@ -109,9 +110,14 @@ Profiler.configure do |config|
   config.track_http = true
   config.slow_http_threshold = 500  # ms
   config.http_backtrace_depth = 40
-  # Hosts whose calls are left out (Strings and Regexps matched against the host). Empty by
-  # default: calls to services on the same machine are recorded. Earlier versions always left
-  # out 127.0.0.1, localhost and ::1; to do so again:
+  # Hosts whose calls are left out. A String is a host name, compared whole and ignoring case
+  # ("example.com" leaves out example.com, not api.example.com nor notexample.com); one that
+  # starts with a dot is a domain, whose subdomains are left out (".internal" leaves out
+  # api.internal, not internal itself). A Regexp is matched against the host name. An entry
+  # that is none of these (a wildcard "*.internal", an empty String, nil) is left out with a
+  # warning in the log; the application still boots. Empty by default: calls to services on the
+  # same machine are recorded. Earlier versions always left out 127.0.0.1, localhost and ::1; to
+  # do so again:
   #   config.http_skip_hosts += Profiler::Configuration::LOCAL_HTTP_HOSTS
   # The profiler's own calls (a slave's registration and heartbeats, the master's requests to
   # its slaves) are never recorded, whatever this list says.

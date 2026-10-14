@@ -41,4 +41,71 @@ RSpec.describe Profiler::Configuration do
       expect { config.default(:track_jobs, false) }.to raise_error(ArgumentError, /track_jobs/)
     end
   end
+
+  describe "#skip_paths=" do
+    it "keeps a list as it is" do
+      config.skip_paths = ["/health", %r{\A/assets/}]
+      expect(config.skip_paths).to eq(["/health", %r{\A/assets/}])
+    end
+
+    it "makes a single pattern a list of one, and nil an empty list" do
+      config.skip_paths = "/health"
+      expect(config.skip_paths).to eq(["/health"])
+      config.skip_paths = nil
+      expect(config.skip_paths).to eq([])
+    end
+  end
+
+  describe "#http_skip_hosts=" do
+    it "accepts host names, domain suffixes and Regexps" do
+      config.http_skip_hosts = ["api.example.com", ".internal", /\Ametrics\./]
+      expect(config.http_skip_hosts).to eq(["api.example.com", ".internal", /\Ametrics\./])
+    end
+
+    it "makes a single entry a list of one" do
+      config.http_skip_hosts = "api.example.com"
+      expect(config.http_skip_hosts).to eq(["api.example.com"])
+    end
+
+    context "with an entry that is not a host name" do
+      before { allow(Profiler).to receive(:log_warn) }
+
+      it "leaves out a wildcard String with a warning and keeps the other entries" do
+        config.http_skip_hosts = ["*.internal", "api.example.com", /\Ametrics\./]
+
+        expect(config.http_skip_hosts).to eq(["api.example.com", /\Ametrics\./])
+        expect(Profiler).to have_received(:log_warn)
+          .with(/http_skip_hosts: "\*\.internal" is not a host name.*"\.internal".*ignored/).once
+      end
+
+      it "leaves out an empty or blank String with a warning" do
+        config.http_skip_hosts = ["", " ", "api.example.com"]
+
+        expect(config.http_skip_hosts).to eq(["api.example.com"])
+        expect(Profiler).to have_received(:log_warn).with(/http_skip_hosts: "" is not a host name/).once
+        expect(Profiler).to have_received(:log_warn).with(/http_skip_hosts: " " is not a host name/).once
+      end
+
+      it "leaves out an entry that is neither a String nor a Regexp with a warning" do
+        config.http_skip_hosts = [nil, :localhost, "api.example.com"]
+
+        expect(config.http_skip_hosts).to eq(["api.example.com"])
+        expect(Profiler).to have_received(:log_warn).with(/http_skip_hosts: nil must be a String or a Regexp/).once
+        expect(Profiler).to have_received(:log_warn)
+          .with(/http_skip_hosts: :localhost must be a String or a Regexp/).once
+      end
+
+      it "never raises, so that a mistake does not stop the application from booting" do
+        expect { config.http_skip_hosts = ["*", "", nil, 42] }.not_to raise_error
+        expect(config.http_skip_hosts).to eq([])
+      end
+    end
+
+    it "does not warn about valid entries" do
+      allow(Profiler).to receive(:log_warn)
+      config.http_skip_hosts = ["api.example.com", ".internal", /\Ametrics\./]
+
+      expect(Profiler).not_to have_received(:log_warn)
+    end
+  end
 end

@@ -362,6 +362,49 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "response bodies" do
     end
   end
 
+  # A page assembled from fragments of different encodings (a binary one among UTF-8 ones) is
+  # sent as the application gave it: the profiler joins its bytes, it does not convert them.
+  describe "a buffered body whose fragments have different encodings" do
+    let(:fragments) { ["<html><body>caf\u00e9 ", "\xFF\xD8 raw".b, " \u00e9t\u00e9</body></html>"] }
+    let(:expected_bytes) { fragments.map(&:b).join }
+
+    it "profiles an Array body and sends every byte" do
+      _status, headers, body = middleware(headers: { "content-type" => "text/html" }, body: fragments).call(env)
+      sent = serve(body)
+
+      expect(headers["X-Profiler-Token"]).not_to be_nil
+      expect(sent.b).to start_with(expected_bytes.byteslice(0, expected_bytes.index("</body>".b)))
+      expect(sent).to include("profiler-toolbar")
+      expect(headers["content-length"]).to eq(sent.bytesize.to_s) if headers["content-length"]
+    end
+
+    it "sends a body that is not HTML unchanged" do
+      _status, headers, body = middleware(body: Rack::BodyProxy.new(fragments) {}).call(env)
+      sent = serve(body)
+
+      expect(headers["X-Profiler-Token"]).not_to be_nil
+      expect(sent.b).to eq(expected_bytes)
+    end
+
+    # Rails' own in-memory body (Rails 7.0, a closed Live::Buffer) is read with each.
+    it "joins the fragments of a body read with each" do
+      each_only = Struct.new(:parts) do
+        def each(&block)
+          parts.each(&block)
+        end
+      end
+
+      content = middleware(body: []).send(:read_buffered_body, each_only.new(fragments))
+      expect(content.b).to eq(expected_bytes)
+    end
+
+    it "takes the encoding of the first fragment, as a streamed body does" do
+      _status, _headers, body = middleware(body: fragments).call(env)
+
+      expect(body.to_ary.first.encoding).to eq(Encoding::UTF_8)
+    end
+  end
+
   describe "a buffered body whose reading and closing both fail" do
     it "lets the reading error through" do
       body = Class.new do

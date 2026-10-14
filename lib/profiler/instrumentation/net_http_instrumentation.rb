@@ -122,10 +122,27 @@ module Profiler
       # it are the profiler's, whichever code makes them.
       def self.skip_host?(host, port = nil)
         config = Profiler.configuration
-        return true if config.http_skip_hosts.any? { |pattern| host.match?(pattern) }
+        return true if config.http_skip_hosts.any? { |pattern| skip_host_pattern?(pattern, host) }
 
         master = master_address(config.master_url)
         !master.nil? && master[0].casecmp?(host) && (port.nil? || master[1] == port)
+      end
+
+      # A String is never read as a Regexp: "example.com" would match notexample.com, and
+      # "*.internal" would raise on every call. It is the host name, or, starting with a dot, a
+      # domain whose subdomains match. A list changed in place (<<) is not validated: anything
+      # else matches nothing.
+      def self.skip_host_pattern?(pattern, host)
+        case pattern
+        when Regexp then pattern.match?(host)
+        when String
+          if pattern.start_with?(".")
+            host.length > pattern.length && host.downcase.end_with?(pattern.downcase)
+          else
+            pattern.casecmp?(host)
+          end
+        else false
+        end
       end
 
       def self.master_address(url)

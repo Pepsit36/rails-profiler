@@ -38,13 +38,13 @@ module Profiler
     LOCAL_HTTP_HOSTS = [/\A127\.0\.0\.1\z/, /\Alocalhost\z/i, /\A::1\z/].freeze
 
     attr_accessor :storage_options, :collectors,
-                  :skip_paths, :slow_query_threshold, :max_queries_warning, :sql_backtrace,
+                  :slow_query_threshold, :max_queries_warning, :sql_backtrace,
                   :track_memory, :allocated_objects_warning_threshold,
                   :mcp_enabled, :mcp_transport, :mcp_port,
                   :authorization_mode, :extension_cors_enabled,
                   :cors_allowed_origins, :api_forgery_protection, :frame_ancestors,
                   :track_ajax, :ajax_skip_paths,
-                  :track_http, :slow_http_threshold, :http_skip_hosts, :http_backtrace_depth,
+                  :track_http, :slow_http_threshold, :http_backtrace_depth,
                   :track_jobs,
                   :track_console,
                   :apply_env_overrides_when_disabled, :restrict_storage_permissions,
@@ -148,7 +148,23 @@ module Profiler
       @tmp_path = value.nil? ? nil : Pathname.new(value)
     end
 
-    attr_reader :cluster_allowed_slave_urls, :mcp_allowed_hosts
+    attr_reader :cluster_allowed_slave_urls, :mcp_allowed_hosts, :skip_paths, :http_skip_hosts
+
+    # Paths that are not profiled: a Regexp matched against the path, or a String equal to it.
+    # A single pattern is a list of one.
+    def skip_paths=(value)
+      @skip_paths = Array(value)
+    end
+
+    # Hosts whose outbound calls are left out: a String is a host name, matched whole and
+    # case-insensitively, or, when it starts with a dot (".internal"), a domain whose subdomains
+    # are left out; a Regexp is matched against the host name. Any other entry (a wildcard
+    # "*.internal", an empty String, nil) is left out with a warning in the log, the others kept:
+    # the gem is loaded in production too, where a mistake here must not stop the application
+    # from booting.
+    def http_skip_hosts=(value)
+      @http_skip_hosts = Array(value).select { |entry| valid_http_skip_host?(entry) }
+    end
 
     # Host names the MCP HTTP endpoint accepts beyond the loopback ones and config.hosts: a String
     # (a host name, any port, or a host:port) or a Regexp anchored with \A and \z, matched
@@ -321,6 +337,22 @@ module Profiler
       when Regexp then validate_mcp_allowed_host_pattern(entry)
       else raise ArgumentError, "config.mcp_allowed_hosts: #{entry.inspect} must be a String or a Regexp"
       end
+    end
+
+    def valid_http_skip_host?(entry)
+      problem =
+        case entry
+        when Regexp then nil
+        when String
+          if entry.strip.empty? || entry.match?(/[*\s]/)
+            "is not a host name; list each host, a domain as \".internal\" for its subdomains, or use a Regexp"
+          end
+        else "must be a String or a Regexp"
+        end
+      return true unless problem
+
+      Profiler.log_warn("config.http_skip_hosts: #{entry.inspect} #{problem}; ignored")
+      false
     end
 
     def validate_mcp_allowed_host_pattern(pattern)

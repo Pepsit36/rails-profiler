@@ -76,6 +76,43 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
       expect(entries).to be_empty
     end
 
+    it "matches a String as the whole host name, not as a pattern" do
+      Profiler.configuration.http_skip_hosts = ["example.com"]
+
+      expect(described_class.skip_host?("example.com")).to be(true)
+      expect(described_class.skip_host?("EXAMPLE.com")).to be(true)
+      expect(described_class.skip_host?("notexample.com")).to be(false)
+      expect(described_class.skip_host?("exampleXcom")).to be(false)
+      expect(described_class.skip_host?("example.com.attacker.net")).to be(false)
+      expect(described_class.skip_host?("api.example.com")).to be(false)
+    end
+
+    it "matches a String starting with a dot as a domain, against its subdomains only" do
+      Profiler.configuration.http_skip_hosts = [".internal"]
+
+      expect(described_class.skip_host?("api.internal")).to be(true)
+      expect(described_class.skip_host?("a.b.Internal")).to be(true)
+      expect(described_class.skip_host?("internal")).to be(false)
+      expect(described_class.skip_host?("notinternal")).to be(false)
+      expect(described_class.skip_host?("api.internal.attacker.net")).to be(false)
+    end
+
+    it "still matches a Regexp as a pattern" do
+      Profiler.configuration.http_skip_hosts = [/\.example\.com\z/]
+
+      expect(described_class.skip_host?("api.example.com")).to be(true)
+      expect(described_class.skip_host?("example.com.attacker.net")).to be(false)
+    end
+
+    # A list changed in place (<<) is never validated: a String that is not a valid Regexp left
+    # every call of a profiled request failing with a RegexpError.
+    it "records the calls of a request whose list holds a wildcard String added in place" do
+      Profiler.configuration.http_skip_hosts << "*.internal"
+
+      expect { Net::HTTP.get(URI("http://127.0.0.1:#{@port}/neighbour")) }.not_to raise_error
+      expect(entries.map { |e| e["url"] }).to eq(["http://127.0.0.1:#{@port}/neighbour"])
+    end
+
     it "brings the former list back with LOCAL_HTTP_HOSTS" do
       Profiler.configuration.http_skip_hosts = Profiler::Configuration::LOCAL_HTTP_HOSTS
       Net::HTTP.get(URI("http://127.0.0.1:#{@port}/neighbour"))
