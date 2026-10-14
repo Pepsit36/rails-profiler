@@ -75,6 +75,27 @@ await page.addStyleTag({ content: '#console { display: none !important; }' })
 await page.waitForTimeout(1500)
 await panel(item('💥'), 'toolbar-panel-exception')
 
+// Turbo: a <turbo-frame> loaded with the page and a form answered with a Turbo Stream are
+// sub-requests of the page, shown with their kind. A Drive visit is the next page: not linked,
+// and the previous toolbar stops its update checks.
+const turboResp = await page.goto(`${MASTER}/orders/turbo`, { waitUntil: 'networkidle' })
+const turboToken = turboResp.headers()['x-profiler-token']
+await page.locator('#customer_card', { hasText: 'recent order' }).waitFor()
+await page.click('#refund_form button')
+await page.locator('#refund_status', { hasText: 'Refund' }).waitFor()
+await page.waitForTimeout(2500) // the links, then the toolbar refresh
+const turboKinds = async () => (await api(`toolbar/${turboToken}`)).profile.collectors_data.ajax.requests.map(r => r.turbo).join()
+if (await turboKinds() !== 'frame,stream') throw new Error(`Turbo sub-requests: ${await turboKinds()}`)
+await panel(item('XHR'), 'toolbar-panel-ajax-turbo')
+const oldPolls = []
+page.on('request', r => { if (r.url().includes(`/_profiler/api/events/${turboToken}`)) oldPolls.push(r.url()) })
+await page.mouse.move(640, 100)
+await page.click('#all_orders')
+await page.waitForURL(`${MASTER}/orders`)
+await page.waitForTimeout(9000) // longer than the update checks' interval
+if (await turboKinds() !== 'frame,stream') throw new Error(`Drive visit linked: ${await turboKinds()}`)
+if (oldPolls.length) throw new Error(`the previous toolbar still polls: ${oldPolls.length} requests`)
+
 const list = (await api('profiles?limit=100')).profiles
 const token = (path, method = 'GET') => list.find(p => p.path === path && p.method === method)?.token
 const show = async (tok, tab, name, after) => {
@@ -91,6 +112,7 @@ await show(checkout, 'request', 'tab-request')
 await show(checkout, 'dump', 'tab-dump')
 await show(token('/api/n_plus_one'), 'database', 'tab-database')
 await show(ordersToken, 'ajax', 'tab-ajax')
+await show(turboToken, 'ajax', 'tab-ajax-turbo')
 await show(checkout, 'http', 'tab-http', () => page.locator('.profiler-query-card, .profiler-http-card').first().click().catch(() => {}))
 await show(checkout, 'timeline', 'tab-flamegraph')
 await show(checkout, 'timeline', 'tab-function-profiling', () =>
