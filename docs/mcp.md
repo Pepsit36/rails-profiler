@@ -4,6 +4,204 @@ The Rails Profiler ships an [MCP (Model Context Protocol)](https://modelcontextp
 
 It has 21 tools and 7 resources, all listed below; `lib/profiler/mcp/server.rb` registers them.
 
+- [How it works](#how-it-works)
+- [Tools at a glance](#tools-at-a-glance)
+- [A real session: finding and fixing an N+1](#a-real-session-finding-and-fixing-an-n1)
+- [Setup](#setup)
+- [Tools](#tools) (reference) and [Resources](#resources)
+
+## How it works
+
+Without it, debugging a slow page with an assistant means copying the SQL tab, the logs or the
+response body into the conversation by hand, and choosing what to copy before knowing what
+matters. With it, the assistant lists the profiles itself, opens the one you are talking about,
+reads the sections it needs and comes back with the next question already answered: which query
+repeats, from which line, with which plan.
+
+### Two transports
+
+| | stdio | HTTP |
+|---|---|---|
+| What runs | a process the MCP client starts: `bundle exec rake profiler:mcp`, in the application's directory | the application itself, which answers at `/_profiler/mcp` |
+| Configuration | none | `config.mcp_enabled = true` and `config.mcp_transport = :http` |
+| Network | none: the client talks to the process over its standard input and output | an endpoint, behind the [checks below](#http-transport-alternative) |
+| Profiles it reads | the profile store, which must be shared with the running application | those of the running application |
+| `ENV` changes it makes | written to the store at once, applied by the running server at its next boot | applied at once in the running server |
+
+The stdio process boots your application (it is a rake task with the Rails environment) and
+reads the profiles from the configured store, so the store has to be one that other processes can
+read: `:file` (the default in development and test), `:sqlite` or `:redis`, configured to the
+same location as the server's. With `:memory`, the default outside development and test, it would
+see an empty store of its own: use the HTTP transport there. See [Storage](storage.md).
+
+### What the assistant can see and do
+
+- **Read** every profile the profiler stored: requests, background jobs, console expressions and
+  tests, section by section (the same data as the dashboard, after the
+  [masking](security.md#sensitive-data) applied when the profile was stored).
+- **Analyze** the SQL of a profile (N+1 patterns, duplicates, slow queries) and **explain** one of
+  its queries.
+- **Run** your test files and read the profiles they produce.
+- **Change** the application's `ENV` (set, delete, reset an override) and **clear** the stored
+  profiles.
+- With a [cluster](#cluster-masterslave), do all of this on any connected slave.
+
+### What it cannot do
+
+- **Query your database.** There is no tool that takes SQL. `explain_query` takes a profile token
+  and the index of a query that profile recorded, and only explains read-only statements, in a
+  transaction always rolled back; a write, or a query whose bind values were masked when captured,
+  is refused ([Explaining a query](usage.md#explaining-a-query)).
+- **Read or change your code.** It sees what a profile records: file names and line numbers in
+  backtraces, template names, logs. It cannot open a file or write one. An assistant that edits
+  your code (Claude Code, for example) does so with its own tools, not through this server.
+- **Make requests to your application.** It reads what was recorded: you, your browser, your jobs
+  or your tests produce the profiles. The only thing it can start is a test run, and `run_tests`
+  only accepts the test files the profiler discovered.
+- **See masked values.** Parameters matched by `config.filter_parameters` and `ENV` variables
+  outside `config.env_allowlist` are stored masked: the assistant gets the mask, not the value.
+
+### Security
+
+Over stdio, the server is only reachable by the client that started it. Over HTTP, every request
+goes through the same access control as the dashboard, plus host, origin and content type checks,
+listed under [HTTP transport](#http-transport-alternative). Remember that the write tools are part
+of the same server: whoever passes these checks can change `ENV`, clear profiles and run
+tests. Access control, masking and what is never applied in production are described in
+[Security](security.md).
+
+## Tools at a glance
+
+Every tool but `list_slaves` takes an optional `slave` parameter (see
+[Cluster](#cluster-masterslave)). The tools marked **write** change something; the others only
+read.
+
+| Use | Tools | Resources |
+|---|---|---|
+| Requests and profiles | [`query_profiles`](#query_profiles), [`get_profile`](#get_profile), [`get_profile_ajax`](#get_profile_ajax), [`get_profile_http`](#get_profile_http), [`get_profile_dumps`](#get_profile_dumps), [`get_profile_mailers`](#get_profile_mailers), [`query_mailers`](#query_mailers), [`clear_profiles`](#clear_profiles) (**write**) | `profiler://recent` |
+| SQL | [`analyze_queries`](#analyze_queries), [`explain_query`](#explain_query) | `profiler://slow-queries`, `profiler://n1-patterns` |
+| Background jobs | [`query_jobs`](#query_jobs), then `get_profile` on a job's token | `profiler://recent-jobs` |
+| Tests | [`query_test_profiles`](#query_test_profiles), [`get_test_profile`](#get_test_profile), [`run_tests`](#run_tests) (**write**: runs your test files) | `profiler://slow-tests`, `profiler://failing-tests` |
+| Console | [`query_console_profiles`](#query_console_profiles) | `profiler://recent-console` |
+| `ENV` variables | [`list_env_vars`](#list_env_vars), [`set_env_var`](#set_env_var) (**write**), [`delete_env_var`](#delete_env_var) (**write**), [`reset_env_var`](#reset_env_var) (**write**), [`reset_all_env_vars`](#reset_all_env_vars) (**write**) | |
+| Cluster | [`list_slaves`](#list_slaves), and the `slave` parameter of every other tool | |
+
+Most tools that take a profile token also accept `"latest"` for the most recent profile;
+`explain_query` does not, it needs the token itself.
+
+## A real session: finding and fixing an N+1
+
+Everything below was produced against the demo application of the screenshots
+([docs/screenshots](screenshots/README.md)), whose `/api/n_plus_one` endpoint loads ten posts and
+then each post's author, one query at a time. The tool calls are the ones an assistant makes for a
+question such as *"`/api/n_plus_one` feels slow, can you find out why and fix it?"*. They were
+made with the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) command line
+client over the stdio transport, so that anyone can replay them:
+[`docs/screenshots/mcp-session.sh`](screenshots/mcp-session.sh) does it end to end. The responses
+are the text the tools returned, shortened where marked with `[...]`; timings and tokens change
+from one run to the next.
+
+**1. Find the request.** `query_profiles` with `path: "/api/n_plus_one"`, `limit: 1`:
+
+~~~text
+| Time | Type | Method | Path | Duration | Queries | Status | Token |
+|------|------|------|------|------|------|------|------|
+| 2026-10-13 22:40:47 | http | GET | /api/n_plus_one | 138.64ms | 11 | 200 | 06285ac8035f1a12f6177649d00b0a63 |
+~~~
+
+Eleven queries for one JSON list is the first hint.
+
+**2. Analyze its SQL.** `analyze_queries` with that token:
+
+~~~text
+## ⚠️ Duplicate Queries (Potential N+1)
+Found 1 query pattern(s) repeated 3+ times:
+
+### Executed 10 times:
+```sql
+SELECT ?.* FROM ? WHERE ?.? = ? LIMIT ?
+```
+#### Called from:
+  app/controllers/api_test_controller.rb:82:in `block in ApiTestController#n_plus_one`
+  app/controllers/api_test_controller.rb:80:in `Array#map`
+  app/controllers/api_test_controller.rb:80:in `ApiTestController#n_plus_one`
+
+## Summary Statistics
+- **Total Queries:** 11
+- **Total Duration:** 3.82ms
+[...]
+- **N+1 Patterns (≥3×):** 1
+~~~
+
+**3. Look at the queries themselves.** `get_profile` with `sections: ["database"]` shows which
+query repeats, and that it comes from line 82:
+
+~~~text
+**Query 1** (1.76ms):
+```sql
+SELECT "posts".* FROM "posts"
+```
+_Backtrace:_
+  app/controllers/api_test_controller.rb:78:in `ApiTestController#n_plus_one`
+
+**Query 2** (0.29ms):
+```sql
+SELECT "authors".* FROM "authors" WHERE "authors"."id" = ? LIMIT ?
+```
+_Backtrace:_
+  app/controllers/api_test_controller.rb:82:in `block in ApiTestController#n_plus_one`
+[...]
+~~~
+
+**4. Explain the repeated query.** `get_profile` numbers the queries from 1, `explain_query`
+counts from 0: "Query 2" is `query_index: 1`. On SQLite the plan is `EXPLAIN QUERY PLAN`'s:
+
+~~~text
+Adapter: `sqlite`
+
+```
+3	0	33	SEARCH authors USING INTEGER PRIMARY KEY (rowid=?)
+```
+~~~
+
+Each lookup already uses the primary key: no index is missing, the cost is the number of
+round trips. The fix is to load the authors together with the posts.
+
+**5. Fix it.** Line 78 of the controller:
+
+```diff
+-    posts = Post.all.to_a
++    posts = Post.includes(:author).to_a
+```
+
+**6. Check.** After one more request to `/api/n_plus_one` (Rails reloads the controller in
+development), `analyze_queries` with `token: "latest"` and `summary_only: true`:
+
+~~~text
+## Summary Statistics
+- **Total Queries:** 2
+- **Total Duration:** 2.26ms
+[...]
+- **N+1 Patterns (≥3×):** 0
+~~~
+
+and `get_profile` shows the two queries left:
+
+~~~text
+**Query 1** (2.07ms):
+```sql
+SELECT "posts".* FROM "posts"
+```
+[...]
+**Query 2** (0.19ms):
+```sql
+SELECT "authors".* FROM "authors" WHERE "authors"."id" IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+```
+~~~
+
+From eleven queries to two. The durations of a demo application with ten rows say little; on a
+real page, the number of round trips is what grows with the data.
+
 ## Setup
 
 ### 1. Pick a transport
@@ -209,15 +407,15 @@ Get the full detail of a specific profile. Use `"latest"` as token to get the mo
 | `log_min_level` | string | Minimum log level when using the `logs` section: `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL` |
 | `env_filter` | string | Required when using the `env` section: case-insensitive substring filter on ENV key name (e.g. `"RAILS"`, `"DATABASE"`) |
 | `save_bodies` | boolean | Save request/response bodies to temp files; return paths instead of inline content |
-| `max_body_size` | number | Truncate inline body at N characters |
-| `json_path` | string | JSONPath expression to extract from response body (e.g. `$.data.items[0]`) |
-| `xml_path` | string | XPath expression to extract from response body |
+| `max_body_size` | number | Truncate inline body at N characters. Ignored when the body is saved (`save_bodies`) |
+| `json_path` | string | JSONPath expression to extract from response body (e.g. `$.data.items[0]`). Only applied with `save_bodies: true` |
+| `xml_path` | string | XPath expression to extract from response body. Only applied with `save_bodies: true` |
 | `slave` | string | Name of a connected slave profiler to query |
 
 **Example prompts:**
 > "Show me the full details of the latest request"
 > "Get the database queries section for token abc123"
-> "Get the response body of the latest profile, extract $.users[0]"
+> "Save the response body of the latest profile and extract $.users[0]"
 > "Show me the Rails logs from the latest request (WARN and above)"
 > "Which ENV variables starting with REDIS were active during this request?"
 > "Are there any missing i18n translations in the latest profile?"
@@ -250,8 +448,8 @@ transaction always rolled back; any other query returns an error. See
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `token` | string | Profile token or `"latest"` **(required)** |
-| `query_index` | integer | Zero-based index of the query in the profile **(required)** |
+| `token` | string | Profile token **(required)**. `"latest"` is not accepted: take the token from `query_profiles` |
+| `query_index` | integer | Zero-based index of the query in the profile **(required)**. `get_profile` numbers the queries from 1: its "Query 3" is `query_index: 2` |
 
 **Example prompts:**
 > "Run EXPLAIN on query #3 from the latest profile"
@@ -292,9 +490,9 @@ Get outbound HTTP request details for a profile (external API calls made via Net
 | `token` | string | Profile token or `"latest"` **(required)** |
 | `domain` | string | Filter by domain substring (e.g. `"stripe.com"`) |
 | `save_bodies` | boolean | Save bodies to temp files |
-| `max_body_size` | number | Truncate inline body at N characters |
-| `json_path` | string | JSONPath to extract from response bodies |
-| `xml_path` | string | XPath to extract from response bodies |
+| `max_body_size` | number | Truncate inline body at N characters. Ignored when the body is saved (`save_bodies`) |
+| `json_path` | string | JSONPath to extract from response bodies. Only applied with `save_bodies: true` |
+| `xml_path` | string | XPath to extract from response bodies. Only applied with `save_bodies: true` |
 
 **Example prompts:**
 > "What external APIs were called during the latest request?"
