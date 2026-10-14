@@ -3,9 +3,9 @@
 require "spec_helper"
 require "yaml"
 
-# Guards the two pipeline decisions that cannot be checked by running anything:
-# which branches the [Unreleased] check applies to, and how long the compiled
-# assets stay available for a release re-run.
+# Guards the pipeline decisions that cannot be checked by running anything:
+# which branches the [Unreleased] check applies to, how long the compiled assets
+# stay available for a release re-run, and what a publication waits for.
 RSpec.describe ".gitlab-ci.yml" do
   let(:config) { YAML.safe_load(File.read(File.expand_path("../.gitlab-ci.yml", __dir__))) }
   let(:changelog_check) { config.fetch("changelog:check") }
@@ -64,6 +64,31 @@ RSpec.describe ".gitlab-ci.yml" do
 
   it "keeps the build artifacts around long enough for a release re-run" do
     expect(config.fetch("build").fetch("artifacts").fetch("expire_in")).to eq("1 week")
+  end
+
+  # A job with `needs` starts as soon as the jobs it lists succeed, whatever its
+  # stage. Without both suites listed here, the only thing holding a publication
+  # back after a red suite would be that `build` has no `needs` of its own.
+  %w[release canary].each do |job|
+    it "publishes from #{job} only after both suites, the build and the package check" do
+      expect(config.fetch(job).fetch("needs")).to contain_exactly("rspec", "rspec:ruby3.4", "build", "package:check")
+    end
+
+    # A `needs` naming a job absent from the pipeline makes GitLab refuse to
+    # create the pipeline at all.
+    it "needs only jobs that run in every pipeline #{job} runs in" do
+      config.fetch(job).fetch("needs").each do |needed|
+        expect(config.fetch(needed)).not_to include("rules", "only", "except")
+      end
+    end
+  end
+
+  it "checks the installed gem between the build and the publication" do
+    package_check = config.fetch("package:check")
+    expect(config.fetch("stages")).to eq(%w[test build package publish])
+    expect(package_check.fetch("stage")).to eq("package")
+    expect(package_check.fetch("needs")).to eq(["build"])
+    expect(package_check.fetch("script")).to eq(["ruby script/check-gem-package"])
   end
 
   it "serialises releases and drives them from the versioned script" do

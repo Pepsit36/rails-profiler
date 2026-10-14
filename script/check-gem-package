@@ -1,0 +1,63 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Builds the gem from profiler.gemspec, installs it into a throwaway directory,
+# and checks that every file the gem reads from its own tree at run time came
+# along. A file left out of spec.files fails nothing at build time, and the code
+# reading it rescues the error: the feature just goes silent for every user of
+# the published gem.
+#
+# Standard library only, like bin/changelog: the `package:check` CI job runs it
+# from a plain ruby image, without bundle install.
+#
+#   script/check-gem-package                 the CI check, compiled assets included
+#   script/check-gem-package --skip-builds   leaves out app/assets/builds, which
+#                                            only the `build` CI job fills
+
+require "rbconfig"
+require "tmpdir"
+
+ROOT = File.expand_path("..", __dir__)
+
+# Read by Profiler::Middleware::ToolbarInjector#ajax_interceptor_code.
+SOURCE_ASSETS = %w[
+  app/assets/javascript/profiler-ajax-interceptor.js
+].freeze
+
+# Served by Profiler::AssetsController, compiled by the `build` CI job.
+BUILT_ASSETS = %w[
+  app/assets/builds/profiler.js
+  app/assets/builds/profiler-toolbar.js
+  app/assets/builds/profiler.css
+].freeze
+
+skip_builds = ARGV.delete("--skip-builds")
+abort "usage: script/check-gem-package [--skip-builds]" unless ARGV.empty?
+required = skip_builds ? SOURCE_ASSETS : SOURCE_ASSETS + BUILT_ASSETS
+
+gem_command = File.join(RbConfig::CONFIG["bindir"], "gem")
+
+Dir.mktmpdir("check-gem-package") do |tmp|
+  gem_file = File.join(tmp, "rails-profiler.gem")
+  install_dir = File.join(tmp, "install")
+
+  Dir.chdir(ROOT) { system(gem_command, "build", "profiler.gemspec", "--output", gem_file, exception: true) }
+  # Installed the way a user gets it, from the .gem alone. The dependencies are
+  # left out: only the files of this gem are looked at, and no network is needed.
+  system(gem_command, "install", gem_file, "--local", "--ignore-dependencies", "--no-document",
+         "--install-dir", install_dir, exception: true)
+
+  gem_dir = Dir.glob(File.join(install_dir, "gems", "rails-profiler-*")).first
+  abort "ERROR: rails-profiler was not installed into #{install_dir}." unless gem_dir
+
+  missing = required.reject { |path| File.size?(File.join(gem_dir, path)) }
+  if missing.empty?
+    puts "The installed gem carries its #{required.size} run time asset(s)."
+  else
+    warn "ERROR: the installed gem is missing, or carries empty, run time asset(s):"
+    missing.each { |path| warn "  #{path}" }
+    warn "Add them to spec.files in profiler.gemspec." unless (missing - BUILT_ASSETS).empty?
+    warn "app/assets/builds is filled by the `build` CI job: is its artifact there?" unless (missing & BUILT_ASSETS).empty?
+    exit 1
+  end
+end

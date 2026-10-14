@@ -1,6 +1,7 @@
 stages:
   - test
   - build
+  - package
   - publish
 
 rspec:
@@ -69,10 +70,29 @@ build:
     # the release refuses to build a gem without compiled assets.
     expire_in: 1 week
 
+# Builds the gem with the compiled assets of `build`, installs it into a throwaway
+# directory and checks that every file the gem reads from its own tree at run time
+# is in it. A file missing from spec.files fails nothing else: the code reading it
+# rescues the error, and the feature goes silent for every user of the gem.
+package:check:
+  stage: package
+  image: ruby:3.3
+  needs: [build]
+  script:
+    - ruby script/check-gem-package
+
 canary:
   stage: publish
   image: ruby:3.3
-  needs: [build]
+  # Written out rather than left to the stage order: a job with `needs` starts as
+  # soon as the jobs it lists succeed, whatever its stage. Today `build` has no
+  # `needs`, so it waits for the whole test stage and nothing publishes after a
+  # red suite; giving `build` a `needs` one day would silently lift that.
+  needs:
+    - rspec
+    - rspec:ruby3.4
+    - build
+    - package:check
   variables:
     GIT_DEPTH: "0"
   rules:
@@ -95,7 +115,12 @@ canary:
 release:
   stage: publish
   image: ruby:3.3
-  needs: [build]
+  # The same gate as canary, for the same reason.
+  needs:
+    - rspec
+    - rspec:ruby3.4
+    - build
+    - package:check
   # One release at a time: the job tags the merged commit and pushes that tag.
   resource_group: release
   variables:
