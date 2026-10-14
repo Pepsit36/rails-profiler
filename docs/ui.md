@@ -79,9 +79,12 @@ started.
 ![Database panel](screenshots/toolbar-panel-database.png)
 
 **AJAX**: request count and total time, then the first 10 requests with their method, path,
-status and duration.
+status and duration. A request made by Turbo for a `<turbo-frame>` carries a `FRAME` badge, one
+answered with Turbo Stream actions a `STREAM` badge (see the [AJAX tab](#ajax-tab)).
 
 ![AJAX panel](screenshots/toolbar-panel-ajax.png)
+
+![AJAX panel of a Turbo page](screenshots/toolbar-panel-ajax-turbo.png)
 
 **Views**: total render time, then every template and every partial with its duration.
 
@@ -305,10 +308,27 @@ Lists the requests the page made with `fetch()` or `XMLHttpRequest` after it loa
 it reads the `X-Profiler-Token` header of every answer and links that profile to the page
 (`POST /_profiler/api/ajax/link`). The profiler's own `/_profiler` requests are left out.
 
+Turbo (Hotwire, 7 and 8) makes its requests with `fetch()`, so they go through the same script:
+
+- a `<turbo-frame>` load, or a link or form aimed at a frame, is linked to the page and shown
+  with a `FRAME` badge (Turbo sends the frame's id in the `Turbo-Frame` header, kept in the
+  Request tab of its profile);
+- a request answered with Turbo Stream actions (`text/vnd.turbo-stream.html`), such as a form
+  submission, is linked and shown with a `STREAM` badge;
+- a Turbo Drive visit, a link prefetched on hover, or a form submission answered with a page is
+  not linked: it is the next page, which has its own profile and its own toolbar. The toolbar of
+  the previous page is taken down when Drive renders the new one, and the requests the new page
+  makes are linked to it.
+
+Turbo Streams received over a WebSocket (`turbo_stream_from`) are not HTTP requests and are not
+listed.
+
+![AJAX tab of a Turbo page](screenshots/tab-ajax-turbo.png)
+
 - **Summary**: number of requests, total and average duration
 - **By Method** and **By Status**: counts per HTTP verb and per status class
-- **Requests**: method, path, status, duration and time of each one, with **View Profile** to
-  open its own profile
+- **Requests**: method, path, status, duration and time of each one, its `FRAME` or `STREAM`
+  badge for a Turbo request, with **View Profile** to open its own profile
 
 The tab is computed when the page is shown, from the requests linked to it, so it appears as soon
 as one is linked, after the page itself was saved. The jobs a page enqueued are listed in the

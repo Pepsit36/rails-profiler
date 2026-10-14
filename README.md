@@ -17,7 +17,8 @@ timeline with function profiling, and an MCP server for AI-assisted debugging.
   `stackprof` gem or traced in full
 - **View Rendering**: template and partial rendering times
 - **Cache Monitoring**: hit and miss rates, reads, writes, deletes
-- **AJAX Tracking**: the `fetch()` and `XMLHttpRequest` calls of a page, linked to it
+- **AJAX Tracking**: the `fetch()` and `XMLHttpRequest` calls of a page, linked to it, Turbo
+  Frame and Turbo Stream requests included
 - **Outbound HTTP Tracking**: external API calls via `Net::HTTP`, bodies included
 - **Mailers**: every mail delivered or queued, with its body on demand
 - **Log Capture**: Rails logger output per request with level filtering

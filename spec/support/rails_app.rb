@@ -27,6 +27,15 @@ module ProfilerSpecApp
     routes.append do
       mount Profiler::Engine, at: "/_profiler"
       get "/hello", to: ->(_env) { [200, { "content-type" => "text/html" }, ["<html><body>hi</body></html>"]] }
+      # What a Turbo Frame and a Turbo Stream request get back from turbo-rails.
+      get "/turbo/frame", to: ->(_env) {
+        [200, { "content-type" => "text/html; charset=utf-8" },
+         [%(<html><body><turbo-frame id="customer_card">Jane Example</turbo-frame></body></html>)]]
+      }
+      post "/turbo/stream", to: ->(_env) {
+        [200, { "content-type" => "text/vnd.turbo-stream.html; charset=utf-8" },
+         [%(<turbo-stream action="update" target="refund_status"><template>Queued</template></turbo-stream>)]]
+      }
     end
   end
 end
