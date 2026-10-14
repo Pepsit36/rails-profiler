@@ -23,14 +23,18 @@ export function JobsTab({ jobs }: Props) {
         <div key={index} class={`profiler-ajax-card profiler-ajax-card--${job.status === 'completed' ? 'success' : job.status === 'failed' ? 'error' : 'default'}`}>
           <div class="profiler-ajax-card__row">
             <div class="profiler-flex profiler-flex--gap-3">
-              <span class={`badge-${job.status === 'completed' ? 'success' : job.status === 'failed' ? 'error' : 'warning'}`}>
+              <span class={`badge-${job.status === 'completed' ? 'success' : job.status === 'failed' ? 'error' : job.status === 'running' ? 'info' : 'warning'}`}>
                 {job.status ?? 'unknown'}
               </span>
               <strong class="profiler-ajax-card__path">{job.job_class}</strong>
             </div>
-            <span class={job.duration >= 1000 ? 'badge-error' : job.duration >= 200 ? 'badge-warning' : 'badge-success'}>
-              {job.duration?.toFixed(2)} ms
-            </span>
+            {job.status === 'running' ? (
+              <span class="badge-info">running</span>
+            ) : (
+              <span class={job.duration >= 1000 ? 'badge-error' : job.duration >= 200 ? 'badge-warning' : 'badge-success'}>
+                {job.duration?.toFixed(2)} ms
+              </span>
+            )}
           </div>
           <div class="profiler-ajax-card__row">
             <span class="profiler-ajax-card__time profiler-text--muted">

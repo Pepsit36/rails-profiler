@@ -37,7 +37,8 @@ every commit of every tag interval is accounted for one way or the other.
 - **Jobs:** a job that is still running is shown as running, in the JOB panel of the toolbar and
   in the Background Jobs list of `/_profiler`: a turning ◐ with `running` and no duration, a blue
   **Running** badge in the list, instead of a green check mark and a duration of 0 ms that read as
-  an instant success. The JOB item of the toolbar is blue while one of its jobs runs, the list has
+  an instant success. The page of the job itself and the Jobs tab of a profile do the same: a blue
+  **Running** badge and no duration. The JOB item of the toolbar is blue while one of its jobs runs, the list has
   a **Running** status filter, and its **Completed** filter no longer includes running jobs. The
   `status` filter of the MCP tool `query_jobs` accepts `running`. A job killed while it performs
   (`SIGKILL`, out of memory, container stopped) never records its end, so it stays `running` in the
