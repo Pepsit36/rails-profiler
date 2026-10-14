@@ -92,4 +92,3 @@ applies the fix to the demo copy of the controller and puts the original line ba
   its bottom (`#console`), which would otherwise cover the panel.
 - The EVT item of the toolbar (and its Events panel) needs data that no collector has written
   since 0.9.1: it never shows, and has no image.
-

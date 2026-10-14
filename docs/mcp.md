@@ -26,13 +26,16 @@ repeats, from which line, with which plan.
 | Configuration | none | `config.mcp_enabled = true` and `config.mcp_transport = :http` |
 | Network | none: the client talks to the process over its standard input and output | an endpoint, behind the [checks below](#http-transport-alternative) |
 | Profiles it reads | the profile store, which must be shared with the running application | those of the running application |
-| `ENV` changes it makes | written to the store at once, applied by the running server at its next boot | applied at once in the running server |
+| `ENV` changes it makes | written at once to `env_overrides.json` under `tmp_path`, applied by the running server at its next boot | applied at once in the running server |
 
 The stdio process boots your application (it is a rake task with the Rails environment) and
 reads the profiles from the configured store, so the store has to be one that other processes can
 read: `:file` (the default in development and test), `:sqlite` or `:redis`, configured to the
 same location as the server's. With `:memory`, the default outside development and test, it would
-see an empty store of its own: use the HTTP transport there. See [Storage](storage.md).
+see an empty store of its own: use the HTTP transport there. See [Storage](storage.md). The process
+also gets only the environment its client gives it: the MCP Inspector, for one, passes on a few
+variables such as `PATH` and drops the others, so a store configured from an environment variable
+needs `-e KEY=VALUE` after the command.
 
 ### What the assistant can see and do
 
@@ -98,8 +101,8 @@ question such as *"`/api/n_plus_one` feels slow, can you find out why and fix it
 made with the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) command line
 client over the stdio transport, so that anyone can replay them:
 [`docs/screenshots/mcp-session.sh`](screenshots/mcp-session.sh) does it end to end. The responses
-are the text the tools returned, shortened where marked with `[...]`; timings and tokens change
-from one run to the next.
+are excerpts of the text the tools returned: headings and footers are left out, and cuts in the
+middle are marked with `[...]`; timings and tokens change from one run to the next.
 
 **1. Find the request.** `query_profiles` with `path: "/api/n_plus_one"`, `limit: 1`:
 
@@ -646,7 +649,7 @@ Clear profiler history.
 
 ## ENV Variables
 
-These tools let you override Rails `ENV` variables at runtime without restarting the app. Overrides are persisted across restarts until explicitly reset.
+These tools let you override Rails `ENV` variables without restarting the app when the MCP server runs over HTTP, inside the app. Over stdio, the override is recorded at once but the running app applies it at its next boot (see [Two transports](#two-transports)). Overrides are persisted across restarts until explicitly reset.
 
 ### `list_env_vars`
 
@@ -700,7 +703,7 @@ Restore a single overridden environment variable to its original value.
 
 ### `reset_all_env_vars`
 
-Restore all overridden environment variables to their original values. Takes no parameters.
+Restore all overridden environment variables to their original values. Takes no parameter other than `slave`.
 
 ---
 
