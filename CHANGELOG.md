@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.32.3] - 2026-10-14
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Jobs:** the toolbar of a request now sees the jobs it enqueued start and end after its
