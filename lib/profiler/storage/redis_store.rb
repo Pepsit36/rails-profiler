@@ -28,6 +28,9 @@ module Profiler
       # of an earlier version) is removed by one process, under a lock, by batches of INDEX_BATCH.
       EVICT_BATCH = 100
       EVICT_LOCK_SECONDS = 60
+      # A page that held expired profiles is read again, once they are out of the indexes, at
+      # most this many times.
+      LIST_REPAIRS = 3
       # Deletes a lock only while it still holds the value its owner set: one that expired and was
       # taken by another process is left to it.
       RELEASE_LOCK = <<~LUA
@@ -50,7 +53,8 @@ module Profiler
         data = profile.to_h
         unindex(token, read_summary(token))
         @redis.setex(profile_key(token), @ttl, data.to_json)
-        index(token, profile.started_at.to_f, Summary.build(data))
+        @redis.pipelined { |pipe| index(token, profile.started_at.to_f, Summary.build(data), client: pipe) }
+        prune_expired
         evict_first_saved(token)
         token
       end
@@ -68,19 +72,18 @@ module Profiler
         nil
       end
 
-      # Newest first. summary: true reads the summaries only.
+      # Newest first. summary: true reads the summaries only. The profiles found expired are taken
+      # out of the indexes and the page read again, for it to hold limit profiles when there are.
       def list(limit: 50, offset: 0, type: nil, summary: false)
         ensure_index
-        tokens = @redis.zrevrange(type ? type_list_key(type) : list_key, offset, offset + limit - 1)
-        return tokens.filter_map { |token| load(token) } unless summary
+        key = type ? type_list_key(type) : list_key
+        LIST_REPAIRS.times do
+          page, expired = list_page(key, offset, limit, summary)
+          return page if expired.empty?
 
-        summaries = tokens.empty? ? [] : @redis.mget(*tokens.map { |token| summary_key(token) })
-        tokens.zip(summaries).filter_map do |token, json|
-          next Summary.to_profile(JSON.parse(json)) if json
-
-          profile = load(token)
-          profile && Summary.to_profile(Summary.build(profile))
+          remove_tokens(expired)
         end
+        list_page(key, offset, limit, summary).first
       end
 
       def cleanup(older_than: 24 * 60 * 60)
@@ -118,6 +121,46 @@ module Profiler
         Redis.new(url: url)
       end
 
+      # The page at offset, and the tokens of it whose profile has expired.
+      def list_page(key, offset, limit, summary)
+        tokens = @redis.zrevrange(key, offset, offset + limit - 1)
+        return [[], []] if tokens.empty?
+
+        expired = []
+        page = if summary
+          summaries = @redis.mget(*tokens.map { |token| summary_key(token) })
+          tokens.zip(summaries).filter_map do |token, json|
+            next Summary.to_profile(JSON.parse(json)) if json
+
+            profile = load(token)
+            expired << token if profile.nil? && !@redis.exists?(profile_key(token))
+            profile && Summary.to_profile(Summary.build(profile))
+          end
+        else
+          profiles = @redis.mget(*tokens.map { |token| profile_key(token) })
+          tokens.zip(profiles).filter_map do |token, json|
+            if json.nil?
+              expired << token
+              next
+            end
+
+            Models::Profile.from_json(json)
+          rescue => e
+            Profiler.log_error("RedisStore: could not load profile #{token}", e)
+            nil
+          end
+        end
+        [page, expired]
+      end
+
+      # A profile expires a TTL after its last save, with its keys, and Redis says nothing to the
+      # indexes: the tokens saved before that are taken out of them at each save. The indexes
+      # themselves expire a TTL after the last save, when every profile they list has.
+      def prune_expired
+        expired = @redis.zrangebyscore(saved_key, "-inf", Time.now.to_f - @ttl)
+        expired.each_slice(INDEX_BATCH) { |tokens| remove_tokens(tokens) }
+      end
+
       # score: the start time, the order of the lists. saved_at: the order of the saves, which the
       # eviction follows.
       def index(token, score, summary, saved_at: Time.now.to_f, client: @redis)
@@ -128,6 +171,7 @@ module Profiler
         client.zadd(type_list_key(type), score, token)
         client.zadd(saved_key, saved_at, token)
         client.sadd(types_key, type)
+        [list_key, type_list_key(type), saved_key, types_key].each { |key| client.expire(key, @ttl) }
         return unless Token.valid?(parent)
 
         client.sadd(children_key(parent), token)
