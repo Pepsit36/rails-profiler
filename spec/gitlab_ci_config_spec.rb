@@ -5,7 +5,7 @@ require "yaml"
 
 # Guards the pipeline decisions that cannot be checked by running anything:
 # which branches the [Unreleased] check applies to, how long the compiled assets
-# stay available for a release re-run, and where the built gem is checked.
+# stay available for a release re-run, and what a publication waits for.
 RSpec.describe ".gitlab-ci.yml" do
   let(:config) { YAML.safe_load(File.read(File.expand_path("../.gitlab-ci.yml", __dir__))) }
   let(:changelog_check) { config.fetch("changelog:check") }
@@ -64,6 +64,23 @@ RSpec.describe ".gitlab-ci.yml" do
 
   it "keeps the build artifacts around long enough for a release re-run" do
     expect(config.fetch("build").fetch("artifacts").fetch("expire_in")).to eq("1 week")
+  end
+
+  # A job with `needs` starts as soon as the jobs it lists succeed, whatever its
+  # stage. Without both suites listed here, the only thing holding a publication
+  # back after a red suite would be that `build` has no `needs` of its own.
+  %w[release canary].each do |job|
+    it "publishes from #{job} only after both suites, the build and the package check" do
+      expect(config.fetch(job).fetch("needs")).to contain_exactly("rspec", "rspec:ruby3.4", "build", "package:check")
+    end
+
+    # A `needs` naming a job absent from the pipeline makes GitLab refuse to
+    # create the pipeline at all.
+    it "needs only jobs that run in every pipeline #{job} runs in" do
+      config.fetch(job).fetch("needs").each do |needed|
+        expect(config.fetch(needed)).not_to include("rules", "only", "except")
+      end
+    end
   end
 
   it "checks the installed gem between the build and the publication" do

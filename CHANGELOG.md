@@ -27,6 +27,10 @@ every commit of every tag interval is accounted for one way or the other.
   registry, those requests were never linked to their page, and the only trace was the log line
   `ToolbarInjector: could not load the AJAX interceptor script`. A gem used from a git checkout or
   a local path was not affected.
+- **Release:** A version is now published only once both test suites (Ruby 3.3 and 3.4) have
+  passed, as written in the `needs` of the `release` and `canary` jobs, and once the built gem
+  has been installed and found to carry every file it reads at run time. The suites already held
+  publication back before, but only through the order of the pipeline stages.
 
 ## [0.33.0] - 2026-10-14
 
