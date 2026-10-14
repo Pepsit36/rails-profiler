@@ -372,13 +372,7 @@ module Profiler
       def read_buffered_body(body)
         content =
           begin
-            if body.respond_to?(:to_ary)
-              body.to_ary.join
-            else
-              parts = +""
-              body.each { |part| parts << part }
-              parts
-            end
+            join_parts(body.respond_to?(:to_ary) ? body.to_ary : body)
           rescue Exception # rubocop:disable Lint/RescueException
             begin
               close_body(body)
@@ -389,6 +383,20 @@ module Profiler
           end
         close_body(body)
         content
+      end
+
+      # The fragments' bytes, joined as they are: fragments of different encodings (a binary one
+      # among UTF-8 ones) cannot be joined as text, and converting them would change the page.
+      # The result takes the encoding of the first fragment, as CapturingBody does.
+      def join_parts(parts)
+        content = String.new(encoding: Encoding::BINARY)
+        encoding = nil
+        parts.each do |part|
+          part = part.to_s
+          encoding ||= part.encoding
+          content << part.b
+        end
+        content.force_encoding(encoding || Encoding::UTF_8)
       end
 
       def close_body(body)

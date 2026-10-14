@@ -60,7 +60,7 @@ RSpec.describe "Profiler.dump outside a profile" do
 
     profile = Profiler.storage.load(last_response.headers["X-Profiler-Token"])
     dumps = profile.collectors_data["dump"]["dumps"]
-    expect(dumps.map { |d| d["value"] }).to eq(["/profiled"])
+    expect(dumps.map { |d| d["formatted"] }).to eq(['"/profiled"'])
   end
 
   it "keeps nothing from a test profile, which has no dump collector" do

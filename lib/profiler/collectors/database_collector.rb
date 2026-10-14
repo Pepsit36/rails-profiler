@@ -9,6 +9,8 @@ module Profiler
       BACKTRACE_DEPTH = 10
       MAX_SCANNED_FRAMES = 100
       FRAMES_PAST_APPLICATION = 15
+      # What a bind holding bytes that are not text shows instead (see #displayable_bind).
+      BINARY_BIND = "[binary data, %d bytes]"
 
 
       # Frames between the application's code and the subscriber: the profiler itself, the
@@ -122,14 +124,26 @@ module Profiler
         binds.map do |bind|
           if bind.respond_to?(:value)
             name = bind.name if bind.respond_to?(:name)
-            Profiler::Redaction.filter_named(name, bind.value)
+            displayable_bind(Profiler::Redaction.filter_named(name, bind.value))
           else
-            bind
+            displayable_bind(bind)
           end
         end
       rescue StandardError
         # Never let the profiler raise into the application's query.
         binds.map { Profiler::Redaction::MASK }
+      end
+
+      # A blob or bytea value is bytes, not text: kept as it is, it fails the JSON of the whole
+      # profile when it is saved. Bytes that are valid UTF-8 are shown as text, others as their
+      # size. Text in another encoding stays as it is: JSON converts it.
+      def displayable_bind(value)
+        value = value.to_s if defined?(ActiveModel::Type::Binary::Data) && value.is_a?(ActiveModel::Type::Binary::Data)
+        return value unless value.is_a?(String)
+        return value if value.valid_encoding? && value.encoding != Encoding::BINARY
+
+        utf8 = value.dup.force_encoding(Encoding::UTF_8)
+        utf8.valid_encoding? ? utf8 : format(BINARY_BIND, value.bytesize)
       end
 
       # Capturing the caller costs tens of microseconds. The first run of a statement locates

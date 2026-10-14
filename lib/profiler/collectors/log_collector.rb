@@ -68,7 +68,7 @@ module Profiler
 
           entry = {
             level: SEVERITY_LABELS[severity] || "UNKNOWN",
-            message: msg.to_s.strip,
+            message: self.class.readable(msg.to_s).strip,
             timestamp: Time.now.iso8601(3)
           }
           logs.respond_to?(:record) ? logs.record(entry) : logs << entry
@@ -77,6 +77,20 @@ module Profiler
 
         def <<(msg)
           add(0, msg.to_s)
+        end
+
+        # The line as valid UTF-8, a copy when it has to change: bytes that are not text in its
+        # encoding would raise in strip, inside the application's own logger call, or fail the
+        # JSON of the profile when it is saved. Binary bytes are read as UTF-8; a line in another
+        # encoding is converted. What cannot be read becomes U+FFFD.
+        def self.readable(text)
+          return text if text.encoding == Encoding::UTF_8 && text.valid_encoding?
+
+          if [Encoding::UTF_8, Encoding::BINARY, Encoding::US_ASCII].include?(text.encoding)
+            text.dup.force_encoding(Encoding::UTF_8).scrub
+          else
+            text.encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
+          end
         end
       end
 

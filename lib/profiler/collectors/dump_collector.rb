@@ -33,9 +33,10 @@ module Profiler
         dumps = @dumps || Thread.current[:profiler_dumps] || []
         unsubscribe
 
+        # Only the formatted text is kept: the object itself can refer to itself, or hold what
+        # JSON cannot write, and would make the profile fail when it is saved.
         formatted_dumps = dumps.map do |dump|
           {
-            value: dump[:value],
             formatted: format_value(dump[:value]),
             file: dump[:file],
             line: dump[:line],
@@ -97,7 +98,8 @@ module Profiler
           formatted += ">"
           formatted
         end
-      rescue => e
+      # An inspect of the application's that recurses without end is said, like any other error.
+      rescue StandardError, SystemStackError => e
         "[Error formatting value: #{e.message}]"
       end
     end
