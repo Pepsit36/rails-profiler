@@ -42,6 +42,15 @@ every commit of every tag interval is accounted for one way or the other.
   longer keeps checking for updates of the previous profile, and `Alt+P` toggles the toolbar
   once instead of once per page visited.
 
+### Limitations
+
+- **Toolbar:** A Turbo 8 page refresh with morphing (`turbo_refreshes_with method: :morph`, or
+  a `broadcasts_refreshes` model) is not handled: it empties the toolbar, which keeps checking
+  for updates of the profile of the page as first loaded, and the requests made after it stay
+  linked to that profile. This predates this release and is left for a later one.
+- **Toolbar:** After going back in the browser history, two toolbar containers are left in the
+  page, only one of them visible. This predates this release too.
+
 ## [0.32.3] - 2026-10-14
 
 <!-- stamped -->

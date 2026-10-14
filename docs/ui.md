@@ -323,6 +323,14 @@ Turbo (Hotwire, 7 and 8) makes its requests with `fetch()`, so they go through t
 Turbo Streams received over a WebSocket (`turbo_stream_from`) are not HTTP requests and are not
 listed.
 
+Two limits are known, both older than the Turbo support above:
+
+- a Turbo 8 page refresh with morphing (`turbo_refreshes_with method: :morph`, or a model that
+  `broadcasts_refreshes`) empties the toolbar, which keeps checking for updates of the profile of
+  the page as first loaded, and the requests made after the refresh stay linked to that profile;
+- after going back in the browser history, two toolbar containers are left in the page, only one
+  of them visible.
+
 ![AJAX tab of a Turbo page](screenshots/tab-ajax-turbo.png)
 
 - **Summary**: number of requests, total and average duration
