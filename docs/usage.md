@@ -147,6 +147,35 @@ hold:
   `config/initializers/profiler.rb`). Set `config.apply_env_overrides_when_disabled = true` to
   apply them while the profiler is disabled, as versions before 0.30.8 did.
 
+### Which variables can be overridden
+
+The Env tab and the MCP env tools only set or delete a variable whose name is made of letters,
+digits and underscores, not starting with a digit: a name with `=`, a space, a dash or a dot is
+refused (422 from the endpoint, an error from the tool) before anything is written, the file
+included. They also refuse the variables that select the environment, the database or the secrets
+(`RAILS_ENV`, `RACK_ENV`, `DATABASE_URL`, `SECRET_KEY_BASE`) and those that make a process load
+or run other code (`PATH`, `HOME`, `RUBYOPT`, `SPEC_OPTS`, `NODE_OPTIONS`, and every name starting
+with `RUBY`, `GEM_`, `BUNDLE_`, `LD_`, `DYLD_`, `GIT_`, `BASH_`...), whatever their case. It is the
+list the test runner already left out ([Tests](testing.md#test-runner)), now applied to every
+write. It is a deny list: set any of these in the shell that starts the application instead.
+
+An override with such a name, saved by an earlier version, stays in the file but is no longer
+applied; a warning gives how many were left out, never which. Resetting it from the Env tab or
+`reset_env_var` takes it out of the file.
+
+### Several processes
+
+Each process applies the file on its own: the web process at boot, each Sidekiq process before
+each job, each console before each evaluation. The file is parsed again only when it changed since
+the last time, so a job that runs while nothing changed does not read it. A reset leaves a marker
+in the file for seven days: every process that applied the override puts back the value it had
+before, at its next job or evaluation; a process that never applied it leaves the variable alone.
+A worker that runs nothing for longer than that keeps the override until it restarts. The other
+workers of a clustered web server (Puma with `workers`) do not read the file between requests: the
+reset reaches them when they restart.
+
+### Errors
+
 When the file cannot be read or written, the Env tab and the MCP env tools answer an error and
 leave `ENV` unchanged. At boot, before a Sidekiq job and before a console evaluation, the error is
 only printed as a warning: an override never makes the application fail.

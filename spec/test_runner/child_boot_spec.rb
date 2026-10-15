@@ -75,13 +75,11 @@ RSpec.describe Profiler::TestRunner::Runner, "test process boot" do
     expect(env["MY_FEATURE_FLAG"]).to eq("enabled")
   end
 
-  it "still replays every override when the application boots on its own" do
+  # The env tools refuse SPEC_OPTS and DATABASE_URL (Profiler::EnvKeyPolicy); an entry an earlier
+  # version saved for them is no longer applied, by any process.
+  it "replays the other overrides when the application boots on its own" do
     env = boot(Profiler::BOOT_ENV.to_h)
 
-    expect(env).to eq(
-      "SPEC_OPTS" => "--require ./lib/tasks/not_a_test.rb",
-      "DATABASE_URL" => "postgres://elsewhere/prod",
-      "MY_FEATURE_FLAG" => "enabled"
-    )
+    expect(env).to eq("MY_FEATURE_FLAG" => "enabled")
   end
 end

@@ -2,6 +2,7 @@
 
 require "mcp"
 require_relative "../slave_support"
+require_relative "../../env_key_policy"
 
 module Profiler
   module MCP
@@ -11,9 +12,11 @@ module Profiler
           key = params["key"].to_s.strip
 
           return [{ type: "text", text: "Error: key cannot be blank." }] if key.empty?
-          if Profiler::EnvOverrideStore.reserved_key?(key)
+          # Checked before the store is written, and before a slave is asked: a refused key never
+          # reaches the file nor ENV.
+          if (reason = Profiler::EnvKeyPolicy.rejection(key))
             return ::MCP::Tool::Response.new(
-              [{ type: "text", text: "Error: #{Profiler::EnvOverrideStore::RESERVED_KEY_ERROR}; #{key} was left unchanged." }],
+              [{ type: "text", text: "Error: #{reason}; #{key} was left unchanged." }],
               error: true
             )
           end
