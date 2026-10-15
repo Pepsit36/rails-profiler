@@ -6,6 +6,12 @@ require_relative "http_guard"
 module Profiler
   module MCP
     class Server
+      # The tools that change the profiler's data, ENV or run code: left out when
+      # config.mcp_read_only is true.
+      WRITE_TOOLS = %w[
+        run_tests clear_profiles set_env_var delete_env_var reset_env_var reset_all_env_vars
+      ].freeze
+
       class << self
         def instance
           @instance ||= new
@@ -399,10 +405,13 @@ module Profiler
             input_schema: { properties: {} },
             handler: Tools::ListSlaves
           )
-        ]
+        ].compact
       end
 
+      # nil for a tool config.mcp_read_only leaves out; build_tools drops it.
       def define_tool(name:, description:, input_schema:, handler:)
+        return nil if Profiler.configuration.mcp_read_only && WRITE_TOOLS.include?(name)
+
         ::MCP::Tool.define(name: name, description: description, input_schema: input_schema) do |server_context: nil, **args|
           result = handler.call(args.transform_keys(&:to_s))
           result.is_a?(::MCP::Tool::Response) ? result : ::MCP::Tool::Response.new(result)

@@ -70,14 +70,32 @@ Over stdio, the server is only reachable by the client that started it. Over HTT
 goes through the same access control as the dashboard, plus host, origin and content type checks,
 listed under [HTTP transport](#http-transport-alternative). Remember that the write tools are part
 of the same server: whoever passes these checks can change `ENV`, clear profiles and run
-tests. Access control, masking and what is never applied in production are described in
-[Security](security.md).
+tests, unless the server is [read-only](#read-only-mode). Access control, masking and what is
+never applied in production are described in [Security](security.md).
+
+### Read-only mode
+
+```ruby
+# config/initializers/profiler.rb
+Profiler.configure do |config|
+  config.mcp_read_only = true
+end
+```
+
+With `config.mcp_read_only = true` (false by default), the server leaves out every tool marked
+**write** below: `run_tests`, `clear_profiles`, `set_env_var`, `delete_env_var`, `reset_env_var`
+and `reset_all_env_vars`. They are not listed by `tools/list`, and a client that calls one by name
+gets a "tool not found" error. Everything else stays, `explain_query` included: it only explains
+read-only statements, in a transaction always rolled back. The option applies to both transports.
+The server is built once per process, at its first request: restart the application (or
+`rake profiler:mcp`) after changing it. It does not touch the dashboard nor its API, which keep
+their own access control.
 
 ## Tools at a glance
 
 Every tool but `list_slaves` takes an optional `slave` parameter (see
-[Cluster](#cluster-masterslave)). The tools marked **write** change something; the others only
-read.
+[Cluster](#cluster-masterslave)). The tools marked **write** change something, and are left out by
+[`config.mcp_read_only`](#read-only-mode); the others only read.
 
 | Use | Tools | Resources |
 |---|---|---|
@@ -679,6 +697,11 @@ the value from the shell that started Rails. The full list is in [Tests](testing
 | `key` | string | Variable name **(required)** |
 | `value` | string | New value **(required)** |
 
+Some names are refused, before anything is written: a name that is not made of letters, digits
+and underscores (`A=B`, `MY-VAR`), and the variables that select the environment, the database or
+the code a process loads (`DATABASE_URL`, `LD_PRELOAD`, `GIT_SSH_COMMAND`...). The list is in
+[Which variables can be overridden](usage.md#which-variables-can-be-overridden).
+
 **Example prompts:**
 > "Set FEATURE_NEW_DASHBOARD to true"
 > "Change REDIS_URL to point to my local instance"
@@ -687,7 +710,8 @@ the value from the shell that started Rails. The full list is in [Tests](testing
 
 ### `delete_env_var`
 
-Delete an environment variable for this session (persisted across restarts until reset).
+Delete an environment variable for this session (persisted across restarts until reset). The
+names `set_env_var` refuses are refused here too.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|

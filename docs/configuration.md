@@ -160,6 +160,8 @@ Profiler.configure do |config|
   config.mcp_enabled = false
   config.mcp_transport = :stdio
   config.mcp_allowed_hosts = []             # Host names the HTTP transport accepts, beyond config.hosts
+  config.mcp_read_only = false              # true leaves out the write tools (run_tests, clear_profiles,
+                                            # set/delete/reset_env_var, reset_all_env_vars); see docs/mcp.md#read-only-mode
 
   # Cluster (see docs/cluster.md)
   config.name = nil                         # display name; the application's name by default
