@@ -40,7 +40,7 @@ module Profiler
     attr_accessor :storage_options, :collectors,
                   :slow_query_threshold, :max_queries_warning, :sql_backtrace,
                   :track_memory, :allocated_objects_warning_threshold,
-                  :mcp_enabled, :mcp_transport, :mcp_port,
+                  :mcp_enabled, :mcp_transport, :mcp_port, :mcp_read_only,
                   :authorization_mode, :extension_cors_enabled,
                   :cors_allowed_origins, :api_forgery_protection, :frame_ancestors,
                   :track_ajax, :ajax_skip_paths,
@@ -79,6 +79,10 @@ module Profiler
       @mcp_enabled = false
       @mcp_transport = :stdio
       @mcp_port = 3001
+      # true leaves out of the MCP server every tool that changes something: run_tests,
+      # clear_profiles and the env tools that set, delete or reset a variable
+      # (Profiler::MCP::Server::WRITE_TOOLS). Read when the server is built, at the first MCP call.
+      @mcp_read_only = false
       @authorization_mode = :allow_local
       @authorize_block = nil
       @max_profiles = 100

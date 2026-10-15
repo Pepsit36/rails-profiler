@@ -14,6 +14,10 @@ require "profiler/mcp/tools/delete_env_var"
 # them: the store first, then ENV of the web process itself (EnvVarsController#update, the MCP tools
 # set_env_var and delete_env_var, and EnvOverrideStore#apply! at boot). Profiler::BOOT_ENV stands
 # for the environment the shell gave the process, captured when the gem was loaded.
+#
+# The env tools now refuse the names Profiler::EnvKeyPolicy refuses. Such an override can still be
+# in the file, saved by an earlier version: for those names the helpers check the tool refuses,
+# then write the store and ENV as that version did, and the runner must still leave them out.
 RSpec.describe Profiler::TestRunner::Runner, ".build_env with real overrides" do
   let(:tmp_path) { Pathname.new(Dir.mktmpdir("profiler_runner_env_spec")) }
 
@@ -39,7 +43,21 @@ RSpec.describe Profiler::TestRunner::Runner, ".build_env with real overrides" do
   end
 
   def set_env(key, value)
-    Profiler::MCP::Tools::SetEnvVar.call("key" => key, "value" => value)
+    response = Profiler::MCP::Tools::SetEnvVar.call("key" => key, "value" => value)
+    return response if Profiler::EnvKeyPolicy.allowed?(key)
+
+    expect(response.error?).to be(true), "expected set_env_var to refuse #{key}"
+    Profiler.env_override_store.set(key, value)
+    ENV[key] = value
+  end
+
+  def delete_env(key)
+    response = Profiler::MCP::Tools::DeleteEnvVar.call("key" => key)
+    return response if Profiler::EnvKeyPolicy.allowed?(key)
+
+    expect(response.error?).to be(true), "expected delete_env_var to refuse #{key}"
+    Profiler.env_override_store.delete(key)
+    ENV.delete(key)
   end
 
   def build_env
@@ -91,7 +109,7 @@ RSpec.describe Profiler::TestRunner::Runner, ".build_env with real overrides" do
 
   it "restores a code-loading variable deleted through the profiler" do
     boot_with("NODE_OPTIONS" => "--max-old-space-size=512")
-    Profiler::MCP::Tools::DeleteEnvVar.call("key" => "NODE_OPTIONS")
+    delete_env("NODE_OPTIONS")
     expect(ENV).not_to have_key("NODE_OPTIONS")
 
     expect(build_env["NODE_OPTIONS"]).to eq("--max-old-space-size=512")
@@ -106,6 +124,28 @@ RSpec.describe Profiler::TestRunner::Runner, ".build_env with real overrides" do
 
     expect(env["DATABASE_URL"]).to eq("postgres://localhost/app_test")
     expect(env).not_to have_key("SECRET_KEY_BASE")
+  end
+
+  # Saved by an earlier version: the names that only end or start like a protected one.
+  it "gives the test process the shell value of the keys protected by suffix or prefix" do
+    boot_with("PRIMARY_DATABASE_URL" => "postgres://localhost/app_test", "PGHOST" => nil, "https_proxy" => nil)
+    set_env("PRIMARY_DATABASE_URL", "postgres://elsewhere/prod")
+    set_env("PGHOST", "elsewhere")
+    set_env("https_proxy", "http://elsewhere:3128")
+
+    env = build_env
+
+    expect(env["PRIMARY_DATABASE_URL"]).to eq("postgres://localhost/app_test")
+    expect(env).not_to have_key("PGHOST")
+    expect(env).not_to have_key("https_proxy")
+  end
+
+  it "leaves out a value holding a NUL byte, saved by an earlier version" do
+    File.write(Profiler.configuration.tmp_path.join("env_overrides.json"),
+               JSON.generate("PROFILER_SPEC_NUL" => { "value" => "on\u0000off" }))
+    boot_with("PROFILER_SPEC_NUL" => nil)
+
+    expect(build_env).not_to have_key("PROFILER_SPEC_NUL")
   end
 
   it "uses the shell value of this boot, not the original recorded by an older one" do
@@ -209,7 +249,7 @@ RSpec.describe Profiler::TestRunner::Runner, ".build_env with real overrides" do
 
   it "unsets a variable deleted through the profiler" do
     boot_with("MY_FEATURE_FLAG" => "enabled")
-    Profiler::MCP::Tools::DeleteEnvVar.call("key" => "MY_FEATURE_FLAG")
+    delete_env("MY_FEATURE_FLAG")
 
     expect(build_env).not_to have_key("MY_FEATURE_FLAG")
   end

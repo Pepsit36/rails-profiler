@@ -3,6 +3,7 @@
 require "set"
 require_relative "../boot_env"
 require_relative "../env_override_store"
+require_relative "../env_key_policy"
 require_relative "run_store"
 require_relative "discovery"
 
@@ -176,26 +177,14 @@ module Profiler
         end
       end
 
-      BLOCKED_ENV_KEYS = %w[RAILS_ENV RACK_ENV DATABASE_URL SECRET_KEY_BASE PROFILER_TEST_RUNNER_CHILD].freeze
-
-      # Overrides of these variables make the test process, or the shell shims (rbenv, asdf) that
-      # start it, load or run code other than the selected tests. It is a deny list, so it cannot
-      # be complete; a variable needed by the tests can be set in the shell that starts Rails.
-      CODE_LOADING_ENV_KEYS = %w[
-        SPEC_OPTS TESTOPTS TEST PATH HOME XDG_CONFIG_HOME GEMRC NODE_OPTIONS NODE_PATH
-        SHELLOPTS BASHOPTS PS4 ENV CDPATH IFS
-      ].freeze
-      CODE_LOADING_ENV_PREFIXES = %w[
-        RUBY GEM_ BUNDLE_ BUNDLER_ LD_ DYLD_ BASH_ RBENV_ ASDF_ RVM_ CHRUBY GIT_ BOOTSNAP_
-        PYTHON PERL5
-      ].freeze
-      ENV_NAME = /\A[A-Z_][A-Z0-9_]*\z/i
+      # The lists live in Profiler::EnvKeyPolicy, shared with the Env tab and the MCP env tools.
+      BLOCKED_ENV_KEYS = EnvKeyPolicy::PROTECTED_KEYS
+      CODE_LOADING_ENV_KEYS = EnvKeyPolicy::CODE_LOADING_KEYS
+      CODE_LOADING_ENV_PREFIXES = EnvKeyPolicy::CODE_LOADING_PREFIXES
+      ENV_NAME = EnvKeyPolicy::ENV_NAME
 
       def self.code_loading_env_key?(key)
-        name = key.to_s.upcase
-        return true unless ENV_NAME.match?(name)
-
-        CODE_LOADING_ENV_KEYS.include?(name) || CODE_LOADING_ENV_PREFIXES.any? { |prefix| name.start_with?(prefix) }
+        EnvKeyPolicy.code_loading?(key)
       end
 
       # Starts from the copy of ENV taken when the gem was loaded, not from ENV: the overrides are
@@ -208,12 +197,15 @@ module Profiler
 
         overrides = Profiler.env_override_store.all_overrides
         overrides.each do |key, entry|
-          blocked = BLOCKED_ENV_KEYS.include?(key.upcase)
+          blocked = EnvKeyPolicy.protected?(key)
           if blocked || code_loading_env_key?(key)
             left_out << key unless blocked
             next
           end
           value = entry.is_a?(Hash) ? entry["value"] : entry
+          # A value the process environment cannot hold, saved by a version that did not check it.
+          next if EnvKeyPolicy.value_rejection(key, value)
+
           if value == EnvOverrideStore::DELETED_SENTINEL
             base.delete(key)
           else

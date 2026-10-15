@@ -147,6 +147,49 @@ hold:
   `config/initializers/profiler.rb`). Set `config.apply_env_overrides_when_disabled = true` to
   apply them while the profiler is disabled, as versions before 0.30.8 did.
 
+### Which variables can be overridden
+
+The Env tab and the MCP env tools only set or delete a variable whose name is made of letters,
+digits and underscores, not starting with a digit: a name with `=`, a space, a dash or a dot is
+refused (422 from the endpoint, an error from the tool) before anything is written, the file
+included. A value holding a NUL byte, which no environment variable can hold, is refused the same
+way. They also refuse, whatever their case:
+
+- the variables that select the environment, the database or the secrets: `RAILS_ENV`,
+  `RACK_ENV`, `DATABASE_URL` and every name ending in `_DATABASE_URL` (Active Record reads
+  `PRIMARY_DATABASE_URL` before `DATABASE_URL`), every name starting with `PG` (libpq) or
+  `MYSQL_`, `SECRET_KEY_BASE`, `RAILS_MASTER_KEY`;
+- those that send the application's connections elsewhere or change which certificates it
+  trusts: every name ending in `_PROXY` (`http_proxy`, `HTTPS_PROXY`, `no_proxy`...),
+  `SSL_CERT_FILE`, `SSL_CERT_DIR`, every name starting with `OPENSSL_`;
+- those that make a process load or run other code: `PATH`, `HOME`, `RUBYOPT`, `SPEC_OPTS`,
+  `NODE_OPTIONS`, `GCONV_PATH`, `IRBRC`, `PRYRC`, `ZDOTDIR`, `LESSOPEN`, `JAVA_TOOL_OPTIONS`,
+  `EDITOR`, `PAGER`, and every name starting with `RUBY`, `GEM_`, `BUNDLE_`, `LD_`, `DYLD_`,
+  `GIT_`, `BASH_`...;
+- `PROFILER_MCP_READ_ONLY` ([Read-only mode](mcp.md#read-only-mode)).
+
+The test runner leaves the same names out ([Tests](testing.md#test-runner)). It is a deny list,
+and a deny list cannot be complete: a gem the application uses may read a variable of its own that
+no list in the profiler knows about. Set any of these in the shell that starts the application
+instead.
+
+An override with such a name, saved by an earlier version, stays in the file but is no longer
+applied; a warning gives how many were left out, never which. Resetting it from the Env tab or
+`reset_env_var` takes it out of the file.
+
+### Several processes
+
+Each process applies the file on its own: the web process at boot, each Sidekiq process before
+each job, each console before each evaluation. The file is parsed again only when it changed since
+the last time, so a job that runs while nothing changed does not read it. A reset leaves a marker
+in the file for seven days: every process that applied the override puts back the value it had
+before, at its next job or evaluation; a process that never applied it leaves the variable alone.
+A worker that runs nothing for longer than that keeps the override until it restarts. The other
+workers of a clustered web server (Puma with `workers`) do not read the file between requests: the
+reset reaches them when they restart.
+
+### Errors
+
 When the file cannot be read or written, the Env tab and the MCP env tools answer an error and
 leave `ENV` unchanged. At boot, before a Sidekiq job and before a console evaluation, the error is
 only printed as a warning: an override never makes the application fail.

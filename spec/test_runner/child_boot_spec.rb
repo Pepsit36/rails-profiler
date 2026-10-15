@@ -75,13 +75,30 @@ RSpec.describe Profiler::TestRunner::Runner, "test process boot" do
     expect(env["MY_FEATURE_FLAG"]).to eq("enabled")
   end
 
-  it "still replays every override when the application boots on its own" do
-    env = boot(Profiler::BOOT_ENV.to_h)
+  # SPEC_OPTS and DATABASE_URL are refused by EnvKeyPolicy everywhere now, apply! included, so they
+  # no longer show what the marker does. A key the policy allows does: the test process keeps the
+  # value build_env gave it even when the file says otherwise by the time it boots, and only the
+  # marker stops its EnvOverrideStore#apply! from replaying the file over it.
+  context "when the file changes between build_env and the test process boot" do
+    def rewrite_flag(value)
+      File.write(tmp_path.join("env_overrides.json"),
+                 JSON.generate("MY_FEATURE_FLAG" => { "value" => value, "original" => nil }))
+    end
 
-    expect(env).to eq(
-      "SPEC_OPTS" => "--require ./lib/tasks/not_a_test.rb",
-      "DATABASE_URL" => "postgres://elsewhere/prod",
-      "MY_FEATURE_FLAG" => "enabled"
-    )
+    it "keeps the environment build_env gave the test process" do
+      env = described_class.send(:build_env)
+      expect(env).to include("MY_FEATURE_FLAG" => "enabled", Profiler::EnvKeyPolicy::TEST_RUNNER_CHILD_ENV => "1")
+      rewrite_flag("from_the_file")
+
+      expect(boot(env)).to eq("MY_FEATURE_FLAG" => "enabled")
+    end
+
+    # The witness: the same environment without the marker, and the application replays the file.
+    it "replays the file in a process booted without the marker" do
+      env = described_class.send(:build_env).except(Profiler::EnvKeyPolicy::TEST_RUNNER_CHILD_ENV)
+      rewrite_flag("from_the_file")
+
+      expect(boot(env)).to eq("MY_FEATURE_FLAG" => "from_the_file")
+    end
   end
 end

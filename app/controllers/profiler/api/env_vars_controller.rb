@@ -24,13 +24,19 @@ module Profiler
           return
         end
 
-        if Profiler::EnvOverrideStore.reserved_key?(key)
-          render json: { error: "#{Profiler::EnvOverrideStore::RESERVED_KEY_ERROR}; #{key} was left unchanged" },
-                 status: :unprocessable_entity
+        # Checked before the store is written: a refused key never reaches the file nor ENV.
+        if (reason = Profiler::EnvKeyPolicy.rejection(key))
+          render json: { error: "#{reason}; #{key} was left unchanged" }, status: :unprocessable_entity
           return
         end
 
         value = params[:value]
+
+        # A value ENV cannot hold is refused before the store is written, like a refused key.
+        if (reason = Profiler::EnvKeyPolicy.value_rejection(key, value))
+          render json: { error: "#{reason}; #{key} was left unchanged" }, status: :unprocessable_entity
+          return
+        end
 
         if Profiler::Redaction.mask?(value)
           render json: { error: "#{Profiler::Redaction::MASK} is the mask the profiler shows in place of a " \

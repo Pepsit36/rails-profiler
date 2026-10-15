@@ -3,6 +3,7 @@
 require "json"
 require "fileutils"
 require_relative "storage/private_files"
+require_relative "env_key_policy"
 
 module Profiler
   class EnvOverrideStore
@@ -26,17 +27,37 @@ module Profiler
     # File format: { "KEY" => { "value" => "...", "original" => "..." } }
     # Sentinels for "value":
     #   DELETED_SENTINEL  → ENV.delete(key)
-    #   RESTORE_SENTINEL  → restore ENV[key] to "original" (cleaned up after apply!)
+    #   RESTORE_SENTINEL  → every process that applied the key puts back the value it had before
+    #                       (apply!). The entry carries "reset_at" and stays RESTORE_TTL seconds,
+    #                       so that each Sidekiq process and Puma worker sees it, not only the first.
+
+    # How long a RESTORE entry stays in the file. A process that runs no job for longer keeps the
+    # override until it restarts.
+    RESTORE_TTL = 7 * 24 * 60 * 60
+
+    # How old the overrides file must be before apply! keeps its content between calls
+    # (cached_overrides).
+    CACHE_SETTLE_SECONDS = 2
 
     def initialize
       # What ENV held in this process before set, delete or apply! changed a key. Where the
       # overrides are blocked, a reset restores these and never the file's "original" values,
-      # which come from whatever machine wrote the file.
+      # which come from whatever machine wrote the file. apply! restores these too, so it knows
+      # which keys this process changed and has to put back.
       @process_originals = {}
       @process_originals_lock = Mutex.new
+      # [signature of the file, parsed overrides] as apply! last read them.
+      @cached_overrides = nil
+      @skipped_keys_logged = nil
     end
 
     def set(key, value)
+      # Before the file is written: an entry ENV cannot hold would fail in every process that
+      # applies it.
+      if (reason = EnvKeyPolicy.value_rejection(key, value))
+        raise Error, "could not set #{key}: #{reason}"
+      end
+
       surfacing("set #{key}") do
         remember_process_original(key)
         update_overrides do |overrides|
@@ -61,7 +82,7 @@ module Profiler
         update_overrides do |overrides|
           entry = overrides[key]
           # Keep a RESTORE entry so Sidekiq workers pick it up on next job
-          overrides[key] = { "value" => RESTORE_SENTINEL, "original" => entry["original"] } if entry
+          overrides[key] = restore_entry(entry["original"]) if entry
         end
       end
 
@@ -74,9 +95,12 @@ module Profiler
       surfacing("reset the overrides") do
         update_overrides do |overrides|
           overrides.each do |key, entry|
+            # Already reset: its reset_at stays, so that it still expires.
+            next if restore_entry?(entry)
+
             originals[key] = entry.is_a?(Hash) ? entry["original"] : nil
             # Leave a RESTORE sentinel for Sidekiq workers to pick up
-            overrides[key] = { "value" => RESTORE_SENTINEL, "original" => originals[key] }
+            overrides[key] = restore_entry(originals[key])
           end
         end
       end
@@ -116,47 +140,34 @@ module Profiler
 
     # Set by the test runner in the environment of the test process, to which it already gave
     # the admitted overrides only (TestRunner::Runner.build_env).
-    TEST_RUNNER_CHILD_ENV = "PROFILER_TEST_RUNNER_CHILD"
-    RESERVED_KEY_ERROR = "#{TEST_RUNNER_CHILD_ENV} is reserved for the test runner"
+    TEST_RUNNER_CHILD_ENV = EnvKeyPolicy::TEST_RUNNER_CHILD_ENV
+    RESERVED_KEY_ERROR = EnvKeyPolicy::RESERVED_KEY_ERROR
 
     # The env tools may not set or delete the test runner marker, whatever its case.
     def self.reserved_key?(key)
-      key.to_s.upcase == TEST_RUNNER_CHILD_ENV
+      EnvKeyPolicy.reserved?(key)
     end
 
+    # Runs before every Sidekiq job and console line: the file is parsed again only when it was
+    # replaced or changed since the last call (cached_overrides). Each key is applied on its own,
+    # so that a key that cannot be written leaves the others applied. A key EnvKeyPolicy refuses,
+    # or a value ENV cannot hold, written by a version that did not check them, is left out.
     def apply!
       return if ENV[TEST_RUNNER_CHILD_ENV] == "1"
       return if blocked_reason
 
-      overrides = load_overrides
-      restore_keys = []
-
-      overrides.each do |key, entry|
-        value    = entry.is_a?(Hash) ? entry["value"]    : entry
-        original = entry.is_a?(Hash) ? entry["original"] : nil
-
-        remember_process_original(key) unless value == RESTORE_SENTINEL
-
-        case value
-        when DELETED_SENTINEL
-          ENV.delete(key)
-        when RESTORE_SENTINEL
-          original.nil? ? ENV.delete(key) : ENV[key] = original
-          restore_keys << key
-        else
-          ENV[key] = value
+      skipped = []
+      cached_overrides.each do |key, entry|
+        unless applicable?(key, entry)
+          skipped << key
+          next
         end
-      end
 
-      if restore_keys.any?
-        # Read again under the lock: another writer may have changed the file since.
-        update_overrides do |current|
-          restore_keys.each do |k|
-            entry = current[k]
-            current.delete(k) if entry.is_a?(Hash) && entry["value"] == RESTORE_SENTINEL
-          end
-        end
+        apply_entry(key, entry)
+      rescue StandardError => e
+        Profiler.log_error("EnvOverrideStore: failed to apply an override", e)
       end
+      log_skipped_keys(skipped)
     rescue => e
       Profiler.log_error("EnvOverrideStore: failed to apply overrides", e)
     end
@@ -191,6 +202,72 @@ module Profiler
       raise Error, "could not #{action} in env_overrides.json under tmp_path: #{reason}"
     end
 
+    def applicable?(key, entry)
+      return false unless EnvKeyPolicy.allowed?(key)
+
+      value = entry.is_a?(Hash) ? entry["value"] : entry
+      EnvKeyPolicy.value_rejection(key, value).nil?
+    end
+
+    def apply_entry(key, entry)
+      value = entry.is_a?(Hash) ? entry["value"] : entry
+
+      if value == RESTORE_SENTINEL
+        restore_applied(key)
+        return
+      end
+
+      remember_process_original(key)
+      value == DELETED_SENTINEL ? ENV.delete(key) : ENV[key] = value
+    end
+
+    # A RESTORE entry stays in the file for every process: this one puts the key back only if it
+    # changed it, once, to the value it had before. A process that never applied the override has
+    # nothing to restore.
+    def restore_applied(key)
+      changed_here, original = @process_originals_lock.synchronize do
+        [@process_originals.key?(key), @process_originals.delete(key)]
+      end
+      return unless changed_here
+
+      original.nil? ? ENV.delete(key) : ENV[key] = original
+    end
+
+    # Says once per set of keys how many were left out, never which: the log may be shared.
+    def log_skipped_keys(skipped)
+      return if skipped.empty? || @skipped_keys_logged == skipped
+
+      @skipped_keys_logged = skipped
+      noun = skipped.size == 1 ? "override was" : "overrides were"
+      Profiler.log_warn("#{skipped.size} persisted environment #{noun} not applied: the name is not " \
+                        "a valid environment variable name, or one the profiler does not change, " \
+                        "or the value holds a NUL byte.")
+    end
+
+    def restore_entry(original)
+      { "value" => RESTORE_SENTINEL, "original" => original, "reset_at" => Time.now.to_i }
+    end
+
+    def restore_entry?(entry)
+      entry.is_a?(Hash) && entry["value"] == RESTORE_SENTINEL
+    end
+
+    # RESTORE entries older than RESTORE_TTL go when the file is next written. One written by an
+    # earlier version, with no reset_at, starts its delay now.
+    def expire_restore_entries(overrides)
+      now = Time.now.to_i
+      overrides.delete_if do |_key, entry|
+        next false unless restore_entry?(entry)
+
+        reset_at = entry["reset_at"]
+        unless reset_at.is_a?(Integer)
+          entry["reset_at"] = now
+          next false
+        end
+        now - reset_at > RESTORE_TTL
+      end
+    end
+
     def remember_process_original(key)
       @process_originals_lock.synchronize do
         @process_originals[key] = ENV[key] unless @process_originals.key?(key)
@@ -208,6 +285,11 @@ module Profiler
       return false if from_process && !changed_here
 
       original = from_process ? process_original : file_entry["original"]
+      # A name ENV cannot hold ("A=B"), written by a version that did not check the names: its
+      # entry is reset in the file, and there is nothing to put back here.
+      return false unless EnvKeyPolicy.valid_name?(key)
+      return false if EnvKeyPolicy.value_rejection(key, original)
+
       original.nil? ? ENV.delete(key) : ENV[key] = original
       true
     end
@@ -224,9 +306,44 @@ module Profiler
       path = override_file_path
       return {} unless File.exist?(path)
 
-      JSON.parse(File.read(path))
+      parse_overrides(File.read(path))
+    end
+
+    def parse_overrides(content)
+      parsed = JSON.parse(content)
+      parsed.is_a?(Hash) ? parsed : {}
     rescue JSON::ParserError
       {}
+    end
+
+    # load_overrides for apply!, without reading the file again while it is the same file.
+    #
+    # The signature (inode, device, mtime, size) alone can miss a write: ext4 hands the inode the
+    # rename freed to the next temporary file, and two writes of the same size within one tick of
+    # the mtime clock then look identical, the stale value kept until the file is written again.
+    # So the content is cached only once the file has settled: its mtime at least
+    # CACHE_SETTLE_SECONDS in the past. Any later write is then at least that much younger, and
+    # gets another mtime on any file system whose mtime tick is shorter (2 seconds on FAT, the
+    # coarsest). A file written less than that ago is read at each call, which costs a read only
+    # during the seconds after a change. A write between the stat and the read caches the new
+    # content under the old signature: the next call sees another mtime and reads again.
+    def cached_overrides
+      path = override_file_path
+      stat = File.stat(path)
+      signature = [path.to_s, stat.ino, stat.dev, stat.mtime, stat.size]
+      cached = @cached_overrides
+      return cached[1] if cached && cached[0] == signature
+
+      overrides = parse_overrides(File.read(path)).freeze
+      @cached_overrides = settled?(stat) ? [signature, overrides] : nil
+      overrides
+    rescue Errno::ENOENT
+      @cached_overrides = nil
+      {}
+    end
+
+    def settled?(stat)
+      Time.now - stat.mtime >= CACHE_SETTLE_SECONDS
     end
 
     # Reads, changes and writes the file under the lock, so that the web process, its threads and
@@ -236,6 +353,7 @@ module Profiler
       with_lock do
         overrides = load_overrides
         yield overrides
+        expire_restore_entries(overrides)
         overrides.empty? ? FileUtils.rm_f(override_file_path) : save_overrides(overrides)
       end
     end

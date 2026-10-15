@@ -1,6 +1,11 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+# The MCP server over stdio, without the application: its initializers do not run here, so
+# config.mcp_read_only set there has no effect. Set PROFILER_MCP_READ_ONLY=1 in the environment the
+# MCP client gives this process to leave out the write tools (Profiler::MCP::Server.read_only?).
+# `bundle exec rake profiler:mcp` boots the application and reads both.
+
 require "bundler/setup"
 require "profiler"
 require "profiler/mcp/server"

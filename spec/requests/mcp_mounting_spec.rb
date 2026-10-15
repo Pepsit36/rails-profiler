@@ -106,6 +106,47 @@ RSpec.describe "MCP HTTP endpoint", type: :request do
       expect(names).to include("query_profiles", "set_env_var", "clear_profiles")
     end
 
+    # The server is built once per process: build it again with the option set.
+    context "with mcp_read_only" do
+      before do
+        Profiler.configuration.mcp_read_only = true
+        Profiler::MCP::Server.instance_variable_set(:@instance, nil)
+      end
+
+      after { Profiler::MCP::Server.instance_variable_set(:@instance, nil) }
+
+      def call_tool(session, name, arguments)
+        mcp_post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: name, arguments: arguments } },
+                 local.merge(mcp_headers).merge("HTTP_MCP_SESSION_ID" => session))
+        rpc_result
+      end
+
+      it "leaves out every tool that changes something, and keeps the others" do
+        session = handshake(local.merge(mcp_headers))
+        mcp_post({ jsonrpc: "2.0", id: 2, method: "tools/list" }, local.merge(mcp_headers).merge("HTTP_MCP_SESSION_ID" => session))
+
+        names = rpc_result.dig("result", "tools").map { |tool| tool["name"] }
+        expect(names).not_to include(*Profiler::MCP::Server::WRITE_TOOLS)
+        expect(Profiler::MCP::Server::WRITE_TOOLS).to contain_exactly(
+          "run_tests", "clear_profiles", "set_env_var", "delete_env_var", "reset_env_var", "reset_all_env_vars"
+        )
+        expect(names).to include("query_profiles", "get_profile", "list_env_vars", "list_slaves")
+      end
+
+      it "does not run a write tool called by name" do
+        session = handshake(local.merge(mcp_headers))
+        ENV.delete("PROFILER_SPEC_READ_ONLY")
+
+        result = call_tool(session, "set_env_var", { key: "PROFILER_SPEC_READ_ONLY", value: "x" })
+
+        expect(result["result"]).to be_nil
+        expect(result.dig("error", "data")).to include("Tool not found: set_env_var")
+        expect(ENV).not_to have_key("PROFILER_SPEC_READ_ONLY")
+      ensure
+        ENV.delete("PROFILER_SPEC_READ_ONLY")
+      end
+    end
+
     it "refuses an unauthorized client before the MCP handshake" do
       mcp_post(initialize_payload, remote.merge(mcp_headers))
 
