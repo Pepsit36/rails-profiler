@@ -32,8 +32,10 @@ module Profiler
         Profiler.storage.save(child_token, child_profile)
 
         render json: { success: true }
-      rescue => e
-        render json: { error: e.message }, status: :internal_server_error
+      rescue StandardError => e
+        # The storage's message can name an internal path: the log only.
+        Profiler.log_error("Ajax: could not link the request #{child_token.to_s.inspect} to #{parent_token.inspect}", e)
+        render json: { error: "Could not link the Ajax request" }, status: :internal_server_error
       end
     end
   end

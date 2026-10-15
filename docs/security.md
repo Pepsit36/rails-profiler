@@ -17,7 +17,11 @@ How the profiler decides who gets in, and what it masks before it stores a profi
 - Profile tokens are checked by every storage backend: a malformed one is not found and never
   becomes a path; see [Files under `tmp_path`](storage.md#files-under-tmp_path)
 - The profiler's directories are created `0700` and its files `0600` (`restrict_storage_permissions`)
-- EXPLAIN runs read-only statements only, in a transaction always rolled back (see [Explaining a query](usage.md#explaining-a-query))
+- EXPLAIN runs read-only statements only, in a transaction always rolled back, and only in the
+  development and test environments unless `allow_explain_outside_development` is set (see
+  [Explaining a query](usage.md#explaining-a-query))
+- An unexpected error is answered with a generic message (`Explain failed`, `Proxy error`); its
+  own message, which can hold SQL, a path or an internal address, goes to the log only
 
 
 ## Access control

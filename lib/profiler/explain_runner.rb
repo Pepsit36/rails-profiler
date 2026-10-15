@@ -11,9 +11,39 @@ module Profiler
   # what no reading of the statement can rule out (a function with a side effect),
   # on a connection of its own that is closed afterwards, in a transaction that is
   # always rolled back, read-only and time-limited on PostgreSQL.
+  #
+  # It only runs in the development and test environments, whatever config.enabled says,
+  # unless config.allow_explain_outside_development is set: PostgreSQL's EXPLAIN ANALYZE runs
+  # the query, and a costly SELECT would run for real on the production database.
   module ExplainRunner
-    # An ArgumentError, so callers answer it as a bad request (422, MCP error).
-    class UnsafeStatementError < ArgumentError; end
+    # A request the runner refuses, with a message written for the caller: an ArgumentError,
+    # so callers answer it as a bad request (422, MCP error). Any other error is internal, and
+    # its message (SQL, paths) stays in the server log.
+    class RefusedError < ArgumentError; end
+
+    class UnsafeStatementError < RefusedError; end
+
+    # The environments EXPLAIN runs in without config.allow_explain_outside_development.
+    ENVIRONMENTS = %w[development test].freeze
+
+    NOT_ENABLED = "EXPLAIN is only available when the profiler is enabled"
+    OUTSIDE_DEVELOPMENT = "EXPLAIN is only available in the development and test environments " \
+                          "(config.allow_explain_outside_development allows it in the others)"
+
+    # Why EXPLAIN may not run in this process, or nil when it may. Without Rails, the
+    # environment is unknown and EXPLAIN is refused.
+    def self.refusal
+      config = Profiler.configuration
+      return NOT_ENABLED unless config.enabled
+      return nil if config.allow_explain_outside_development == true
+      return nil if ENVIRONMENTS.include?(current_environment)
+
+      OUTSIDE_DEVELOPMENT
+    end
+
+    def self.current_environment
+      Rails.env.to_s if defined?(Rails) && Rails.respond_to?(:env) && Rails.env
+    end
 
     # PostgreSQL's EXPLAIN ANALYZE runs the query: a slow one is stopped after this.
     PROBE_STATEMENT_TIMEOUT = "30s"
@@ -21,29 +51,29 @@ module Profiler
     # @param profile_token [String]
     # @param query_index   [Integer]
     # @return [Hash] { result:, format: "json"|"text", adapter: String }
-    #         or raises ArgumentError / RuntimeError
+    #         or raises SecurityError (see .refusal), RefusedError, or any error of the database
     def self.run(profile_token, query_index)
-      unless Profiler.configuration.enabled
-        raise SecurityError, "EXPLAIN is only available when the profiler is enabled"
+      if (reason = refusal)
+        raise SecurityError, reason
       end
 
       profile = Profiler.storage.load(profile_token)
-      raise ArgumentError, "Profile not found: #{profile_token}" unless profile
+      raise RefusedError, "Profile not found: #{profile_token}" unless profile
 
       db_data = profile.collector_data("database")
-      raise ArgumentError, "No database data in this profile" unless db_data && db_data["queries"]
+      raise RefusedError, "No database data in this profile" unless db_data && db_data["queries"]
 
       queries = db_data["queries"]
       query_index = query_index.to_i
       unless query_index >= 0 && query_index < queries.size
-        raise ArgumentError, "Query index #{query_index} out of range (0..#{queries.size - 1})"
+        raise RefusedError, "Query index #{query_index} out of range (0..#{queries.size - 1})"
       end
 
       query = queries[query_index]
       sql   = query["sql"].to_s
       binds = Array(query["binds"])
       if binds.include?(Redaction::MASK)
-        raise ArgumentError, "EXPLAIN refused for query #{query_index}: one of its bind values was " \
+        raise RefusedError, "EXPLAIN refused for query #{query_index}: one of its bind values was " \
                              "filtered when captured (config.filter_parameters), so the query cannot be rebuilt"
       end
 

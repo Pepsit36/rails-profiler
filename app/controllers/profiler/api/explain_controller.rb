@@ -6,8 +6,8 @@ module Profiler
   module Api
     class ExplainController < ApplicationController
       def create
-        unless Profiler.configuration.enabled
-          return render json: { error: "EXPLAIN is only available when the profiler is enabled" }, status: :forbidden
+        if (reason = Profiler::ExplainRunner.refusal)
+          return render json: { error: reason }, status: :forbidden
         end
 
         token       = params[:token].to_s
@@ -19,10 +19,12 @@ module Profiler
 
         result = Profiler::ExplainRunner.run(token, query_index)
         render json: result
-      rescue ArgumentError => e
+      rescue Profiler::ExplainRunner::RefusedError => e
         render json: { error: e.message }, status: :unprocessable_entity
-      rescue => e
-        render json: { error: e.message }, status: :internal_server_error
+      rescue StandardError => e
+        # The database's message carries the SQL, and sometimes a path: the log only.
+        Profiler.log_error("Explain: failed for query #{query_index} of profile #{token.inspect}", e)
+        render json: { error: "Explain failed" }, status: :internal_server_error
       end
     end
   end

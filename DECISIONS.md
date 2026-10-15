@@ -116,3 +116,59 @@ removed or folded into the docs once accepted.
   under `[Unreleased]` and `bin/changelog stamp --default-branch origin/reference/rails-profiler-gem`
   turns them into the section of the version it computes; nothing in a section another branch
   stamped is touched.
+
+# Decisions: fix/explain-environment-gate
+
+Taken without the maintainer, choosing the most cautious option each time. To be reviewed, and
+removed or folded into the docs once accepted.
+
+## #53 case 7: Explain outside development and test
+
+- **One gate, `Profiler::ExplainRunner.refusal`,** read by the runner itself, the endpoint (403)
+  and the MCP tool, so that none of the three can drift. It checks `enabled` first, then the
+  environment.
+- **Allowed environments: `development` and `test` only,** compared on `Rails.env`. Any other
+  name (`staging`, `production`, a custom one) is refused: an allow list, not a production check,
+  since a staging database can hold real data too. Without Rails (no `Rails.env`), the
+  environment is unknown and Explain is refused.
+- **Opt-in: `config.allow_explain_outside_development`, false by default.** An operator profiling
+  a staging copy may want the plan of a slow query there; the option makes that an explicit,
+  documented choice. Named after `test_runner_allow_undiscovered_files`. Only `true` lifts the
+  gate (a truthy string does not). It lifts the environment check only, never `enabled`.
+- **Through the slave proxy,** the MCP tool forwards to the slave's endpoint: the slave's own
+  environment and configuration decide, not the master's.
+- `explain_query` stays listed by `tools/list` outside development: the tool also serves slaves,
+  and a call answers the reason. Its description now states the gate and the option.
+- `RefusedError < ArgumentError` is new: the runner's own refusals, whose message is written for
+  the caller. The endpoint and the tool answer only those with their message; an `ArgumentError`
+  raised below the runner (an adapter, a driver) is now an internal error with a generic answer.
+  `UnsafeStatementError` is a `RefusedError`, still an `ArgumentError`.
+
+## #47 SEC-22: raw exception messages
+
+- **Generic answers:** `Explain failed` (500), `Could not link the Ajax request` (500), `Proxy
+  error` (502), `EXPLAIN failed (the application log has the details)` for the MCP tool. The full
+  message goes through `Profiler.log_error`, the gem's logger (`config.logger`, else
+  `Rails.logger`), which masks the profiler's credentials and cuts the message at 1000 bytes like
+  every other line it logs. The request values put in the log line (tokens, slave name) are
+  `inspect`ed, so a newline cannot forge a line.
+- **Kept as they are:** `Profiler::Error` from the slave proxy (unknown, offline or refused slave,
+  missing secret, a refused path segment) and the runner's refusals: messages the gem writes,
+  with no internal detail, that the user needs to act.
+- **`EnvOverrideStore::Error`, checked, out of scope:** its message is already built to be shown
+  (the file named relative to `tmp_path`, an `Errno` by its description only, never the
+  exception's own message), so the Env tab and the MCP env tools were left alone.
+- **Not changed, noted:** `TestRunnerController#create` answers `InvalidFileError` with its
+  message (the gem's own, naming the file the client sent); the MCP resources and tools answer
+  `Storage::Unavailable::Error` with a message the store already sanitizes (paths replaced,
+  credentials masked).
+
+## Process
+
+- The branch was rebased onto `origin/rails-profiler-gem/fix/env-writes-and-mcp-read-only-v3`
+  (task-096). The CHANGELOG and DECISIONS conflicts were resolved by hand: the base's sections
+  kept as they are, this branch's own entries and decisions put back after them.
+- The entries sit under `[Unreleased]` and `bin/changelog stamp --default-branch
+  origin/rails-profiler-gem/fix/env-writes-and-mcp-read-only-v3` turns them into the section of
+  the version it computes, as described above. The `[0.34.0]` section the base stamped is left
+  byte for byte.

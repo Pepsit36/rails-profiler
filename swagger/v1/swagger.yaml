@@ -59,7 +59,8 @@ paths:
                   error:
                     type: string
         '500':
-          description: the link could not be saved
+          description: the link could not be saved; the error is the generic "Could not link
+            the Ajax request", the cause goes to the application log
           content:
             application/json:
               schema:
@@ -445,6 +446,26 @@ paths:
         '422':
           description: invalid request, or a query that is not read-only (only SELECT,
             WITH ... SELECT, TABLE and VALUES are explained)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '403':
+          description: the profiler is disabled, or the application runs outside the development
+            and test environments without allow_explain_outside_development
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: the database failed to explain the query; the error is the generic "Explain
+            failed", the cause goes to the application log
           content:
             application/json:
               schema:

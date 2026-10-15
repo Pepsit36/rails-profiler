@@ -26,8 +26,8 @@ module Profiler
             return [{ type: "text", text: text }]
           end
 
-          unless Profiler.configuration.enabled
-            return [{ type: "text", text: "Error: EXPLAIN is only available when the profiler is enabled" }]
+          if (reason = Profiler::ExplainRunner.refusal)
+            return [{ type: "text", text: "Error: #{reason}" }]
           end
 
           data = Profiler::ExplainRunner.run(token, query_index.to_i)
@@ -47,10 +47,12 @@ module Profiler
           end
 
           [{ type: "text", text: lines.join("\n") }]
-        rescue ArgumentError => e
+        rescue Profiler::ExplainRunner::RefusedError => e
           [{ type: "text", text: "Error: #{e.message}" }]
-        rescue => e
-          [{ type: "text", text: "EXPLAIN failed: #{e.message}" }]
+        rescue StandardError => e
+          # The database's message carries the SQL, and sometimes a path: the log only.
+          Profiler.log_error("MCP explain_query: failed for query #{query_index.to_i} of profile #{token.to_s.inspect}", e)
+          [{ type: "text", text: "EXPLAIN failed (the application log has the details)" }]
         end
       end
     end

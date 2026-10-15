@@ -19,6 +19,28 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-10-15
+
+<!-- stamped -->
+
+### Security
+
+- **Explain:** The Explain button, `POST /_profiler/api/explain` and the MCP `explain_query` tool
+  now only run in the `development` and `test` environments, even where an application sets
+  `enabled = true`. Elsewhere, `production` and `staging` included, they are refused before
+  anything reaches the database: a `403` from the endpoint, an error from the tool. PostgreSQL's
+  `EXPLAIN ANALYZE` runs the query it explains, so a costly `SELECT` used to run for real on the
+  production database. Set `config.allow_explain_outside_development = true` to allow it there
+  anyway (false by default). The description of `explain_query` given to MCP clients now says so;
+  it claimed the tool was limited to development and test, which nothing enforced.
+- **API:** An unexpected error no longer sends its message to the client. `POST
+  /_profiler/api/explain` answers `500` with `Explain failed`, `POST /_profiler/api/ajax/link`
+  with `Could not link the Ajax request`, the slave proxy (`/_profiler/api/slaves/:name/...`)
+  `502` with `Proxy error`, and `explain_query` with `EXPLAIN failed`. The message, which could
+  hold the SQL of the query, an internal file path or the address of a slave, goes to the
+  application log instead. The profiler's own refusals (a query that is not read-only, an index
+  out of range, an unknown or offline slave) still give their reason.
+
 ## [0.34.0] - 2026-10-15
 
 <!-- stamped -->

@@ -176,7 +176,7 @@ module Profiler
           ),
           define_tool(
             name: "explain_query",
-            description: "Run EXPLAIN ANALYZE on a specific query from a profile. Returns the query execution plan with cost and row estimates. Only read-only statements (SELECT, WITH ... SELECT, TABLE, VALUES) are explained, in a transaction always rolled back; other queries return an error. Only available in development/test environments.",
+            description: "Run EXPLAIN ANALYZE on a specific query from a profile. Returns the query execution plan with cost and row estimates. Only read-only statements (SELECT, WITH ... SELECT, TABLE, VALUES) are explained, in a transaction always rolled back; other queries return an error. Refused with an error unless the application that runs it (this one, or the slave given) has the profiler enabled and runs in the development or test environment; config.allow_explain_outside_development = true lifts the environment check.",
             input_schema: {
               properties: {
                 token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },

@@ -11,6 +11,19 @@ The **Explain** button of the Database tab, the `POST /_profiler/api/explain` en
 put back. They run `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on PostgreSQL, `EXPLAIN FORMAT=JSON`
 on MySQL and `EXPLAIN QUERY PLAN` on SQLite.
 
+Explain only runs while the profiler is enabled, in the `development` and `test` environments.
+Elsewhere, `production` and `staging` included, it is refused even with `enabled = true`: a 403
+from the endpoint, an error from the MCP tool, and nothing reaches the database. PostgreSQL's
+`EXPLAIN ANALYZE` runs the query it explains, so a costly `SELECT` would run for real on that
+database. An application that wants it there anyway sets
+`config.allow_explain_outside_development = true`, knowing that each Explain runs the query once
+more, for up to 30 seconds on PostgreSQL. Without Rails, the environment is unknown and Explain is
+refused. With the `slave` parameter, the slave's own environment and configuration decide.
+
+A query that fails for another reason (the database refuses it, the connection drops) answers a
+generic `Explain failed`, a 500 from the endpoint; the error itself, SQL included, goes to the
+application log.
+
 A query whose bind values were masked when captured is refused first, since it cannot be rebuilt
 (see [Sensitive data](security.md#sensitive-data)). Then only read-only statements are explained: those that
 start, after comments and parentheses, with `SELECT`, `WITH`, `TABLE` or `VALUES`, and contain none
