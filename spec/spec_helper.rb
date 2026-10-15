@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+# The specs read source files that carry non-ASCII characters; under LANG=C Ruby would decode
+# them as US-ASCII and the suite would fail to load. Pin UTF-8 whatever the locale.
+Encoding.default_external = Encoding::UTF_8
+
 require "bundler/setup"
 require "rack"
 require "rack/test"
