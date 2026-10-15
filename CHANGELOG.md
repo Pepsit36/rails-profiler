@@ -19,12 +19,21 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.34.2] - 2026-10-15
+
+<!-- stamped -->
+
 ### Changed
 
 - **Dependencies:** The gem now requires `mcp` below 2.0 (`>= 0.3, < 2`). The upper bound keeps
   a future major of `mcp` from being picked up by `bundle update` and breaking the MCP server; the
   test suite passes on both ends of the range, `mcp` 0.3.0 and 1.7.0. An application already on
   `mcp` 2.x would have to stay on an earlier version of the gem until it supports it.
+
+### Fixed
+
+- **MCP:** `explain_query` called against an unknown, offline or refused slave profiler now answers the dedicated message (`Error: Unknown slave profiler: ...`) instead of the generic `EXPLAIN failed`.
+- **Assets:** The toolbar assets endpoints now answer a 404 that names the command to run (`yarn build:full` in the gem) when `app/assets/builds/` is empty or incomplete, instead of a 500.
 
 ### Security
 
