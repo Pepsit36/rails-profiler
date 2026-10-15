@@ -505,7 +505,9 @@ User-facing details: [docs/security.md](docs/security.md).
 - `spec/instrumentation/`: `Net::HTTP`, threads and executors, ActiveJob, Sidekiq, IRB
 - `spec/requests/`: the engine's controllers in a small Rails application (`spec/support/rails_app.rb`),
   access control, the MCP mount, the cluster endpoints
-- `spec/security/`: redaction and the cluster secret
+- `spec/redaction/`: the masking of sensitive data, in one place: `Profiler::Redaction` itself, the
+  SEC-03 regression specs and their review follow-ups, the cluster secret, and the ENV and EXPLAIN
+  endpoints once masked
 - `spec/cluster/`, `spec/mcp/`, `spec/test_runner/`, `spec/test_helpers/`
 - Specs that need a real multi-threaded server start Puma (`spec/support/puma_app_server.rb`)
 - `spec/explain_runner_postgresql_spec.rb` needs a PostgreSQL server
