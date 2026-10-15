@@ -8,6 +8,9 @@ gem "rake", "~> 13.0"
 gem "rspec", "~> 3.0"
 gem "webmock", "~> 3.18"
 
+# Line coverage of the suite, with a floor enforced by spec/spec_helper.rb.
+gem "simplecov", "~> 0.22", require: false
+
 # Optional dependencies
 gem "redis", "~> 5.0", require: false
 gem "rack-test", "~> 2.0", require: false
