@@ -56,6 +56,22 @@ changelog:check:
     # publication.
     - ruby bin/changelog coverage
 
+# Reports known advisories on the JavaScript build dependencies (orval, esbuild, sass,
+# typescript and what they pull in). Informational on purpose: a job failure shows as a
+# warning and the pipeline goes on. Made blocking, a new advisory on a build-only
+# dependency, often with no fixed version yet, would hold back every publication until
+# someone upgrades it, and the path of least resistance would be to bypass the pipeline
+# rather than respect it. Read its log when it turns orange. `yarn audit` reads
+# package.json and yarn.lock only, so no install is needed, and `needs: []` lets it start
+# at once. Nothing depends on it, canary and release included.
+yarn:audit:
+  stage: test
+  image: node:22
+  needs: []
+  allow_failure: true
+  script:
+    - yarn audit --level high
+
 build:
   stage: build
   image: node:22
