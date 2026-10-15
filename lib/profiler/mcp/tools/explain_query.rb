@@ -49,6 +49,9 @@ module Profiler
           [{ type: "text", text: lines.join("\n") }]
         rescue Profiler::ExplainRunner::RefusedError => e
           [{ type: "text", text: "Error: #{e.message}" }]
+        rescue Profiler::Error => e
+          # The profiler's own refusals (unknown, offline or refused slave) carry a message made for the caller.
+          [{ type: "text", text: "Error: #{e.message}" }]
         rescue StandardError => e
           # The database's message carries the SQL, and sometimes a path: the log only.
           Profiler.log_error("MCP explain_query: failed for query #{query_index.to_i} of profile #{token.to_s.inspect}", e)

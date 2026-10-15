@@ -113,6 +113,17 @@ RSpec.describe "Profiler access control", type: :request do
       expect(last_response.status).to eq(200)
     end
 
+    it "answers 404 with the build command when the assets are not built" do
+      path = Profiler::Engine.root.join("app", "assets", "builds", "profiler.css")
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(path).and_raise(Errno::ENOENT, path.to_s)
+
+      get "/_profiler/assets/profiler.css", {}, local
+
+      expect(last_response.status).to eq(404)
+      expect(last_response.body).to include("profiler.css is missing", "yarn build:full")
+    end
+
     # Walks every route of the engine, so that a controller added later without the
     # check, or one that skips it, fails here.
     it "is refused on every route of the engine except the static assets" do

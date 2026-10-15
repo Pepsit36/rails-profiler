@@ -8,25 +8,28 @@ module Profiler
     skip_before_action :check_authorization
     skip_before_action :authorize_request
 
+    BUILD_MISSING = "Profiler assets are not built (%s is missing). Run `yarn build:full` in the profiler gem."
+
     def toolbar_js
-      path = Profiler::Engine.root.join("app", "assets", "builds", "profiler-toolbar.js")
-      js = File.read(path)
-      expires_in 1.hour, public: true
-      render plain: js, content_type: "application/javascript"
+      serve("profiler-toolbar.js", "application/javascript")
     end
 
     def main_js
-      path = Profiler::Engine.root.join("app", "assets", "builds", "profiler.js")
-      js = File.read(path)
-      expires_in 1.hour, public: true
-      render plain: js, content_type: "application/javascript"
+      serve("profiler.js", "application/javascript")
     end
 
     def main_css
-      path = Profiler::Engine.root.join("app", "assets", "builds", "profiler.css")
-      css = File.read(path)
+      serve("profiler.css", "text/css")
+    end
+
+    private
+
+    def serve(name, content_type)
+      body = File.read(Profiler::Engine.root.join("app", "assets", "builds", name))
       expires_in 1.hour, public: true
-      render plain: css, content_type: "text/css"
+      render plain: body, content_type: content_type
+    rescue Errno::ENOENT
+      render plain: format(BUILD_MISSING, name), status: :not_found
     end
   end
 end
