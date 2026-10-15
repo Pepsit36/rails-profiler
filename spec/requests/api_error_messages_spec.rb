@@ -89,6 +89,19 @@ RSpec.describe "Internal error messages", type: :request do
     end
   end
 
+  describe "the MCP explain_query tool against an unknown slave" do
+    after { Profiler.instance_variable_set(:@slave_registry, nil) }
+
+    it "answers the dedicated message, not the generic one" do
+      Profiler.instance_variable_set(:@slave_registry, Profiler::Cluster::SlaveRegistry.new)
+
+      text = Profiler::MCP::Tools::ExplainQuery.call("token" => "abc", "query_index" => 0, "slave" => "ghost").first[:text]
+
+      expect(text).to eq("Error: Unknown slave profiler: ghost")
+      expect(text).not_to include("EXPLAIN failed")
+    end
+  end
+
   describe "POST /_profiler/api/ajax/link" do
     it "answers 500 with a generic message and logs the storage's message" do
       parent = stored_profile
