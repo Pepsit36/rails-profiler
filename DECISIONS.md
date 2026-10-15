@@ -236,7 +236,7 @@ Same swagger, `yarn build:full` with each version, outputs compared:
 ## mcp: `">= 0.3", "< 2"`
 
 - Measured: the full suite passes with `mcp` 0.3.0 (lowest allowed) and 1.7.0 (resolved today),
-  1815 examples, 0 failures each. The floor is kept, since raising it would drop applications
+  0 failures each (1881 examples with 1.7.0 after the rebase). The floor is kept, since raising it would drop applications
   that pin an older `mcp`, and the cap is the next major, the first version allowed to break the
   API under semantic versioning. `~> 1.6` was rejected: it would raise the floor for no tested
   reason.
