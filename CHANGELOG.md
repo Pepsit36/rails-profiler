@@ -19,6 +19,24 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependencies:** The gem now requires `mcp` below 2.0 (`>= 0.3, < 2`). The upper bound keeps
+  a future major of `mcp` from being picked up by `bundle update` and breaking the MCP server; the
+  test suite passes on both ends of the range, `mcp` 0.3.0 and 1.7.0. An application already on
+  `mcp` 2.x would have to stay on an earlier version of the gem until it supports it.
+
+### Security
+
+- **Build:** The client the dashboard is built from is now generated with `orval` 8
+  (`^8.41.0`, locked at 8.41.0) instead of 7.21.0, which carried eleven critical advisories of
+  code execution while generating from an OpenAPI document. `orval` only runs when the assets are
+  built, never in an application using the gem, and the generated client calls the same URLs with
+  the same methods and cache keys as before. Building the assets now needs Node.js 22.18 or later.
+- **CI:** A `yarn:audit` job reports the advisories at level high and above on the JavaScript
+  build dependencies. It is informational: a finding shows as a warning and does not hold back a
+  publication.
+
 ## [0.34.1] - 2026-10-15
 
 <!-- stamped -->

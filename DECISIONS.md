@@ -172,3 +172,78 @@ removed or folded into the docs once accepted.
   origin/rails-profiler-gem/fix/env-writes-and-mcp-read-only-v3` turns them into the section of
   the version it computes, as described above. The `[0.34.0]` section the base stamped is left
   byte for byte.
+
+---
+
+# Decisions: chore/deps-orval-and-mcp-bound
+
+Choices made on this branch without the maintainer available, each with the most cautious
+option and the reason for it. Remove this file once the branch is reviewed.
+
+## orval: `^8.41.0`, locked at 8.41.0
+
+- Every `orval` below 8.21.0 carries the critical advisories. The latest release, 8.43.0, was
+  published the day before this branch and 8.42.0 two days before: 8.41.0 is the most recent
+  release that had been public for a week, a cooling-off period against a compromised fresh
+  release. The floor of the range is the version actually tested, not the first fixed one.
+- orval 8 requires Node.js `>=22.18.0`. The `build` job runs on `node:22`, which tracks the
+  latest 22.x, so it is satisfied.
+- orval 8 changed two defaults that `orval.config.ts` relied on, and the config now sets them
+  back:
+  - `httpClient` defaults to `fetch`, which calls the mutator as `apiFetch(url, RequestInit)` and
+    expects a `{ data, status, headers }` response. `api-fetcher.ts` takes orval 7's config
+    object and returns the body, so the config sets `httpClient: 'axios'` (the shape of the call,
+    not a dependency on axios: the mutator still uses `fetch`).
+  - A global `query.useQuery: true` now makes every verb a query, POST and DELETE included,
+    which removes the mutation hooks the components use. Unset, GET gets a query and the other
+    verbs a mutation, which is what orval 7 produced with it.
+- The unknown keys `useInfiniteParam` and `initialPageParam` are left as they were: orval 7
+  ignored them too (no `pageParam` in its output), so removing or renaming them is a behaviour
+  change for another branch.
+
+### Generated output, orval 7.21.0 against 8.41.0 (measured)
+
+Same swagger, `yarn build:full` with each version, outputs compared:
+
+- Every `apiFetch` call: same URL, method, params and body. The only difference is that the
+  mutation functions (DELETE, PATCH) now accept an optional `signal` and pass it on; the
+  generated mutation hooks call them without one, so `fetch` still gets `signal: undefined`.
+- Every query key: same values. Path parameters of the query key functions are typed as
+  required instead of optional.
+- Schemas: fields marked `nullable` in the swagger are typed `T | null` instead of `T`, the
+  `@nullable` doc comment and the `eslint-disable` lines are gone. Types only.
+- Query hooks build their result with a `withQueryKey` helper (getters) instead of
+  `{ ...query, queryKey }`, which keeps TanStack Query's tracked properties working.
+- `tsc --noEmit` passes on the new output. Without the two config changes above it failed on
+  every mutation call site.
+
+## `yarn audit` after the upgrade (measured)
+
+- Before: 11 critical (all `orval`), 150 high, 29 moderate.
+- After: 0 critical, 18 high, 3 moderate, on `fast-uri`, `immutable`, `picomatch` and
+  `source-map-js`, all transitive build dependencies. Left out of this branch, whose scope is
+  `orval`; the new `yarn:audit` job reports them.
+
+## `yarn:audit` job: informational, separate job
+
+- `allow_failure: true` rather than `|| true` in `build`: a finding turns the job orange in the
+  pipeline view instead of being buried in a green log, and the pipeline still passes.
+- Not blocking: a new advisory on a build-only dependency, often with no fixed version yet,
+  would hold back every publication, and the easy way out would be to bypass the pipeline.
+- `needs: []` and no install: `yarn audit` reads `package.json` and `yarn.lock` only.
+  Nothing, `canary` and `release` included, depends on it.
+
+## mcp: `">= 0.3", "< 2"`
+
+- Measured: the full suite passes with `mcp` 0.3.0 (lowest allowed) and 1.7.0 (resolved today),
+  1815 examples, 0 failures each. The floor is kept, since raising it would drop applications
+  that pin an older `mcp`, and the cap is the next major, the first version allowed to break the
+  API under semantic versioning. `~> 1.6` was rejected: it would raise the floor for no tested
+  reason.
+
+## Commit type and changelog
+
+- The brief asks for `chore(deps)` commits, which publish nothing: `bin/changelog stamp` leaves
+  the entries under `[Unreleased]`, and they ship with the next publishing merge. The `mcp`
+  bound only reaches users then. If it should go out on its own, the commit touching
+  `profiler.gemspec` would have to be a `fix:`.
