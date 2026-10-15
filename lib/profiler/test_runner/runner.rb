@@ -197,12 +197,15 @@ module Profiler
 
         overrides = Profiler.env_override_store.all_overrides
         overrides.each do |key, entry|
-          blocked = BLOCKED_ENV_KEYS.include?(key.upcase)
+          blocked = EnvKeyPolicy.protected?(key)
           if blocked || code_loading_env_key?(key)
             left_out << key unless blocked
             next
           end
           value = entry.is_a?(Hash) ? entry["value"] : entry
+          # A value the process environment cannot hold, saved by a version that did not check it.
+          next if EnvKeyPolicy.value_rejection(key, value)
+
           if value == EnvOverrideStore::DELETED_SENTINEL
             base.delete(key)
           else

@@ -14,9 +14,9 @@ module Profiler
           value = params["value"].to_s
 
           return [{ type: "text", text: "Error: key cannot be blank." }] if key.empty?
-          # Checked before the store is written, and before a slave is asked: a refused key never
-          # reaches the file nor ENV.
-          if (reason = Profiler::EnvKeyPolicy.rejection(key))
+          # Checked before the store is written, and before a slave is asked: a refused key or value
+          # never reaches the file nor ENV.
+          if (reason = Profiler::EnvKeyPolicy.rejection(key) || Profiler::EnvKeyPolicy.value_rejection(key, value))
             return ::MCP::Tool::Response.new(
               [{ type: "text", text: "Error: #{reason}; #{key} was left unchanged." }],
               error: true

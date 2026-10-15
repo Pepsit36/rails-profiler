@@ -152,12 +152,26 @@ hold:
 The Env tab and the MCP env tools only set or delete a variable whose name is made of letters,
 digits and underscores, not starting with a digit: a name with `=`, a space, a dash or a dot is
 refused (422 from the endpoint, an error from the tool) before anything is written, the file
-included. They also refuse the variables that select the environment, the database or the secrets
-(`RAILS_ENV`, `RACK_ENV`, `DATABASE_URL`, `SECRET_KEY_BASE`) and those that make a process load
-or run other code (`PATH`, `HOME`, `RUBYOPT`, `SPEC_OPTS`, `NODE_OPTIONS`, and every name starting
-with `RUBY`, `GEM_`, `BUNDLE_`, `LD_`, `DYLD_`, `GIT_`, `BASH_`...), whatever their case. It is the
-list the test runner already left out ([Tests](testing.md#test-runner)), now applied to every
-write. It is a deny list: set any of these in the shell that starts the application instead.
+included. A value holding a NUL byte, which no environment variable can hold, is refused the same
+way. They also refuse, whatever their case:
+
+- the variables that select the environment, the database or the secrets: `RAILS_ENV`,
+  `RACK_ENV`, `DATABASE_URL` and every name ending in `_DATABASE_URL` (Active Record reads
+  `PRIMARY_DATABASE_URL` before `DATABASE_URL`), every name starting with `PG` (libpq) or
+  `MYSQL_`, `SECRET_KEY_BASE`, `RAILS_MASTER_KEY`;
+- those that send the application's connections elsewhere or change which certificates it
+  trusts: every name ending in `_PROXY` (`http_proxy`, `HTTPS_PROXY`, `no_proxy`...),
+  `SSL_CERT_FILE`, `SSL_CERT_DIR`, every name starting with `OPENSSL_`;
+- those that make a process load or run other code: `PATH`, `HOME`, `RUBYOPT`, `SPEC_OPTS`,
+  `NODE_OPTIONS`, `GCONV_PATH`, `IRBRC`, `PRYRC`, `ZDOTDIR`, `LESSOPEN`, `JAVA_TOOL_OPTIONS`,
+  `EDITOR`, `PAGER`, and every name starting with `RUBY`, `GEM_`, `BUNDLE_`, `LD_`, `DYLD_`,
+  `GIT_`, `BASH_`...;
+- `PROFILER_MCP_READ_ONLY` ([Read-only mode](mcp.md#read-only-mode)).
+
+The test runner leaves the same names out ([Tests](testing.md#test-runner)). It is a deny list,
+and a deny list cannot be complete: a gem the application uses may read a variable of its own that
+no list in the profiler knows about. Set any of these in the shell that starts the application
+instead.
 
 An override with such a name, saved by an earlier version, stays in the file but is no longer
 applied; a warning gives how many were left out, never which. Resetting it from the Env tab or

@@ -151,7 +151,13 @@ RSpec.describe Profiler::EnvOverrideStore, "across processes" do
 
     before { File.write(file, JSON.generate(key => { "value" => "one", "original" => nil })) }
 
+    # Written long enough ago for its content to be cached (CACHE_SETTLE_SECONDS).
+    def settle(path)
+      File.utime(Time.now - 60, Time.now - 60, path)
+    end
+
     it "parses the file once while it does not change" do
+      settle(file)
       store.apply!
       expect(File).not_to receive(:read)
       expect(JSON).not_to receive(:parse)
@@ -169,6 +175,29 @@ RSpec.describe Profiler::EnvOverrideStore, "across processes" do
       described_class.new.set(key, "two")
       store.apply!
       expect(ENV[key]).to eq("two")
+    end
+
+    # ext4 gives the inode a rename freed to the next temporary file: two writes of the same size
+    # within one mtime tick leave the inode, the device, the mtime and the size unchanged. File.stat
+    # is held to the first write's stat so that the case does not depend on the file system.
+    it "reads again a file just rewritten with the same inode, mtime and size" do
+      store.apply!
+      first = File.stat(file)
+      described_class.new.set(key, "two")
+      expect(File.size(file)).to eq(first.size)
+
+      allow(File).to receive(:stat).and_call_original
+      allow(File).to receive(:stat).with(satisfy { |path| path.to_s == file }).and_return(first)
+      store.apply!
+      expect(ENV[key]).to eq("two")
+    end
+
+    it "keeps reading a file written less than CACHE_SETTLE_SECONDS ago" do
+      store.apply!
+      expect(File).to receive(:read).with(satisfy { |path| path.to_s == file }).twice.and_call_original
+
+      2.times { store.apply! }
+      expect(ENV[key]).to eq("one")
     end
 
     it "reads it again after it was written in place, keeping its size" do

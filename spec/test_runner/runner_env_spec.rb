@@ -126,6 +126,28 @@ RSpec.describe Profiler::TestRunner::Runner, ".build_env with real overrides" do
     expect(env).not_to have_key("SECRET_KEY_BASE")
   end
 
+  # Saved by an earlier version: the names that only end or start like a protected one.
+  it "gives the test process the shell value of the keys protected by suffix or prefix" do
+    boot_with("PRIMARY_DATABASE_URL" => "postgres://localhost/app_test", "PGHOST" => nil, "https_proxy" => nil)
+    set_env("PRIMARY_DATABASE_URL", "postgres://elsewhere/prod")
+    set_env("PGHOST", "elsewhere")
+    set_env("https_proxy", "http://elsewhere:3128")
+
+    env = build_env
+
+    expect(env["PRIMARY_DATABASE_URL"]).to eq("postgres://localhost/app_test")
+    expect(env).not_to have_key("PGHOST")
+    expect(env).not_to have_key("https_proxy")
+  end
+
+  it "leaves out a value holding a NUL byte, saved by an earlier version" do
+    File.write(Profiler.configuration.tmp_path.join("env_overrides.json"),
+               JSON.generate("PROFILER_SPEC_NUL" => { "value" => "on\u0000off" }))
+    boot_with("PROFILER_SPEC_NUL" => nil)
+
+    expect(build_env).not_to have_key("PROFILER_SPEC_NUL")
+  end
+
   it "uses the shell value of this boot, not the original recorded by an older one" do
     ENV["DATABASE_URL"] = "postgres://localhost/recorded_days_ago"
     set_env("DATABASE_URL", "postgres://elsewhere/prod")

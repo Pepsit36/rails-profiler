@@ -35,6 +35,10 @@ module Profiler
     # override until it restarts.
     RESTORE_TTL = 7 * 24 * 60 * 60
 
+    # How old the overrides file must be before apply! keeps its content between calls
+    # (cached_overrides).
+    CACHE_SETTLE_SECONDS = 2
+
     def initialize
       # What ENV held in this process before set, delete or apply! changed a key. Where the
       # overrides are blocked, a reset restores these and never the file's "original" values,
@@ -48,6 +52,12 @@ module Profiler
     end
 
     def set(key, value)
+      # Before the file is written: an entry ENV cannot hold would fail in every process that
+      # applies it.
+      if (reason = EnvKeyPolicy.value_rejection(key, value))
+        raise Error, "could not set #{key}: #{reason}"
+      end
+
       surfacing("set #{key}") do
         remember_process_original(key)
         update_overrides do |overrides|
@@ -141,14 +151,14 @@ module Profiler
     # Runs before every Sidekiq job and console line: the file is parsed again only when it was
     # replaced or changed since the last call (cached_overrides). Each key is applied on its own,
     # so that a key that cannot be written leaves the others applied. A key EnvKeyPolicy refuses,
-    # written by a version that did not check the names, is left out.
+    # or a value ENV cannot hold, written by a version that did not check them, is left out.
     def apply!
       return if ENV[TEST_RUNNER_CHILD_ENV] == "1"
       return if blocked_reason
 
       skipped = []
       cached_overrides.each do |key, entry|
-        unless EnvKeyPolicy.allowed?(key)
+        unless applicable?(key, entry)
           skipped << key
           next
         end
@@ -192,6 +202,13 @@ module Profiler
       raise Error, "could not #{action} in env_overrides.json under tmp_path: #{reason}"
     end
 
+    def applicable?(key, entry)
+      return false unless EnvKeyPolicy.allowed?(key)
+
+      value = entry.is_a?(Hash) ? entry["value"] : entry
+      EnvKeyPolicy.value_rejection(key, value).nil?
+    end
+
     def apply_entry(key, entry)
       value = entry.is_a?(Hash) ? entry["value"] : entry
 
@@ -223,7 +240,8 @@ module Profiler
       @skipped_keys_logged = skipped
       noun = skipped.size == 1 ? "override was" : "overrides were"
       Profiler.log_warn("#{skipped.size} persisted environment #{noun} not applied: the name is not " \
-                        "a valid environment variable name, or one the profiler does not change.")
+                        "a valid environment variable name, or one the profiler does not change, " \
+                        "or the value holds a NUL byte.")
     end
 
     def restore_entry(original)
@@ -270,6 +288,7 @@ module Profiler
       # A name ENV cannot hold ("A=B"), written by a version that did not check the names: its
       # entry is reset in the file, and there is nothing to put back here.
       return false unless EnvKeyPolicy.valid_name?(key)
+      return false if EnvKeyPolicy.value_rejection(key, original)
 
       original.nil? ? ENV.delete(key) : ENV[key] = original
       true
@@ -297,11 +316,17 @@ module Profiler
       {}
     end
 
-    # load_overrides for apply!, without reading the file again while it is the same file. The
-    # file is only ever replaced by a rename (save_overrides) or removed, so its inode, mtime and
-    # size change with every write, whatever the mtime resolution of the file system. A write
-    # between the stat and the read caches the new content under the old signature: the next call
-    # sees another signature and reads again, so an update is never missed.
+    # load_overrides for apply!, without reading the file again while it is the same file.
+    #
+    # The signature (inode, device, mtime, size) alone can miss a write: ext4 hands the inode the
+    # rename freed to the next temporary file, and two writes of the same size within one tick of
+    # the mtime clock then look identical, the stale value kept until the file is written again.
+    # So the content is cached only once the file has settled: its mtime at least
+    # CACHE_SETTLE_SECONDS in the past. Any later write is then at least that much younger, and
+    # gets another mtime on any file system whose mtime tick is shorter (2 seconds on FAT, the
+    # coarsest). A file written less than that ago is read at each call, which costs a read only
+    # during the seconds after a change. A write between the stat and the read caches the new
+    # content under the old signature: the next call sees another mtime and reads again.
     def cached_overrides
       path = override_file_path
       stat = File.stat(path)
@@ -310,11 +335,15 @@ module Profiler
       return cached[1] if cached && cached[0] == signature
 
       overrides = parse_overrides(File.read(path)).freeze
-      @cached_overrides = [signature, overrides]
+      @cached_overrides = settled?(stat) ? [signature, overrides] : nil
       overrides
     rescue Errno::ENOENT
       @cached_overrides = nil
       {}
+    end
+
+    def settled?(stat)
+      Time.now - stat.mtime >= CACHE_SETTLE_SECONDS
     end
 
     # Reads, changes and writes the file under the lock, so that the web process, its threads and

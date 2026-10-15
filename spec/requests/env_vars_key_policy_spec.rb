@@ -50,7 +50,29 @@ RSpec.describe "The names the env tools may set or delete", type: :request do
     "A=B" => "x",
     "1ABC" => "x",
     "WITH SPACE" => "x",
-    "MY-VAR" => "x"
+    "MY-VAR" => "x",
+    # Active Record reads PRIMARY_DATABASE_URL before DATABASE_URL.
+    "PRIMARY_DATABASE_URL" => "postgres://elsewhere/db",
+    "Analytics_Database_Url" => "postgres://elsewhere/db",
+    "PGHOST" => "elsewhere",
+    "PGPASSWORD" => "x",
+    "MYSQL_PWD" => "x",
+    "http_proxy" => "http://elsewhere:3128",
+    "HTTPS_PROXY" => "http://elsewhere:3128",
+    "Https_Proxy" => "http://elsewhere:3128",
+    "no_proxy" => "*",
+    "OPENSSL_CONF" => "/tmp/evil.cnf",
+    "SSL_CERT_FILE" => "/tmp/ca.pem",
+    "SSL_CERT_DIR" => "/tmp/certs",
+    "RAILS_MASTER_KEY" => "x",
+    "GCONV_PATH" => "/tmp",
+    "ZDOTDIR" => "/tmp",
+    "IRBRC" => "/tmp/evil.rb",
+    "PRY_RC" => "/tmp/evil.rb",
+    "PRYRC" => "/tmp/evil.rb",
+    "LESSOPEN" => "|/tmp/evil %s",
+    "JAVA_TOOL_OPTIONS" => "-javaagent:/tmp/evil.jar",
+    "PROFILER_MCP_READ_ONLY" => "0"
   }
 
   describe Profiler::EnvKeyPolicy do
@@ -59,7 +81,15 @@ RSpec.describe "The names the env tools may set or delete", type: :request do
     end
 
     it "accepts an ordinary application variable, whatever its case" do
-      %w[FEATURE_FLAG_X my_app_timeout _PRIVATE].each { |key| expect(described_class.rejection(key)).to be_nil, key }
+      %w[FEATURE_FLAG_X my_app_timeout _PRIVATE DATABASE_URL_NOTE PROXY_TIMEOUT].each do |key|
+        expect(described_class.rejection(key)).to be_nil, key
+      end
+    end
+
+    it "refuses a value holding a NUL byte, and only that" do
+      expect(described_class.value_rejection("FEATURE_FLAG_X", "on\u0000off")).to include("NUL byte")
+      expect(described_class.value_rejection("FEATURE_FLAG_X", "on off")).to be_nil
+      expect(described_class.value_rejection("FEATURE_FLAG_X", nil)).to be_nil
     end
 
     it "keeps the reserved marker's own message" do
@@ -124,6 +154,50 @@ RSpec.describe "The names the env tools may set or delete", type: :request do
     expect(response.error?).to be(true)
   end
 
+  # ENV[]= raises ArgumentError on a NUL byte: before, the file was written first, then the tool
+  # failed with an internal error, and every apply! after it logged the same error again.
+  context "with a value holding a NUL byte" do
+    let(:value) { "on\u0000off" }
+
+    before { ENV.delete("PROFILER_SPEC_NUL") }
+
+    it "the endpoint refuses it, with 422, before writing the file or ENV" do
+      patch "/_profiler/api/env_vars", { key: "PROFILER_SPEC_NUL", value: value }, writing
+
+      expect(last_response.status).to eq(422)
+      expect(JSON.parse(last_response.body)["error"]).to include("NUL byte", "PROFILER_SPEC_NUL was left unchanged")
+      expect_untouched("PROFILER_SPEC_NUL")
+    end
+
+    it "set_env_var refuses it as an error, before asking a slave" do
+      expect(Profiler::MCP::SlaveSupport).not_to receive(:with_slave_proxy)
+      response = Profiler::MCP::Tools::SetEnvVar.call("key" => "PROFILER_SPEC_NUL", "value" => value)
+
+      expect(response).to be_a(MCP::Tool::Response)
+      expect(response.error?).to be(true)
+      expect(response.content.first[:text]).to include("NUL byte", "PROFILER_SPEC_NUL was left unchanged")
+      expect_untouched("PROFILER_SPEC_NUL")
+    end
+
+    it "the store refuses it before writing the file" do
+      expect { Profiler.env_override_store.set("PROFILER_SPEC_NUL", value) }
+        .to raise_error(Profiler::EnvOverrideStore::Error, /NUL byte/)
+      expect_untouched("PROFILER_SPEC_NUL")
+    end
+
+    it "apply! leaves one already in the file out, saying so once, and applies the others" do
+      File.write(file, JSON.generate("PROFILER_SPEC_NUL" => { "value" => value }, "PROFILER_SPEC_AFTER" => { "value" => "applied" }))
+      store = Profiler::EnvOverrideStore.new
+
+      log = capture_profiler_log { 3.times { store.apply! } }
+
+      expect(ENV).not_to have_key("PROFILER_SPEC_NUL")
+      expect(ENV["PROFILER_SPEC_AFTER"]).to eq("applied")
+      expect(log.scan("1 persisted environment override was not applied").size).to eq(1)
+      expect(log).not_to include("failed to apply")
+    end
+  end
+
   it "still sets an ordinary variable" do
     patch "/_profiler/api/env_vars", { key: "PROFILER_SPEC_ALLOWED", value: "on" }, writing
 
@@ -143,10 +217,12 @@ RSpec.describe "The names the env tools may set or delete", type: :request do
           # An original ENV could not take back either.
           "A=B" => { "value" => "x", "original" => "y" },
           "LD_PRELOAD" => { "value" => "/tmp/evil.so", "original" => nil },
+          "PRIMARY_DATABASE_URL" => { "value" => "postgres://elsewhere/db", "original" => nil },
           "PROFILER_SPEC_AFTER" => { "value" => "applied", "original" => nil }
         )
       )
       ENV.delete("LD_PRELOAD")
+      ENV.delete("PRIMARY_DATABASE_URL")
     end
 
     it "apply! leaves them out, applies the keys after them, and says how many it left out" do
@@ -154,7 +230,8 @@ RSpec.describe "The names the env tools may set or delete", type: :request do
 
       expect(ENV["PROFILER_SPEC_AFTER"]).to eq("applied")
       expect(ENV).not_to have_key("LD_PRELOAD")
-      expect(log).to include("2 persisted environment overrides were not applied")
+      expect(ENV).not_to have_key("PRIMARY_DATABASE_URL")
+      expect(log).to include("3 persisted environment overrides were not applied")
       expect(log).not_to include("LD_PRELOAD")
       expect(log).not_to include("failed to apply")
     end
