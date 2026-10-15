@@ -491,7 +491,9 @@ Analyze SQL queries for N+1 patterns, duplicates, and slow queries. Use `"latest
 
 Run `EXPLAIN ANALYZE` on a specific query from a profile and return the execution plan.
 Only read-only statements (`SELECT`, `WITH ... SELECT`, `TABLE`, `VALUES`) are explained, in a
-transaction always rolled back; any other query returns an error. See
+transaction always rolled back; any other query returns an error. It only runs in the development
+and test environments of the application that answers, unless that application sets
+`config.allow_explain_outside_development = true`. See
 [Explaining a query](usage.md#explaining-a-query).
 
 | Parameter | Type | Description |

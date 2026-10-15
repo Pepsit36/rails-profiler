@@ -141,6 +141,10 @@ Profiler.configure do |config|
   # The test runner only runs the discovered test files; true allows any file under Rails.root.
   config.test_runner_allow_undiscovered_files = false
 
+  # Explain only runs in the development and test environments, even with enabled = true
+  # elsewhere; true allows it in every environment. See docs/usage.md#explaining-a-query.
+  config.allow_explain_outside_development = false
+
   # Apply the env overrides saved from the UI or MCP even while `enabled` is false
   # (never in production, whatever this says). See docs/usage.md#environment-variable-overrides.
   config.apply_env_overrides_when_disabled = false

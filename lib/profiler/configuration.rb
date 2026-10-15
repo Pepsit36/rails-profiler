@@ -48,7 +48,7 @@ module Profiler
                   :track_jobs,
                   :track_console,
                   :apply_env_overrides_when_disabled, :restrict_storage_permissions,
-                  :test_runner_allow_undiscovered_files,
+                  :test_runner_allow_undiscovered_files, :allow_explain_outside_development,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
                   :compress_bodies, :compress_body_threshold, :max_captured_body_bytes, :max_captured_log_bytes,
                   :redact_sensitive_data, :filter_parameters, :env_allowlist,
@@ -108,6 +108,10 @@ module Profiler
       # The test runner only runs the files listed by its discovery. true restores the
       # previous behavior: any file under the Rails root.
       @test_runner_allow_undiscovered_files = false
+      # Explain (the Database tab button, POST /_profiler/api/explain, the explain_query MCP tool)
+      # only runs in the development and test environments, even with enabled = true elsewhere:
+      # PostgreSQL's EXPLAIN ANALYZE runs the query. true allows it in every environment.
+      @allow_explain_outside_development = false
       @track_mailers = true
       @capture_mail_body = false
       @sanitize_mailer_recipients = false

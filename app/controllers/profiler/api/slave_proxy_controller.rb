@@ -26,10 +26,13 @@ module Profiler
                  end
 
         render json: result
+      # The profiler's own refusals (unknown or offline slave, refused URL, missing secret).
       rescue Profiler::Error => e
         render json: { error: e.message }, status: :bad_gateway
-      rescue => e
-        render json: { error: "Proxy error: #{e.message}" }, status: :bad_gateway
+      rescue StandardError => e
+        # A network error names the slave's address, and sometimes a path: the log only.
+        Profiler.log_error("SlaveProxy: could not forward #{request.method} to slave profiler #{params[:slave_name].to_s.inspect}", e)
+        render json: { error: "Proxy error" }, status: :bad_gateway
       end
 
       private
