@@ -6,7 +6,12 @@ require "profiler/mcp/tools/explain_query"
 
 RSpec.describe Profiler::MCP::Tools::ExplainQuery do
   before do
-    Profiler.configure { |c| c.enabled = true }
+    # The environment gate has its own spec (spec/explain_environment_gate_spec.rb); here the
+    # tool is exercised wherever the suite runs, with or without Rails loaded.
+    Profiler.configure do |c|
+      c.enabled = true
+      c.allow_explain_outside_development = true
+    end
     Profiler.instance_variable_set(:@storage, Profiler::Storage::MemoryStore.new)
   end
 
@@ -61,10 +66,11 @@ RSpec.describe Profiler::MCP::Tools::ExplainQuery do
     expect(text("token" => "missing", "query_index" => 0)).to eq("Error: Profile not found: missing")
   end
 
-  it "reports any other failure of the runner" do
+  it "reports any other failure of the runner without its message, which is logged instead" do
     allow(Profiler::ExplainRunner).to receive(:run).and_raise(RuntimeError, "connection lost")
+    expect(Profiler).to receive(:log_error).with(a_string_including("explain_query"), an_instance_of(RuntimeError))
 
-    expect(text("token" => "abc", "query_index" => 0)).to eq("EXPLAIN failed: connection lost")
+    expect(text("token" => "abc", "query_index" => 0)).to eq("EXPLAIN failed (the application log has the details)")
   end
 
   context "on a slave" do
