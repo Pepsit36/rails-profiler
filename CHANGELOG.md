@@ -19,6 +19,50 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-10-15
+
+<!-- stamped -->
+
+### Added
+
+- **MCP:** `config.mcp_read_only = true` leaves out the tools that change something:
+  `run_tests`, `clear_profiles`, `set_env_var`, `delete_env_var`, `reset_env_var` and
+  `reset_all_env_vars`. They are not listed by `tools/list`, and a client that calls one by name
+  gets a "tool not found" error; the tools that only read stay. False by default. The gem's
+  `profiler-mcp` executable does not boot the application, so it never reads the option: set
+  `PROFILER_MCP_READ_ONLY=1` in the environment the MCP client starts it with. The variable works
+  with `rake profiler:mcp` and the HTTP transport too, and never turns read-only off.
+
+### Changed
+
+- **Env overrides:** An override saved by an earlier version for a name the profiler now refuses,
+  such as `DATABASE_URL`, `PRIMARY_DATABASE_URL`, `LD_PRELOAD` or `HTTPS_PROXY`, is no longer
+  applied: not at boot, not before a Sidekiq job, not in the test runner. It stays in the file
+  until reset, and a warning gives how many were left out, never their names. Set such a variable
+  in the shell that starts the application instead.
+
+### Fixed
+
+- **Env overrides:** The Env tab, `set_env_var` and `delete_env_var` refuse a name that is not
+  made of letters, digits and underscores (`A=B`, `MY-VAR`), and the variables that select the
+  database, the secrets or the network of the application, or make a process load other code:
+  `DATABASE_URL` and every name ending in `_DATABASE_URL`, every name starting with `PG` or
+  `MYSQL_`, `RAILS_MASTER_KEY`, every proxy variable in any case (`http_proxy`, `HTTPS_PROXY`),
+  `SSL_CERT_FILE`, `SSL_CERT_DIR`, `OPENSSL_CONF`, `GCONV_PATH`, `IRBRC`, `PRYRC`, `ZDOTDIR`,
+  `LD_PRELOAD`, `RUBYOPT` and the others listed in the docs. Before, any of these could be set,
+  `DATABASE_URL` included. The refusal comes before anything is written: a 422 from the endpoint,
+  an error from the tool. The list cannot be complete: a gem may read a variable of its own.
+- **Env overrides:** A value holding a NUL byte is refused the same way. Before, it was written to
+  the file, then the tool failed with an internal error, and every process logged the same error
+  again before each Sidekiq job.
+- **Env overrides:** A reset now reaches every process that applied the override, each Sidekiq
+  process and Puma worker, not only the first one to read the file: each puts back the value it
+  had before. A process that never applied the override is left alone.
+- **Env overrides:** The overrides file is no longer read and parsed again before every Sidekiq
+  job while it does not change. A change written within two seconds of the previous one is never
+  missed, on ext4 too, where the file system reuses the inode and the modification time can stay
+  the same.
+
 ## [0.33.3] - 2026-10-14
 
 <!-- stamped -->
