@@ -30,7 +30,7 @@ every commit of every tag interval is accounted for one way or the other.
   test suite passes on both ends of the range, `mcp` 0.3.0 and 1.7.0. An application already on
   `mcp` 2.x would have to stay on an earlier version of the gem until it supports it.
 - **Test suite:** `bundle exec rspec` now measures the line coverage of the gem's Ruby code with
-  SimpleCov, and the CI fails below 92.3%, the level measured on Ruby 3.3 and 3.4 once the MCP
+  SimpleCov, and the CI fails below 92.0%, the level measured on Ruby 3.3 once the MCP
   tools, the function profiler, the storage base class and the cluster client got specs of their
   own. A run of a few spec files is held to no floor outside the CI.
 - **Test suite:** The suite loads and passes under any locale, `LANG=C` included: `spec_helper.rb`
