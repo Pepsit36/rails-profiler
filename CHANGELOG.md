@@ -19,6 +19,16 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Changed
+
+- **Test suite:** `bundle exec rspec` now measures the line coverage of the gem's Ruby code with
+  SimpleCov, and the CI fails below 92.0%, the level measured on Ruby 3.3 once the MCP
+  tools, the function profiler, the storage base class and the cluster client got specs of their
+  own. A run of a few spec files is held to no floor outside the CI.
+- **Test suite:** The suite loads and passes under any locale, `LANG=C` included: `spec_helper.rb`
+  reads files as UTF-8 whatever the locale, and a `.rspec` file loads it for every spec. The specs
+  of the masking of sensitive data now live together under `spec/redaction/`.
+
 ## [0.34.2] - 2026-10-15
 
 <!-- stamped -->

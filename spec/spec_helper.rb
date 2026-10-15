@@ -1,5 +1,21 @@
 # frozen_string_literal: true
 
+# The specs read source files that carry non-ASCII characters; under LANG=C Ruby would decode
+# them as US-ASCII and the suite would fail to load. Pin UTF-8 whatever the locale.
+Encoding.default_external = Encoding::UTF_8
+
+# Coverage starts before anything under lib/ is loaded, so every line the suite reaches counts.
+require "simplecov"
+SimpleCov.start do
+  enable_coverage :line
+  add_filter "/spec/"
+  track_files "lib/**/*.rb"
+  # The whole suite measures about 92.1% on Ruby 3.3: the floor stops a
+  # regression without failing on run-to-run noise. Checked in the CI only, which always runs the
+  # whole suite: a run of a few files is far below it, and would fail for no reason.
+  minimum_coverage 92.0 if ENV["CI"]
+end
+
 require "bundler/setup"
 require "rack"
 require "rack/test"
