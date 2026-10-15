@@ -7,14 +7,29 @@ module Profiler
   module MCP
     class Server
       # The tools that change the profiler's data, ENV or run code: left out when
-      # config.mcp_read_only is true.
+      # config.mcp_read_only is true or PROFILER_MCP_READ_ONLY is set (Server.read_only?).
       WRITE_TOOLS = %w[
         run_tests clear_profiles set_env_var delete_env_var reset_env_var reset_all_env_vars
       ].freeze
 
+      # Makes the server read-only like config.mcp_read_only, for exe/profiler-mcp above all: that
+      # executable does not boot the application, so the application's initializers, and the
+      # option they set, never run there. Any value but an empty one, 0, false, no or off turns
+      # it on; it never turns off a config.mcp_read_only set to true.
+      READ_ONLY_ENV = "PROFILER_MCP_READ_ONLY"
+      READ_ONLY_ENV_OFF = %w[0 false no off].freeze
+
       class << self
         def instance
           @instance ||= new
+        end
+
+        # Whether the server leaves out WRITE_TOOLS: config.mcp_read_only, or READ_ONLY_ENV.
+        def read_only?
+          return true if Profiler.configuration.mcp_read_only
+
+          value = ENV[READ_ONLY_ENV].to_s.strip.downcase
+          !value.empty? && !READ_ONLY_ENV_OFF.include?(value)
         end
 
         def rack_app
@@ -408,9 +423,9 @@ module Profiler
         ].compact
       end
 
-      # nil for a tool config.mcp_read_only leaves out; build_tools drops it.
+      # nil for a tool a read-only server leaves out (Server.read_only?); build_tools drops it.
       def define_tool(name:, description:, input_schema:, handler:)
-        return nil if Profiler.configuration.mcp_read_only && WRITE_TOOLS.include?(name)
+        return nil if WRITE_TOOLS.include?(name) && self.class.read_only?
 
         ::MCP::Tool.define(name: name, description: description, input_schema: input_schema) do |server_context: nil, **args|
           result = handler.call(args.transform_keys(&:to_s))

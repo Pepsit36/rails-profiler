@@ -86,16 +86,43 @@ With `config.mcp_read_only = true` (false by default), the server leaves out eve
 **write** below: `run_tests`, `clear_profiles`, `set_env_var`, `delete_env_var`, `reset_env_var`
 and `reset_all_env_vars`. They are not listed by `tools/list`, and a client that calls one by name
 gets a "tool not found" error. Everything else stays, `explain_query` included: it only explains
-read-only statements, in a transaction always rolled back. The option applies to both transports.
-The server is built once per process, at its first request: restart the application (or
-`rake profiler:mcp`) after changing it. It does not touch the dashboard nor its API, which keep
-their own access control.
+read-only statements, in a transaction always rolled back. The server is built once per process,
+at its first request: restart the application (or `rake profiler:mcp`) after changing it. It does
+not touch the dashboard nor its API, which keep their own access control.
+
+The option is read where the application's initializers run. The environment variable
+`PROFILER_MCP_READ_ONLY` does the same wherever they do not:
+
+| How the server runs | Read-only with |
+|---|---|
+| HTTP, inside the application (`/_profiler/mcp`) | `config.mcp_read_only = true` |
+| stdio, `bundle exec rake profiler:mcp` (boots the application) | `config.mcp_read_only = true`, or `PROFILER_MCP_READ_ONLY=1` |
+| stdio, the gem's `profiler-mcp` executable (does **not** boot the application) | `PROFILER_MCP_READ_ONLY=1` only: `config.mcp_read_only` is never read there |
+
+`PROFILER_MCP_READ_ONLY` turns read-only on with any value but an empty one, `0`, `false`, `no`
+or `off`; it never turns off a `config.mcp_read_only` set to `true`. Set it in the environment the
+MCP client starts the process with, for example in the `env` of its server entry:
+
+```json
+{
+  "mcpServers": {
+    "rails-profiler": {
+      "command": "bundle",
+      "args": ["exec", "profiler-mcp"],
+      "env": { "PROFILER_MCP_READ_ONLY": "1" }
+    }
+  }
+}
+```
+
+The env tools refuse to set or delete `PROFILER_MCP_READ_ONLY` itself.
 
 ## Tools at a glance
 
 Every tool but `list_slaves` takes an optional `slave` parameter (see
 [Cluster](#cluster-masterslave)). The tools marked **write** change something, and are left out by
-[`config.mcp_read_only`](#read-only-mode); the others only read.
+[read-only mode](#read-only-mode) (`config.mcp_read_only` or `PROFILER_MCP_READ_ONLY`); the
+others only read.
 
 | Use | Tools | Resources |
 |---|---|---|
@@ -699,7 +726,8 @@ the value from the shell that started Rails. The full list is in [Tests](testing
 
 Some names are refused, before anything is written: a name that is not made of letters, digits
 and underscores (`A=B`, `MY-VAR`), and the variables that select the environment, the database or
-the code a process loads (`DATABASE_URL`, `LD_PRELOAD`, `GIT_SSH_COMMAND`...). The list is in
+the code a process loads (`DATABASE_URL`, `PRIMARY_DATABASE_URL`, `PGHOST`, `HTTPS_PROXY`,
+`LD_PRELOAD`, `GIT_SSH_COMMAND`...), and a value holding a NUL byte. The list is in
 [Which variables can be overridden](usage.md#which-variables-can-be-overridden).
 
 **Example prompts:**
