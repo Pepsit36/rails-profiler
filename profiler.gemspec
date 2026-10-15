@@ -29,7 +29,10 @@ Gem::Specification.new do |spec|
   spec.add_dependency "rails", ">= 7.0"
   spec.add_dependency "rack", ">= 2.0"
   spec.add_dependency "concurrent-ruby", "~> 1.2"
-  spec.add_dependency "mcp", ">= 0.3" # Tool::Response takes error: as a keyword since 0.3
+  # Tool::Response takes error: as a keyword since 0.3. Capped below the next major: the
+  # suite passes on both 0.3.0 and 1.7.0, and a 2.0 is free to break the Server, Tool and
+  # transport APIs the MCP server is built on.
+  spec.add_dependency "mcp", ">= 0.3", "< 2"
 
   # Optional: SQLite storage backend (add to your app's Gemfile if using storage: :sqlite)
   # spec.add_dependency "sqlite3", ">= 1.4"
