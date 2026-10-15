@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-10-15
+
+<!-- stamped -->
+
 ### Security
 
 - **Explain:** The Explain button, `POST /_profiler/api/explain` and the MCP `explain_query` tool

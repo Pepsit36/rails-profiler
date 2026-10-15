@@ -172,5 +172,3 @@ removed or folded into the docs once accepted.
   origin/rails-profiler-gem/fix/env-writes-and-mcp-read-only-v3` turns them into the section of
   the version it computes, as described above. The `[0.34.0]` section the base stamped is left
   byte for byte.
-
-
