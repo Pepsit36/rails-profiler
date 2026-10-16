@@ -65,7 +65,8 @@ module Profiler
       @storage = :memory
       @storage_options = {}
       @collectors = []
-      @skip_paths = [%r{^/_profiler}, /\.well-known/, /favicon\.ico/, /manifest\.json/]
+      @skip_paths = [%r{\A/_profiler}, %r{\A/\.well-known/}, %r{\A/favicon\.ico\z}, %r{\A(?:/[^/]+)*/manifest\.json\z},
+                     %r{\A/assets/}, %r{\A/cable(/|\z)}]
       @slow_query_threshold = 100 # milliseconds
       @max_queries_warning = 50
       # Where each query comes from: :first_and_slow captures the caller the first time a
@@ -284,7 +285,7 @@ module Profiler
         LocalRequest.warn_once(reason)
         false
       when :allow_authorized
-        @authorize_block ? @authorize_block.call(request) : false
+        run_authorize_block(request)
       else
         false
       end
@@ -372,6 +373,17 @@ module Profiler
     rescue RegexpError => e
       raise ArgumentError, "config.mcp_allowed_hosts: #{pattern.inspect} cannot be matched against the whole " \
                            "host name (#{e.message})"
+    end
+
+    # An exception in the application's own authorization code is a denial, never an error
+    # for the request: it would otherwise break every request. The detail stays in the log.
+    def run_authorize_block(request)
+      return false unless @authorize_block
+
+      @authorize_block.call(request) ? true : false
+    rescue StandardError => e
+      Profiler.log_error("authorize_with block raised, treating the request as unauthorized", e)
+      false
     end
   end
 end

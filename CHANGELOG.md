@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.34.3] - 2026-10-15
+
+<!-- stamped -->
+
 ### Changed
 
 - **Test suite:** `bundle exec rspec` now measures the line coverage of the gem's Ruby code with
@@ -28,6 +32,12 @@ every commit of every tag interval is accounted for one way or the other.
 - **Test suite:** The suite loads and passes under any locale, `LANG=C` included: `spec_helper.rb`
   reads files as UTF-8 whatever the locale, and a `.rspec` file loads it for every spec. The specs
   of the masking of sensitive data now live together under `spec/redaction/`.
+
+### Fixed
+
+- **Middleware:** The default `skip_paths` are now anchored to the whole path, so a page such as `/users/favicon.ico.html` is no longer skipped by mistake, and the Sprockets assets (`/assets`) and Action Cable (`/cable`) requests are no longer profiled. A `skip_paths` list you set yourself is used as given.
+- **Mailers:** Visiting the mailer previews (`/rails/mailers`) no longer records phantom delivered emails in the profile.
+- **Security:** An `authorize_with` block that raises is now treated as a denial: the error is logged server side and the request is served unprofiled, instead of breaking every request of the application.
 
 ## [0.34.2] - 2026-10-15
 

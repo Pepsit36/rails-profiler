@@ -239,6 +239,19 @@ RSpec.describe Profiler::Collectors::MailerCollector do
       end
     end
 
+    context "with a profile whose request is a Rails preview" do
+      it "ignores events when the profile path is under /rails/mailers" do
+        profile.path = "/rails/mailers/user_mailer/welcome_email"
+
+        collector.subscribe
+        fire_process_event
+        fire_deliver_event
+
+        collector.collect
+        expect(profile.collector_data("mailer")[:total]).to eq(0)
+      end
+    end
+
     context "with deliver_later in HTTP context" do
       it "records a queued entry and no delivered email" do
         collector.subscribe

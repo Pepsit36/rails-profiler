@@ -53,6 +53,44 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware do
     end
   end
 
+  describe "when the authorize_with block raises" do
+    before do
+      Profiler.configure do |c|
+        c.authorization_mode = :allow_authorized
+        c.authorize_with { |_request| raise "secret internal detail" }
+      end
+    end
+
+    it "treats it as a denial: the application answers and nothing leaks" do
+      expect(Profiler).to receive(:log_error).with(/authorize_with/, instance_of(RuntimeError))
+      get "/users"
+      expect(last_response.status).to eq(200)
+      expect(last_response.body).not_to include("secret internal detail")
+      expect(last_response.headers).not_to have_key("X-Profiler-Token")
+    end
+  end
+
+  describe "default skip_paths" do
+    before { Profiler.configure { |c| c.skip_paths = Profiler::Configuration.new.skip_paths } }
+
+    %w[/assets/application.css /cable /cable/x /_profiler/x /favicon.ico /manifest.json /x/manifest.json /packs/manifest.json /.well-known/a].each do |path|
+      it "does not profile #{path}" do
+        get path
+        expect(last_response.headers).not_to have_key("X-Profiler-Token")
+      end
+    end
+
+    it "profiles a path that merely ends like a manifest" do
+      get "/x/manifest.json.html"
+      expect(last_response.headers["X-Profiler-Token"]).not_to be_nil
+    end
+
+    it "profiles a path that merely contains a skipped word" do
+      get "/users/favicon.ico.html"
+      expect(last_response.headers["X-Profiler-Token"]).not_to be_nil
+    end
+  end
+
   describe "when skip_paths lists a String" do
     before do
       Profiler.configure { |c| c.skip_paths = ["/health", %r{\A/assets/}] }
