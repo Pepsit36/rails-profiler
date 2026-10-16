@@ -200,7 +200,7 @@ export function DatabaseTab({ dbData, token }: Props) {
         <div class="profiler-alert-banner profiler-alert-banner--warning profiler-mb-4">
           <span class="profiler-alert-banner__icon">⚠️</span>
           <div style="flex:1">
-            <strong>Potential N+1 detected</strong> — {n1Groups.length} pattern{n1Groups.length > 1 ? 's' : ''} repeated {n1Groups.reduce((sum, g) => sum + g.indices.length, 0)} times total
+            <strong>Potential N+1 detected</strong> - {n1Groups.length} pattern{n1Groups.length > 1 ? 's' : ''} repeated {n1Groups.reduce((sum, g) => sum + g.indices.length, 0)} times total
             <div class="profiler-text--xs profiler-text--muted profiler-mt-1">
               Queries causing N+1 are highlighted below. Expand each group to see the call stack.
             </div>

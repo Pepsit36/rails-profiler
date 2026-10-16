@@ -16,7 +16,7 @@ function BodyPreview({ email }: { email: MailerEmail }) {
   if (!email.body_captured) {
     return (
       <div class="profiler-mt-3 profiler-text--xs profiler-text--muted">
-        Body not captured — enable <code>config.capture_mail_body = true</code> in your profiler initializer
+        Body not captured - enable <code>config.capture_mail_body = true</code> in your profiler initializer
       </div>
     )
   }
@@ -121,7 +121,7 @@ function EmailDetail({ email }: { email: MailerEmail }) {
       )}
       <div class="profiler-kv-row">
         <span>Render</span>
-        <span class="profiler-query-card__duration">{email.duration_ms != null ? `${email.duration_ms} ms` : '—'}</span>
+        <span class="profiler-query-card__duration">{email.duration_ms != null ? `${email.duration_ms} ms` : '-'}</span>
       </div>
       {email.delivery_ms != null && (
         <div class="profiler-kv-row"><span>Delivery</span><span class="profiler-query-card__duration">{email.delivery_ms} ms</span></div>
@@ -153,7 +153,7 @@ function EmailRow({ email, onClick, isExpanded }: { email: MailerEmail; onClick:
             <strong>{email.mailer_class}</strong>
             <span class="profiler-text--muted">#{email.action}</span>
             {email.subject && (
-              <span class="profiler-text--muted"> — {email.subject.slice(0, 60)}{email.subject.length > 60 ? '…' : ''}</span>
+              <span class="profiler-text--muted"> - {email.subject.slice(0, 60)}{email.subject.length > 60 ? '…' : ''}</span>
             )}
           </span>
         </div>
@@ -239,7 +239,7 @@ export function MailerTab({ mailerData }: Props) {
         <div class="profiler-alert-banner profiler-alert-banner--warning profiler-mb-4">
           <span class="profiler-alert-banner__icon">⚠️</span>
           <div style={{ flex: 1 }}>
-            <strong>Send loop detected</strong> — {mailerData.loop_warnings.length} pattern{mailerData.loop_warnings.length > 1 ? 's' : ''}
+            <strong>Send loop detected</strong> - {mailerData.loop_warnings.length} pattern{mailerData.loop_warnings.length > 1 ? 's' : ''}
             {mailerData.loop_warnings.map((w, i) => (
               <div key={i} class="profiler-text--xs profiler-text--muted profiler-mt-1">{w.message}</div>
             ))}
@@ -251,7 +251,7 @@ export function MailerTab({ mailerData }: Props) {
       {mailerData.truncated && (
         <div class="profiler-alert-banner profiler-alert-banner--warning profiler-mb-4">
           <span class="profiler-alert-banner__icon">⚠️</span>
-          <span>Showing first 50 emails only — additional emails were truncated</span>
+          <span>Showing first 50 emails only - additional emails were truncated</span>
         </div>
       )}
 
@@ -276,7 +276,7 @@ export function MailerTab({ mailerData }: Props) {
           <h3 class="profiler-text--lg profiler-mt-4 profiler-mb-2">
             Queued
             <span class="profiler-text--muted profiler-text--sm" style={{ fontWeight: 'normal', marginLeft: '8px' }}>
-              deliver_later — will be sent in a background job
+              deliver_later - will be sent in a background job
             </span>
           </h3>
           {mailerData.queued.map((email, i) => (

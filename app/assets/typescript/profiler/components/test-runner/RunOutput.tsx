@@ -33,7 +33,7 @@ interface AnsiSpan {
 
 // Parse ANSI escape codes into safe text/style pairs for Preact rendering.
 // Only a fixed set of ANSI color codes are recognized; the text is rendered as
-// text nodes — no HTML injection risk.
+// text nodes, no HTML injection risk.
 function parseAnsi(raw: string): AnsiSpan[] {
   const ANSI_STYLES: Record<string, string> = {
     '0':  '',
@@ -53,7 +53,7 @@ function parseAnsi(raw: string): AnsiSpan[] {
   const parts = raw.split(/(\x1b\[[0-9;]*m)/)
   for (const part of parts) {
     if (part.startsWith('\x1b[') && part.endsWith('m')) {
-      // It's a control sequence — update current style
+      // It's a control sequence, update current style
       const codes = part.slice(2, -1).split(';')
       if (codes.includes('0')) {
         currentStyle = ''

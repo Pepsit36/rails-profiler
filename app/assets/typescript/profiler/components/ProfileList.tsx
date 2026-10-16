@@ -595,7 +595,7 @@ export function ProfileList() {
                             )}
                           </td>
                           <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
-                          <td>{p.collectors_data?.database?.total_queries ?? '—'}</td>
+                          <td>{p.collectors_data?.database?.total_queries ?? '-'}</td>
                           <td>{formatAllocations(allocatedObjects(p))}</td>
                           <td><span class={statusClass(p.status)}>{p.status}</span></td>
                           <td class="profiler-text--xs profiler-text--mono profiler-text--muted">
@@ -811,7 +811,7 @@ export function ProfileList() {
                               )}
                             </td>
                             <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
-                            <td>{(p.collectors_data?.database as any)?.total_queries ?? '—'}</td>
+                            <td>{(p.collectors_data?.database as any)?.total_queries ?? '-'}</td>
                             <td><span class={isError ? 'badge-error' : 'badge-success'}>{isError ? '✗ Error' : '✓ OK'}</span></td>
                             <td class="profiler-text--xs profiler-text--mono profiler-text--muted">
                               <button class="token-copy" onClick={() => copyToken(p.token)} title="Copy full token">
@@ -914,7 +914,7 @@ export function ProfileList() {
                             </td>
                             <td class="profiler-text--xs profiler-text--mono profiler-text--muted">{testData?.test_file || '-'}</td>
                             <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
-                            <td>{p.collectors_data?.database?.total_queries ?? '—'}</td>
+                            <td>{p.collectors_data?.database?.total_queries ?? '-'}</td>
                             <td>
                               <span class={status === 'failed' ? 'badge-error' : status === 'pending' ? 'badge-warning' : 'badge-success'}>
                                 {status === 'failed' ? '✗ Failed' : status === 'pending' ? '⏸ Pending' : '✓ Passed'}

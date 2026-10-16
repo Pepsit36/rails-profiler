@@ -54,7 +54,7 @@ RSpec.describe Profiler::Instrumentation::ActiveJobInstrumentation do
 
   describe "end-to-end: profile saved on job execution" do
     before do
-      # Don't mock — let it run fully with memory storage
+      # Don't mock, let it run fully with memory storage
     end
 
     it "saves a job profile to storage" do

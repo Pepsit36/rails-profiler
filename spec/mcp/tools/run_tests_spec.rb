@@ -168,7 +168,7 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
       result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec")
       # Profile was created during the run window (both started "now")
       text = result.first[:text]
-      # The section may or may not appear depending on timing — just verify no crash
+      # The section may or may not appear depending on timing, just verify no crash
       expect(text).to include("Test Run")
     end
   end

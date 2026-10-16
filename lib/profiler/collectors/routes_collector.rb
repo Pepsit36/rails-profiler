@@ -39,7 +39,7 @@ module Profiler
       def toolbar_summary
         data = panel_content
         matched = data[:matched]
-        { text: matched ? matched[:pattern] : "\u2014", color: "blue" }
+        { text: matched ? matched[:pattern] : "-", color: "blue" }
       end
     end
   end

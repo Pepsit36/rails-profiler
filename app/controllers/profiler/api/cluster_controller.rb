@@ -27,7 +27,7 @@ module Profiler
         name = params[:name].to_s
         entry = Profiler.slave_registry.heartbeat(name)
         if entry.nil?
-          render json: { error: "Unknown slave — please re-register" }, status: :not_found
+          render json: { error: "Unknown slave - please re-register" }, status: :not_found
         else
           render json: { ok: true }
         end

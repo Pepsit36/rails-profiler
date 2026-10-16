@@ -33,7 +33,7 @@ module Profiler
         end
 
         def rack_app
-          # Memoized at class level — survives route reloads in development
+          # Memoized at class level, survives route reloads in development
           @rack_app ||= lambda do |env|
             HttpGuard.call(env) || instance.http_transport.handle_request(Rack::Request.new(env))
           end
@@ -230,7 +230,7 @@ module Profiler
           ),
           define_tool(
             name: "get_profile_mailers",
-            description: "Get detailed mailer activity for a profile: delivered emails, errors, and queued deliveries — including email bodies when capture_mail_body is enabled.",
+            description: "Get detailed mailer activity for a profile: delivered emails, errors, and queued deliveries - including email bodies when capture_mail_body is enabled.",
             input_schema: {
               properties: {
                 token: { type: "string", description: "Profile token, or 'latest' for the most recent profile (required)" },

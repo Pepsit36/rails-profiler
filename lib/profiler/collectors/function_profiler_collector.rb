@@ -173,7 +173,7 @@ module Profiler
         app_root      = app_root_path
 
         # Partition frames: app frames vs GC frame
-        # Exclude Ruby meta-frames (<main>, <class:Foo>, #<Class:0x...> generated templates) — noise
+        # Exclude Ruby meta-frames (<main>, <class:Foo>, #<Class:0x...> generated templates), noise
         gc_frame_ids  = frames_meta.each_with_object(Set.new) { |(id, f), s| s << id if f[:name] == GC_FRAME_NAME }
         app_frame_ids = frames_meta.each_with_object(Set.new) do |(id, f), s|
           s << id if f[:file]&.start_with?(app_root) && !f[:name].to_s.match?(/\A[<#]/)

@@ -174,7 +174,7 @@ module Profiler
         @nonce ? " nonce=\"#{ERB::Util.html_escape(@nonce)}\"" : ""
       end
 
-      # Thermal design system — self-contained CSS for the injected toolbar.
+      # Thermal design system, self-contained CSS for the injected toolbar.
       # Variables are defined on #profiler-toolbar to avoid polluting the host app.
       def toolbar_styles
         <<~'CSS'
@@ -278,7 +278,7 @@ module Profiler
             transition: color var(--pf-tf), background var(--pf-tf);
             cursor: default;
           }
-          /* Amber bottom indicator — springy easing */
+          /* Amber bottom indicator, springy easing */
           #profiler-toolbar .profiler-toolbar-item::after {
             content: '';
             position: absolute;

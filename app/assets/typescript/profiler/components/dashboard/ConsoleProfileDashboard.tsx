@@ -61,7 +61,7 @@ export function ConsoleProfileDashboard({ profile, initialTab, embedded }: Props
         </div>
         {profile.gem_version && profile.gem_version !== getGemVersion() && (
           <div class="profiler-version-mismatch">
-            ⚠️ Profil capturé avec la version <strong>{profile.gem_version}</strong> — version actuelle : <strong>{getGemVersion()}</strong>
+            ⚠️ Profil capturé avec la version <strong>{profile.gem_version}</strong> - version actuelle : <strong>{getGemVersion()}</strong>
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
 // ============================================================================
-// BASE — Global resets, typography, and utility primitives
+// BASE: Global resets, typography, and utility primitives
 // ============================================================================
 
 *,
@@ -52,7 +52,7 @@ body {
     margin-bottom: var(--profiler-space-2);
     color: var(--profiler-text);
 
-    // Amber gradient — the signature thermal look
+    // Amber gradient, the signature thermal look
     background: linear-gradient(
       125deg,
       var(--profiler-accent) 0%,
@@ -198,7 +198,7 @@ table {
 }
 
 // ============================================================================
-// SCROLLBARS — minimal, theme-aware
+// SCROLLBARS: minimal, theme-aware
 // ============================================================================
 
 ::-webkit-scrollbar {
@@ -371,7 +371,7 @@ table {
 }
 
 // ============================================================================
-// BADGE — semantic status indicators
+// BADGE: semantic status indicators
 // ============================================================================
 
 .badge,

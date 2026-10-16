@@ -83,13 +83,13 @@ module Profiler
     # Sets @resolved_storage to the storage that owns the profile so that
     # secondary lookups (child jobs, parent, AJAX) go to the same node.
     def resolve_profile(token)
-      # Local storage — fast path, covers master-owned profiles
+      # Local storage, fast path, covers master-owned profiles
       if (profile = Profiler.storage.load(token))
         @resolved_storage = Profiler.storage
         return profile
       end
 
-      # Cache hit — skip fan-out if we already know which slave has this token
+      # Cache hit, skip fan-out if we already know which slave has this token
       if (cached_slave = Profiler.token_cache.fetch(token))
         entry = Profiler.slave_registry.all.find { |e| e[:name] == cached_slave }
         if entry && entry[:status] == "online"

@@ -279,7 +279,7 @@ RSpec.describe Profiler::Collectors::HttpCollector do
       entry = nil
       fire_and_forget = Thread.new do
         entry = collector.register_pending(**pending_payload(url: "https://ff.example.com/data"))
-        sleep 0.02 # simulate network delay — collect() runs while this sleeps
+        sleep 0.02 # simulate network delay, collect() runs while this sleeps
         collector.complete_request(entry,
           status: 200, duration: 20.0,
           response_headers: {}, response_body: "done",
@@ -296,7 +296,7 @@ RSpec.describe Profiler::Collectors::HttpCollector do
       mid_state = Profiler.storage.load(profile.token)
       expect(mid_state.collector_data("http")["requests"].first["in_flight"]).to be true
 
-      # Wait for fire-and-forget to complete — it re-saves
+      # Wait for fire-and-forget to complete, it re-saves
       fire_and_forget.join
 
       # Profile in storage is now updated with complete data

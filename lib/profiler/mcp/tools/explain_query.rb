@@ -33,7 +33,7 @@ module Profiler
           data = Profiler::ExplainRunner.run(token, query_index.to_i)
 
           lines = []
-          lines << "# EXPLAIN ANALYZE — Query ##{query_index}"
+          lines << "# EXPLAIN ANALYZE - Query ##{query_index}"
           lines << "Adapter: `#{data[:adapter]}`\n"
 
           if data[:format] == "json"

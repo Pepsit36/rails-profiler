@@ -116,9 +116,9 @@ RSpec.describe Profiler::Collectors::RoutesCollector do
       expect(collector.toolbar_summary[:text]).to eq("/users/:id")
     end
 
-    it "returns — when no route matched" do
+    it "returns - when no route matched" do
       allow(collector).to receive(:panel_content).and_return({ total: 10, matched: nil })
-      expect(collector.toolbar_summary[:text]).to eq("—")
+      expect(collector.toolbar_summary[:text]).to eq("-")
     end
   end
 end

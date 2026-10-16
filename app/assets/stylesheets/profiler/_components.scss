@@ -1,5 +1,5 @@
 // ============================================================================
-// COMPONENTS — Reusable UI building blocks
+// COMPONENTS: Reusable UI building blocks
 // All values use CSS variables for full dual-theme support
 // ============================================================================
 
@@ -171,7 +171,7 @@
 }
 
 // ============================================================================
-// QUERY CARD — database queries, timeline events
+// QUERY CARD: database queries, timeline events
 // ============================================================================
 
 .profiler-query-card {
@@ -230,7 +230,7 @@
 }
 
 // ============================================================================
-// QUERY CARD VARIANTS — N+1
+// QUERY CARD VARIANTS: N+1
 // ============================================================================
 
 .profiler-query-card--n1 {
@@ -239,7 +239,7 @@
 }
 
 // ============================================================================
-// N+1 GROUP — collapsible grouped section for repeated query patterns
+// N+1 GROUP: collapsible grouped section for repeated query patterns
 // ============================================================================
 
 .profiler-n1-group {
@@ -301,7 +301,7 @@
 }
 
 // ============================================================================
-// ALERT BANNER — tab-level warning/info messages
+// ALERT BANNER: tab-level warning/info messages
 // ============================================================================
 
 .profiler-alert-banner {
@@ -331,7 +331,7 @@
 }
 
 // ============================================================================
-// BADGE — small inline labels
+// BADGE: small inline labels
 // ============================================================================
 
 .profiler-badge {
@@ -384,7 +384,7 @@
 }
 
 // ============================================================================
-// MODAL — generic overlay modal
+// MODAL: generic overlay modal
 // ============================================================================
 
 .profiler-modal__overlay {
@@ -447,7 +447,7 @@
 }
 
 // ============================================================================
-// EXPLAIN RESULT — plan tree rendering
+// EXPLAIN RESULT: plan tree rendering
 // ============================================================================
 
 .profiler-explain-result {
@@ -486,7 +486,7 @@
 }
 
 // ============================================================================
-// DUMP CARD — variable dumps
+// DUMP CARD: variable dumps
 // ============================================================================
 
 .profiler-dump-card {
@@ -690,7 +690,7 @@
 }
 
 // ============================================================================
-// BODY PREVIEW — smart content display
+// BODY PREVIEW: smart content display
 // ============================================================================
 
 .profiler-body-csv {
@@ -758,7 +758,7 @@
 }
 
 // ============================================================================
-// FLEX TABLE — responsive table using flexbox, columns shrink instead of overflow
+// FLEX TABLE: responsive table using flexbox, columns shrink instead of overflow
 // ============================================================================
 
 .profiler-flex-table {

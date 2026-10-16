@@ -28,7 +28,7 @@ export function setActiveSlave(name: string | null): void {
       sessionStorage.removeItem(STORAGE_KEY)
     }
   } catch {
-    // sessionStorage unavailable — still set the in-memory value
+    // sessionStorage unavailable, still set the in-memory value
   }
   activeSlavePrefix = name ? `/slaves/${name}` : ''
   // Reload so react-query fetches fresh data with the new prefix

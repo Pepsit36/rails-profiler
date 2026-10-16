@@ -137,10 +137,10 @@ export function RoutesTab({ routesData }: Props) {
               {route.pattern}
             </span>
             <span class="profiler-flex-table__cell profiler-flex-table__cell--muted profiler-text--mono profiler-text--xs" title={route.name ? `${route.name}_path` : ''}>
-              {route.name ? `${route.name}_path` : '—'}
+              {route.name ? `${route.name}_path` : '-'}
             </span>
             <span class="profiler-flex-table__cell profiler-flex-table__cell--muted profiler-text--mono profiler-text--xs" title={route.controller_action ?? ''}>
-              {route.controller_action ?? '—'}
+              {route.controller_action ?? '-'}
             </span>
           </div>
         ))}
