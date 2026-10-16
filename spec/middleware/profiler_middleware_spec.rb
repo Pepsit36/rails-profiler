@@ -53,6 +53,23 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware do
     end
   end
 
+  describe "when the authorize_with block raises" do
+    before do
+      Profiler.configure do |c|
+        c.authorization_mode = :allow_authorized
+        c.authorize_with { |_request| raise "secret internal detail" }
+      end
+    end
+
+    it "treats it as a denial: the application answers and nothing leaks" do
+      expect(Profiler).to receive(:log_error).with(/authorize_with/, instance_of(RuntimeError))
+      get "/users"
+      expect(last_response.status).to eq(200)
+      expect(last_response.body).not_to include("secret internal detail")
+      expect(last_response.headers).not_to have_key("X-Profiler-Token")
+    end
+  end
+
   describe "default skip_paths" do
     before { Profiler.configure { |c| c.skip_paths = Profiler::Configuration.new.skip_paths } }
 

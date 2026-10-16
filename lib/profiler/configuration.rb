@@ -285,7 +285,7 @@ module Profiler
         LocalRequest.warn_once(reason)
         false
       when :allow_authorized
-        @authorize_block ? @authorize_block.call(request) : false
+        run_authorize_block(request)
       else
         false
       end
@@ -373,6 +373,17 @@ module Profiler
     rescue RegexpError => e
       raise ArgumentError, "config.mcp_allowed_hosts: #{pattern.inspect} cannot be matched against the whole " \
                            "host name (#{e.message})"
+    end
+
+    # An exception in the application's own authorization code is a denial, never an error
+    # for the request: it would otherwise break every request. The detail stays in the log.
+    def run_authorize_block(request)
+      return false unless @authorize_block
+
+      @authorize_block.call(request) ? true : false
+    rescue StandardError => e
+      Profiler.log_error("authorize_with block raised, treating the request as unauthorized", e)
+      false
     end
   end
 end
