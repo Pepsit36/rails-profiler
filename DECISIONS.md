@@ -259,3 +259,19 @@ Same swagger, `yarn build:full` with each version, outputs compared:
 - The floor is lowered to 92.0 so that the CI measures a regression from today's level. Raising it
   back to 92.3 or more takes new specs for the code added by those branches, which is out of scope
   of a rebase.
+
+## Mailer previews, skip_paths and authorize_with fixes
+
+- Mailer previews: the existing guard read `Thread.current[:profiler_request_path]`, which no
+  code sets, so it never fired. It now also checks the path of the profile being built,
+  matching `/rails/mailers` only as a whole segment. The thread-local is kept for callers that
+  set it. A visit to `/rails/mailers/...` still creates a profile (a token is returned); the
+  fix only keeps the phantom "delivered" emails out of it. An application mounted under a
+  sub-URI (`/app/rails/mailers`) is not recognized.
+- `skip_paths`: only the defaults are changed. A user-supplied list is used as given, so an
+  application that redefines `skip_paths` entirely does not get the new defaults either.
+  `manifest.json` is matched at any depth (`/manifest.json`, `/packs/manifest.json`), as it was
+  before the patterns were anchored, but only as the last segment of the whole path.
+- `authorize_with`: the rescue lives in `Configuration#authorized?`, so the middleware and the
+  MCP HTTP guard both deny on error. Only `StandardError` is rescued; the exception detail goes
+  to the log, never to the client.
