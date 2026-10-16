@@ -19,6 +19,22 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.34.5] - 2026-10-16
+
+<!-- stamped -->
+
+### Fixed
+
+- **Request capture:** the parameters of a request are now read once the application has returned, so
+  route parameters are present and `param_encoding` is applied, and they are converted to UTF-8. They
+  used to be read in the outermost middleware, before the router ran.
+- **Request capture:** a text body keeps its accents. It is now read in the `charset` of its
+  `Content-Type`, UTF-8 when it declares none, and invalid bytes are replaced, instead of every
+  accent being turned into a replacement character.
+- **Request capture:** a request whose `Content-Type` declares a charset Ruby cannot convert from
+  (`charset=utf-7`, `charset=internal`) no longer loses its profile; the body is read as UTF-8 with
+  invalid bytes replaced.
+
 ## [0.34.4] - 2026-10-16
 
 <!-- stamped -->

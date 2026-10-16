@@ -22,7 +22,9 @@ module Profiler
                     :collectors_released_after_seconds, :params_truncated,
                     :gem_version
 
-      def initialize(request = nil)
+      # +params+: false leaves the params to capture_params, for a caller that builds the profile
+      # before the router has run.
+      def initialize(request = nil, params: true)
         @token = SecureRandom.hex(16)
         @started_at = Time.now
         @collectors_data = {}
@@ -34,10 +36,17 @@ module Profiler
         if request
           @path = request.path
           @method = request.request_method
-          @params, @params_truncated = cap_params(sanitize_params(request.params),
-                                                  Profiler.configuration.max_captured_body_bytes)
+          capture_params(request) if params
           @headers = extract_headers(request.env)
         end
+      end
+
+      # The request's params as the controller sees them. Read once the router has run: Rails
+      # adds the route parameters (:id...) and applies the routes' param_encoding only then, so
+      # a read before it keeps neither.
+      def capture_params(request)
+        @params, @params_truncated = cap_params(sanitize_params(utf8_params(request.params)),
+                                                Profiler.configuration.max_captured_body_bytes)
       end
 
       # The sizes are those of the whole bodies, when a body was cut at max_captured_body_bytes;
@@ -252,13 +261,46 @@ module Profiler
           # compressed format (zip, png, gzip...) does not hold the secret as it is.
           { body: Base64.strict_encode64(Redaction.hide_credentials(raw.b)), encoding: "base64" }
         else
-          text = Redaction.filter_body(raw, content_type).encode("UTF-8", invalid: :replace, undef: :replace)
+          text = utf8_text(Redaction.filter_body(raw, content_type), content_type)
           if compress_body?(text)
             # The fastest level: paid on the request, a quarter larger than the default level.
             { body: Base64.strict_encode64(Zlib::Deflate.deflate(text, Zlib::BEST_SPEED)), encoding: "gzip+base64" }
           else
             { body: text, encoding: "text" }
           end
+        end
+      end
+
+      # The text as UTF-8: a body read from the wire is binary, and is taken for the charset its
+      # Content-Type declares (UTF-8 when it declares none, or one Ruby does not know). Bytes
+      # that do not belong to it are replaced, never raised on.
+      def utf8_text(text, content_type)
+        return text.encode("UTF-8", invalid: :replace, undef: :replace) unless text.encoding == Encoding::BINARY
+
+        charset = content_type.to_s[/charset\s*=\s*"?([^\s";]+)/i, 1]
+        source = begin
+          charset ? Encoding.find(charset) : Encoding::UTF_8
+        rescue ArgumentError
+          Encoding::UTF_8
+        end
+        # "internal" is a name Ruby knows but resolves to nil, "utf-7" is a dummy encoding with no converter.
+        source ||= Encoding::UTF_8
+        begin
+          text.dup.force_encoding(source).encode("UTF-8", invalid: :replace, undef: :replace)
+        rescue EncodingError
+          text.dup.force_encoding(Encoding::UTF_8).encode("UTF-8", invalid: :replace, undef: :replace)
+        end
+      end
+
+      # The params with their strings in UTF-8: a route's param_encoding gives some another
+      # encoding, which the profile must not carry into its JSON.
+      def utf8_params(value)
+        case value
+        when Hash then value.to_h { |k, v| [utf8_params(k), utf8_params(v)] }
+        when Array then value.map { |v| utf8_params(v) }
+        when String
+          value.encoding == Encoding::UTF_8 ? value : value.encode("UTF-8", invalid: :replace, undef: :replace)
+        else value
         end
       end
 
