@@ -283,7 +283,13 @@ module Profiler
         rescue ArgumentError
           Encoding::UTF_8
         end
-        text.dup.force_encoding(source).encode("UTF-8", invalid: :replace, undef: :replace)
+        # "internal" is a name Ruby knows but resolves to nil, "utf-7" is a dummy encoding with no converter.
+        source ||= Encoding::UTF_8
+        begin
+          text.dup.force_encoding(source).encode("UTF-8", invalid: :replace, undef: :replace)
+        rescue EncodingError
+          text.dup.force_encoding(Encoding::UTF_8).encode("UTF-8", invalid: :replace, undef: :replace)
+        end
       end
 
       # The params with their strings in UTF-8: a route's param_encoding gives some another

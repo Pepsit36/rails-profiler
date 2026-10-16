@@ -79,6 +79,18 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "request capture data" 
       expect(profile_of(app, env).response_body).to eq("Crème brûlée")
     end
 
+    %w[utf-7 internal].each do |charset|
+      it "keeps a profile, with replacement characters, for charset=#{charset}" do
+        app = ->(_env) { [200, Rack::Headers["content-type" => "text/plain; charset=#{charset}"], ["ok \xFF caf\xC3\xA9".b]] }
+        env = Rack::MockRequest.env_for("http://localhost/doc", "REMOTE_ADDR" => "127.0.0.1")
+        body = profile_of(app, env).response_body
+
+        expect(body).to start_with("ok ")
+        expect(body).to be_valid_encoding
+        expect(body).to include("\uFFFD")
+      end
+    end
+
     it "replaces invalid sequences instead of failing" do
       app = ->(_env) { [200, Rack::Headers["content-type" => "text/plain"], ["ok \xFF\xFE".b]] }
       env = Rack::MockRequest.env_for("http://localhost/doc", "REMOTE_ADDR" => "127.0.0.1")
