@@ -9,7 +9,7 @@ function statusColor(status: string): string {
   if (status === 'passed')  return 'var(--profiler-success, #10b981)'
   if (status === 'failed')  return 'var(--profiler-error, #ef4444)'
   if (status === 'running') return 'var(--profiler-accent, #06b6d4)'
-  if (status === 'killed' || status === 'error') return 'var(--profiler-warning, #f59e0b)'
+  if (status === 'killed' || status === 'signaled' || status === 'error') return 'var(--profiler-warning, #f59e0b)'
   return 'var(--profiler-text-muted, #888)'
 }
 
@@ -20,6 +20,7 @@ function statusLabel(status: string): string {
     passed:  '✓ Passed',
     failed:  '✗ Failed',
     killed:  '■ Killed',
+    signaled: '⚡ Ended by a signal',
     error:   '⚠ Error',
   }
   return map[status] || status

@@ -31,6 +31,10 @@ RSpec.describe Profiler::TestRunner::RunStore do
     end
   end
 
+  it "counts signaled among the terminal statuses" do
+    expect(described_class::TERMINAL_STATUSES).to include("signaled")
+  end
+
   describe "#find" do
     it "returns the run by id" do
       run = store.create(files: [], framework: "rspec")
@@ -161,6 +165,123 @@ RSpec.describe Profiler::TestRunner::RunStore do
     end
   end
 
+  describe "the limit on the output of a run" do
+    let(:limit) { 1000 }
+
+    def output_of(run)
+      run.output_lines.join
+    end
+
+    it "keeps everything under the limit" do
+      run = store.create(files: [], framework: "rspec", max_output_bytes: limit)
+      store.append_output(run.id, "a" * 700)
+      store.finish_output(run.id)
+      expect(output_of(run)).to eq("a" * 700)
+    end
+
+    it "keeps the beginning and the end, with a visible marker, and no more than the limit" do
+      run = store.create(files: [], framework: "rspec", max_output_bytes: limit)
+      store.append_output(run.id, "head" + "=" * 996)
+      200.times { store.append_output(run.id, "+" * 1024) }
+      store.append_output(run.id, "~" * 200 + "the summary")
+      store.finish_output(run.id)
+
+      output = output_of(run)
+      expect(output).to start_with("head")
+      expect(output).to include("[Profiler] Output truncated")
+      expect(output).to end_with("the summary")
+      expect(output.bytesize).to be < limit + 600 # the limit and the two marker lines
+      expect(output).to match(/(\d+) bytes left out/)
+      left_out = output[/(\d+) bytes left out/, 1].to_i
+      kept = output.count("=+~") + "head".size + "the summary".size
+      expect(left_out + kept).to eq(1000 + 200 * 1024 + 211)
+    end
+
+    it "shows the marker as soon as the limit is reached, so a page following the run sees it" do
+      run = store.create(files: [], framework: "rspec", max_output_bytes: limit)
+      store.append_output(run.id, "a" * 2000)
+      expect(output_of(run)).to include("[Profiler] Output truncated")
+      expect(output_of(run).bytesize).to be < 1000
+    end
+
+    it "does not cut a character in two" do
+      run = store.create(files: [], framework: "rspec", max_output_bytes: limit)
+      store.append_output(run.id, "é" * 2000)
+      store.finish_output(run.id)
+      expect(output_of(run)).to be_valid_encoding
+      expect(output_of(run)).not_to include("\uFFFD")
+    end
+
+    it "keeps what the profiler appends once the process printed everything" do
+      run = store.create(files: [], framework: "rspec", max_output_bytes: limit)
+      store.append_output(run.id, "a" * 5000)
+      store.finish_output(run.id)
+      store.append_output(run.id, "\n[Profiler] ended by SIGKILL\n")
+      expect(output_of(run)).to end_with("[Profiler] ended by SIGKILL\n")
+    end
+
+    it "keeps 20 MiB of output under a limit of 5 MiB" do
+      run = store.create(files: [], framework: "rspec", max_output_bytes: 5 * 1024 * 1024)
+      20.times { store.append_output(run.id, "x" * 1024 * 1024) }
+      store.finish_output(run.id)
+      expect(output_of(run).bytesize).to be <= 5 * 1024 * 1024 + 1024
+    end
+
+    it "keeps everything without a limit" do
+      run = store.create(files: [], framework: "rspec")
+      store.append_output(run.id, "a" * 5000)
+      expect(output_of(run).bytesize).to eq(5000)
+    end
+  end
+
+  describe "the limit on the runs whose process has not ended" do
+    it "refuses a run over the limit, naming the limit" do
+      2.times { store.create(files: [], framework: "rspec", max_active: 2) }
+      expect { store.create(files: [], framework: "rspec", max_active: 2) }
+        .to raise_error(Profiler::TestRunner::TooManyRunsError, /2 test runs are already running.*test_runner_max_active_runs/m)
+      expect(store.all.size).to eq(2)
+    end
+
+    it "accepts a run again once one is released" do
+      first = store.create(files: [], framework: "rspec", max_active: 1)
+      store.update(first.id, status: "killed", finished_at: Time.now)
+      expect { store.create(files: [], framework: "rspec", max_active: 1) }.to raise_error(Profiler::TestRunner::TooManyRunsError)
+
+      store.release(first.id)
+      expect(store.create(files: [], framework: "rspec", max_active: 1)).to be_a(described_class::Run)
+    end
+
+    it "refuses the 51st of 50 concurrent runs only past the limit" do
+      expect do
+        50.times { store.create(files: [], framework: "rspec", max_active: 50) }
+      end.not_to raise_error
+      expect { store.create(files: [], framework: "rspec", max_active: 50) }.to raise_error(Profiler::TestRunner::TooManyRunsError)
+    end
+
+    it "has no limit when none is given" do
+      expect { 50.times { store.create(files: [], framework: "rspec") } }.not_to raise_error
+    end
+  end
+
+  describe "the finished runs kept" do
+    it "keeps the most recent finished runs only, never one whose process is still there" do
+      still_running = store.create(files: [], framework: "rspec")
+      store.update(still_running.id, status: "killed", finished_at: Time.now - 7200)
+
+      runs = (described_class::MAX_FINISHED_RUNS + 5).times.map do |i|
+        run = store.create(files: [], framework: "rspec")
+        store.update(run.id, status: "passed", finished_at: Time.now - 1000 + i)
+        store.release(run.id)
+        run
+      end
+      store.create(files: [], framework: "rspec")
+
+      expect(store.find(still_running.id)).not_to be_nil
+      expect(runs.first(5).map { |r| store.find(r.id) }).to all(be_nil)
+      expect(runs.last(described_class::MAX_FINISHED_RUNS).map { |r| store.find(r.id) }).to all(be_a(described_class::Run))
+    end
+  end
+
   describe "Run#to_h" do
     it "includes output as a joined string" do
       run = store.create(files: ["a.rb"], framework: "rspec")
@@ -169,6 +290,12 @@ RSpec.describe Profiler::TestRunner::RunStore do
       h = run.to_h
       expect(h[:output]).to eq("hello\nworld\n")
       expect(h.key?(:output_lines)).to be false
+    end
+
+    it "includes the signal that ended the process" do
+      run = store.create(files: [], framework: "rspec")
+      store.update(run.id, status: "signaled", signal: "SIGKILL")
+      expect(run.to_h).to include(status: "signaled", signal: "SIGKILL", exit_code: nil)
     end
 
     it "serializes started_at as iso8601" do

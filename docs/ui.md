@@ -681,12 +681,15 @@ The **Test Runner** section (`/_profiler/test_runner` redirects to it) runs your
   **All** / **None**; the count of selected files shows next to them
 - **▶ Run Selected** starts the run, **■ Stop** kills it
 - **The output** of the run, streamed live with its colors, followed by the profiler's report
-  (slowest tests, N+1 patterns); above it, the status of the run (Running, Passed, Failed, Killed
-  or Error) and its duration, and, once it passed or failed, **View in Profiler** to open the
+  (slowest tests, N+1 patterns); above it, the status of the run (Running, Passed, Failed, Killed,
+  Ended by a signal or Error) and its duration, and, once it passed or failed, **View in Profiler** to open the
   Tests section
 
 Only discovered files can be run, and the environment of the test process follows the rules of
-[Test runner](testing.md#test-runner). The MCP tool `run_tests` starts the same runs.
+[Test runner](testing.md#test-runner). The MCP tool `run_tests` starts the same runs. Starting a
+run while two are still running is refused with the reason above the file tree, and the output of
+a run is cut past 5 MB; see [Status, stop and limits of a run](testing.md#status-stop-and-limits-of-a-run).
+With Puma in cluster mode, see [Several server processes](testing.md#several-server-processes).
 
 ---
 

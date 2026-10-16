@@ -10,6 +10,10 @@ module Profiler
       # How long the page waits before asking for the output that came since.
       STREAM_RETRY_MS = 1000
 
+      # Runs live in the memory of the server process that started them.
+      RUN_NOT_FOUND = "Run not found. Runs are kept by the server process that started them: " \
+                      "with several processes (Puma in cluster mode), follow a run from that process."
+
       def files
         framework = params[:framework]
         tree = Profiler::TestRunner::Discovery.files(framework: framework)
@@ -34,11 +38,13 @@ module Profiler
         render json: run.to_h, status: :created
       rescue Profiler::TestRunner::InvalidFileError => e
         render json: { error: e.message }, status: :unprocessable_entity
+      rescue Profiler::TestRunner::TooManyRunsError => e
+        render json: { error: e.message }, status: :too_many_requests
       end
 
       def show
         run = Profiler::TestRunner.run_store.find(params[:id])
-        return render json: { error: "Run not found" }, status: :not_found unless run
+        return render json: { error: RUN_NOT_FOUND }, status: :not_found unless run
 
         render json: run.to_h
       end
@@ -51,7 +57,7 @@ module Profiler
         position = [(request.headers["Last-Event-ID"].presence || params[:position]).to_i, 0].max
         result = Profiler::TestRunner.run_store.read_output(params[:id], position: position)
         if result[:status] == "not_found"
-          render json: { error: "Run not found" }, status: :not_found
+          render json: { error: RUN_NOT_FOUND }, status: :not_found
           return
         end
 
@@ -75,7 +81,8 @@ module Profiler
         if killed
           head :no_content
         else
-          render json: { error: "Run not found or not running" }, status: :not_found
+          known = Profiler::TestRunner.run_store.find(params[:id])
+          render json: { error: known ? "Run not running" : RUN_NOT_FOUND }, status: :not_found
         end
       end
 

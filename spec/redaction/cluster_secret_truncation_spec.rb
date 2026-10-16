@@ -120,7 +120,12 @@ RSpec.describe "Cluster secret and cut text" do
     # A list of emails, cut by count; each email is masked whole.
     "collectors/mailer_collector.rb" => ["@emails.first(MAX_EMAILS)"],
     # The text shown so far, cut after it was masked on the joined text (see append_output).
-    "test_runner/run_store.rb" => ["text.byteslice(0, cut)"],
+    "test_runner/run_store.rb" => [
+      "text.byteslice(0, cut)",
+      # The beginning kept under test_runner_max_output_bytes, cut from text already shown,
+      # so already masked (keep_output only receives what append_output let through).
+      "text.byteslice(0, room)"
+    ],
     # A streamed response body, kept up to one byte past max_captured_body_bytes; what is
     # stored is then cut by Redaction.cut_bytes.
     "middleware/capturing_body.rb" => ["chunk.byteslice(0, room)"],

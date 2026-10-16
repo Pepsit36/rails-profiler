@@ -275,3 +275,52 @@ Same swagger, `yarn build:full` with each version, outputs compared:
 - `authorize_with`: the rescue lives in `Configuration#authorized?`, so the middleware and the
   MCP HTTP guard both deny on error. Only `StandardError` is rescued; the exception detail goes
   to the log, never to the client.
+
+# Decisions: test runner robustness (#53 case 5, #54 cases 10 to 12)
+
+Decisions taken without review, the most cautious option each time. Measured on the base
+(`dcc0c31`) with real subprocesses before any change, then covered by specs that fail on the base.
+
+## Case 5: a process ended by a signal
+
+- New terminal status `signaled`, rather than reusing `killed`: `killed` means "stopped from the
+  profiler", and a crash or the out of memory killer is not that. A run stopped from the profiler
+  stays `killed` whatever signal ended it.
+- `exit_code` is `nil` for such a run (the process has none), and the new `signal` field gives
+  `SIGKILL`, `SIGSEGV`, etc. A `[Profiler]` line is appended to the output before the status, so
+  a client that does not know `signaled` (an older master polling this slave, an older page) still
+  shows why. An older master's `run_tests` on a slave does not know the status and waits until its
+  timeout: acceptable, it reports the run as still running rather than passed.
+
+## Case 10: stop
+
+- `IO.popen(..., pgroup: true)`, `TERM` to `-pid`, then `KILL` to `-pid` after
+  `config.test_runner_kill_grace_seconds` (default 5 s, enough for rspec to print its summary).
+- The group id is the pid of the test process. If the whole group ended and the system gave that
+  pid to a new process that leads its own group within the delay, the `KILL` would reach it. That
+  needs the pids to wrap around in 5 s; accepted and noted in the code.
+- Unix only, like the rest of the runner (`bundle exec`, `Process.kill`).
+
+## Case 11: runs per process (Puma cluster)
+
+- **Not implemented as shared storage; documented instead.** Sharing runs between workers means
+  writing test output (which can carry internal details) to disk or to the user's store, plus the
+  live streaming (condition variables), the output limit and the stop (a pid owned by another
+  worker) across processes. That is a redesign that could not be tested properly here.
+- What changed: the `404` of show, stream and stop gives the reason; `docs/testing.md`
+  ("Several server processes"), `docs/ui.md`, `CHANGELOG.md`. `run_tests` over MCP is unaffected
+  (same process).
+
+## Case 12: limits
+
+- `config.test_runner_max_output_bytes`, 5 MiB by default: the first three quarters are kept as
+  they come (streamed live), then a marker line, then only the last quarter is kept and shown at
+  the end, with the number of bytes left out. The end is kept because the summary and the failures
+  of a test run are there. Lines are only appended, so the SSE positions of the pages stay valid.
+- `config.test_runner_max_active_runs`, 2 by default: two suites against the same test database
+  already step on each other. A run counts from its creation until its process has ended (a stopped
+  run still counts while it prints its summary). Refused with `TooManyRunsError`: `429` in the API
+  (the page shows the server message), a tool error in `run_tests`.
+- At most 20 finished runs kept (`RunStore::MAX_FINISHED_RUNS`, not configurable), on top of the
+  one hour TTL, so that the output limit also bounds the store as a whole.
+- `nil` lifts either limit, like the other byte limits of the configuration.

@@ -19,6 +19,33 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Added
+
+- **Test runner:** `config.test_runner_kill_grace_seconds` (5 by default),
+  `config.test_runner_max_output_bytes` (5 MB by default) and `config.test_runner_max_active_runs`
+  (2 by default), described under the fixes below. `nil` lifts either limit.
+
+### Fixed
+
+- **Test runner:** A test process ended by a signal (killed for lack of memory, crashed, stopped by
+  another program) is no longer reported `passed` with exit code 0. The run ends `signaled`, with no
+  exit code, the name of the signal in a new `signal` field of the API, a `Signal` line in the MCP
+  tool `run_tests`, a `[Profiler]` line at the end of its output, and "Ended by a signal" in the page.
+- **Test runner:** **Stop** now stops the whole test run. The test process runs in a process group
+  of its own: `TERM` goes to the whole group, the processes rspec or rails started included, and
+  `KILL` follows after `config.test_runner_kill_grace_seconds` for whatever ignored it. A stopped
+  run used to leave those processes, and a process ignoring `TERM`, running.
+- **Test runner:** The output a run keeps is limited to `config.test_runner_max_output_bytes`: its
+  beginning, a `[Profiler] Output truncated` line, and its last quarter once the run ends, with the
+  number of bytes left out. It used to be kept whole, however large. At most 20 finished runs are
+  kept, on top of the one hour they were already kept.
+- **Test runner:** Starting a run while `config.test_runner_max_active_runs` runs still have their
+  test process is refused, with a `429` from the API, the reason in the page, and a tool error from
+  `run_tests`. Any number of runs could be started at once.
+- **Test runner:** A run is only known to the server process that started it. With Puma in cluster
+  mode, a request reaching another worker gets a `404` that now gives this reason; the
+  [test runner documentation](docs/testing.md#several-server-processes) describes the limit.
+
 ## [0.34.5] - 2026-10-16
 
 <!-- stamped -->
