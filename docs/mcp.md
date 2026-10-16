@@ -638,7 +638,7 @@ Run test files and wait for results. Synchronous: blocks until tests complete or
 | `timeout_seconds` | number | Max wait time in seconds (default: 120). |
 | `max_output` | number | Max characters of output returned (tail, default: 4000). |
 
-**Returns:** run summary (status, duration, exit code), truncated output, and the token list of test profiles created; use these with `get_test_profile` or `analyze_queries` to drill in.
+**Returns:** run summary (status, duration, exit code), truncated output, and the token list of test profiles created; use these with `get_test_profile` or `analyze_queries` to drill in. The status is `passed`, `failed`, `killed`, `signaled` (the test process was ended by a signal, given on a `Signal` line, and has no exit code) or `error`. A run started while `config.test_runner_max_active_runs` runs (2 by default) are still running is refused with a tool error naming the limit, and nothing runs. The output a run keeps is limited by `config.test_runner_max_output_bytes`; see [Status, stop and limits of a run](testing.md#status-stop-and-limits-of-a-run).
 
 **Example prompts:**
 > "Run spec/models/user_spec.rb and show me the results"

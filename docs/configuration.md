@@ -140,6 +140,11 @@ Profiler.configure do |config|
   config.track_tests = Rails.env.test?
   # The test runner only runs the discovered test files; true allows any file under Rails.root.
   config.test_runner_allow_undiscovered_files = false
+  # Stop sends TERM to the test process group, then KILL this many seconds later.
+  config.test_runner_kill_grace_seconds = 5
+  # Output kept per run (beginning and end, with a marker), and runs at a time. nil for no limit.
+  config.test_runner_max_output_bytes = 5 * 1024 * 1024
+  config.test_runner_max_active_runs = 2
 
   # Explain only runs in the development and test environments, even with enabled = true
   # elsewhere; true allows it in every environment. See docs/usage.md#explaining-a-query.

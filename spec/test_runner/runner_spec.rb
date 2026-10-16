@@ -85,6 +85,23 @@ RSpec.describe Profiler::TestRunner::Runner do
       end
     end
 
+    # $?.exitstatus is nil for a process ended by a signal: it is not a run that passed.
+    %w[KILL SEGV TERM].each do |signal|
+      context "when the subprocess is ended by SIG#{signal}" do
+        it "transitions the run to 'signaled', with the signal and no exit code" do
+          # sh does not handle the signal itself, as ruby does for SEGV (it aborts instead); no
+          # core file is left in the working directory.
+          allow(described_class).to receive(:build_command).and_return(["sh", "-c", "ulimit -c 0; kill -#{signal} $$; sleep 5"])
+          run = described_class.start(files: ["spec/fake_spec.rb"], framework: "rspec")
+          wait_for_terminal(run)
+          expect(run.status).to eq("signaled")
+          expect(run.signal).to eq("SIG#{signal}")
+          expect(run.exit_code).to be_nil
+          expect(run.output_lines.join).to include("[Profiler] The test process was ended by SIG#{signal}")
+        end
+      end
+    end
+
     it "records the pid while running" do
       stub_command("sleep 0.1")
       run = described_class.start(files: ["spec/fake_spec.rb"], framework: "rspec")
@@ -92,6 +109,22 @@ RSpec.describe Profiler::TestRunner::Runner do
       sleep 0.05
       expect(run.pid).not_to be_nil
       wait_for_terminal(run)
+    end
+  end
+
+  describe ".start past config.test_runner_max_active_runs" do
+    it "refuses a run while as many have their process, and accepts one once a process ended" do
+      Profiler.configure { |c| c.test_runner_max_active_runs = 1 }
+      allow(described_class).to receive(:build_command).and_return(["ruby", "-e", "sleep 0.5"])
+
+      first = described_class.start(files: ["spec/fake_spec.rb"], framework: "rspec")
+      expect { described_class.start(files: ["spec/fake_spec.rb"], framework: "rspec") }
+        .to raise_error(Profiler::TestRunner::TooManyRunsError, /test_runner_max_active_runs/)
+
+      wait_for_terminal(first)
+      deadline = Time.now + 5
+      sleep 0.05 until Profiler::TestRunner.run_store.instance_variable_get(:@active).empty? || Time.now > deadline
+      expect(wait_for_terminal(described_class.start(files: ["spec/fake_spec.rb"], framework: "rspec")).status).to eq("passed")
     end
   end
 
@@ -249,6 +282,51 @@ RSpec.describe Profiler::TestRunner::Runner do
       result = described_class.kill(run.id)
       expect(result).to be true
       expect(run.status).to eq("killed")
+    end
+
+    context "with a process that starts a child and ignores TERM" do
+      let(:pid_file) { File.join(tmpdir, "grandchild.pid") }
+
+      def alive?(pid)
+        Process.kill(0, pid)
+        true
+      rescue Errno::ESRCH
+        false
+      end
+
+      after do
+        [run_pid, (File.read(pid_file).to_i if File.exist?(pid_file))].compact.each do |pid|
+          Process.kill("KILL", pid) if pid.positive?
+        rescue Errno::ESRCH, Errno::EPERM
+          nil
+        end
+      end
+
+      let(:run_pid) { @run&.pid }
+
+      it "ends the whole process group, with KILL once the grace delay is over" do
+        Profiler.configure { |c| c.test_runner_kill_grace_seconds = 0.3 }
+        allow(described_class).to receive(:build_command).and_return(
+          ["sh", "-c", "sleep 300 & echo $! > #{pid_file}; trap '' TERM; echo started; " \
+                       "while :; do sleep 0.1; done"]
+        )
+        @run = described_class.start(files: ["spec/fake_spec.rb"], framework: "rspec")
+        deadline = Time.now + 5
+        sleep 0.05 until (File.size?(pid_file) && @run.output_lines.join.include?("started")) || Time.now > deadline
+        grandchild = File.read(pid_file).to_i
+
+        expect(described_class.kill(@run.id)).to be true
+        expect(@run.status).to eq("killed")
+
+        deadline = Time.now + 5
+        sleep 0.05 until (!alive?(@run.pid) && !alive?(grandchild)) || Time.now > deadline
+        expect(alive?(grandchild)).to be(false), "the grandchild survived the stop"
+        expect(alive?(@run.pid)).to be(false), "the process ignoring TERM survived the stop"
+        wait_for_terminal(@run)
+        deadline = Time.now + 5
+        sleep 0.05 until @run.signal || Time.now > deadline
+        expect(@run.status).to eq("killed")
+      end
     end
   end
 

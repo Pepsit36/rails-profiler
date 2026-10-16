@@ -45,7 +45,7 @@ module Profiler
           run_started_at = Time.now
           begin
             run = Profiler::TestRunner::Runner.start(files: files, framework: framework)
-          rescue Profiler::TestRunner::InvalidFileError => e
+          rescue Profiler::TestRunner::InvalidFileError, Profiler::TestRunner::TooManyRunsError => e
             return ::MCP::Tool::Response.new([{ type: "text", text: e.message }], error: true)
           end
 
@@ -108,7 +108,9 @@ module Profiler
           text += "| Field | Value |\n|-------|-------|\n"
           text += "| Run ID | `#{run_id}` |\n"
           text += "| Status | **#{run_data["status"]}** |\n"
-          text += "| Exit code | #{run_data["exit_code"].inspect} |\n\n"
+          text += "| Exit code | #{run_data["exit_code"].inspect} |\n"
+          text += "| Signal | #{run_data["signal"]} |\n" if run_data["signal"]
+          text += "\n"
           text += "## Output\n```\n#{output.strip}\n```"
           [{ type: "text", text: text }]
         end
@@ -136,6 +138,7 @@ module Profiler
           lines << "| Files | #{files.size} |"
           lines << "| Status | **#{run.status}** |"
           lines << "| Exit code | #{run.exit_code.inspect} |"
+          lines << "| Signal | #{run.signal} |" if run.signal
           lines << "| Duration | #{run.to_h[:duration]&.round(0)}ms |"
 
           if timed_out

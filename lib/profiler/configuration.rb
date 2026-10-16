@@ -49,6 +49,8 @@ module Profiler
                   :track_console,
                   :apply_env_overrides_when_disabled, :restrict_storage_permissions,
                   :test_runner_allow_undiscovered_files, :allow_explain_outside_development,
+                  :test_runner_kill_grace_seconds,
+                  :test_runner_max_output_bytes, :test_runner_max_active_runs,
                   :track_mailers, :capture_mail_body, :sanitize_mailer_recipients, :mailer_skip_actions,
                   :compress_bodies, :compress_body_threshold, :max_captured_body_bytes, :max_captured_log_bytes,
                   :redact_sensitive_data, :filter_parameters, :env_allowlist,
@@ -113,6 +115,14 @@ module Profiler
       # only runs in the development and test environments, even with enabled = true elsewhere:
       # PostgreSQL's EXPLAIN ANALYZE runs the query. true allows it in every environment.
       @allow_explain_outside_development = false
+      # Stopping a run sends TERM to its whole process group, then KILL after this many seconds
+      # if any process of the group is still there.
+      @test_runner_kill_grace_seconds = 5
+      # What a run keeps of its output, in bytes: the beginning, then the last quarter of this
+      # once it is exceeded, with a marker in between. nil keeps everything.
+      @test_runner_max_output_bytes = 5 * 1024 * 1024
+      # Runs whose test process has not ended yet; another one is refused. nil for no limit.
+      @test_runner_max_active_runs = 2
       @track_mailers = true
       @capture_mail_body = false
       @sanitize_mailer_recipients = false

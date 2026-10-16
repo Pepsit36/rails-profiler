@@ -91,3 +91,44 @@ To run any file under the Rails root again, as the test runner did before:
 config.test_runner_allow_undiscovered_files = true
 ```
 
+### Status, stop and limits of a run
+
+A run ends `passed` (exit code 0), `failed` (any other exit code), `killed` (stopped from the
+profiler), `signaled` or `error` (the test process could not start). `signaled` is a test process
+ended by a signal the profiler did not send: killed by the system for lack of memory, crashed, or
+stopped by another program. Its tests neither passed nor failed: the run has no exit code, gives
+the name of the signal (`SIGKILL`, `SIGSEGV`) in its `signal` field, and its output ends with a
+`[Profiler]` line naming it.
+
+The test process runs in a process group of its own. **Stop** sends `TERM` to the whole group, so
+the processes rspec or rails started stop too, then `KILL` to whatever is still there after
+`config.test_runner_kill_grace_seconds` (5 by default). A test suite that prints its summary on
+`TERM` has that long to do it.
+
+```ruby
+config.test_runner_kill_grace_seconds = 5               # TERM, then KILL this many seconds later
+config.test_runner_max_output_bytes = 5 * 1024 * 1024   # output kept per run, nil for no limit
+config.test_runner_max_active_runs = 2                  # runs at a time, nil for no limit
+```
+
+- **Output.** A run keeps up to `config.test_runner_max_output_bytes` of its output (5 MB by
+  default). Past the first three quarters of it, a `[Profiler] Output truncated` line shows at
+  once, and only the last quarter of what follows is kept: it shows when the run ends, after a
+  line giving the number of bytes left out, so the summary of the tests is always there.
+- **Runs at a time.** Starting a run while `config.test_runner_max_active_runs` runs (2 by
+  default) still have their test process is refused: `429` with the reason from the API, the same
+  message in the page, and a tool error from `run_tests`. A stopped run counts until its process is
+  gone.
+- **Runs kept.** A finished run is kept one hour, and only the 20 most recent finished runs are.
+
+### Several server processes
+
+Runs are kept in the memory of the server process that started them, not in the profiler's
+storage. With several processes, Puma in cluster mode (`workers` above 0, `WEB_CONCURRENCY`)
+for instance, a request that reaches another worker does not know the run: the page and the API
+answer `404` (`Run not found`, with this reason), and **Stop** cannot reach it either. Run the test
+runner against a single process (`workers 0`) when you use it, or make sure the requests of a run
+reach the worker that started it. The limits above count per process. `run_tests` over MCP is not
+affected: it starts and follows the run in the same process, except on a slave, which it follows
+through the slave's API.
+

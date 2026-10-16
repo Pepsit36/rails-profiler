@@ -87,6 +87,34 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
     end
   end
 
+  describe "with a process ended by a signal" do
+    before do
+      allow(Profiler::TestRunner::Runner).to receive(:build_command).and_return(["sh", "-c", "kill -KILL $$"])
+    end
+
+    it "returns status 'signaled' with the signal, not 'passed'" do
+      text = call("files" => ["spec/fake_spec.rb"]).first[:text]
+      expect(text).to include("**signaled**")
+      expect(text).to include("| Signal | SIGKILL |")
+      expect(text).not_to include("**passed**")
+    end
+  end
+
+  describe "past config.test_runner_max_active_runs" do
+    it "refuses the run with a tool error naming the limit" do
+      Profiler.configuration.test_runner_max_active_runs = 1
+      allow(Profiler::TestRunner::Runner).to receive(:spawn_async)
+      Profiler::TestRunner::Runner.start(files: ["spec/fake_spec.rb"], framework: "rspec")
+
+      result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec")
+
+      expect(result).to be_a(::MCP::Tool::Response)
+      expect(result.error?).to be true
+      expect(result.content.first[:text]).to include("already running", "test_runner_max_active_runs")
+      expect(Profiler::TestRunner::Runner).to have_received(:spawn_async).once
+    end
+  end
+
   describe "output truncation" do
     before do
       long_output = "x" * 10_000

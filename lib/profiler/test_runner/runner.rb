@@ -21,24 +21,49 @@ module Profiler
 
       # Every caller (the HTTP controller, the MCP run_tests tool) goes through here, so the
       # selection is checked once, before any run is recorded or any process is started.
+      # Raises TooManyRunsError when config.test_runner_max_active_runs runs still have their
+      # test process.
       def self.start(files:, framework:)
         validate_files!(files, framework)
-        run = Profiler::TestRunner.run_store.create(files: files, framework: framework)
+        config = Profiler.configuration
+        run = Profiler::TestRunner.run_store.create(
+          files: files, framework: framework,
+          max_active: config.test_runner_max_active_runs,
+          max_output_bytes: config.test_runner_max_output_bytes
+        )
         spawn_async(run)
         run
       end
 
+      # The test process leads its own process group (see run_process): TERM goes to the whole
+      # group, the processes rspec or rails started included, and KILL follows after
+      # config.test_runner_kill_grace_seconds for whatever is still there.
       def self.kill(run_id)
         run = Profiler::TestRunner.run_store.find(run_id)
         return false unless run && run.pid && run.status == "running"
 
         begin
-          Process.kill("TERM", run.pid)
-          Profiler::TestRunner.run_store.update(run_id, status: "killed", finished_at: Time.now)
-          true
+          Process.kill("TERM", -run.pid)
         rescue Errno::ESRCH
           # Process already exited
-          false
+          return false
+        end
+        Profiler::TestRunner.run_store.update(run_id, status: "killed", finished_at: Time.now)
+        kill_group_later(run.pid)
+        true
+      end
+
+      # The group exists as long as one of its processes does. Its id is the pid of the test
+      # process, which the system can give to a new process once the whole group is gone; that
+      # takes the pids to wrap around within the delay, and the new process would have to lead a
+      # group of its own.
+      def self.kill_group_later(pgid)
+        delay = Profiler.configuration.test_runner_kill_grace_seconds.to_f
+        Thread.new do
+          sleep delay
+          Process.kill("KILL", -pgid)
+        rescue Errno::ESRCH, Errno::EPERM
+          nil # the group ended on TERM
         end
       end
 
@@ -123,6 +148,8 @@ module Profiler
             status: "error",
             finished_at: Time.now
           )
+        ensure
+          Profiler::TestRunner.run_store.release(run.id)
         end
       end
 
@@ -132,8 +159,9 @@ module Profiler
 
         Profiler::TestRunner.run_store.update(run.id, status: "running", started_at: Time.now)
 
-        # unsetenv_others: the child gets exactly env, not the ENV of this process
-        IO.popen([env, *cmd, unsetenv_others: true, err: [:child, :out]], "r") do |io|
+        # unsetenv_others: the child gets exactly env, not the ENV of this process. pgroup: the
+        # child leads a process group of its own, which kill stops as a whole.
+        IO.popen([env, *cmd, unsetenv_others: true, pgroup: true, err: [:child, :out]], "r") do |io|
           Profiler::TestRunner.run_store.update(run.id, pid: io.pid)
 
           begin
@@ -148,19 +176,36 @@ module Profiler
           end
         end
 
-        exit_code = $?.exitstatus || 0
+        process_status = $?
+        exit_code = process_status.exitstatus # nil when a signal ended the process
+        signal = signal_name(process_status.termsig) if process_status.signaled?
         # A run killed from the profiler stays killed, whatever the process answered to TERM.
         status = if run.status == "killed" then "killed"
+                 elsif signal then "signaled"
                  elsif exit_code == 0 then "passed"
                  else "failed"
                  end
+
+        if status == "signaled"
+          # Before the status: a page following the run stops at its terminal status.
+          Profiler::TestRunner.run_store.append_output(
+            run.id, "\n[Profiler] The test process was ended by #{signal} before it finished: " \
+                    "the result of the tests is unknown.\n"
+          )
+        end
 
         Profiler::TestRunner.run_store.update(
           run.id,
           status: status,
           finished_at: Time.now,
-          exit_code: exit_code
+          exit_code: exit_code,
+          signal: signal
         )
+      end
+
+      def self.signal_name(number)
+        name = Signal.signame(number)
+        name ? "SIG#{name}" : "signal #{number}"
       end
 
       def self.build_command(files, framework)

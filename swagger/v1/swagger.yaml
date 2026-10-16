@@ -736,6 +736,16 @@ paths:
                 properties:
                   error:
                     type: string
+        '429':
+          description: as many runs as config.test_runner_max_active_runs allows still have their
+            test process
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
       requestBody:
         content:
           application/json:
@@ -2093,6 +2103,7 @@ components:
           - passed
           - failed
           - killed
+          - signaled
           - error
         pid:
           type: integer
@@ -2110,6 +2121,10 @@ components:
         exit_code:
           type: integer
           nullable: true
+        signal:
+          type: string
+          nullable: true
+          description: the signal that ended the test process (SIGKILL), null when it exited
         files:
           type: array
           items:

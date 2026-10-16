@@ -37,7 +37,7 @@ export function TestRunnerContent() {
   // Stream output via SSE while run is active
   useEffect(() => {
     if (!currentRun || !isRunning) return
-    if (['passed', 'failed', 'killed', 'error'].includes(currentRun.status)) {
+    if (['passed', 'failed', 'killed', 'signaled', 'error'].includes(currentRun.status)) {
       setIsRunning(false)
       return
     }
@@ -114,8 +114,9 @@ export function TestRunnerContent() {
       const data = await startTestRun({ data: { files: Array.from(selected), framework } }) as TestRun
       setCurrentRun(data)
       setIsRunning(true)
-    } catch {
-      setError('Failed to start test run')
+    } catch (e) {
+      // The server's own message, such as the limit of runs at a time (429)
+      setError(e instanceof Error && e.message ? e.message : 'Failed to start test run')
     }
   }
 

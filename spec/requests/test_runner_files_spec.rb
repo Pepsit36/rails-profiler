@@ -131,4 +131,34 @@ RSpec.describe "Test runner file selection", type: :request do
       expect(json["files"]).to eq(["spec/models/user_spec.rb:12"])
     end
   end
+
+  # spawn_async is stubbed: the runs started here keep their place until the end of the example.
+  describe "past config.test_runner_max_active_runs" do
+    before do
+      allow(Profiler::TestRunner::Runner).to receive(:spawn_async)
+      Profiler.configuration.test_runner_max_active_runs = 1
+    end
+
+    it "is refused with a 429 naming the limit, and nothing is started" do
+      start_run(["spec/models/user_spec.rb"])
+      expect(last_response.status).to eq(201)
+
+      start_run(["spec/models/post_spec.rb"])
+
+      expect(last_response.status).to eq(429)
+      expect(json["error"]).to include("test_runner_max_active_runs")
+      expect(Profiler::TestRunner::Runner).to have_received(:spawn_async).once
+      expect(Profiler::TestRunner.run_store.all.size).to eq(1)
+    end
+  end
+
+  describe "a run this process does not know" do
+    it "answers 404 naming the server processes as a possible cause" do
+      get "/_profiler/api/test_runner/runs/0123456789abcdef", {}, local.merge(profiler_header)
+
+      expect(last_response.status).to eq(404)
+      expect(json["error"]).to start_with("Run not found")
+      expect(json["error"]).to include("process")
+    end
+  end
 end
