@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.34.5] - 2026-10-16
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Request capture:** the parameters of a request are now read once the application has returned, so
