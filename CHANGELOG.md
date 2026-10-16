@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.34.4] - 2026-10-16
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Sidekiq:** A job run through the ActiveJob adapter is no longer profiled twice. It reaches the
