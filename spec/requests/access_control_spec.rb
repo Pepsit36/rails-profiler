@@ -113,6 +113,14 @@ RSpec.describe "Profiler access control", type: :request do
       expect(last_response.status).to eq(200)
     end
 
+    it "serves the icon as a PNG" do
+      get "/_profiler/assets/icon.png", {}, local
+
+      expect(last_response.status).to eq(200)
+      expect(last_response.headers["Content-Type"]).to eq("image/png")
+      expect(last_response.body.b).to start_with("\x89PNG".b)
+    end
+
     it "answers 404 with the build command when the assets are not built" do
       path = Profiler::Engine.root.join("app", "assets", "builds", "profiler.css")
       allow(File).to receive(:read).and_call_original

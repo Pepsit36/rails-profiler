@@ -22,6 +22,11 @@ module Profiler
       serve("profiler.css", "text/css")
     end
 
+    def icon
+      expires_in 1.day, public: true
+      send_file Profiler::Engine.root.join("app", "assets", "images", "icon.png"), type: "image/png", disposition: "inline"
+    end
+
     private
 
     def serve(name, content_type)
