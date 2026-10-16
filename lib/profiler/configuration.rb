@@ -65,7 +65,8 @@ module Profiler
       @storage = :memory
       @storage_options = {}
       @collectors = []
-      @skip_paths = [%r{^/_profiler}, /\.well-known/, /favicon\.ico/, /manifest\.json/]
+      @skip_paths = [%r{\A/_profiler}, %r{\A/\.well-known/}, %r{\A/favicon\.ico\z}, %r{\A(?:/[^/]+)*/manifest\.json\z},
+                     %r{\A/assets/}, %r{\A/cable(/|\z)}]
       @slow_query_threshold = 100 # milliseconds
       @max_queries_warning = 50
       # Where each query comes from: :first_and_slow captures the caller the first time a

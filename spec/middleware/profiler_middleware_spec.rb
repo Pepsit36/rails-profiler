@@ -53,6 +53,27 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware do
     end
   end
 
+  describe "default skip_paths" do
+    before { Profiler.configure { |c| c.skip_paths = Profiler::Configuration.new.skip_paths } }
+
+    %w[/assets/application.css /cable /cable/x /_profiler/x /favicon.ico /manifest.json /x/manifest.json /packs/manifest.json /.well-known/a].each do |path|
+      it "does not profile #{path}" do
+        get path
+        expect(last_response.headers).not_to have_key("X-Profiler-Token")
+      end
+    end
+
+    it "profiles a path that merely ends like a manifest" do
+      get "/x/manifest.json.html"
+      expect(last_response.headers["X-Profiler-Token"]).not_to be_nil
+    end
+
+    it "profiles a path that merely contains a skipped word" do
+      get "/users/favicon.ico.html"
+      expect(last_response.headers["X-Profiler-Token"]).not_to be_nil
+    end
+  end
+
   describe "when skip_paths lists a String" do
     before do
       Profiler.configure { |c| c.skip_paths = ["/health", %r{\A/assets/}] }
