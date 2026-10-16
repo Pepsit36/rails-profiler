@@ -217,6 +217,18 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
       expect(data[:root_events]).to eq([])
     end
 
+    it "counts nested time once in total_duration" do
+      events = collector.instance_variable_get(:@events)
+      events << make_event(name: "Controller#show", started_at: 100.0, finished_at: 100.15, category: "controller")
+      events << make_event(name: "Render: show", started_at: 100.005, finished_at: 100.14, category: "view")
+      events << make_event(name: "SELECT 1", started_at: 100.030, finished_at: 100.035, category: "sql")
+      events << make_event(name: "later", started_at: 100.2, finished_at: 100.21, category: "custom")
+
+      collector.collect
+
+      expect(collector.panel_content[:total_duration]).to eq(160.0)
+    end
+
     it "builds correct hierarchy for nested events" do
       events = collector.instance_variable_get(:@events)
       # Controller wraps everything: 0 -> 150ms
