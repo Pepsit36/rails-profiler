@@ -239,7 +239,7 @@ export function ToolbarApp({ profile, token }: Props) {
         >
           <span class="profiler-text--muted profiler-text--xs">ROUTE</span>
           <span class="profiler-text--xs profiler-text--mono">
-            {routesData.matched?.pattern ?? '—'}
+            {routesData.matched?.pattern ?? '-'}
           </span>
         </ToolbarItem>
       )}

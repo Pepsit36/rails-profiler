@@ -1,6 +1,6 @@
 import { getActiveSlavePrefix } from './cluster-context'
 
-// Custom HTTP fetcher for orval-generated code — uses native fetch, no axios dependency.
+// Custom HTTP fetcher for orval-generated code, uses native fetch, no axios dependency.
 export async function apiFetch<T>(config: {
   url: string
   method: string

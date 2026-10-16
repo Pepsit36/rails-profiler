@@ -313,7 +313,7 @@ module Profiler
           if view_data["views"] && !view_data["views"].empty?
             lines << "### Templates"
             view_data["views"].each do |view|
-              lines << "- `#{view['identifier']}` — #{view['duration'].round(2)} ms"
+              lines << "- `#{view['identifier']}` - #{view['duration'].round(2)} ms"
             end
             lines << ""
           end
@@ -321,7 +321,7 @@ module Profiler
           if view_data["partials"] && !view_data["partials"].empty?
             lines << "### Partials"
             view_data["partials"].each do |partial|
-              lines << "- `#{partial['identifier']}` — #{partial['duration'].round(2)} ms"
+              lines << "- `#{partial['identifier']}` - #{partial['duration'].round(2)} ms"
             end
             lines << ""
           end
@@ -343,7 +343,7 @@ module Profiler
             lines << "### Cache Reads"
             cache_data["reads"].each do |op|
               hit_label = op["hit"] ? "HIT" : "MISS"
-              lines << "- [#{hit_label}] `#{op['key']}` — #{op['duration'].round(2)} ms"
+              lines << "- [#{hit_label}] `#{op['key']}` - #{op['duration'].round(2)} ms"
             end
             lines << ""
           end
@@ -351,7 +351,7 @@ module Profiler
           if cache_data["writes"] && !cache_data["writes"].empty?
             lines << "### Cache Writes"
             cache_data["writes"].each do |op|
-              lines << "- `#{op['key']}` — #{op['duration'].round(2)} ms"
+              lines << "- `#{op['key']}` - #{op['duration'].round(2)} ms"
             end
             lines << ""
           end
@@ -359,7 +359,7 @@ module Profiler
           if cache_data["deletes"] && !cache_data["deletes"].empty?
             lines << "### Cache Deletes"
             cache_data["deletes"].each do |op|
-              lines << "- `#{op['key']}` — #{op['duration'].round(2)} ms"
+              lines << "- `#{op['key']}` - #{op['duration'].round(2)} ms"
             end
             lines << ""
           end
@@ -378,7 +378,7 @@ module Profiler
           if ajax_data["requests"] && !ajax_data["requests"].empty?
             lines << "### Request List"
             ajax_data["requests"].each do |req|
-              lines << "- **#{req['method']} #{req['path']}** — #{req['status']} — #{req['duration'].round(2)} ms (token: #{req['token']})"
+              lines << "- **#{req['method']} #{req['path']}** - #{req['status']} - #{req['duration'].round(2)} ms (token: #{req['token']})"
             end
             lines << ""
           end
@@ -402,7 +402,7 @@ module Profiler
             http_data["requests"].each_with_index do |req, index|
               flag = req["duration"] >= threshold ? " [SLOW]" : ""
               err = req["status"] >= 400 || req["status"] == 0 ? " [ERROR]" : ""
-              lines << "\n**#{index + 1}. #{req['method']} #{req['url']}** — #{req['status'] == 0 ? 'error' : req['status']} — #{req['duration'].round(2)} ms#{flag}#{err}"
+              lines << "\n**#{index + 1}. #{req['method']} #{req['url']}** - #{req['status'] == 0 ? 'error' : req['status']} - #{req['duration'].round(2)} ms#{flag}#{err}"
 
               if req["request_body"] && !req["request_body"].empty?
                 lines << "**Request Body:**"

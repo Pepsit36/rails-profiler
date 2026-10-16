@@ -195,7 +195,7 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
       setVariables(data.variables)
       setTotal(data.total)
       setOverrides(data.overrides ?? {})
-      showFlash('success', `Refreshed — ${data.total} variables`)
+      showFlash('success', `Refreshed - ${data.total} variables`)
       return data
     } catch (e: any) {
       showFlash('error', e.message ?? 'Failed to refresh')
@@ -480,11 +480,11 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
       {/* Warning */}
       {forceReadOnly ? (
         <div style="background:var(--profiler-bg-subtle,rgba(0,0,0,0.03));border:1px solid var(--profiler-border);border-radius:6px;padding:8px 12px;margin-bottom:16px;font-size:12px;color:var(--profiler-text-muted);">
-          Snapshot taken at request time — modify env vars in <a href="/_profiler?section=env" style="color:var(--profiler-accent);">/_profiler?section=env</a>.
+          Snapshot taken at request time - modify env vars in <a href="/_profiler?section=env" style="color:var(--profiler-accent);">/_profiler?section=env</a>.
         </div>
       ) : (
         <div style="background:var(--profiler-warning-bg,rgba(245,158,11,0.1));border:1px solid var(--profiler-warning,#f59e0b);border-radius:6px;padding:8px 12px;margin-bottom:16px;font-size:12px;color:var(--profiler-warning,#f59e0b);">
-          ⚠ Changes affect the current process only — for development use.
+          ⚠ Changes affect the current process only - for development use.
         </div>
       )}
 

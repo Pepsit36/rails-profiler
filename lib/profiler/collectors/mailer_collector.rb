@@ -310,7 +310,7 @@ module Profiler
           @loop_warnings << {
             key: key,
             count: count,
-            message: "#{key} was called #{count} times in a single request — possible send loop"
+            message: "#{key} was called #{count} times in a single request - possible send loop"
           }
         end
       end

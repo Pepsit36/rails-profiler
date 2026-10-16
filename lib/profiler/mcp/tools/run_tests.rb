@@ -143,7 +143,7 @@ module Profiler
 
           if timed_out
             lines << ""
-            lines << "> ⚠ Timed out — run is still in progress. Use run ID `#{run.id}` to check later."
+            lines << "> ⚠ Timed out - run is still in progress. Use run ID `#{run.id}` to check later."
           end
 
           lines << "\n## Output (last #{output.length} chars)"

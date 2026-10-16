@@ -477,7 +477,7 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
                 class={`profiler-fn-profiling__mode-btn${mode === m ? ' profiler-fn-profiling__mode-btn--active' : ''}`}
                 onClick={() => mode !== m && onModeChange(m)}
                 disabled={modeUpdating}
-                title={m === 'full' ? 'Exhaustive TracePoint — timing + allocations + memory bytes' : 'StackProf sampling — very low overhead'}
+                title={m === 'full' ? 'Exhaustive TracePoint - timing + allocations + memory bytes' : 'StackProf sampling - very low overhead'}
               >
                 {m.charAt(0).toUpperCase() + m.slice(1)}
               </button>
@@ -525,7 +525,7 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
         <p class="profiler-fn-profiling__hint">
           Enable function profiling to see where your app spends time.{' '}
           <strong>Lite</strong>: statistical sampling with the stackprof gem, to add to the application's Gemfile; very low overhead (&lt;1%), on by default once stackprof is installed.{' '}
-          <strong>Full</strong>: exhaustive TracePoint tracing with memory bytes — significant overhead.
+          <strong>Full</strong>: exhaustive TracePoint tracing with memory bytes - significant overhead.
         </p>
       )}
 
@@ -548,7 +548,7 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
         <>
           {data!.frame_cap_reached && (
             <div class="profiler-fn-profiling__cap-warning">
-              ⚠ Frame cap reached ({data!.max_frames} frames) — call tree is truncated. Increase "Max frames" to capture more.
+              ⚠ Frame cap reached ({data!.max_frames} frames) - call tree is truncated. Increase "Max frames" to capture more.
             </div>
           )}
 

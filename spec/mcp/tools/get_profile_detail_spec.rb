@@ -9,7 +9,7 @@ require "profiler/mcp/tools/get_profile_detail"
 # The section renderers of get_profile; the body formatting options are in
 # get_profile_detail_bodies_spec.rb.
 RSpec.describe Profiler::MCP::Tools::GetProfileDetail do
-  let(:dash) { "\u2014" }
+  let(:dash) { "-" }
 
   let(:store) { Profiler::Storage::MemoryStore.new }
 

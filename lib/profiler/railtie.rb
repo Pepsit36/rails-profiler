@@ -117,7 +117,7 @@ module Profiler
     end
 
     initializer "profiler.start_cluster_client" do
-      # Check slave? inside on_load — the app's own initializers (config/initializers/profiler.rb)
+      # Check slave? inside on_load, the app's own initializers (config/initializers/profiler.rb)
       # set master_url AFTER railtie initializers run, so the check must happen after_initialize.
       ActiveSupport.on_load(:after_initialize) do
         next unless Profiler.configuration.enabled

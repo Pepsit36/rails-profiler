@@ -1,5 +1,5 @@
 // ============================================================================
-// TOOLBAR — Fixed bottom diagnostic bar
+// TOOLBAR: Fixed bottom diagnostic bar
 // Thermal aesthetic: instrument-precise, amber-accented, information-dense
 // ============================================================================
 
@@ -32,7 +32,7 @@
   animation: toolbarIn 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
   transition: left 280ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  // Amber top-line — the signature thermal accent
+  // Amber top-line, the signature thermal accent
   &::before {
     content: '';
     position: absolute;
@@ -58,7 +58,7 @@
 }
 
 // ============================================================================
-// CONTAINER — horizontal scroll, no visible scrollbar
+// CONTAINER: horizontal scroll, no visible scrollbar
 // ============================================================================
 
 .profiler-toolbar-container {
@@ -68,7 +68,7 @@
 }
 
 // ============================================================================
-// ITEMS — each clickable metric segment
+// ITEMS: each clickable metric segment
 // ============================================================================
 
 .profiler-toolbar-item {
@@ -115,7 +115,7 @@
   }
 }
 
-// Collapse button — always last, pushed to the far right
+// Collapse button, always last, pushed to the far right
 .profiler-toolbar-collapse-btn {
   margin-left: auto;
   padding: 0 14px;
@@ -138,7 +138,7 @@ a.profiler-toolbar-item {
   font-size: 11px;
 }
 
-// Logo link — no auto-margin, just its natural place
+// Logo link, no auto-margin, just its natural place
 .profiler-toolbar-logo {
   border-right: 1px solid var(--profiler-border) !important;
 }
@@ -161,7 +161,7 @@ a.profiler-toolbar-item {
 .profiler-toolbar-item.profiler-text--info::after    { background: var(--profiler-info); }
 
 // ============================================================================
-// PANELS — popover detail cards that appear above toolbar items
+// PANELS: popover detail cards that appear above toolbar items
 // ============================================================================
 
 .profiler-toolbar-hoverable {
@@ -321,7 +321,7 @@ a.profiler-toolbar-item {
   margin-bottom: 6px;
   font-family: var(--profiler-font-mono);
 
-  // first occurrence at top of content — no top padding
+  // first occurrence at top of content, no top padding
   &:first-child { padding-top: 4px; }
 }
 
@@ -376,7 +376,7 @@ a.profiler-toolbar-item {
 }
 
 // ============================================================================
-// COLLAPSED STATE — toolbar shrinks to the collapse button on the right
+// COLLAPSED STATE: toolbar shrinks to the collapse button on the right
 // ============================================================================
 
 #profiler-toolbar[data-collapsed="true"] {

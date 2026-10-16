@@ -1,5 +1,5 @@
 // ============================================================================
-// PROFILER — "THERMAL" DESIGN SYSTEM
+// PROFILER: "THERMAL" DESIGN SYSTEM
 // Inspired by heat-map instruments. Amber accents on deep obsidian.
 // A profiler should feel like a precision diagnostic tool.
 // ============================================================================
@@ -7,11 +7,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 
 // ============================================================================
-// DARK THEME (Default) — Deep Obsidian + Thermal Amber
+// DARK THEME (Default), Deep Obsidian + Thermal Amber
 // ============================================================================
 :root,
 [data-theme="dark"] {
-  // Terminal / ANSI output — themed so the run output matches the panel
+  // Terminal / ANSI output, themed so the run output matches the panel
   --profiler-terminal-bg:   #0a0e15;
   --profiler-terminal-text: #cdd6e0;
   --ansi-red:    #f87171;
@@ -20,21 +20,21 @@
   --ansi-blue:   #60a5fa;
   --ansi-purple: #c084fc;
   --ansi-cyan:   #67e8f9;
-  // Surfaces — deep navy-black with warmth
+  // Surfaces, deep navy-black with warmth
   --profiler-bg:          #080b10;
   --profiler-bg-light:    #0d1117;
   --profiler-bg-lighter:  #131920;
   --profiler-bg-elevated: #1a2030;
   --profiler-bg-overlay:  rgba(8, 11, 16, 0.96);
 
-  // Text — warm white hierarchy
+  // Text, warm white hierarchy
   --profiler-text:           #eef2f7;
   --profiler-text-secondary: #a8b4c2;
   --profiler-text-muted:     #5e7080;
   --profiler-text-subtle:    #3d4f5f;
   --profiler-text-on-accent: #08090c;
 
-  // Accent — AMBER (the signature color of heat measurement)
+  // Accent, AMBER (the signature color of heat measurement)
   --profiler-accent:          #f59e0b;
   --profiler-accent-hover:    #fbbf24;
   --profiler-accent-dim:      #92600a;
@@ -58,7 +58,7 @@
   --profiler-info-bg:          rgba(96, 165, 250, 0.1);
   --profiler-info-glow:        rgba(96, 165, 250, 0.3);
 
-  // Borders — subtle to strong
+  // Borders, subtle to strong
   --profiler-border:        rgba(255, 255, 255, 0.07);
   --profiler-border-strong: rgba(255, 255, 255, 0.14);
   --profiler-border-accent: rgba(245, 158, 11, 0.3);
@@ -76,10 +76,10 @@
 }
 
 // ============================================================================
-// LIGHT THEME — Warm Stone + Dark Amber
+// LIGHT THEME: Warm Stone + Dark Amber
 // ============================================================================
 [data-theme="light"] {
-  // Terminal / ANSI output — warm dark background, readable on light UI
+  // Terminal / ANSI output, warm dark background, readable on light UI
   --profiler-terminal-bg:   #1c1f26;
   --profiler-terminal-text: #d4dbe3;
   --ansi-red:    #f87171;
@@ -89,21 +89,21 @@
   --ansi-purple: #c084fc;
   --ansi-cyan:   #67e8f9;
 
-  // Surfaces — warm stone, not cold white
+  // Surfaces, warm stone, not cold white
   --profiler-bg:          #f5f3ef;
   --profiler-bg-light:    #edeae3;
   --profiler-bg-lighter:  #e3ded5;
   --profiler-bg-elevated: #ffffff;
   --profiler-bg-overlay:  rgba(245, 243, 239, 0.96);
 
-  // Text — rich warm blacks
+  // Text, rich warm blacks
   --profiler-text:           #1c1410;
   --profiler-text-secondary: #4a3f35;
   --profiler-text-muted:     #8a7a6e;
   --profiler-text-subtle:    #b5a898;
   --profiler-text-on-accent: #ffffff;
 
-  // Accent — dark amber (same family, more saturated for light bg)
+  // Accent, dark amber (same family, more saturated for light bg)
   --profiler-accent:          #b45309;
   --profiler-accent-hover:    #92400e;
   --profiler-accent-dim:      #d97706;
@@ -132,7 +132,7 @@
   --profiler-border-strong: rgba(28, 20, 16, 0.2);
   --profiler-border-accent: rgba(180, 83, 9, 0.3);
 
-  // Shadows — warm-tinted
+  // Shadows, warm-tinted
   --profiler-shadow-sm: 0 1px 3px rgba(28, 20, 16, 0.08);
   --profiler-shadow-md: 0 4px 12px rgba(28, 20, 16, 0.1);
   --profiler-shadow-lg: 0 8px 24px rgba(28, 20, 16, 0.12);
@@ -145,7 +145,7 @@
 }
 
 // ============================================================================
-// SYSTEM PREFERENCE — Auto light mode
+// SYSTEM PREFERENCE: Auto light mode
 // ============================================================================
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
@@ -215,7 +215,7 @@
   --profiler-font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --profiler-font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 
-  // Scale (compact by design — a devtool should be dense)
+  // Scale (compact by design, a devtool should be dense)
   --profiler-text-xs:   10px;
   --profiler-text-sm:   11px;
   --profiler-text-base: 13px;
@@ -233,7 +233,7 @@
   --profiler-space-8:  32px;
   --profiler-space-12: 48px;
 
-  // Radius — slightly less rounded than before, more industrial
+  // Radius, slightly less rounded than before, more industrial
   --profiler-radius-sm:   4px;
   --profiler-radius-md:   6px;
   --profiler-radius-lg:   10px;

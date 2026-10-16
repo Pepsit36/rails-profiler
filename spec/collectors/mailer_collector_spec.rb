@@ -256,7 +256,7 @@ RSpec.describe Profiler::Collectors::MailerCollector do
       it "records a queued entry and no delivered email" do
         collector.subscribe
         fire_process_event(mailer: "UserMailer", action: "welcome_email")
-        # No deliver event — simulates deliver_later where delivery happens in a background job
+        # No deliver event, simulates deliver_later where delivery happens in a background job
 
         collector.collect
         data = profile.collector_data("mailer")
@@ -480,7 +480,7 @@ RSpec.describe Profiler::Collectors::MailerCollector do
     it "returns true when queued emails present" do
       collector.subscribe
       fire_process_event
-      # no deliver event — queued
+      # no deliver event, queued
       collector.collect
       expect(collector.has_data?).to be(true)
     end
