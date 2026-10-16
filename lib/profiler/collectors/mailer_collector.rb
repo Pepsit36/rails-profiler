@@ -316,8 +316,9 @@ module Profiler
       end
 
       def rails_preview_request?
-        path = Thread.current[:profiler_request_path]
-        path&.start_with?("/rails/mailers")
+        # The profile of the request being served carries its path; the thread-local is kept
+        # for a caller that sets it by hand.
+        [profile&.path, Thread.current[:profiler_request_path]].any? { |path| path.to_s.match?(%r{\A/rails/mailers(/|\z)}) }
       end
 
       def to_path(class_name)
