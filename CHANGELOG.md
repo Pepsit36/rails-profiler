@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.34.6] - 2026-10-16
+
+<!-- stamped -->
+
 ### Added
 
 - **Test runner:** `config.test_runner_kill_grace_seconds` (5 by default),
