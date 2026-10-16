@@ -28,7 +28,7 @@ module Profiler
         kept = nil
         begin
           begin
-            profile = Models::Profile.new(build_request(env))
+            profile = Models::Profile.new(build_request(env), params: false)
             profile.gem_version = Profiler::VERSION
             Profiler::CurrentContext.token = profile.token
 
@@ -57,10 +57,12 @@ module Profiler
           begin
             response = @app.call(env)
           rescue Exception => e # rubocop:disable Lint/RescueException
+            capture_params(env, profile) if failed_request?(e)
             record_failed_request(env, profile, collectors, request_body, allocations_before, e) if failed_request?(e)
             raise
           end
 
+          capture_params(env, profile)
           response, kept = complete_profile(env, profile, collectors, request_body, allocations_before, response)
           response
         ensure
@@ -73,6 +75,14 @@ module Profiler
       end
 
       private
+
+      # Read after the application has run, so after the routing: the route parameters are there,
+      # and the params carry the encoding the route declared, as the controller saw them.
+      def capture_params(env, profile)
+        profile.capture_params(build_request(env))
+      rescue => e
+        Profiler.log_error("ProfilerMiddleware: could not read the request params", e)
+      end
 
       def complete_profile(env, profile, collectors, request_body, allocations_before, response)
         status, headers, body = response
