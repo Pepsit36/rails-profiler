@@ -139,7 +139,7 @@ module Profiler
 
         store_data({
           total_events: @events.size,
-          total_duration: @events.empty? ? 0 : @events.map(&:duration).sum.round(2),
+          total_duration: @events.empty? ? 0 : covered_ms(@events.map { |e| [e.started_at, e.finished_at] }),
           root_events: root_events.map(&:to_h)
         })
       end

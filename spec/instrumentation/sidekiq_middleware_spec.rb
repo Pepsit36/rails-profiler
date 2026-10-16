@@ -19,6 +19,31 @@ RSpec.describe Profiler::Instrumentation::SidekiqMiddleware do
   let(:queue) { "critical" }
 
   describe "#call" do
+    context "with a job wrapped by the ActiveJob adapter" do
+      let(:wrapped_job) { job.merge("class" => "ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper", "wrapped" => "HardWorker") }
+
+      before do
+        stub_const("ActiveJob::Base", Class.new)
+        stub_const("Profiler::Instrumentation::ActiveJobInstrumentation", Module.new)
+        ActiveJob::Base.include(Profiler::Instrumentation::ActiveJobInstrumentation)
+      end
+
+      it "runs the job without profiling it, ActiveJob's around_perform does" do
+        expect(Profiler::JobProfiler).not_to receive(:profile)
+
+        called = false
+        middleware.call(worker, wrapped_job, queue) { called = true }
+        expect(called).to be true
+      end
+
+      it "profiles it when ActiveJob is not instrumented" do
+        stub_const("ActiveJob::Base", Class.new)
+        expect(Profiler::JobProfiler).to receive(:profile)
+
+        middleware.call(worker, wrapped_job, queue) {}
+      end
+    end
+
     it "delegates to JobProfiler.profile with the right arguments" do
       expect(Profiler::JobProfiler).to receive(:profile).with(
         job_class: "HardWorker",

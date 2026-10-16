@@ -20,13 +20,22 @@ module Profiler
           @bytes = 0
           @dropped = 0
           @truncated = false
+          @mutex = Mutex.new
         end
 
         def truncated?
           @truncated
         end
 
+        # A streamed body iterated by another thread, or work handed the buffer, can record while
+        # the request's own thread does: the byte count and the lines are updated together.
         def record(entry)
+          @mutex.synchronize { record_unlocked(entry) }
+        end
+
+        private
+
+        def record_unlocked(entry)
           message = entry[:message]
           if @limit
             room = @limit - @bytes

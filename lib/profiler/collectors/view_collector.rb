@@ -9,6 +9,7 @@ module Profiler
         super
         @views = []
         @partials = []
+        @intervals = []
         @subscriptions = []
       end
 
@@ -36,6 +37,7 @@ module Profiler
 
         @subscriptions << subscribe_notification("render_template.action_view") do |name, started, finished, unique_id, payload|
           duration = ((finished - started) * 1000).round(2)
+          @intervals << [started, finished]
           @views << {
             identifier: payload[:identifier],
             layout: payload[:layout],
@@ -45,6 +47,7 @@ module Profiler
 
         @subscriptions << subscribe_notification("render_partial.action_view") do |name, started, finished, unique_id, payload|
           duration = ((finished - started) * 1000).round(2)
+          @intervals << [started, finished]
           @partials << {
             identifier: payload[:identifier],
             duration: duration
@@ -60,7 +63,7 @@ module Profiler
           partials: @partials,
           total_views: @views.size,
           total_partials: @partials.size,
-          total_duration: (@views + @partials).sum { |v| v[:duration] }.round(2)
+          total_duration: covered_ms(@intervals)
         }
 
         store_data(data)
@@ -76,7 +79,7 @@ module Profiler
       end
 
       def toolbar_summary
-        total_duration = (@views + @partials).sum { |v| v[:duration] }.round(2)
+        total_duration = covered_ms(@intervals)
 
         {
           text: "#{@views.size} views, #{@partials.size} partials (#{total_duration}ms)",

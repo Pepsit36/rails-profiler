@@ -124,6 +124,24 @@ module Profiler
 
       protected
 
+      # The time covered by +intervals+ ([started, finished] pairs of Time or Float seconds), in
+      # milliseconds, each moment counted once: a template that renders partials, or a controller
+      # action that runs queries, is not added to what it contains.
+      def covered_ms(intervals)
+        covered = 0.0
+        current_end = nil
+        intervals.sort_by(&:first).each do |started, finished|
+          if current_end.nil? || started >= current_end
+            covered += finished - started
+            current_end = finished
+          elsif finished > current_end
+            covered += finished - current_end
+            current_end = finished
+          end
+        end
+        (covered * 1000).round(2)
+      end
+
       def store_data(data)
         @data = data
         @profile.add_collector_data(name, data)
