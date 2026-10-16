@@ -19,6 +19,20 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sidekiq:** A job run through the ActiveJob adapter is no longer profiled twice. It reaches the
+  Sidekiq middleware wrapped (`job["wrapped"]`) and is already profiled by the ActiveJob
+  `around_perform` callback, so the middleware now leaves it alone when ActiveJob is instrumented
+  and the same work is recorded once.
+- **Logs:** The log buffer behind `CaptureLogger` is now guarded by a `Mutex`, so lines recorded
+  from several threads at once (a streamed body iterated by another thread, work handed the buffer)
+  keep the byte count and the stored lines consistent.
+- **Flame graph and views:** Nested durations are counted once. The total of the flame graph and
+  the total of the views and partials now cover each moment a single time, so a template that
+  renders partials, or a controller action that runs queries, is no longer added to what it
+  contains.
+
 ## [0.34.3] - 2026-10-15
 
 <!-- stamped -->
