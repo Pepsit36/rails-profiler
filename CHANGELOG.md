@@ -53,6 +53,11 @@ every commit of every tag interval is accounted for one way or the other.
 
 ### Changed
 
+- **Compatibility:** The gem now declares `rails >= 7.1` instead of `rails >= 7.0`. This is a
+  correction announced, not a new restriction: the gem already relied on
+  `ActiveSupport::BroadcastLogger` and `Rack::Headers`, which Rails 7.0 does not provide, and
+  the suite fails on 7.0 (271 failures out of 1904). Bundler now refuses to install the gem on
+  Rails 7.0 instead of installing a version that cannot work.
 - **Assets:** The JavaScript and CSS bundles are minified: the toolbar script goes from 177 KB to
   81 KB, the dashboard script from 447 KB to 222 KB and the stylesheet from 91 KB to 79 KB.
 - **Toolbar:** The page interceptor script and the toolbar CSS are read and built once per

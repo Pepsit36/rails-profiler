@@ -26,7 +26,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   # Runtime dependencies
-  spec.add_dependency "rails", ">= 7.0"
+  spec.add_dependency "rails", ">= 7.1"
   spec.add_dependency "rack", ">= 2.0"
   spec.add_dependency "concurrent-ruby", "~> 1.2"
   # Tool::Response takes error: as a keyword since 0.3. Capped below the next major: the

@@ -34,11 +34,11 @@ rspec:ruby3.4:
   before_script:
     - bundle config set --local path vendor/bundle
 
-# The oldest Rails the CI runs, on the oldest Ruby, as a first look at what the gemspec
-# declares (ruby >= 3.0, rails >= 7.0). Informational for now: the suite was never run
-# there, and a first run on Rails 7.0 gave 271 failures out of 1904, most of them in the
-# specs themselves (Rack::Headers is Rack 3, ActiveSupport::BroadcastLogger is Rails 7.1).
-# Made blocking once it is green, or once the gemspec bounds are raised to match it.
+# The oldest Rails and Ruby the gemspec declares (ruby >= 3.0, rails >= 7.1; 7.0 was never
+# supported: Rack::Headers is Rack 3 and ActiveSupport::BroadcastLogger is Rails 7.1).
+# Still allowed to fail: nobody has seen this combination green yet, the sandbox that
+# raised the bound could not build the native extensions. Remove allow_failure after the
+# first green run of this job.
 rspec:ruby3.1-rails7.1:
   stage: test
   image: ruby:3.1
