@@ -336,6 +336,26 @@ module Profiler
           }
           #profiler-toolbar .profiler-toolbar-logo:hover { color: var(--pf-amber-h); }
 
+          /* Error state: the profile could not be loaded, or a component failed. */
+          #profiler-toolbar .profiler-toolbar-error {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 13px;
+          }
+          #profiler-toolbar .profiler-toolbar-retry {
+            font-family: var(--pf-mono);
+            font-size: 11px;
+            color: var(--pf-amber);
+            background: transparent;
+            border: 1px solid var(--pf-border-s);
+            border-radius: 3px;
+            padding: 2px 8px;
+            cursor: pointer;
+          }
+          #profiler-toolbar .profiler-toolbar-retry:hover:not(:disabled) { color: var(--pf-amber-h); background: var(--pf-amber-bg); }
+          #profiler-toolbar .profiler-toolbar-retry:disabled { cursor: default; opacity: .6; }
+
           /* ── Toggle button (fixed, always visible) ───────────────────────── */
           #profiler-toolbar-toggle {
             position: fixed;

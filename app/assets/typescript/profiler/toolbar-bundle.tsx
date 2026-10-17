@@ -1,10 +1,9 @@
 import { render } from 'preact'
-import { useEffect } from 'preact/hooks'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ToolbarApp } from './components/toolbar/ToolbarApp'
-import { useGetToolbar } from './generated/api'
+import { ToolbarMount } from './components/toolbar/ToolbarMount'
+import { ToolbarErrorBoundary } from './components/toolbar/ToolbarErrorBoundary'
+import { isToggleShortcut } from './shortcut'
 import { storageGet, storageSet } from './storage'
-import { useProfileEvents } from './hooks/useProfileEvents'
 
 declare global {
   interface Window {
@@ -25,28 +24,9 @@ function applyTheme(elements: HTMLElement[]): void {
   elements.forEach(el => el.setAttribute('data-theme', theme))
 }
 
-interface ToolbarMountProps {
-  token: string
-}
-
 const toolbarQueryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 })
-
-function ToolbarMount({ token }: ToolbarMountProps) {
-  const { data, refetch } = useGetToolbar(token, { query: { refetchOnWindowFocus: false } } as any)
-
-  useEffect(() => {
-    window.__PROFILER_REFRESH_TOOLBAR__ = () => { refetch() }
-  }, [refetch])
-
-  useProfileEvents(token, data?.events_cursor, () => { refetch() })
-
-  const profile = data?.profile ?? null
-  if (!profile) return null
-
-  return <ToolbarApp profile={profile} token={token} />
-}
 
 function mountToolbar(): void {
   const el = document.getElementById('profiler-toolbar') as HTMLElement
@@ -125,7 +105,7 @@ function mountToolbar(): void {
   toggleEl.addEventListener('click', toggleCollapse, { signal })
 
   document.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.altKey && e.key === 'p') {
+    if (isToggleShortcut(e)) {
       e.preventDefault()
       toggleCollapse()
     }
@@ -133,7 +113,9 @@ function mountToolbar(): void {
 
   render(
     <QueryClientProvider client={toolbarQueryClient}>
-      <ToolbarMount token={token} />
+      <ToolbarErrorBoundary>
+        <ToolbarMount token={token} />
+      </ToolbarErrorBoundary>
     </QueryClientProvider>,
     el
   )
