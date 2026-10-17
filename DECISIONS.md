@@ -324,3 +324,64 @@ Decisions taken without review, the most cautious option each time. Measured on 
 - At most 20 finished runs kept (`RunStore::MAX_FINISHED_RUNS`, not configurable), on top of the
   one hour TTL, so that the output limit also bounds the store as a whole.
 - `nil` lifts either limit, like the other byte limits of the configuration.
+
+# Decisions: fix/release-safety
+
+Choices made on this branch without the maintainer available, each time the most cautious
+option. Audit references: #53 case 6, #44 SEC-17, #56 cases 1 and 2.
+
+## `rake release` (#53 case 6)
+
+- `release`, `release:rubygem_push` and `release:source_control_push` are cleared and replaced
+  by a task that aborts with a message pointing at the `release` CI job. The subtasks are
+  cleared too: each of them can be invoked on its own, and `release:rubygem_push` pushes on its
+  own. `build` and `install` stay, they never leave the machine.
+- `metadata["allowed_push_host"]` is **not** added to the gemspec. It takes a single host, and
+  `gem push` refuses any other one. The CI pushes the same gem to two registries (the GitLab
+  package registry and rubygems.org) and the canary to the GitLab registry: any value would break
+  one of those pushes. The field is meant to keep a private gem off rubygems.org, which is not
+  this gem's case. The guard against a push from a workstation is the Rakefile refusal.
+
+## `canary` publication (#44 SEC-17)
+
+- `when: manual` on the canary rule, the branch prefixes unchanged. This is the simplest change
+  that needs no repository setting: limiting it to protected branches would need branches to be
+  protected in GitLab, and limiting it to approved merge requests would need merge request
+  pipelines, which this project deliberately avoids (see `changelog:check`).
+- `allow_failure: true` with it: a manual job that may not fail leaves the pipeline "blocked",
+  which would hold every merge request whose canary nobody played.
+- Anyone allowed to run pipelines can still play the job. Restricting who can play it further
+  (a protected environment) is a GitLab setting, left to the maintainer.
+
+## Canary version order (#56 case 1)
+
+- `script/canary-version` numbers the canary `<next>.pre.<short sha>`, `<next>` being
+  `bin/changelog version` (the version the branch will publish, the rule the stamp and the
+  release job use). A branch with nothing publishable gets the next patch of the highest of the
+  last tag and the versions `CHANGELOG.md` carries. Either way the canary sorts after the last
+  release and before the release the branch leads to. Any other failure of `bin/changelog`
+  fails the job rather than publishing a wrong number.
+- The job fetches `master`, as `changelog:check` does, since `bin/changelog version` counts the
+  branch from `origin/master`.
+
+## `bin/changelog` commit reading (#56 case 2)
+
+- The type (`fix:`, `feat:`, `type!:`) is read from the **subject only**, as Conventional
+  Commits defines it. Reading the body made a `chore:` commit with a `fix:` line in its body
+  (a quoted message, a note) publish a patch; a publication cannot be taken back, so a stray
+  line must not trigger one. A fix written only in a body now publishes nothing: write it as
+  the subject of its own commit.
+- The body is still read for the breaking footer, now in both spellings the specification
+  allows: `BREAKING CHANGE:` and `BREAKING-CHANGE:`. The generated changelog entries use the
+  same rule.
+- The previous spec "catches a releasable line hidden in a commit body" asserted the old
+  behaviour and is replaced by its opposite.
+
+## Changelog stamp
+
+- `bin/changelog stamp` is run with `--default-branch origin/reference/rails-profiler-gem`, not
+  `--base`: in this script `stamp` does not read `--base` (that flag is the version base of
+  `version` and the ref of `check`), and `--default-branch` exists. Against the default
+  `origin/master` of the hub (which is not the gem's history) the stamp would have folded this
+  branch's entries into an inherited section. Every section below the stamped one is left byte
+  for byte as inherited.
