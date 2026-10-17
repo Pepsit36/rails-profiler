@@ -26,6 +26,30 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
     end
   end
 
+  describe "clock shared by notification and measured events" do
+    it "orders and nests Profiler.measure, HTTP and notification events on one clock" do
+      allow(Profiler.configuration).to receive(:enabled).and_return(true)
+      collector.subscribe
+
+      Profiler.measure("outer") do
+        ActiveSupport::Notifications.instrument("sql.active_record", sql: "SELECT 1", name: "User Load") { sleep 0.002 }
+        t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        sleep 0.002
+        collector.record_http_event(started_at: t0, finished_at: Process.clock_gettime(Process::CLOCK_MONOTONIC),
+                                    url: "http://example.test", method: "GET", status: 200)
+      end
+
+      events = collector.instance_variable_get(:@events)
+      expect(events.map { |e| e.started_at.class }.uniq).to eq([Float])
+      expect(events.map { |e| e.finished_at.class }.uniq).to eq([Float])
+
+      expect { collector.collect }.not_to raise_error
+      root = profile.collector_data("flamegraph")[:root_events]
+      expect(root.map { |e| e[:name] }).to eq(["outer"])
+      expect(root.first[:children].map { |e| e[:category] }).to eq(%w[sql http])
+    end
+  end
+
   describe "#subscribe" do
     it "registers thread-local collector reference" do
       collector.subscribe
