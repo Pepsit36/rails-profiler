@@ -37,8 +37,15 @@ module Profiler
         super(*args, &wrapper)
       end
       ruby2_keywords :initialize
+
+      # Called by the railtie once the application has decided `enabled`: the patch is on
+      # Thread#initialize for every thread of the process, so a disabled profiler leaves it out.
+      def self.install!
+        return if @installed
+
+        Thread.prepend(self)
+        @installed = true
+      end
     end
   end
 end
-
-Thread.prepend(Profiler::Instrumentation::ThreadContextPropagation)

@@ -5,7 +5,7 @@ What the profiler costs a request, what it records and from which threads, and i
 ## What it costs and records
 
 - Only active when enabled (development/test by default); when disabled, nothing is left in the
-  middleware stack and no Sidekiq, ActiveJob, test or console instrumentation is installed
+  middleware stack and no Sidekiq, ActiveJob, test, console or `Thread#initialize` instrumentation is installed
 - Overhead, measured in the default configuration with `script/bench/request_overhead.rb`: on a
   page that runs 20 SQL queries and renders 3 partials and 20 KB of HTML, in an application with
   210 routes and the memory storage, the profiler adds about 10 to 13 ms per request, with or

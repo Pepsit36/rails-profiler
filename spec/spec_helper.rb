@@ -23,6 +23,8 @@ require "active_support"
 require "active_support/isolated_execution_state"
 require "active_support/notifications"
 require "profiler"
+# What the railtie does in an application where the profiler is enabled; the suite runs as one.
+Profiler::Instrumentation::ThreadContextPropagation.install!
 
 # Explicitly load components not auto-loaded outside of Rails
 require "profiler/models/profile"
