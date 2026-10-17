@@ -38,6 +38,24 @@ module Profiler
         )*+
       }xi
 
+      INTERCEPTOR_PATH = File.expand_path("../../../app/assets/javascript/profiler-ajax-interceptor.js", __dir__)
+
+      class << self
+        # The script is the same for every request of a version of the gem: read once. A failed
+        # read is not kept, so that the next request tries again.
+        def ajax_interceptor_code
+          @ajax_interceptor_code ||= File.read(INTERCEPTOR_PATH).freeze
+        rescue => e
+          Profiler.log_error("ToolbarInjector: could not load the AJAX interceptor script", e)
+          ""
+        end
+
+        # The toolbar CSS is a constant of the class too, built once.
+        def toolbar_styles
+          @toolbar_styles ||= build_toolbar_styles
+        end
+      end
+
       def initialize(body, token, nonce = nil)
         @body = body
         @token = token
@@ -139,13 +157,7 @@ module Profiler
       end
 
       def ajax_interceptor_code
-        @ajax_interceptor_code ||= begin
-          path = File.join(__dir__, "..", "..", "..", "app", "assets", "javascript", "profiler-ajax-interceptor.js")
-          File.read(path)
-        rescue => e
-          Profiler.log_error("ToolbarInjector: could not load the AJAX interceptor script", e)
-          ""
-        end
+        self.class.ajax_interceptor_code
       end
 
       # The middleware hands over the page it has already read: an Array of parts, or a String.
@@ -157,11 +169,11 @@ module Profiler
       def toolbar_html
         <<~HTML
           #{ajax_interceptor_script}
-          <style>#{toolbar_styles}</style>
+          <style#{nonce_attr}>#{self.class.toolbar_styles}</style>
           <div id="profiler-toolbar" class="profiler-root" data-token="#{ERB::Util.html_escape(@token)}"></div>
           <button id="profiler-toolbar-toggle" class="profiler-root" title="Toggle profiler (Alt+P)"><span class="profiler-toggle-icon">&#9654;</span></button>
           <script#{nonce_attr}>(function(){var c=localStorage.getItem('profiler-toolbar-collapsed')==='true',t=localStorage.getItem('profiler-theme'),theme=t==='light'?'light':t==='dark'?'dark':(window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'),el=document.getElementById('profiler-toolbar'),tog=document.getElementById('profiler-toolbar-toggle');if(c){el.style.cssText='animation:none!important;transform:translateX(calc(100% + 44px))';tog.dataset.collapsed='true';}el.setAttribute('data-theme',theme);tog.setAttribute('data-theme',theme);})();</script>
-          <script src="/_profiler/assets/profiler-toolbar.js" defer#{nonce_attr}></script>
+          <script src="#{Profiler::Assets.url("profiler-toolbar.js")}" defer#{nonce_attr}></script>
         HTML
       end
 
@@ -176,7 +188,7 @@ module Profiler
 
       # Thermal design system, self-contained CSS for the injected toolbar.
       # Variables are defined on #profiler-toolbar to avoid polluting the host app.
-      def toolbar_styles
+      def self.build_toolbar_styles
         <<~'CSS'
           .profiler-root {
             --pf-bg:         #080b10;

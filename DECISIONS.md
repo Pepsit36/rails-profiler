@@ -385,3 +385,26 @@ option. Audit references: #53 case 6, #44 SEC-17, #56 cases 1 and 2.
   `origin/master` of the hub (which is not the gem's history) the stamp would have folded this
   branch's entries into an inherited section. Every section below the stamped one is left byte
   for byte as inherited.
+
+## Branch fix/toolbar-csp-and-build (G11)
+
+- Nonce: the toolbar already put the nonce on its scripts, only `<style>` missed it. The embedded
+  layout gets it on both its inline `<style>` and `<script>` (a `style-src` nonce policy usually
+  comes with `script-src`). The application layout has no inline element. No nonce attribute is
+  written when `content_security_policy_nonce` is nil.
+- Minification: `esbuild --minify` and `sass --style=compressed` (measured: toolbar 177126 to
+  81306 bytes, 23374 gzipped; main 446585 to 222309; css 90964 to 79366). `watch` stays unminified.
+  No source maps, as before.
+- Versioning: content digest (12 hex of SHA-256) rather than the gem version, because
+  `VERSION` is `0.0.0` on every branch build and a rebuilt asset would keep the same URL. Query
+  string (`?v=`) rather than the file name: the routes and the extension's `/_profiler/assets/...`
+  URLs keep working. A year, immutable, only when `v` equals the current digest; any other value
+  keeps the one hour. Without built assets the digest falls back to a hash of the gem version.
+- PERF-08: the memoization existed but on the instance, and the injector is built per request,
+  so it never held. Moved to the class; a failed read is not kept.
+- Not measured: a real browser with a real CSP header. The nonce is covered by request specs.
+- Rebase on the current master: the versioning of this branch and the explicit 404 of the
+  assets endpoints (G14) both changed `AssetsController`. They are kept together:
+  `Profiler::Assets.read` raises `Errno::ENOENT` when the assets are not built, which is the
+  exception the 404 already rescued, so a missing asset answers the `BUILD_MISSING` message
+  whatever the `v` parameter.

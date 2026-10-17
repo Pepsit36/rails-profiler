@@ -105,9 +105,7 @@ RSpec.describe "Profiler access control", type: :request do
     end
 
     it "still gets the gem's static assets" do
-      path = Profiler::Engine.root.join("app", "assets", "builds", "profiler.css")
-      allow(File).to receive(:read).and_call_original
-      allow(File).to receive(:read).with(path).and_return("body {}")
+      allow(Profiler::Assets).to receive(:read).with("profiler.css").and_return("body {}")
 
       get "/_profiler/assets/profiler.css", {}, local
       expect(last_response.status).to eq(200)
@@ -122,9 +120,7 @@ RSpec.describe "Profiler access control", type: :request do
     end
 
     it "answers 404 with the build command when the assets are not built" do
-      path = Profiler::Engine.root.join("app", "assets", "builds", "profiler.css")
-      allow(File).to receive(:read).and_call_original
-      allow(File).to receive(:read).with(path).and_raise(Errno::ENOENT, path.to_s)
+      allow(Profiler::Assets).to receive(:read).with("profiler.css").and_raise(Errno::ENOENT, "profiler.css")
 
       get "/_profiler/assets/profiler.css", {}, local
 

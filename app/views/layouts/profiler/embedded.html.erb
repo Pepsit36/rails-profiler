@@ -1,3 +1,5 @@
+<% nonce = content_security_policy_nonce %>
+<% nonce_attr = nonce ? %( nonce="#{ERB::Util.html_escape(nonce)}").html_safe : "" %>
 <!DOCTYPE html>
 <html data-theme="<%= params[:theme].presence&.then { |t| %w[light dark].include?(t) ? t : 'dark' } || 'dark' %>">
 <head>
@@ -8,16 +10,16 @@
   <%= csp_meta_tag %>
   <meta name="profiler-version" content="<%= Profiler.version %>">
 
-  <link rel="stylesheet" href="/_profiler/assets/profiler.css">
-  <script src="/_profiler/assets/profiler.js" defer></script>
+  <link rel="stylesheet" href="<%= Profiler::Assets.url("profiler.css") %>">
+  <script src="<%= Profiler::Assets.url("profiler.js") %>" defer></script>
 
-  <style>
+  <style<%= nonce_attr %>>
     /* Embedded overrides, tighter layout, no page chrome */
     body { overflow-y: auto; }
     .container { padding: 16px 20px; }
   </style>
 
-  <script>
+  <script<%= nonce_attr %>>
     // Receive theme changes from the Chrome extension panel via postMessage.
     // The extension sends: { type: 'profiler:set-theme', theme: 'light' | 'dark' }
     window.addEventListener('message', function(e) {

@@ -19,6 +19,28 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.35.3] - 2026-10-17
+
+<!-- stamped -->
+
+### Changed
+
+- **Assets:** The JavaScript and CSS bundles are minified: the toolbar script goes from 177 KB to
+  81 KB, the dashboard script from 447 KB to 222 KB and the stylesheet from 91 KB to 79 KB.
+- **Toolbar:** The page interceptor script and the toolbar CSS are read and built once per
+  process instead of on every profiled page.
+
+### Fixed
+
+- **Toolbar:** The toolbar style and the embedded profile layout now carry the request's CSP
+  nonce. An application whose policy has `style-src 'nonce-...'` and no `'unsafe-inline'` no
+  longer blocks them; without a CSP, no nonce is added.
+- **Assets:** The toolbar and dashboard files (`profiler.js`, `profiler.css`,
+  `profiler-toolbar.js`) are now requested as `?v=<digest of the content>` and served for a year
+  as immutable, so a browser keeps them between visits and still loads the new ones after an
+  upgrade of the gem. The URL without `?v=` still works and is cached for an hour, and an
+  asset that is not built still answers the 404 that names `yarn build:full`.
+
 ## [0.35.2] - 2026-10-17
 
 <!-- stamped -->

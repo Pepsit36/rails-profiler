@@ -303,4 +303,34 @@ RSpec.describe Profiler::Middleware::ToolbarInjector do
       end
     end
   end
+
+  # The interceptor and the CSS are the same for every request: read and built once, not
+  # per request.
+  describe "memoization" do
+    let(:html) { "<html><body>hi</body></html>" }
+
+    before do
+      Profiler.configure { |c| c.track_ajax = true }
+      described_class.instance_variable_set(:@ajax_interceptor_code, nil)
+    end
+
+    it "reads the interceptor script once for many injections" do
+      expect(File).to receive(:read).with(described_class::INTERCEPTOR_PATH).once.and_call_original
+
+      3.times { described_class.new([html], token).inject }
+    end
+
+    it "does not keep a failed read" do
+      allow(File).to receive(:read).with(described_class::INTERCEPTOR_PATH).and_raise(Errno::ENOENT)
+      allow(Profiler).to receive(:log_error)
+      described_class.new([html], token).inject
+      allow(File).to receive(:read).with(described_class::INTERCEPTOR_PATH).and_call_original
+
+      expect(described_class.new([html], token).inject.join).to include("__PROFILER")
+    end
+
+    it "builds the toolbar CSS once" do
+      expect(described_class.toolbar_styles).to equal(described_class.toolbar_styles)
+    end
+  end
 end
