@@ -33,6 +33,15 @@
     return window.__PROFILER_PARENT_TOKEN__;
   }
 
+  // A Turbo Drive visit to a page the profiler left alone brings no inline script to set a new
+  // token, and the window keeps the one of the previous page: forget it, or every request of
+  // this page would be linked to a page the user has left.
+  document.addEventListener('turbo:load', function() {
+    if (!document.getElementById('profiler-toolbar')) {
+      delete window.__PROFILER_PARENT_TOKEN__;
+    }
+  });
+
   function isRequest(input) {
     return typeof Request !== 'undefined' && input instanceof Request;
   }

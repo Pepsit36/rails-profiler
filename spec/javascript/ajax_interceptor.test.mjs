@@ -13,6 +13,9 @@ function load({ parentToken = 'page-1' } = {}) {
   const responses = new Map()
   const window = new EventTarget()
   const document = new EventTarget()
+  // The toolbar element exists on a profiled page only.
+  let profiledPage = true
+  document.getElementById = id => (id === 'profiler-toolbar' && profiledPage ? {} : null)
   window.__PROFILER_PARENT_TOKEN__ = parentToken
   window.location = { origin: 'http://localhost' }
   window.fetch = async (input, init = {}) => {
@@ -45,7 +48,12 @@ function load({ parentToken = 'page-1' } = {}) {
     return window.fetch(path, fetchOptions)
   }
   const settled = () => new Promise(resolve => setTimeout(resolve, 0))
-  return { window, XMLHttpRequest, links, responses, turboFetch, settled }
+  // What Turbo does once it has rendered a page: the body is replaced, then turbo:load.
+  function turboLoad({ profiled }) {
+    profiledPage = profiled
+    document.dispatchEvent(new CustomEvent('turbo:load'))
+  }
+  return { window, XMLHttpRequest, links, responses, turboFetch, turboLoad, settled }
 }
 
 test('links a Turbo Frame request to the page', async () => {
@@ -100,4 +108,24 @@ test('links a plain fetch, whether given a string, a URL or a Request', async ()
   await t.window.fetch(new Request('http://localhost/api/users'))
   await t.settled()
   assert.deepEqual(t.links.map(l => l.child_token), ['json-1', 'json-1', 'json-1'])
+})
+
+test('links nothing after a Drive visit to a page the profiler left alone', async () => {
+  const t = load()
+  t.responses.set('/api/users', { token: 'json-1' })
+  t.turboLoad({ profiled: false })
+  await t.window.fetch('/api/users')
+  await t.settled()
+  assert.deepEqual(t.links, [])
+})
+
+test('links to the token of the page a Drive visit renders, not the first one', async () => {
+  const t = load()
+  t.responses.set('/api/users', { token: 'json-1' })
+  // The new body's inline script sets the token, then Turbo fires turbo:load.
+  t.window.__PROFILER_PARENT_TOKEN__ = 'page-2'
+  t.turboLoad({ profiled: true })
+  await t.window.fetch('/api/users')
+  await t.settled()
+  assert.deepEqual(t.links, [{ parent_token: 'page-2', child_token: 'json-1' }])
 })
