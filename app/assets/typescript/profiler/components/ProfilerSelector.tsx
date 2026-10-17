@@ -1,31 +1,14 @@
-import { useState, useEffect } from 'preact/hooks'
+import { useListClusterSlaves } from '../generated/api'
 import { setActiveSlave, getActiveSlaveName } from '../cluster-context'
 
-interface SlaveEntry {
-  name: string
-  url: string
-  status: 'online' | 'offline'
-  registered_at: string
-  last_heartbeat_at: string
-}
-
 export function ProfilerSelector() {
-  const [slaves, setSlaves] = useState<SlaveEntry[]>([])
-  const [loading, setLoading] = useState(true)
+  // One request when the page loads, as before: no retry and no refetch on window focus.
+  const { data } = useListClusterSlaves({ query: { retry: false, refetchOnWindowFocus: false } } as any)
+  const slaves = data?.slaves ?? []
 
   const activeSlave = getActiveSlaveName()
 
-  useEffect(() => {
-    fetch('/_profiler/api/cluster/slaves')
-      .then(r => r.json())
-      .then(data => {
-        setSlaves(data.slaves ?? [])
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
-  }, [])
-
-  if (loading || slaves.length === 0) return null
+  if (slaves.length === 0) return null
 
   const handleChange = (e: Event) => {
     const value = (e.target as HTMLSelectElement).value

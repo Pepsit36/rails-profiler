@@ -408,3 +408,50 @@ option. Audit references: #53 case 6, #44 SEC-17, #56 cases 1 and 2.
   `Profiler::Assets.read` raises `Errno::ENOENT` when the assets are not built, which is the
   exception the 404 already rescued, so a missing asset answers the `BUILD_MISSING` message
   whatever the `v` parameter.
+
+# Decisions: fix/toolbar-robustness
+
+Choices made on this branch without the maintainer available, each with the most cautious
+option and the reason for it.
+
+## CSS isolation (case 8): prefixing and ID scoping, not Shadow DOM
+
+- The toolbar CSS is already scoped: every selector starts with `#profiler-toolbar`,
+  `#profiler-toolbar-toggle` or `.profiler-root`, the classes carry a `profiler-` prefix and the
+  keyframes a `pf` prefix. Only one rule escaped (`.profiler-toggle-icon`), now scoped.
+- Shadow DOM was not adopted: the toolbar relies on the host page for its fixed positioning
+  and for the `data-theme` attribute set by an inline script, the CSS is injected as a `<style>`
+  element under the page CSP nonce, and the panels link to the dashboard. Moving to a shadow
+  root changes all of that and cannot be checked without a browser here. Prefixing is the more
+  cautious option given what exists.
+- A new spec fails when a selector of the toolbar CSS is not scoped, so the isolation cannot
+  silently regress. No blanket reset (`all: revert`) was added, because it could change the
+  rendering in ways that were not observable here.
+
+## Vitest
+
+- `yarn test` did not exist. `vitest` (^4.1.11, the first release without the advisories of 3.x
+  and 4.0) and `jsdom` were added as dev dependencies, and a `picomatch` resolution (^4.0.4)
+  removes the advisory it brought (it also fixes the one `sass` carried). `yarn audit` goes from
+  21 to 19 findings, none new.
+- `yarn test` runs `yarn codegen` first, since the generated client is not committed.
+- Vitest runs `spec/javascript/*.spec.{ts,tsx}`; the plain JavaScript interceptor test stays on
+  the Node test runner (run by `spec/ajax_interceptor_js_spec.rb`).
+
+## FUNC-01: the swagger part was already done
+
+- `swagger/v1/swagger.yaml` already documents the three cluster routes (`clusterRegister`,
+  `clusterHeartbeat`, `listClusterSlaves`) and `yarn codegen` generates `useListClusterSlaves`,
+  so only the migration of `ProfilerSelector.tsx` was left. `tsc --noEmit` on the regenerated
+  client reports 0 error.
+- `apiFetch` rewrites a URL through the proxy of the slave being viewed. Left alone, the
+  selector would then ask the slave (which does not route `cluster/slaves`), get a 404 and
+  disappear, with no way back to the master. The cluster URLs are therefore never prefixed. The
+  request is otherwise the same (one GET, no retry, no refetch on focus); it now also carries
+  the `X-Profiler-Request` header like every other generated call, which a GET ignores.
+
+## Token cleared on Turbo visits (case 4)
+
+- The interceptor drops `window.__PROFILER_PARENT_TOKEN__` on `turbo:load` when the page has no
+  `#profiler-toolbar`. A profiled page sets the token again from its own inline script before
+  `turbo:load`, so the token follows the page.

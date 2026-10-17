@@ -379,7 +379,7 @@ module Profiler
             animation: pfPop 380ms ease-out both;
             transform: none;
           }
-          .profiler-toggle-icon {
+          #profiler-toolbar-toggle .profiler-toggle-icon {
             display: inline-block;
             transition: transform 280ms cubic-bezier(.4,0,.2,1);
           }

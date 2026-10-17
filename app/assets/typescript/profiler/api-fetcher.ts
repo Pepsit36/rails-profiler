@@ -1,5 +1,7 @@
 import { getActiveSlavePrefix } from './cluster-context'
 
+const MASTER_ONLY_PREFIX = '/_profiler/api/cluster/'
+
 // Custom HTTP fetcher for orval-generated code, uses native fetch, no axios dependency.
 export async function apiFetch<T>(config: {
   url: string
@@ -9,7 +11,10 @@ export async function apiFetch<T>(config: {
   headers?: Record<string, string>
   signal?: AbortSignal
 }): Promise<T> {
-  const prefix = getActiveSlavePrefix()
+  // The cluster endpoints belong to the master, which the slave selector asks which slaves
+  // exist: sent through the proxy of the slave being viewed, they would reach a node that does
+  // not route them and the selector would disappear.
+  const prefix = config.url.startsWith(MASTER_ONLY_PREFIX) ? '' : getActiveSlavePrefix()
   const resolvedUrl = prefix
     ? config.url.replace('/_profiler/api', `/_profiler/api${prefix}`)
     : config.url
