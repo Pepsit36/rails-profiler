@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.35.2] - 2026-10-17
+
+<!-- stamped -->
+
 ### Changed
 
 - **Performance:** The patch on `Thread#initialize` that carries the profiling context into new
