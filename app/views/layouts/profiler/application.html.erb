@@ -10,8 +10,8 @@
     <meta name="profiler-name" content="<%= Profiler.configuration.resolved_name %>">
     <meta name="profiler-is-master" content="<%= Profiler.configuration.master? %>">
 
-    <link rel="stylesheet" href="/_profiler/assets/profiler.css">
-    <script src="/_profiler/assets/profiler.js" defer></script>
+    <link rel="stylesheet" href="<%= Profiler::Assets.url("profiler.css") %>">
+    <script src="<%= Profiler::Assets.url("profiler.js") %>" defer></script>
   </head>
 
   <body>

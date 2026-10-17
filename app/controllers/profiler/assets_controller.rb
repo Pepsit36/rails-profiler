@@ -10,16 +10,21 @@ module Profiler
 
     BUILD_MISSING = "Profiler assets are not built (%s is missing). Run `yarn build:full` in the profiler gem."
 
+    # A year: the URL a page uses carries the digest of the content (?v=), so a new version of
+    # the gem is a new URL. Without the digest, or with an old one, the file is only kept an
+    # hour, as it may be replaced under the same URL.
+    VERSIONED_CACHE_CONTROL = "public, max-age=#{365 * 24 * 3600}, immutable".freeze
+
     def toolbar_js
-      serve("profiler-toolbar.js", "application/javascript")
+      serve "profiler-toolbar.js", "application/javascript"
     end
 
     def main_js
-      serve("profiler.js", "application/javascript")
+      serve "profiler.js", "application/javascript"
     end
 
     def main_css
-      serve("profiler.css", "text/css")
+      serve "profiler.css", "text/css"
     end
 
     def icon
@@ -30,8 +35,12 @@ module Profiler
     private
 
     def serve(name, content_type)
-      body = File.read(Profiler::Engine.root.join("app", "assets", "builds", name))
-      expires_in 1.hour, public: true
+      body = Profiler::Assets.read(name)
+      if Profiler::Assets.current?(name, params[:v])
+        response.headers["Cache-Control"] = VERSIONED_CACHE_CONTROL
+      else
+        expires_in 1.hour, public: true
+      end
       render plain: body, content_type: content_type
     rescue Errno::ENOENT
       render plain: format(BUILD_MISSING, name), status: :not_found
