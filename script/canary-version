@@ -1,0 +1,52 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Prints the version of a `canary` prerelease: the version the branch is about to
+# publish, followed by `.pre.<short sha>`.
+#
+#   ruby script/canary-version SHORT_SHA
+#
+# A prerelease sorts before the release it is cut from:
+# Gem::Version("1.2.0.pre.abc1234") < Gem::Version("1.2.0"). Built on the last
+# tag, a canary of a branch made after v1.2.0 would therefore be published as
+# older than 1.2.0. Built on the next version, it sorts after the last release
+# and before the release the branch leads to.
+#
+# The next version comes from `bin/changelog version`, the rule the stamp and the
+# release job use. When the branch holds nothing publishable (exit 3), the patch
+# of the highest known version (last tag, or a version CHANGELOG.md carries) is
+# incremented instead, which still sorts after it. Any other failure stops the
+# job: a canary is never worth a wrong number.
+#
+# Pure Ruby, standard library only, like bin/changelog.
+
+require "open3"
+require "rbconfig"
+
+sha = ARGV.fetch(0) { abort "usage: script/canary-version SHORT_SHA" }
+abort "canary-version: #{sha.inspect} is not a short commit sha" unless sha.match?(/\A[0-9a-f]{7,40}\z/)
+
+changelog = File.expand_path("../bin/changelog", __dir__)
+out, err, status = Open3.capture3(RbConfig.ruby, changelog, "version")
+$stderr.print(err)
+
+def parts(version)
+  (version.sub(/\Av/, "").split(".").map(&:to_i) + [0, 0, 0]).first(3)
+end
+
+base = case status.exitstatus
+       when 0
+         out.strip
+       when 3
+         tag, = Open3.capture2("git", "describe", "--tags", "--abbrev=0", err: File::NULL)
+         file = File.exist?("CHANGELOG.md") ? File.read("CHANGELOG.md") : ""
+         known = [tag.strip, *file.scan(/^## \[(\d+\.\d+\.\d+)\]/).flatten].reject(&:empty?)
+         major, minor, patch = known.map { |version| parts(version) }.max || [0, 0, 0]
+         "#{major}.#{minor}.#{patch + 1}"
+       else
+         abort "canary-version: bin/changelog version failed with exit #{status.exitstatus}"
+       end
+
+abort "canary-version: unexpected version #{base.inspect}" unless base.match?(/\A\d+\.\d+\.\d+\z/)
+
+puts "#{base}.pre.#{sha}"

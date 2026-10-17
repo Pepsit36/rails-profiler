@@ -57,9 +57,22 @@ RSpec.describe ".gitlab-ci.yml" do
     expect(config.fetch("release").fetch("script").join(" ")).not_to include("coverage")
   end
 
-  it "leaves the canary rule untouched" do
-    expect(config.fetch("canary").fetch("rules").first.fetch("if"))
-      .to include('$CI_COMMIT_BRANCH =~ /^(feature|bugfix|hotfix|fix|breaking)\//')
+  # A push to a branch is not reviewed, and canary publishes a gem: it is played
+  # by hand, on the same branches as before.
+  it "only publishes a canary when someone plays the job" do
+    rules = config.fetch("canary").fetch("rules")
+    expect(rules).not_to be_empty
+    expect(rules).to all(include("when" => "manual", "allow_failure" => true))
+    expect(rules.first.fetch("if")).to include('$CI_COMMIT_BRANCH =~ /^(feature|bugfix|hotfix|fix|breaking)\//')
+    expect(config.fetch("canary")).not_to include("only", "except", "when")
+  end
+
+  it "numbers the canary after the version the branch will publish" do
+    script = config.fetch("canary").fetch("script").join("\n")
+    expect(script).to include('ruby script/canary-version "${CI_COMMIT_SHORT_SHA}"')
+    expect(script).to include("refs/remotes/origin/master")
+    expect(script).not_to include("git describe")
+    expect(config.fetch("canary").fetch("variables").fetch("GIT_DEPTH")).to eq("0")
   end
 
   it "keeps the build artifacts around long enough for a release re-run" do

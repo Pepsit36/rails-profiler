@@ -143,8 +143,10 @@ is computed from your commits, never chosen by hand, so the commit type matters.
 
 1. Open an issue on GitLab first for anything larger than a fix, to agree on the approach.
 2. Create a branch from an up-to-date `master`. Prefixes `feature/`, `bugfix/`, `hotfix/`, `fix/`
-   and `breaking/` publish a `canary` pre-release on every push, which is expected; any other
-   prefix (`docs/...`, `refactor/...`) works too, without it.
+   and `breaking/` get a manual `canary` job: played by hand from the pipeline, it publishes a
+   pre-release to the GitLab registry, numbered after the version the branch will publish
+   (`1.2.1.pre.<sha>` for a fix after `1.2.0`), so it sorts after the last release. Nothing is
+   published on a plain push. Any other prefix (`docs/...`, `refactor/...`) works too, without it.
 3. Add specs with the change, and documentation when users see it: the [README](README.md) for the
    essentials, the pages under [docs/](docs/) for the details, [ARCHITECTURE.md](ARCHITECTURE.md)
    when the structure changes. A change to the dashboard may need new screenshots:

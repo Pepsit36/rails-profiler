@@ -111,18 +111,22 @@ canary:
     - package:check
   variables:
     GIT_DEPTH: "0"
+  # Played by hand, never on push: a push to a branch is not reviewed, and this
+  # job publishes a gem with the job token. allow_failure keeps an unplayed
+  # canary from holding the pipeline (and the merge request) in a blocked state.
   rules:
     - if: '$CI_COMMIT_BRANCH =~ /^(feature|bugfix|hotfix|fix|breaking)\// && $CI_PIPELINE_SOURCE != "merge_request_event"'
+      when: manual
+      allow_failure: true
   script:
     - |
       set -e
-      LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-      if [ -n "$LAST_TAG" ]; then
-        BASE_VERSION="${LAST_TAG#v}"
-      else
-        BASE_VERSION=$(ruby -e "require_relative 'lib/profiler/version'; puts Profiler::VERSION")
-      fi
-      CANARY_VERSION="${BASE_VERSION}.pre.${CI_COMMIT_SHORT_SHA}"
+      # bin/changelog counts the branch from master, which a branch pipeline does
+      # not bring along.
+      git fetch origin "+refs/heads/master:refs/remotes/origin/master"
+      # Numbered after the version the branch will publish, not after the last
+      # tag: a prerelease sorts before the release it is cut from.
+      CANARY_VERSION=$(ruby script/canary-version "${CI_COMMIT_SHORT_SHA}")
       sed -i "s/VERSION = .*/VERSION = \"${CANARY_VERSION}\"/" lib/profiler/version.rb
       gem build profiler.gemspec
       mkdir -p ~/.gem && printf -- "---\n:gitlab: ${CI_JOB_TOKEN}\n" > ~/.gem/credentials && chmod 0600 ~/.gem/credentials

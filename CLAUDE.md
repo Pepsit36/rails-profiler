@@ -90,8 +90,9 @@ inside a `<!-- stamped -->` section, which accounts for its whole interval.
 
 - English, Conventional Commits, with a scope when one applies: `fix(instrumentation): ...`.
 - Branch names: `feature/...`, `bugfix/...`, `hotfix/...`, `fix/...`, `breaking/...` get a
-  `canary` prerelease published on every push, which is expected. Any other prefix works too,
-  without the prerelease.
+  manual `canary` job, which publishes a prerelease only when someone plays it. Its version is the
+  one the branch will publish plus `.pre.<sha>` (`script/canary-version`), so it sorts after the
+  last release. Any other prefix works too, without the job.
 - No history rewrite on a shared branch: follow-up commits.
 - No em dash anywhere: code, commits, CHANGELOG, merge request descriptions.
 
