@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.35.3] - 2026-10-17
+
+<!-- stamped -->
+
 ### Changed
 
 - **Assets:** The JavaScript and CSS bundles are minified: the toolbar script goes from 177 KB to
