@@ -4,10 +4,17 @@
 # The MCP server over stdio, without the application: its initializers do not run here, so
 # config.mcp_read_only set there has no effect. Set PROFILER_MCP_READ_ONLY=1 in the environment the
 # MCP client gives this process to leave out the write tools (Profiler::MCP::Server.read_only?).
-# `bundle exec rake profiler:mcp` boots the application and reads both.
+# `bundle exec rake profiler:mcp` boots the application and reads both. It reads the profiles of
+# the file storage under tmp/rails-profiler in the current directory: run it from the application's
+# root. An application on another storage is read through `rake profiler:mcp` or the HTTP endpoint.
 
 require "bundler/setup"
 require "profiler"
 require "profiler/mcp/server"
+
+# Without the application there is no initializer to pick a storage, and the default is :memory:
+# a store of this process alone, which never holds a profile the application wrote. Read the files
+# the application's file storage wrote under ./tmp/rails-profiler, from the application's root.
+Profiler.configure { |config| config.storage = :file }
 
 Profiler::MCP::Server.new.start(transport: :stdio)
