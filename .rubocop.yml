@@ -1,0 +1,30 @@
+inherit_from: .rubocop_todo.yml
+
+# Only the Lint and Security departments are enforced: they find real defects (unused
+# variables, shadowed names, unsafe calls). Style, Layout, Metrics, Naming and Gemspec
+# had 15000+ pre-existing findings when this file was added and are left off until a
+# dedicated branch settles a style.
+AllCops:
+  TargetRubyVersion: 3.0
+  NewCops: disable
+  SuggestExtensions: false
+  Exclude:
+    - ".tools/**/*"
+    - "vendor/**/*"
+    - "node_modules/**/*"
+    - "tmp/**/*"
+
+Style:
+  Enabled: false
+Layout:
+  Enabled: false
+Metrics:
+  Enabled: false
+Naming:
+  Enabled: false
+Gemspec:
+  Enabled: false
+Bundler:
+  Enabled: false
+Migration:
+  Enabled: false

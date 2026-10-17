@@ -1,0 +1,10 @@
+# frozen_string_literal: true
+
+# The oldest Rails the CI tests, on the oldest Ruby the CI tests.
+# Same development gems as the main Gemfile, with Rails pinned to the 7.1 series.
+# The ActiveRecord 7.1 SQLite adapter only accepts sqlite3 1.x; the Gemfile reads this.
+ENV["PROFILER_SQLITE3"] = "~> 1.4"
+
+eval_gemfile File.expand_path("../Gemfile", __dir__)
+
+gem "rails", "~> 7.1.0"

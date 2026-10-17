@@ -21,4 +21,5 @@ gem "puma", ">= 6.0", require: false
 gem "stackprof", "~> 0.2.28", :require => false
 
 # A real database for the ExplainRunner specs (EXPLAIN QUERY PLAN, rolled-back probe).
-gem "sqlite3", ">= 1.4", require: false
+# gemfiles/rails_7_1.gemfile sets PROFILER_SQLITE3 to "~> 1.4": the ActiveRecord 7.1 adapter refuses 2.x.
+gem "sqlite3", ENV.fetch("PROFILER_SQLITE3", ">= 1.4"), require: false

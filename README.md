@@ -35,7 +35,7 @@ timeline with function profiling, and an MCP server for AI-assisted debugging.
 ## Requirements
 
 - Ruby >= 3.0 (the CI runs the suite on Ruby 3.3 and 3.4)
-- Rails >= 7.0
+- Rails >= 7.1
 
 ## Installation
 

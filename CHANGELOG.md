@@ -19,6 +19,18 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-10-17
+
+<!-- stamped -->
+
+### Changed
+
+- **Compatibility:** The gem now declares `rails >= 7.1` instead of `rails >= 7.0`. This is a
+  correction announced, not a new restriction: the gem already relied on
+  `ActiveSupport::BroadcastLogger` and `Rack::Headers`, which Rails 7.0 does not provide, and
+  the suite fails on 7.0 (271 failures out of 1904). Bundler now refuses to install the gem on
+  Rails 7.0 instead of installing a version that cannot work.
+
 ## [0.36.0] - 2026-10-17
 
 <!-- stamped -->
