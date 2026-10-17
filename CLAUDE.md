@@ -14,7 +14,8 @@ Instructions for Claude, and any other agent, working in this repository.
   `master`, not everything since the last tag. `bin/changelog stamp` prints both, as in
   `Counting from origin/master (0a1b2c3d): base 1.1.0, publishing 1.1.1.`
 - Only three things publish: `feat:` publishes a minor, `fix:` publishes a patch, and a breaking
-  marker (`BREAKING CHANGE:` in a body, or `type!:`) publishes a major. **Every other type
+  marker (`BREAKING CHANGE:` or `BREAKING-CHANGE:` in a body, or `type!:`) publishes a major. The
+  type is read from the subject line only: `fix:` or `feat:` written in a body publishes nothing. **Every other type
   publishes nothing**, `perf`, `build`, `deps`, `revert`, `security`, `refactor`, `docs`, `chore`,
   `ci`, `test` and `style` included.
 - So a revert that users need to receive has to be written as a `fix:`. `revert:` alone reaches

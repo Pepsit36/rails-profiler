@@ -112,9 +112,10 @@ is computed from your commits, never chosen by hand, so the commit type matters.
 - **Conventional Commits, in English**, with a scope when one applies:
   `fix(instrumentation): keep the request context in Thread.start`.
 - **Only three things publish**: `feat:` a minor version, `fix:` a patch, a breaking change
-  (`type!:` or a `BREAKING CHANGE:` footer) a major. Every other type publishes nothing: `docs`,
-  `refactor`, `perf`, `test`, `chore`, `ci`, `build`, `deps`, `style`, `security`, `revert`. A
-  revert that users need to receive has to be written as a `fix:`.
+  (`type!:`, or a `BREAKING CHANGE:` or `BREAKING-CHANGE:` footer) a major. The type is read from
+  the subject line only: a `fix:` line further down the body publishes nothing. Every other type
+  publishes nothing: `docs`, `refactor`, `perf`, `test`, `chore`, `ci`, `build`, `deps`, `style`,
+  `security`, `revert`. A revert that users need to receive has to be written as a `fix:`.
 - **Never edit `lib/profiler/version.rb`**: it stays at `0.0.0`; the release job computes the
   version with `bin/changelog version`.
 - **A branch with a `feat:` or `fix:` commit stamps `CHANGELOG.md`**:
