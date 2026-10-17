@@ -172,7 +172,7 @@ module Profiler
           <style#{nonce_attr}>#{self.class.toolbar_styles}</style>
           <div id="profiler-toolbar" class="profiler-root" data-token="#{ERB::Util.html_escape(@token)}"></div>
           <button id="profiler-toolbar-toggle" class="profiler-root" title="Toggle profiler (Alt+P)"><span class="profiler-toggle-icon">&#9654;</span></button>
-          <script#{nonce_attr}>(function(){var c=localStorage.getItem('profiler-toolbar-collapsed')==='true',t=localStorage.getItem('profiler-theme'),theme=t==='light'?'light':t==='dark'?'dark':(window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'),el=document.getElementById('profiler-toolbar'),tog=document.getElementById('profiler-toolbar-toggle');if(c){el.style.cssText='animation:none!important;transform:translateX(calc(100% + 44px))';tog.dataset.collapsed='true';}el.setAttribute('data-theme',theme);tog.setAttribute('data-theme',theme);})();</script>
+          <script#{nonce_attr}>(function(){function g(k){try{return localStorage.getItem(k)}catch(e){return null}}var c=g('profiler-toolbar-collapsed')==='true',t=g('profiler-theme'),theme=t==='light'?'light':t==='dark'?'dark':(window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'),el=document.getElementById('profiler-toolbar'),tog=document.getElementById('profiler-toolbar-toggle');if(c){el.style.cssText='animation:none!important;transform:translateX(calc(100% + 44px))';tog.dataset.collapsed='true';}el.setAttribute('data-theme',theme);tog.setAttribute('data-theme',theme);})();</script>
           <script src="#{Profiler::Assets.url("profiler-toolbar.js")}" defer#{nonce_attr}></script>
         HTML
       end

@@ -3,6 +3,7 @@ import { useEffect } from 'preact/hooks'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToolbarApp } from './components/toolbar/ToolbarApp'
 import { useGetToolbar } from './generated/api'
+import { storageGet, storageSet } from './storage'
 import { useProfileEvents } from './hooks/useProfileEvents'
 
 declare global {
@@ -17,7 +18,7 @@ declare global {
 const ANIM_MS = 280
 
 function applyTheme(elements: HTMLElement[]): void {
-  const stored = localStorage.getItem('profiler-theme')
+  const stored = storageGet('profiler-theme')
   const theme = stored === 'light' ? 'light'
     : stored === 'dark' ? 'dark'
     : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
@@ -83,7 +84,7 @@ function mountToolbar(): void {
     if (e.detail?.theme) themeEls.forEach(elem => elem.setAttribute('data-theme', e.detail.theme))
   }) as EventListener, { signal })
 
-  let isCollapsed = localStorage.getItem('profiler-toolbar-collapsed') === 'true'
+  let isCollapsed = storageGet('profiler-toolbar-collapsed') === 'true'
 
   // Sync toggle arrow to match current state
   toggleEl.dataset.collapsed = String(isCollapsed)
@@ -102,7 +103,7 @@ function mountToolbar(): void {
   function toggleCollapse(): void {
     const next = !isCollapsed
     isCollapsed = next
-    localStorage.setItem('profiler-toolbar-collapsed', String(next))
+    storageSet('profiler-toolbar-collapsed', String(next))
     toggleEl.dataset.collapsed = String(next)
 
     if (next) {
