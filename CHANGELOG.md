@@ -19,6 +19,30 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Changed
+
+- **Dashboard:** The profiler selector now uses the generated `useListClusterSlaves` client
+  instead of a hand-written `fetch`; the cluster endpoints are always asked of the master, also
+  while a slave is being viewed.
+
+### Fixed
+
+- **Toolbar:** The toolbar keeps rendering and working when `localStorage` is refused (strict
+  private mode, storage disabled by a policy): the collapsed state and the theme are kept in
+  memory for the page instead of failing silently.
+- **Toolbar:** After a Turbo Drive visit to a page the profiler leaves alone, AJAX requests are no
+  longer linked to the profile of the last profiled page.
+- **Toolbar:** When the toolbar data cannot be loaded (network error, 500, timeout), the bar shows
+  an error with a Retry button instead of staying empty, and a component that throws shows a
+  minimal error, with a Retry button, instead of blanking the whole toolbar.
+- **Toolbar:** `Alt+P` (`Option+P` on macOS) now toggles the toolbar on every platform, as the
+  shortcut is matched on the physical key (`event.code`) and not on the character it produces.
+- **Dashboard:** The copy buttons work over plain HTTP on a non-local address, where
+  `navigator.clipboard` does not exist, through a `document.execCommand('copy')` fallback, and
+  say so when copying is not available.
+- **Toolbar:** The last rule of the toolbar CSS that was not scoped to the toolbar elements
+  (`.profiler-toggle-icon`) is now scoped, so that no style of the toolbar reaches the host page.
+
 ## [0.35.3] - 2026-10-17
 
 <!-- stamped -->
