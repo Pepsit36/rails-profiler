@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.35.1] - 2026-10-17
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Release:** The version a merge publishes is now read from the subject line of each commit only,
