@@ -332,5 +332,23 @@ RSpec.describe Profiler::Middleware::ToolbarInjector do
     it "builds the toolbar CSS once" do
       expect(described_class.toolbar_styles).to equal(described_class.toolbar_styles)
     end
+
+    it "scopes every selector of the toolbar CSS to the toolbar elements, so that it cannot reach the host page" do
+      css = described_class.toolbar_styles.gsub(%r{/\*.*?\*/}m, "")
+      # Keyframe steps (from, to, 40%) are not selectors of the page.
+      blocks = css.gsub(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*\s*\}/m, "")
+      selectors = blocks.scan(/([^{}]+)\{/).flatten.flat_map { |list| list.split(",") }.map(&:strip).reject(&:empty?)
+      scoped = /\A(?:#profiler-toolbar(?:-toggle)?|\.profiler-root)(?![\w-])/
+
+      expect(selectors).not_to be_empty
+      expect(selectors.reject { |selector| selector.match?(scoped) }).to eq([])
+    end
+
+    it "prefixes the keyframes of the toolbar so that they cannot collide with the host page" do
+      names = described_class.toolbar_styles.scan(/@keyframes\s+([\w-]+)/).flatten
+
+      expect(names).not_to be_empty
+      expect(names).to all(start_with("pf"))
+    end
   end
 end

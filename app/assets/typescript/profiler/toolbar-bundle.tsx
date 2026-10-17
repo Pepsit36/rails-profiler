@@ -1,9 +1,9 @@
 import { render } from 'preact'
-import { useEffect } from 'preact/hooks'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ToolbarApp } from './components/toolbar/ToolbarApp'
-import { useGetToolbar } from './generated/api'
-import { useProfileEvents } from './hooks/useProfileEvents'
+import { ToolbarMount } from './components/toolbar/ToolbarMount'
+import { ToolbarErrorBoundary } from './components/toolbar/ToolbarErrorBoundary'
+import { isToggleShortcut } from './shortcut'
+import { storageGet, storageSet } from './storage'
 
 declare global {
   interface Window {
@@ -17,35 +17,16 @@ declare global {
 const ANIM_MS = 280
 
 function applyTheme(elements: HTMLElement[]): void {
-  const stored = localStorage.getItem('profiler-theme')
+  const stored = storageGet('profiler-theme')
   const theme = stored === 'light' ? 'light'
     : stored === 'dark' ? 'dark'
     : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
   elements.forEach(el => el.setAttribute('data-theme', theme))
 }
 
-interface ToolbarMountProps {
-  token: string
-}
-
 const toolbarQueryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 })
-
-function ToolbarMount({ token }: ToolbarMountProps) {
-  const { data, refetch } = useGetToolbar(token, { query: { refetchOnWindowFocus: false } } as any)
-
-  useEffect(() => {
-    window.__PROFILER_REFRESH_TOOLBAR__ = () => { refetch() }
-  }, [refetch])
-
-  useProfileEvents(token, data?.events_cursor, () => { refetch() })
-
-  const profile = data?.profile ?? null
-  if (!profile) return null
-
-  return <ToolbarApp profile={profile} token={token} />
-}
 
 function mountToolbar(): void {
   const el = document.getElementById('profiler-toolbar') as HTMLElement
@@ -83,7 +64,7 @@ function mountToolbar(): void {
     if (e.detail?.theme) themeEls.forEach(elem => elem.setAttribute('data-theme', e.detail.theme))
   }) as EventListener, { signal })
 
-  let isCollapsed = localStorage.getItem('profiler-toolbar-collapsed') === 'true'
+  let isCollapsed = storageGet('profiler-toolbar-collapsed') === 'true'
 
   // Sync toggle arrow to match current state
   toggleEl.dataset.collapsed = String(isCollapsed)
@@ -102,7 +83,7 @@ function mountToolbar(): void {
   function toggleCollapse(): void {
     const next = !isCollapsed
     isCollapsed = next
-    localStorage.setItem('profiler-toolbar-collapsed', String(next))
+    storageSet('profiler-toolbar-collapsed', String(next))
     toggleEl.dataset.collapsed = String(next)
 
     if (next) {
@@ -124,7 +105,7 @@ function mountToolbar(): void {
   toggleEl.addEventListener('click', toggleCollapse, { signal })
 
   document.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.altKey && e.key === 'p') {
+    if (isToggleShortcut(e)) {
       e.preventDefault()
       toggleCollapse()
     }
@@ -132,7 +113,9 @@ function mountToolbar(): void {
 
   render(
     <QueryClientProvider client={toolbarQueryClient}>
-      <ToolbarMount token={token} />
+      <ToolbarErrorBoundary>
+        <ToolbarMount token={token} />
+      </ToolbarErrorBoundary>
     </QueryClientProvider>,
     el
   )

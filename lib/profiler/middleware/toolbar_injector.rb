@@ -172,7 +172,7 @@ module Profiler
           <style#{nonce_attr}>#{self.class.toolbar_styles}</style>
           <div id="profiler-toolbar" class="profiler-root" data-token="#{ERB::Util.html_escape(@token)}"></div>
           <button id="profiler-toolbar-toggle" class="profiler-root" title="Toggle profiler (Alt+P)"><span class="profiler-toggle-icon">&#9654;</span></button>
-          <script#{nonce_attr}>(function(){var c=localStorage.getItem('profiler-toolbar-collapsed')==='true',t=localStorage.getItem('profiler-theme'),theme=t==='light'?'light':t==='dark'?'dark':(window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'),el=document.getElementById('profiler-toolbar'),tog=document.getElementById('profiler-toolbar-toggle');if(c){el.style.cssText='animation:none!important;transform:translateX(calc(100% + 44px))';tog.dataset.collapsed='true';}el.setAttribute('data-theme',theme);tog.setAttribute('data-theme',theme);})();</script>
+          <script#{nonce_attr}>(function(){function g(k){try{return localStorage.getItem(k)}catch(e){return null}}var c=g('profiler-toolbar-collapsed')==='true',t=g('profiler-theme'),theme=t==='light'?'light':t==='dark'?'dark':(window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'),el=document.getElementById('profiler-toolbar'),tog=document.getElementById('profiler-toolbar-toggle');if(c){el.style.cssText='animation:none!important;transform:translateX(calc(100% + 44px))';tog.dataset.collapsed='true';}el.setAttribute('data-theme',theme);tog.setAttribute('data-theme',theme);})();</script>
           <script src="#{Profiler::Assets.url("profiler-toolbar.js")}" defer#{nonce_attr}></script>
         HTML
       end
@@ -336,6 +336,26 @@ module Profiler
           }
           #profiler-toolbar .profiler-toolbar-logo:hover { color: var(--pf-amber-h); }
 
+          /* Error state: the profile could not be loaded, or a component failed. */
+          #profiler-toolbar .profiler-toolbar-error {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 13px;
+          }
+          #profiler-toolbar .profiler-toolbar-retry {
+            font-family: var(--pf-mono);
+            font-size: 11px;
+            color: var(--pf-amber);
+            background: transparent;
+            border: 1px solid var(--pf-border-s);
+            border-radius: 3px;
+            padding: 2px 8px;
+            cursor: pointer;
+          }
+          #profiler-toolbar .profiler-toolbar-retry:hover:not(:disabled) { color: var(--pf-amber-h); background: var(--pf-amber-bg); }
+          #profiler-toolbar .profiler-toolbar-retry:disabled { cursor: default; opacity: .6; }
+
           /* ── Toggle button (fixed, always visible) ───────────────────────── */
           #profiler-toolbar-toggle {
             position: fixed;
@@ -359,7 +379,7 @@ module Profiler
             animation: pfPop 380ms ease-out both;
             transform: none;
           }
-          .profiler-toggle-icon {
+          #profiler-toolbar-toggle .profiler-toggle-icon {
             display: inline-block;
             transition: transform 280ms cubic-bezier(.4,0,.2,1);
           }

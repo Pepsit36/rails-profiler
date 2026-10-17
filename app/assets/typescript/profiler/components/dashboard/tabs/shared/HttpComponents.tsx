@@ -1,19 +1,20 @@
 import { useState, useEffect } from 'preact/hooks'
 import { methodBadge, statusBadge } from './utils'
+import { copyText } from '../../../../clipboard'
 
 // ── Copy / Download buttons ───────────────────────────────────────────────────
 
 export function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<'copied' | 'failed' | null>(null)
   function copy() {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+    copyText(text).then(ok => {
+      setCopied(ok ? 'copied' : 'failed')
+      setTimeout(() => setCopied(null), 2000)
     })
   }
   return (
     <button onClick={copy} class="profiler-body-download-btn profiler-text--xs" style="cursor:pointer">
-      {copied ? 'Copied!' : 'Copy'}
+      {copied === 'copied' ? 'Copied!' : copied === 'failed' ? 'Copy not available' : 'Copy'}
     </button>
   )
 }
@@ -377,7 +378,8 @@ export function HttpCardHeader({ method, url, copyUrl: copyUrlOverride, status, 
 
   function handleCopyUrl(e: MouseEvent) {
     e.stopPropagation()
-    navigator.clipboard.writeText(copyUrlOverride ?? url).then(() => {
+    copyText(copyUrlOverride ?? url).then(ok => {
+      if (!ok) return
       setCopiedUrl(true)
       setTimeout(() => setCopiedUrl(false), 2000)
     })
@@ -385,7 +387,8 @@ export function HttpCardHeader({ method, url, copyUrl: copyUrlOverride, status, 
 
   function handleCopyCurl(e: MouseEvent) {
     e.stopPropagation()
-    navigator.clipboard.writeText(curlCommand).then(() => {
+    copyText(curlCommand).then(ok => {
+      if (!ok) return
       setCopiedCurl(true)
       setTimeout(() => setCopiedCurl(false), 2000)
     })

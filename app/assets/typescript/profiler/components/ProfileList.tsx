@@ -9,6 +9,7 @@ import {
   useDeleteConsole, useClearConsoles,
   useDeleteTest, useClearTests,
 } from '../generated/api'
+import { copyText } from '../clipboard'
 import type { Profile, HttpRequest, ProfilesResponse } from '../dashboard/types'
 import { getGemVersion, allocatedObjects, formatAllocations, ALLOCATIONS_HINT } from '../dashboard/utils'
 import { HttpRequestDetail } from './dashboard/tabs/HttpTab'
@@ -264,7 +265,8 @@ export function ProfileList() {
   }
 
   const copyToken = (token: string) => {
-    navigator.clipboard.writeText(token).then(() => {
+    copyText(token).then(ok => {
+      if (!ok) { window.prompt('Copy is not available here. Select the token and copy it:', token); return }
       setCopiedToken(token)
       setTimeout(() => setCopiedToken(null), 1500)
     })

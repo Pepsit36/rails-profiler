@@ -8,7 +8,8 @@
     "build:toolbar": "esbuild --minify app/assets/typescript/profiler/toolbar-bundle.tsx --bundle --outfile=app/assets/builds/profiler-toolbar.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --alias:@tanstack/react-query=@tanstack/preact-query",
     "build:css": "sass app/assets/stylesheets/profiler/main.scss app/assets/builds/profiler.css --no-source-map --style=compressed",
     "codegen": "orval",
-    "watch": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --alias:@tanstack/react-query=@tanstack/preact-query --watch"
+    "watch": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --alias:@tanstack/react-query=@tanstack/preact-query --watch",
+    "test": "yarn codegen && vitest run"
   },
   "dependencies": {
     "@tanstack/preact-query": "^5.0.0",
@@ -16,8 +17,14 @@
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
+    "jsdom": "^26",
     "orval": "^8.41.0",
     "sass": "^1.85.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vite": "^6",
+    "vitest": "^4.1.11"
+  },
+  "resolutions": {
+    "picomatch": "^4.0.4"
   }
 }

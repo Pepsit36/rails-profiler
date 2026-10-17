@@ -1,5 +1,7 @@
 // Theme management - Light/Dark mode toggle
 
+import { storageGet, storageSet } from './storage';
+
 export type Theme = 'light' | 'dark' | 'auto';
 
 const STORAGE_KEY = 'profiler-theme';
@@ -36,12 +38,12 @@ export class ThemeManager {
   }
 
   private loadTheme(): Theme {
-    const stored = localStorage.getItem(STORAGE_KEY) as Theme;
+    const stored = storageGet(STORAGE_KEY) as Theme;
     return stored || 'auto';
   }
 
   private saveTheme(theme: Theme): void {
-    localStorage.setItem(STORAGE_KEY, theme);
+    storageSet(STORAGE_KEY, theme);
   }
 
   private applyTheme(theme: Theme): void {

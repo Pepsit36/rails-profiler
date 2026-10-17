@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'preact/hooks'
 import { useUpdateEnvVar, useResetEnvVar, useResetAllEnvVars, getEnvVars } from '../../../generated/api'
+import { copyText } from '../../../clipboard'
 import { EnvData, EnvOverride } from '../../../dashboard/types'
 
 // The value the profiler shows in place of a hidden one (Profiler::Redaction::MASK).
@@ -167,12 +168,11 @@ export function EnvTab({ envData, readOnly: forceReadOnly = false }: Props) {
   // --- Clipboard ---
 
   const copy = async (text: string, id: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
+    if (await copyText(text)) {
       setCopiedId(id)
       setTimeout(() => setCopiedId(null), 1500)
-    } catch {
-      showFlash('error', 'Clipboard access denied')
+    } else {
+      showFlash('error', 'Copy is not available in this browser: select the value and copy it by hand')
     }
   }
 
