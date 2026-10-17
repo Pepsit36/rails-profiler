@@ -455,3 +455,35 @@ option and the reason for it.
 - The interceptor drops `window.__PROFILER_PARENT_TOKEN__` on `turbo:load` when the page has no
   `#profiler-toolbar`. A profiled page sets the token again from its own inline script before
   `turbo:load`, so the token follows the page.
+
+## CI: type check, lint, front-end tests, Ruby/Rails matrix
+
+- **`typecheck`** (`yarn codegen`, then `tsc --noEmit`): measured green on the current code
+  before being added, so it blocks.
+- **`rubocop`**: with RuboCop's defaults the repository has 15295 findings, nearly all Style and
+  Layout (the code uses double quotes and no agreed layout). Chosen, as the most prudent: enforce
+  only the Lint and Security departments (`.rubocop.yml`), which find real defects, and freeze
+  the 151 findings that existed in `.rubocop_todo.yml` (generated with `--auto-gen-config
+  --auto-gen-only-exclude`, no autocorrect so no code moved). The job blocks, so a *new* finding
+  fails the pipeline while the old ones wait for a follow-up branch that empties the todo file.
+  Style and Layout stay off until someone settles a style. RuboCop is pinned (1.92.0) in the job.
+- **`vitest`** (`yarn test:coverage`, which runs `yarn codegen` first): 25 tests, measured
+  3.48% statements, 2.29% branches, 3.2% functions, 3.79% lines on the hand-written sources
+  (generated client excluded). The floors are 3/2/3/3, just under the measure: they catch a
+  regression, they do not claim coverage the code lacks. The real gap is the dashboard tabs and
+  panels, at 0%; this branch adds specs for `api-fetcher` (the `/slaves` prefix is kept on a route
+  that is not a cluster route, and never put on a cluster route), `CachePanel` and `TestTab`.
+- **`vite ^6` removed** from `package.json`. Before and after: `yarn test` 16 tests green,
+  `tsc --noEmit` clean, `yarn build` OK; vitest uses its own vite 8.3.4, `vite@^6` was no longer
+  in `yarn.lock`.
+- **Ruby/Rails matrix (open, needs Sébastien's decision)**: the gemspec declares ruby >= 3.0 and
+  rails >= 7.0 but only Ruby 3.3 and 3.4 with the latest Rails (8.1) were ever run. Measured here:
+  on Ruby 3.1 with Rails 7.0 the suite gives 271 failures out of 1904. The causes seen are in the
+  specs (`Rack::Headers` is Rack 3, `ActiveSupport::BroadcastLogger` is Rails 7.1) and others in
+  the MCP specs not diagnosed. Rails 7.1 on Ruby 3.1 could not be run in this sandbox (native
+  extension build trouble that the official `ruby:3.1` image would not have). Chosen, as the
+  most prudent: add `rspec:ruby3.1-rails7.1` with `allow_failure: true`, outside the publishing
+  gate, using `gemfiles/rails_7_1.gemfile`, and leave the gemspec bounds alone. Follow-up: read
+  that job's first result, then either make it blocking or raise the bounds to what passes
+  (a compatibility change to announce). Until then rails 7.0 support is unverified and probably
+  broken.

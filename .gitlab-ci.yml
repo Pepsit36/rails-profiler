@@ -34,6 +34,58 @@ rspec:ruby3.4:
   before_script:
     - bundle config set --local path vendor/bundle
 
+# The oldest Rails the CI runs, on the oldest Ruby, as a first look at what the gemspec
+# declares (ruby >= 3.0, rails >= 7.0). Informational for now: the suite was never run
+# there, and a first run on Rails 7.0 gave 271 failures out of 1904, most of them in the
+# specs themselves (Rack::Headers is Rack 3, ActiveSupport::BroadcastLogger is Rails 7.1).
+# Made blocking once it is green, or once the gemspec bounds are raised to match it.
+rspec:ruby3.1-rails7.1:
+  stage: test
+  image: ruby:3.1
+  allow_failure: true
+  variables:
+    BUNDLE_GEMFILE: $CI_PROJECT_DIR/gemfiles/rails_7_1.gemfile
+  script:
+    - bundle install
+    - bundle exec rspec
+  cache:
+    key: gem-bundle-ruby3.1-rails7.1-$CI_COMMIT_REF_SLUG
+    paths:
+      - vendor/bundle
+  before_script:
+    - bundle config set --local path vendor/bundle
+
+# Lint and Security cops only (see .rubocop.yml); the findings that existed when the job
+# was added are frozen in .rubocop_todo.yml, so a new one fails the pipeline. The version
+# is pinned so that a new RuboCop release cannot turn the job red on its own.
+rubocop:
+  stage: test
+  image: ruby:3.3
+  needs: []
+  script:
+    - gem install rubocop -v 1.92.0 --no-document
+    - rubocop
+
+typecheck:
+  stage: test
+  image: node:22
+  needs: []
+  script:
+    - yarn install --frozen-lockfile
+    # The generated client is not committed and the code imports it.
+    - yarn codegen
+    - yarn tsc --noEmit
+
+# `test:coverage` runs `yarn codegen` first, then Vitest with the coverage floor of
+# vitest.config.mts.
+vitest:
+  stage: test
+  image: node:22
+  needs: []
+  script:
+    - yarn install --frozen-lockfile
+    - yarn test:coverage
+
 # Runs in the ordinary branch pipeline, next to rspec, on every branch that is not
 # the default one. No prefix allowlist: feat/, refactor/, docs/ and chore/ branches
 # have already been merged here, and a prefix list silently exempts whatever it
@@ -107,6 +159,9 @@ canary:
   needs:
     - rspec
     - rspec:ruby3.4
+    - rubocop
+    - typecheck
+    - vitest
     - build
     - package:check
   variables:
@@ -139,6 +194,9 @@ release:
   needs:
     - rspec
     - rspec:ruby3.4
+    - rubocop
+    - typecheck
+    - vitest
     - build
     - package:check
   # One release at a time: the job tags the merged commit and pushes that tag.

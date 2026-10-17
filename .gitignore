@@ -44,3 +44,5 @@ yarn-error.log
 
 # Generated TypeScript from OpenAPI spec (regenerate with `yarn codegen`)
 app/assets/typescript/profiler/generated/
+/gemfiles/*.lock
+/gemfiles/.bundle/

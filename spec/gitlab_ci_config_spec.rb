@@ -38,7 +38,16 @@ RSpec.describe ".gitlab-ci.yml" do
   it "runs the suite on both supported Ruby minor versions" do
     images = config.select { |_, job| job.is_a?(Hash) && job["script"].to_a.include?("bundle exec rspec") }
                    .transform_values { |job| job.fetch("image") }
-    expect(images).to eq("rspec" => "ruby:3.3", "rspec:ruby3.4" => "ruby:3.4")
+    expect(images).to include("rspec" => "ruby:3.3", "rspec:ruby3.4" => "ruby:3.4")
+  end
+
+  # The oldest-Ruby / Rails 7.1 job is informational until it is green: a red one must not
+  # hold back a publication, and it must not be among the jobs publishing waits for.
+  it "keeps the oldest Ruby and Rails job informational, and out of the publishing gate" do
+    old = config.fetch("rspec:ruby3.1-rails7.1")
+    expect(old.fetch("allow_failure")).to be(true)
+    expect(old.fetch("variables").fetch("BUNDLE_GEMFILE")).to end_with("gemfiles/rails_7_1.gemfile")
+    %w[canary release].each { |job| expect(config.fetch(job).fetch("needs")).not_to include("rspec:ruby3.1-rails7.1") }
   end
 
   it "gives each rspec job its own bundle cache, since the bundle is per Ruby ABI" do
@@ -83,8 +92,8 @@ RSpec.describe ".gitlab-ci.yml" do
   # stage. Without both suites listed here, the only thing holding a publication
   # back after a red suite would be that `build` has no `needs` of its own.
   %w[release canary].each do |job|
-    it "publishes from #{job} only after both suites, the build and the package check" do
-      expect(config.fetch(job).fetch("needs")).to contain_exactly("rspec", "rspec:ruby3.4", "build", "package:check")
+    it "publishes from #{job} only after both suites, the lint, the type check, the front-end tests, the build and the package check" do
+      expect(config.fetch(job).fetch("needs")).to contain_exactly("rspec", "rspec:ruby3.4", "rubocop", "typecheck", "vitest", "build", "package:check")
     end
 
     # A `needs` naming a job absent from the pipeline makes GitLab refuse to
