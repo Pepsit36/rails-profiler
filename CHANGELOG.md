@@ -19,6 +19,23 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Release:** The version a merge publishes is now read from the subject line of each commit only,
+  never from its body, and `BREAKING-CHANGE:` (with a hyphen) publishes a major version just as
+  `BREAKING CHANGE:` already did.
+- **Canary:** A prerelease is now numbered after the version its branch is going to publish, not
+  after the last release, so RubyGems no longer sorts a recent canary as older than the release it
+  precedes.
+
+### Security
+
+- **Release:** `rake release` and its subtasks now refuse to run from a developer machine and point
+  to the `release` CI job, the only publisher. `rake build` and `rake install` keep working.
+- **CI:** The `canary` job no longer publishes a prerelease on every push to a `feature/`,
+  `bugfix/`, `hotfix/`, `fix/` or `breaking/` branch; it is now manual and publishes only when
+  someone plays it.
+
 ## [0.35.0] - 2026-10-17
 
 <!-- stamped -->
