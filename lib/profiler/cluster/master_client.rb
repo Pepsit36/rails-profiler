@@ -8,7 +8,38 @@ require_relative "security"
 module Profiler
   module Cluster
     class MasterClient
+      # Process._fork (Ruby 3.1+) runs in the parent and in the child alike. A thread does not
+      # survive a fork, so a worker forked from a process that had started the client (Puma in
+      # cluster mode with preload_app!, a preloaded Unicorn) would never heartbeat.
+      module ForkHook
+        def _fork
+          pid = super
+          MasterClient.restart_after_fork if pid.zero?
+          pid
+        end
+      end
+
+      class << self
+        # The client the railtie started in this process, for the fork hook to restart.
+        attr_accessor :current
+
+        def install_fork_hook!
+          return false if @fork_hook_installed || !Process.respond_to?(:_fork)
+
+          Process.singleton_class.prepend(ForkHook)
+          @fork_hook_installed = true
+        end
+
+        def restart_after_fork
+          current&.restart_after_fork
+        rescue => e
+          Profiler.log_warn("Cluster: could not restart the heartbeat after a fork", e)
+        end
+      end
+
       def start
+        self.class.current = self
+        self.class.install_fork_hook!
         @registered = false
         begin
           register!
@@ -16,6 +47,17 @@ module Profiler
         rescue => e
           log_warn("could not register with master at startup, will retry in the heartbeat loop", e)
         end
+        @started = true
+        start_heartbeat_thread
+      end
+
+      # In the child of a fork: the heartbeat thread of the parent is gone and the parent's
+      # registration is not the child's own, so register again from the new thread.
+      # Does nothing while a heartbeat thread is alive, nor before start.
+      def restart_after_fork
+        return if @started.nil? || @thread&.alive?
+
+        @registered = false
         start_heartbeat_thread
       end
 
@@ -61,7 +103,9 @@ module Profiler
       end
 
       def start_heartbeat_thread
-        Thread.new do
+        return if @thread&.alive?
+
+        @thread = Thread.new do
           interval = Profiler.configuration.cluster_heartbeat_interval
           loop do
             sleep interval

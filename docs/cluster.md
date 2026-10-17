@@ -50,6 +50,22 @@ and every cluster request is refused with a message saying why.
 
 The slave registers automatically at boot and sends periodic heartbeats.
 
+**Forking servers (Puma in cluster mode, Unicorn).** With `preload_app!` (or a preloaded Unicorn)
+the application boots in the parent process, and a thread does not survive `fork`: the workers
+would have no heartbeat and would never register again. On Ruby 3.1 and later the gem hooks
+`Process._fork` and starts a heartbeat thread in each forked child, which registers again from
+there (nothing is started when the child already has one). Where `Process._fork` does not exist
+(Ruby 3.0), or when you would rather not rely on it, restart the client by hand in the worker:
+
+```ruby
+# config/puma.rb
+on_worker_boot do
+  Profiler::Cluster::MasterClient.restart_after_fork
+end
+```
+
+For Unicorn, the same call goes in `after_fork`. It is safe to call in addition to the hook.
+
 **Two applications on one machine** (for example two git worktrees on ports 3000 and 3001) need
 no HTTPS: loopback addresses are accepted over plain HTTP.
 
