@@ -36,8 +36,8 @@ Lint/ConstantDefinitionInBlock:
     - 'spec/middleware/profiler_middleware_stream_context_spec.rb'
     - 'spec/middleware/profiler_middleware_streaming_collectors_spec.rb'
     - 'spec/middleware/toolbar_injector_equivalence_spec.rb'
-    - 'spec/security/cluster_secret_truncation_spec.rb'
-    - 'spec/security/redaction_spec.rb'
+    - 'spec/redaction/capture_redaction_spec.rb'
+    - 'spec/redaction/cluster_secret_truncation_spec.rb'
     - 'spec/storage/token_validation_spec.rb'
 
 # Offense count: 1
@@ -64,6 +64,12 @@ Lint/IneffectiveAccessModifier:
     - 'lib/profiler/mcp/tools/run_tests.rb'
     - 'lib/profiler/middleware/toolbar_injector.rb'
     - 'lib/profiler/test_runner/runner.rb'
+
+# Offense count: 1
+# This cop supports safe autocorrection (--autocorrect).
+Lint/LiteralInInterpolation:
+  Exclude:
+    - 'spec/mcp/tools/get_profile_detail_spec.rb'
 
 # Offense count: 3
 # Configuration parameters: AllowedParentClasses.
