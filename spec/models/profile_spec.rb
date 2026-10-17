@@ -286,6 +286,20 @@ RSpec.describe Profiler::Models::Profile do
       end
     end
 
+    it "decodes a body from its declared charset and still detects binary under the same Content-Type" do
+      text = described_class.new
+      text.set_bodies(request_body: nil, response_body: "Crème brûlée".encode("ISO-8859-1").b,
+                      req_content_type: nil, resp_content_type: "text/plain; charset=ISO-8859-1")
+      expect(text.response_body).to eq("Crème brûlée")
+      expect(text.response_body_encoding).to eq("text")
+
+      binary = described_class.new
+      binary.set_bodies(request_body: nil, response_body: bytes,
+                        req_content_type: nil, resp_content_type: "text/plain; charset=ISO-8859-1")
+      expect(binary.response_body_encoding).to eq("base64")
+      expect(Base64.strict_decode64(binary.response_body)).to eq(bytes)
+    end
+
     it "keeps UTF-8 text given as ASCII-8BIT as the text it is" do
       profile = described_class.new
       profile.set_bodies(request_body: nil, response_body: "caf\u00e9".b, req_content_type: nil, resp_content_type: "text/plain")
