@@ -73,7 +73,7 @@ module Profiler
               when "duration"     then profile.duration ? "#{profile.duration.round(2)}ms" : "-"
               when "gem_version"
                 v = profile.gem_version || "-"
-                v != Profiler::VERSION ? "#{v} ⚠️" : v
+                v != Profiler.version ? "#{v} ⚠️" : v
               when "token"        then profile.token.to_s
               when "parent_token" then profile.parent_token || "-"
               end

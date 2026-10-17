@@ -46,7 +46,7 @@ module Profiler
 
         @server = ::MCP::Server.new(
           name: "rails-profiler",
-          version: Profiler::VERSION,
+          version: Profiler.version,
           tools: tools,
           resources: resources
         )
