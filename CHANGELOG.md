@@ -35,7 +35,7 @@ every commit of every tag interval is accounted for one way or the other.
 - **HTTP and request bodies:** A body is now kept as base64 when its bytes are binary (a NUL byte,
   invalid UTF-8, mostly control characters), whatever `Content-Type` it was served with, and `font/`,
   `application/x-protobuf` and `application/gzip` are recognized as binary types. A binary string
-  is no longer turned into `?` characters. A `Net::HTTP` response read as a stream (`read_body`
+  is no longer turned into `?` characters. A body whose `Content-Type` declares a charset other than UTF-8 (`ISO-8859-1`...) stays text, decoded from that charset. A `Net::HTTP` response read as a stream (`read_body`
   with a block) is recorded with no body and `response_body_not_captured`, instead of the `inspect`
   of the stream adapter.
 - **Version:** `Profiler.version`, the version recorded in profiles and announced by the MCP server,
