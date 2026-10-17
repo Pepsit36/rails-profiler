@@ -5,6 +5,7 @@ require "securerandom"
 require "json"
 require "zlib"
 require_relative "../redaction"
+require_relative "../body_content"
 require_relative "../allocation_counter"
 
 module Profiler
@@ -256,7 +257,7 @@ module Profiler
       def process_body(raw, content_type)
         return { body: nil, encoding: "text" } if raw.nil? || raw.empty?
 
-        if binary_content_type?(content_type)
+        if BodyContent.binary?(raw, content_type)
           # Masked on the raw bytes, before the encoding hides them from any later search. A
           # compressed format (zip, png, gzip...) does not hold the secret as it is.
           { body: Base64.strict_encode64(Redaction.hide_credentials(raw.b)), encoding: "base64" }
@@ -313,10 +314,6 @@ module Profiler
       def compress_body?(text)
         Profiler.configuration.compress_bodies &&
           text.bytesize > Profiler.configuration.compress_body_threshold
-      end
-
-      def binary_content_type?(ct)
-        ct.to_s.match?(%r{image/(?!svg)|application/(?:pdf|octet-stream|zip)|audio/|video/})
       end
 
       LEGACY_FILTERED_PARAMS = %w[password password_confirmation token secret].freeze
