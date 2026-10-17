@@ -26,6 +26,7 @@ Profiler::Engine.routes.draw do
   get "assets/profiler-toolbar.js", to: "assets#toolbar_js"
   get "assets/profiler.js", to: "assets#main_js"
   get "assets/profiler.css", to: "assets#main_css"
+  get "assets/icon.png", to: "assets#icon"
 
   get "test_runner", to: "test_runner#index"
 

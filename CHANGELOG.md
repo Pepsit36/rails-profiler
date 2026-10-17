@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-10-17
+
+<!-- stamped -->
+
+### Added
+
+- The dashboard pages now carry the Chrome extension's icon as their favicon, served at `/_profiler/assets/icon.png`.
+
 ## [0.34.6] - 2026-10-16
 
 <!-- stamped -->
