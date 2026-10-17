@@ -4,9 +4,9 @@
   "scripts": {
     "build": "yarn build:js && yarn build:toolbar && yarn build:css",
     "build:full": "yarn codegen && yarn build",
-    "build:js": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --alias:@tanstack/react-query=@tanstack/preact-query",
-    "build:toolbar": "esbuild app/assets/typescript/profiler/toolbar-bundle.tsx --bundle --outfile=app/assets/builds/profiler-toolbar.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --alias:@tanstack/react-query=@tanstack/preact-query",
-    "build:css": "sass app/assets/stylesheets/profiler/main.scss app/assets/builds/profiler.css --no-source-map",
+    "build:js": "esbuild --minify app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --alias:@tanstack/react-query=@tanstack/preact-query",
+    "build:toolbar": "esbuild --minify app/assets/typescript/profiler/toolbar-bundle.tsx --bundle --outfile=app/assets/builds/profiler-toolbar.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --alias:@tanstack/react-query=@tanstack/preact-query",
+    "build:css": "sass app/assets/stylesheets/profiler/main.scss app/assets/builds/profiler.css --no-source-map --style=compressed",
     "codegen": "orval",
     "watch": "esbuild app/assets/typescript/profiler/main.tsx --bundle --outfile=app/assets/builds/profiler.js --jsx=automatic --jsx-import-source=preact --format=iife --target=es2020 --alias:@tanstack/react-query=@tanstack/preact-query --watch"
   },
