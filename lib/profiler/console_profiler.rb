@@ -38,7 +38,7 @@ module Profiler
     def run(&block)
       profile = Models::Profile.new
       profile.profile_type = "console"
-      profile.gem_version = Profiler::VERSION
+      profile.gem_version = Profiler.version
       profile.path = Redaction.truncate(@expression, 200)
       profile.method = "CONSOLE"
 

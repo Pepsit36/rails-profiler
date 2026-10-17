@@ -6,6 +6,7 @@ require "zlib"
 require "stringio"
 require "securerandom"
 require_relative "../redaction"
+require_relative "../body_content"
 require_relative "../configuration"
 
 module Profiler
@@ -59,7 +60,10 @@ module Profiler
           response = super
 
           duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round(2)
-          resp_body_raw = response.body.to_s
+          # read_body with a block hands each chunk to the block and keeps none: the response then
+          # holds a Net::ReadAdapter, whose to_s is an inspect and whose bytes are gone.
+          streamed = NetHttpInstrumentation.streamed_body?(response)
+          resp_body_raw = streamed ? "" : response.body.to_s
           resp_content_encoding = response["content-encoding"].to_s.strip.downcase
           resp_body = NetHttpInstrumentation.decompress_body(resp_body_raw, resp_content_encoding, limit)
           resp_truncated = limit ? resp_body.bytesize > limit : false
@@ -76,8 +80,9 @@ module Profiler
             response_headers: Redaction.filter_headers(response.to_hash.transform_values { |v| v.join(", ") }),
             response_body: processed_resp[:body],
             response_body_encoding: processed_resp[:encoding],
-            response_size: resp_body_raw.bytesize,
-            response_body_truncated: resp_truncated
+            response_size: streamed ? (declared_length(response) || 0) : resp_body_raw.bytesize,
+            response_body_truncated: resp_truncated,
+            response_body_not_captured: streamed
           )
 
           fg = Thread.current[:profiler_flamegraph_collector]
@@ -96,6 +101,11 @@ module Profiler
 
         private
 
+        def declared_length(response)
+          length = response["content-length"].to_s
+          length.match?(/\A\d+\z/) ? length.to_i : nil
+        end
+
         def build_url(host, port, path, ssl)
           scheme = ssl ? "https" : "http"
           standard_port = (ssl && port == 443) || (!ssl && port == 80)
@@ -110,7 +120,7 @@ module Profiler
       deprecate_constant :SKIP_HOSTS
 
       TEXT_CONTENT_TYPES   = /\A(text\/|application\/(json|xml|xhtml|javascript|x-www-form-urlencoded)|image\/svg)/i
-      BINARY_CONTENT_TYPES = /\A(image\/|application\/pdf|application\/octet-stream|application\/zip|audio\/|video\/)/i
+      BINARY_CONTENT_TYPES = BodyContent::BINARY_CONTENT_TYPES
 
       def self.install!
         return if @installed
@@ -255,12 +265,15 @@ module Profiler
         inflater&.close
       end
 
+      # A response read with read_body(&block) was consumed as a stream: its body is gone.
+      def self.streamed_body?(response)
+        defined?(Net::ReadAdapter) && response.body.is_a?(Net::ReadAdapter)
+      end
+
       def self.process_body(body, content_type)
         return { body: nil, encoding: "text" } if body.nil? || body.empty?
 
-        mime = content_type.split(";").first.to_s.strip
-
-        if mime.match?(BINARY_CONTENT_TYPES)
+        if BodyContent.binary?(body, content_type)
           # Masked on the raw bytes, before the encoding hides them from any later search.
           { body: Base64.strict_encode64(Redaction.hide_credentials(body.b)), encoding: "base64" }
         else

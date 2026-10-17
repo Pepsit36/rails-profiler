@@ -266,4 +266,46 @@ RSpec.describe Profiler::Models::Profile do
       expect(profile.headers).not_to have_key("X-Secret-Key")
     end
   end
+
+  describe "#set_bodies with a binary body" do
+    let(:bytes) { "\x89PNG\r\n\x1a\n\x00\x01\xFF\xFE".b }
+
+    it "keeps a text/plain body made of binary bytes as base64, intact" do
+      profile = described_class.new
+      profile.set_bodies(request_body: nil, response_body: bytes, req_content_type: nil, resp_content_type: "text/plain")
+
+      expect(profile.response_body_encoding).to eq("base64")
+      expect(Base64.strict_decode64(profile.response_body)).to eq(bytes)
+    end
+
+    it "keeps the types that were missing from the list as binary" do
+      %w[font/ttf application/x-protobuf application/gzip].each do |type|
+        profile = described_class.new
+        profile.set_bodies(request_body: nil, response_body: "plain", req_content_type: nil, resp_content_type: type)
+        expect(profile.response_body_encoding).to eq("base64"), type
+      end
+    end
+
+    it "decodes a body from its declared charset and still detects binary under the same Content-Type" do
+      text = described_class.new
+      text.set_bodies(request_body: nil, response_body: "Crème brûlée".encode("ISO-8859-1").b,
+                      req_content_type: nil, resp_content_type: "text/plain; charset=ISO-8859-1")
+      expect(text.response_body).to eq("Crème brûlée")
+      expect(text.response_body_encoding).to eq("text")
+
+      binary = described_class.new
+      binary.set_bodies(request_body: nil, response_body: bytes,
+                        req_content_type: nil, resp_content_type: "text/plain; charset=ISO-8859-1")
+      expect(binary.response_body_encoding).to eq("base64")
+      expect(Base64.strict_decode64(binary.response_body)).to eq(bytes)
+    end
+
+    it "keeps UTF-8 text given as ASCII-8BIT as the text it is" do
+      profile = described_class.new
+      profile.set_bodies(request_body: nil, response_body: "caf\u00e9".b, req_content_type: nil, resp_content_type: "text/plain")
+
+      expect(profile.response_body).to eq("café")
+      expect(profile.response_body_encoding).to eq("text")
+    end
+  end
 end

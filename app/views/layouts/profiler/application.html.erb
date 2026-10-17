@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
-    <meta name="profiler-version" content="<%= Profiler::VERSION %>">
+    <meta name="profiler-version" content="<%= Profiler.version %>">
     <meta name="profiler-name" content="<%= Profiler.configuration.resolved_name %>">
     <meta name="profiler-is-master" content="<%= Profiler.configuration.master? %>">
 

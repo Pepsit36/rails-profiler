@@ -104,6 +104,7 @@ RSpec.describe "Railtie honoring enabled from the application's initializers" do
         "irb" => defined?(Profiler::Instrumentation::IrbInstrumentation) ?
           IRB::Context.ancestors.include?(Profiler::Instrumentation::IrbInstrumentation) : false,
         "net_http" => Net::HTTP.ancestors.map(&:to_s).grep(/\AProfiler::/),
+        "thread" => Thread.ancestors.map(&:to_s).grep(/\AProfiler::/),
         "token_header" => response.headers["X-Profiler-Token"],
         "profiles" => Profiler.storage.list(limit: 100).size,
         "ran" => ran,
@@ -139,6 +140,7 @@ RSpec.describe "Railtie honoring enabled from the application's initializers" do
     expect(result["test_profiler"]).to be(false)
     expect(result["irb"]).to be(false)
     expect(result["net_http"]).to be_empty
+    expect(result["thread"]).to be_empty
     expect(result["token_header"]).to be_nil
     expect(result["profiles"]).to eq(0)
   end
@@ -170,6 +172,7 @@ RSpec.describe "Railtie honoring enabled from the application's initializers" do
       expect(result["sidekiq"]).to eq(%w[server client])
       expect(result["active_job"]).to be(true)
       expect(result["irb"]).to be(true)
+      expect(result["thread"]).to eq(%w[Profiler::Instrumentation::ThreadContextPropagation])
       expect(result["token_header"]).to be_a(String)
       expect(result["profiles"]).to be >= 1
     end

@@ -91,6 +91,9 @@ module Profiler
                 lines << "- _Request body not captured: a stream that cannot be rewound is sent unread._"
               end
               lines << "- _Request body truncated: only the first bytes were kept (max_captured_body_bytes)._" if req["request_body_truncated"]
+              if req["response_body_not_captured"]
+                lines << "- _Response body not captured: it was read as a stream (read_body with a block)._"
+              end
               lines << "- _Response body truncated: only the first bytes were kept (max_captured_body_bytes)._" if req["response_body_truncated"]
               lines << "- **Error:** #{req['error']}" if req["error"]
 

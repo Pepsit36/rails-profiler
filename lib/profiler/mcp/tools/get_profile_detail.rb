@@ -98,8 +98,8 @@ module Profiler
           lines << "**Allocated objects:** #{profile.allocated_objects}" if profile.allocated_objects
           lines << "**Time:** #{profile.started_at}"
           if profile.gem_version
-            if profile.gem_version != Profiler::VERSION
-              lines << "**Gem Version:** #{profile.gem_version} ⚠️ (current: #{Profiler::VERSION})"
+            if profile.gem_version != Profiler.version
+              lines << "**Gem Version:** #{profile.gem_version} ⚠️ (current: #{Profiler.version})"
             else
               lines << "**Gem Version:** #{profile.gem_version}"
             end

@@ -94,7 +94,10 @@ module Profiler
           timed_out = false
 
           loop do
-            break if Time.now > deadline && (timed_out = true)
+            if Time.now > deadline
+              timed_out = true
+              break
+            end
             run_data = proxy.get_json("/_profiler/api/test_runner/runs/#{run_id}")
             break if Profiler::TestRunner::RunStore::TERMINAL_STATUSES.include?(run_data["status"])
             sleep 2

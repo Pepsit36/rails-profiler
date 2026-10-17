@@ -101,14 +101,14 @@ RSpec.describe Profiler::MCP::Tools::GetProfileDetail do
         **Duration:** 12.35 ms
         **Allocated objects:** 4200
         **Time:** #{profile.started_at}
-        **Gem Version:** 0.0.1-old ⚠️ (current: #{Profiler::VERSION})
+        **Gem Version:** 0.0.1-old ⚠️ (current: #{Profiler.version})
         **Parent Token:** parent123
       MD
     end
 
     it "shows the gem version alone when it is the current one" do
-      profile = save(gem_version: Profiler::VERSION)
-      expect(detail(profile, "overview")).to include("**Gem Version:** #{Profiler::VERSION}\n")
+      profile = save(gem_version: Profiler.version)
+      expect(detail(profile, "overview")).to include("**Gem Version:** #{Profiler.version}\n")
     end
 
     it "names a job and a console profile" do

@@ -30,11 +30,12 @@ Options can also be set with `Profiler.configure` in `config/application.rb` or 
 with a warning in the log.
 
 `enabled` is read once, at boot, after the application's `config/initializers` have run: with
-`enabled = false` the profiler inserts no middleware and installs no Sidekiq, ActiveJob, test or
-console instrumentation, and with `enabled = true` in production it gets all of them. Setting it
-to true on a running process does not insert the middleware nor install the instrumentation. The
-patch that carries the profiling context into new threads (`Thread#initialize`) is put in place
-when the gem is loaded, whatever `enabled` says.
+`enabled = false` the profiler inserts no middleware and installs no Sidekiq, ActiveJob, test,
+console or thread instrumentation, and with `enabled = true` in production it gets all of them. Setting it
+to true on a running process does not insert the middleware nor install the instrumentation. That
+includes the patch that carries the profiling context into new threads (`Thread#initialize`): the
+railtie puts it in place at boot, only when `enabled`, so a disabled profiler leaves
+`Thread#initialize` as Ruby defines it.
 
 The engine routes the application mounts stay: while disabled, the API, the MCP mount and the
 cluster endpoints answer `403`, or `404` when the MCP HTTP transport or `cluster_master` is off.

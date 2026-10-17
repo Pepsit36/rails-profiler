@@ -19,6 +19,38 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.35.2] - 2026-10-17
+
+<!-- stamped -->
+
+### Changed
+
+- **Performance:** The patch on `Thread#initialize` that carries the profiling context into new
+  threads is now installed by the railtie, only when the profiler is `enabled`; a disabled profiler
+  no longer touches `Thread`.
+
+### Fixed
+
+- **Cluster:** A worker forked from a process that had already started the cluster client (Puma in
+  cluster mode with `preload_app!`, a preloaded Unicorn) now gets its own heartbeat thread and
+  registers again with the master, through a `Process._fork` hook (Ruby 3.1 and later). Where the
+  hook is not available, call `Profiler::Cluster::MasterClient.restart_after_fork` from Puma's
+  `on_worker_boot`; see `docs/cluster.md`.
+- **HTTP and request bodies:** A body is now kept as base64 when its bytes are binary (a NUL byte,
+  invalid UTF-8, mostly control characters), whatever `Content-Type` it was served with, and `font/`,
+  `application/x-protobuf` and `application/gzip` are recognized as binary types. A binary string
+  is no longer turned into `?` characters. A body whose `Content-Type` declares a charset other than UTF-8 (`ISO-8859-1`...) stays text, decoded from that charset. A `Net::HTTP` response read as a stream (`read_body`
+  with a block) is recorded with no body and `response_body_not_captured`, instead of the `inspect`
+  of the stream adapter.
+- **Version:** `Profiler.version`, the version recorded in profiles and announced by the MCP server,
+  comes from `git describe` when the gem is mounted by path from a git checkout, so
+  `gem_version` is no longer always `0.0.0` there. A published gem keeps the version it was built
+  with, and `0.0.0` remains the fallback.
+- **MCP:** The `profiler-mcp` executable reads the profiles the application's file storage wrote
+  under `tmp/rails-profiler` in the current directory; it read an empty memory store of its own and
+  always answered that there were no profiles.
+- **Profile pages:** the `profiler-version` meta tag of the page layouts now reports `Profiler.version`, the same value the API returns, instead of the raw `Profiler::VERSION` constant. When the gem is mounted from a git checkout, every profile no longer shows a false "different version" warning.
+
 ## [0.35.1] - 2026-10-17
 
 <!-- stamped -->
@@ -94,6 +126,7 @@ every commit of every tag interval is accounted for one way or the other.
 - **Request capture:** a request whose `Content-Type` declares a charset Ruby cannot convert from
   (`charset=utf-7`, `charset=internal`) no longer loses its profile; the body is read as UTF-8 with
   invalid bytes replaced.
+
 
 ## [0.34.4] - 2026-10-16
 

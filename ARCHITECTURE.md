@@ -73,8 +73,7 @@ store goes through `Profiler::Redaction` first (see [Security](#security)).
 
 **Instrumentation outside notifications** (`lib/profiler/instrumentation/`):
 - `NetHttpInstrumentation`: outbound `Net::HTTP` calls, for `HttpCollector`
-- `ThreadContextPropagation` (prepended to `Thread#initialize` when the gem is loaded, whatever
-  `enabled` says) and `ExecutorContextPropagation` (concurrent-ruby): hand the request's context to
+- `ThreadContextPropagation` (prepended to `Thread#initialize` by the railtie, only when `enabled`) and `ExecutorContextPropagation` (concurrent-ruby): hand the request's context to
   the threads and tasks it starts, through `RequestContext`
 - `ActiveJobInstrumentation`, `SidekiqMiddleware` (server and client): profile jobs
   (`lib/profiler/job_profiler.rb`) and link them to the request that enqueued them

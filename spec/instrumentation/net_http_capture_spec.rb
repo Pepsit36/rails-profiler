@@ -368,4 +368,41 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
       expect(entry["response_body_truncated"]).to be(false)
     end
   end
+
+  describe "a binary body declared as text" do
+    let(:png_like) { "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR".b + (0..255).map(&:chr).join.b }
+
+    it "keeps a response served as text/plain as base64, byte for byte", server: { response_body: "\x89PNG\r\n\x1a\n\x00\x01\xFF\xFE".b } do
+      Net::HTTP.get(URI("http://127.0.0.1:#{@port}/blob"))
+
+      entry = entries.first
+      expect(entry["response_body_encoding"]).to eq("base64")
+      expect(Base64.strict_decode64(entry["response_body"])).to eq("\x89PNG\r\n\x1a\n\x00\x01\xFF\xFE".b)
+    end
+
+    it "keeps a font, a protobuf and a gzip answer as base64 whatever their bytes" do
+      %w[font/woff2 application/x-protobuf application/gzip].each do |type|
+        expect(described_class.process_body("abc", type)[:encoding]).to eq("base64"), type
+      end
+    end
+
+    it "keeps real text as text, accents included" do
+      expect(described_class.process_body("café \u00e9t\u00e9".b, "text/plain")).to eq(body: "café été", encoding: "text")
+    end
+  end
+
+  describe "a response read as a stream" do
+    it "records no body rather than the inspect of the adapter", server: { response_body: "streamed payload" } do
+      chunks = []
+      Net::HTTP.start("127.0.0.1", @port) do |http|
+        http.request(Net::HTTP::Get.new("/stream")) { |response| response.read_body { |chunk| chunks << chunk } }
+      end
+
+      entry = entries.first
+      expect(chunks.join).to eq("streamed payload")
+      expect(entry["response_body"]).to be_nil
+      expect(entry["response_body_not_captured"]).to be(true)
+      expect(entry["response_size"]).to eq("streamed payload".bytesize)
+    end
+  end
 end

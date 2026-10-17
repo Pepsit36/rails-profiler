@@ -77,6 +77,13 @@ module Profiler
       app.middleware.delete Profiler::Middleware::CorsMiddleware
     end
 
+    # Thread#initialize is patched for every thread of the process: only when the profiler is on.
+    initializer "profiler.install_thread_context_propagation" do
+      next unless Profiler.configuration.enabled
+
+      Profiler::Instrumentation::ThreadContextPropagation.install!
+    end
+
     initializer "profiler.setup_test_profiler" do
       next unless Profiler.configuration.enabled && Profiler.configuration.track_tests
 

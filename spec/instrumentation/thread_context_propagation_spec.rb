@@ -4,8 +4,8 @@ require "spec_helper"
 require "socket"
 require "profiler/instrumentation/thread_context_propagation"
 
-# Thread.prepend has already run, from lib/profiler.rb, so every example here
-# drives the real Thread.new rather than a stand-in.
+# The patch is installed by spec_helper, as the railtie does when `enabled`, so every example
+# here drives the real Thread.new rather than a stand-in.
 RSpec.describe Profiler::Instrumentation::ThreadContextPropagation do
   let(:collector) { instance_double("Profiler::Collectors::HttpCollector") }
 

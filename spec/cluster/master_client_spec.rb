@@ -143,8 +143,9 @@ RSpec.describe Profiler::Cluster::MasterClient do
     before { skip "Process.fork is not available on this platform" unless Process.respond_to?(:fork) }
 
     # A thread does not survive fork: a forked worker inherits the client object but not its
-    # heartbeat loop, so the parent alone keeps the master informed, and the child sends nothing.
-    it "keeps the heartbeat in the parent, and leaves none running in the child" do
+    # heartbeat loop. The Process._fork hook starts one in the child, which registers again, while
+    # the parent keeps its own.
+    it "keeps the heartbeat in the parent, and starts one in the child that registers again" do
       stub_request(:post, register_url).to_return(status: 201)
       stub_request(:post, heartbeat_url).to_return(status: 200)
       start_client
@@ -153,9 +154,9 @@ RSpec.describe Profiler::Cluster::MasterClient do
       reader, writer = IO.pipe
       pid = fork do
         reader.close
-        sent_before = requests_to(heartbeat_url)
-        sleep 0.1
-        writer.write([@heartbeat_thread.alive?, requests_to(heartbeat_url) - sent_before].join(","))
+        registered_before = requests_to(register_url)
+        wait_until { requests_to(register_url) > registered_before }
+        writer.write([@heartbeat_thread.alive?, requests_to(register_url) - registered_before].join(","))
         writer.close
         exit!(0)
       end
@@ -163,10 +164,61 @@ RSpec.describe Profiler::Cluster::MasterClient do
       child_report = reader.read
       Process.wait(pid)
 
-      expect(child_report).to eq("false,0")
+      expect(child_report).to eq("true,1")
       expect(@heartbeat_thread).to be_alive
       sent = requests_to(heartbeat_url)
       wait_until { requests_to(heartbeat_url) > sent }
+    end
+  end
+
+  describe "a fork" do
+    before do
+      Profiler.configuration.cluster_heartbeat_interval = 3600
+      stub_request(:post, register_url).to_return(status: 201)
+    end
+
+    after { described_class.current = nil }
+
+    # Runs the block in a forked child and returns what it wrote, as a String.
+    def in_forked_child
+      reader, writer = IO.pipe
+      pid = fork do
+        reader.close
+        writer.write(yield.to_s)
+        writer.close
+        exit!(0)
+      end
+      writer.close
+      result = reader.read
+      Process.wait(pid)
+      result
+    end
+
+    it "gets a heartbeat thread of its own in the child, which registers again" do
+      start_client
+      parent_thread = client.instance_variable_get(:@thread)
+
+      result = in_forked_child do
+        child_thread = client.instance_variable_get(:@thread)
+        [child_thread.equal?(parent_thread), child_thread.alive?, client.instance_variable_get(:@registered)].inspect
+      end
+
+      expect(result).to eq("[false, true, false]")
+      expect(parent_thread).to be_alive
+    end
+
+    it "does not start a second thread while one is alive" do
+      start_client
+      thread = client.instance_variable_get(:@thread)
+
+      client.restart_after_fork
+
+      expect(client.instance_variable_get(:@thread)).to equal(thread)
+    end
+
+    it "does nothing in the child of a process that never started the client" do
+      expect { described_class.restart_after_fork }.not_to raise_error
+      expect(described_class.current).to be_nil
     end
   end
 end

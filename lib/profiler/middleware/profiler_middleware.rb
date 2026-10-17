@@ -29,7 +29,7 @@ module Profiler
         begin
           begin
             profile = Models::Profile.new(build_request(env), params: false)
-            profile.gem_version = Profiler::VERSION
+            profile.gem_version = Profiler.version
             Profiler::CurrentContext.token = profile.token
 
             # Capture request body before app processes it
