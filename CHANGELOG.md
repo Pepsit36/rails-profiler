@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-10-17
+
+<!-- stamped -->
+
 ### Changed
 
 - **Dashboard:** The profiler selector now uses the generated `useListClusterSlaves` client
