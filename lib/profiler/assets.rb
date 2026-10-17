@@ -9,7 +9,6 @@ module Profiler
   module Assets
     NAMES = %w[profiler.js profiler.css profiler-toolbar.js].freeze
     URL_PREFIX = "/_profiler/assets"
-    BUILDS = %w[app assets builds].freeze
 
     Entry = Struct.new(:mtime, :content, :digest)
 
@@ -17,6 +16,11 @@ module Profiler
     @mutex = Mutex.new
 
     class << self
+      # Where the build writes the files; the gem's own, never the application's.
+      def builds_dir
+        File.expand_path("../../app/assets/builds", __dir__)
+      end
+
       # The file's content, or raises Errno::ENOENT when the assets are not built.
       def read(name)
         entry(name).content
@@ -43,7 +47,7 @@ module Profiler
       def entry(name)
         raise ArgumentError, "unknown asset: #{name}" unless NAMES.include?(name)
 
-        path = Profiler::Engine.root.join(*BUILDS, name)
+        path = File.join(builds_dir, name)
         mtime = File.mtime(path)
         cached = @mutex.synchronize { @entries[name] }
         return cached if cached && cached.mtime == mtime

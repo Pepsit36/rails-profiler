@@ -18,8 +18,7 @@ RSpec.describe "Versioned assets", type: :request do
 
   before do
     Profiler.configure { |c| c.enabled = true }
-    allow(Profiler::Engine).to receive(:root).and_return(builds.join("root"))
-    FileUtils.mkdir_p(builds.join("root", *Profiler::Assets::BUILDS))
+    allow(Profiler::Assets).to receive(:builds_dir).and_return(builds.to_s)
     write("profiler.js", "console.log('main')")
     write("profiler.css", "body{}")
     write("profiler-toolbar.js", "console.log('toolbar')")
@@ -29,7 +28,7 @@ RSpec.describe "Versioned assets", type: :request do
   after { FileUtils.remove_entry(builds) }
 
   def write(name, content)
-    File.write(builds.join("root", *Profiler::Assets::BUILDS, name), content)
+    File.write(builds.join(name), content)
   end
 
   Profiler::Assets::NAMES.each do |name|
@@ -54,7 +53,7 @@ RSpec.describe "Versioned assets", type: :request do
   it "changes the URL when the content changes" do
     before = Profiler::Assets.url("profiler.js")
     write("profiler.js", "console.log('next')")
-    File.utime(Time.now + 5, Time.now + 5, builds.join("root", *Profiler::Assets::BUILDS, "profiler.js"))
+    File.utime(Time.now + 5, Time.now + 5, builds.join("profiler.js"))
 
     expect(Profiler::Assets.url("profiler.js")).not_to eq(before)
   end
@@ -65,7 +64,7 @@ RSpec.describe "Versioned assets", type: :request do
   end
 
   it "falls back to the gem version when the assets are not built" do
-    FileUtils.rm(builds.join("root", *Profiler::Assets::BUILDS, "profiler.css"))
+    FileUtils.rm(builds.join("profiler.css"))
 
     expect(Profiler::Assets.url("profiler.css")).to match(%r{\A/_profiler/assets/profiler\.css\?v=\h{12}\z})
   end
