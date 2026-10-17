@@ -118,6 +118,9 @@ is computed from your commits, never chosen by hand, so the commit type matters.
   `security`, `revert`. A revert that users need to receive has to be written as a `fix:`.
 - **Never edit `lib/profiler/version.rb`**: it stays at `0.0.0`; the release job computes the
   version with `bin/changelog version`.
+- **Never publish from your machine**: the gem is published only by the `release` CI job.
+  `rake release` (and its `release:*` subtasks) refuses to run; `rake build` and `rake install`
+  still work for a local try.
 - **A branch with a `feat:` or `fix:` commit stamps `CHANGELOG.md`**:
   1. describe the change for users under `## [Unreleased]`, in Keep a Changelog form
      (`### Added`, `### Changed`, `### Removed`, `### Fixed`, `### Security`), following the style
