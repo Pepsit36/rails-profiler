@@ -45,6 +45,7 @@ every commit of every tag interval is accounted for one way or the other.
 - **MCP:** The `profiler-mcp` executable reads the profiles the application's file storage wrote
   under `tmp/rails-profiler` in the current directory; it read an empty memory store of its own and
   always answered that there were no profiles.
+- **Profile pages:** the `profiler-version` meta tag of the page layouts now reports `Profiler.version`, the same value the API returns, instead of the raw `Profiler::VERSION` constant. When the gem is mounted from a git checkout, every profile no longer shows a false "different version" warning.
 
 ## [0.35.1] - 2026-10-17
 
