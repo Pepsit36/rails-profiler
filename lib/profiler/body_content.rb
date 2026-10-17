@@ -24,25 +24,35 @@ module Profiler
 
     # True for a body that cannot be kept as text: a NUL byte, bytes that are not UTF-8 (a cut
     # in the middle of the last character excepted), or mostly control characters.
-    def binary_bytes?(body)
+    #
+    # A body whose Content-Type declares a charset other than UTF-8 is not judged on its UTF-8
+    # validity: its high bytes belong to that charset (ISO-8859-1, Windows-1252...) and are
+    # decoded from it afterwards. The NUL byte and control character tests still apply to it.
+    def binary_bytes?(body, content_type = nil)
       return false if body.nil? || body.empty?
 
       sample = body.byteslice(0, SAMPLE_BYTES).dup.force_encoding(Encoding::UTF_8)
       return true if sample.include?("\0")
 
-      unless sample.valid_encoding?
+      if !sample.valid_encoding? && !foreign_charset?(content_type)
         # The sample may end inside a multi-byte character, whichever way it was cut.
         sample = (1..3).filter_map { |n| sample.byteslice(0, sample.bytesize - n)&.force_encoding(Encoding::UTF_8) }
                        .find(&:valid_encoding?)
         return true if sample.nil?
       end
 
+      sample = sample.scrub("") unless sample.valid_encoding?
       controls = sample.count("\x01-\x08\x0B\x0C\x0E-\x1A\x1C-\x1F\x7F")
       sample.length.positive? && controls.fdiv(sample.length) > MAX_CONTROL_RATIO
     end
 
     def binary?(body, content_type)
-      binary_type?(content_type) || binary_bytes?(body)
+      binary_type?(content_type) || binary_bytes?(body, content_type)
+    end
+
+    def foreign_charset?(content_type)
+      charset = content_type.to_s[/charset\s*=\s*"?([^\s";]+)/i, 1]
+      !charset.nil? && !charset.match?(/\A(?:utf-?8|us-ascii)\z/i)
     end
   end
 end
