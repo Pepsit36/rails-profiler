@@ -96,12 +96,18 @@ SCOPE_NAMES = {
 
 CONVENTIONAL_SUBJECT = /\A(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<bang>!)?:\s+(?<desc>.+)\z/
 
-# The one place where a commit is read as publishable or not. Subjects and
-# bodies alike, as the `release` job has always done.
-BREAKING_LINE = /^(?:BREAKING CHANGE:|[a-z]+(?:\(.+\))?!:)/
-FEATURE_LINE = /^feat(?:\(.+\))?:/
-FIX_LINE = /^fix(?:\(.+\))?:/
-RELEASABLE_LINE = Regexp.union(BREAKING_LINE, FEATURE_LINE, FIX_LINE)
+# The one place where a commit is read as publishable or not.
+#
+# The type is read from the subject alone, as Conventional Commits defines it:
+# a `fix:` or `feat:` line further down a body (a quoted message, a list of
+# squashed commits, a note) is prose, and must not publish a version on its own,
+# since a publication cannot be taken back. The body is only read for the
+# breaking footer, in both spellings the specification allows: `BREAKING CHANGE:`
+# and `BREAKING-CHANGE:`.
+BREAKING_SUBJECT = /\A[a-z]+(?:\(.+\))?!:/
+BREAKING_FOOTER = /^BREAKING[ -]CHANGE:/
+FEATURE_SUBJECT = /\Afeat(?:\(.+\))?:/
+FIX_SUBJECT = /\Afix(?:\(.+\))?:/
 
 # The release commit of a version belongs to the interval of its own tag, since
 # the tag is placed on it, and the job that writes it cannot cite its own sha
@@ -225,17 +231,24 @@ end
 module Versioning
   module_function
 
+  # Highest first.
+  LEVELS = %i[major minor patch].freeze
+
   def bump_level(range)
-    text = Git.commits(range).map { |commit| "#{commit.subject}\n#{commit.body}" }.join("\n")
-    return :major if text.match?(BREAKING_LINE)
-    return :minor if text.match?(FEATURE_LINE)
-    return :patch if text.match?(FIX_LINE)
+    Git.commits(range).map { |commit| level(commit) }.compact.min_by { |found| LEVELS.index(found) }
+  end
+
+  def level(commit)
+    subject = commit.subject.to_s.strip
+    return :major if subject.match?(BREAKING_SUBJECT) || commit.body.to_s.match?(BREAKING_FOOTER)
+    return :minor if subject.match?(FEATURE_SUBJECT)
+    return :patch if subject.match?(FIX_SUBJECT)
 
     nil
   end
 
   def releasable?(commit)
-    "#{commit.subject}\n#{commit.body}".match?(RELEASABLE_LINE)
+    !level(commit).nil?
   end
 
   def next_version(base, level)
@@ -423,7 +436,7 @@ module Entries
   end
 
   def breaking?(commit, match)
-    !match[:bang].nil? || commit.body.to_s.match?(/^BREAKING CHANGE:/)
+    !match[:bang].nil? || commit.body.to_s.match?(BREAKING_FOOTER)
   end
 
   # Entry body for a range, or nil when the range holds nothing worth listing.

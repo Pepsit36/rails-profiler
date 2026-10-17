@@ -247,14 +247,13 @@ RSpec.describe "bin/changelog" do
       expect(out).to include("no releasable commit")
     end
 
-    it "catches a releasable line hidden in a commit body, like the release job does" do
-      commit(dir, "chore: housekeeping\n\nfix: and quietly repair the cache key too")
+    it "reads the type from the subject only, not from a fix: line in the body" do
+      commit(dir, "chore: housekeeping\n\nfix: typo in a comment")
 
-      _out, err, status = run(dir, "check", "--base", "master")
+      out, _err, status = run(dir, "check", "--base", "master")
 
-      expect(status).not_to be_success
-      expect(err).to include("changelog check: FAILED")
-      expect(err).to include("bin/changelog stamp")
+      expect(status).to be_success
+      expect(out).to include("no releasable commit")
     end
 
     it "fails without a merge base" do
@@ -1214,6 +1213,53 @@ RSpec.describe "bin/changelog" do
     end
   end
 
+  # The rule the stamp, the branch check and the release job all share.
+  describe "version" do
+    before do
+      commit(dir, "feat: add the profiler")
+      git(dir, "tag", "v1.2.0")
+    end
+
+    it "publishes nothing for a fix: or feat: line found only in a commit body" do
+      commit(dir, "chore: tidy\n\nfix: typo in a comment\nfeat: not a feature either")
+
+      out, err, status = run(dir, "version", "--since", "v1.2.0")
+
+      expect(status.exitstatus).to eq(3)
+      expect(out).to be_empty
+      expect(err).to include("no releasable commit")
+    end
+
+    it "still publishes the type the subject carries" do
+      commit(dir, "fix: repair the cache key\n\nfeat: mentioned in passing")
+
+      out, _err, status = run(dir, "version", "--since", "v1.2.0")
+
+      expect(status).to be_success
+      expect(out.strip).to eq("1.2.1")
+    end
+
+    ["BREAKING CHANGE:", "BREAKING-CHANGE:"].each do |footer|
+      it "publishes a major for a #{footer} footer" do
+        commit(dir, "feat: new api\n\n#{footer} the v1 endpoints are gone")
+
+        out, _err, status = run(dir, "version", "--since", "v1.2.0")
+
+        expect(status).to be_success
+        expect(out.strip).to eq("2.0.0")
+      end
+    end
+
+    it "publishes a major for a type! subject" do
+      commit(dir, "refactor!: rename the storage keys")
+
+      out, _err, status = run(dir, "version", "--since", "v1.2.0")
+
+      expect(out.strip).to eq("2.0.0")
+      expect(status).to be_success
+    end
+  end
+
   describe "history" do
     before do
       commit(dir, "feat: add the profiler")
@@ -1254,6 +1300,17 @@ RSpec.describe "bin/changelog" do
 
       expect(status).to be_success
       expect(section_for(out, "0.2.0")).to include("- **Breaking:** Rework the storage layout")
+    end
+
+    it "lists a breaking change announced with the hyphenated BREAKING-CHANGE footer" do
+      commit(dir, "feat: new api\n\nBREAKING-CHANGE: the v1 endpoints are gone")
+      git(dir, "tag", "v1.0.0")
+
+      out, _err, status = run(dir, "history")
+
+      expect(status).to be_success
+      expect(section_for(out, "1.0.0")).to include("### Changed")
+      expect(section_for(out, "1.0.0")).to include("- **Breaking:** New api")
     end
 
     it "puts a breaking feature under Changed rather than Added" do

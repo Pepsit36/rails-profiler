@@ -14,7 +14,8 @@ Instructions for Claude, and any other agent, working in this repository.
   `master`, not everything since the last tag. `bin/changelog stamp` prints both, as in
   `Counting from origin/master (0a1b2c3d): base 1.1.0, publishing 1.1.1.`
 - Only three things publish: `feat:` publishes a minor, `fix:` publishes a patch, and a breaking
-  marker (`BREAKING CHANGE:` in a body, or `type!:`) publishes a major. **Every other type
+  marker (`BREAKING CHANGE:` or `BREAKING-CHANGE:` in a body, or `type!:`) publishes a major. The
+  type is read from the subject line only: `fix:` or `feat:` written in a body publishes nothing. **Every other type
   publishes nothing**, `perf`, `build`, `deps`, `revert`, `security`, `refactor`, `docs`, `chore`,
   `ci`, `test` and `style` included.
 - So a revert that users need to receive has to be written as a `fix:`. `revert:` alone reaches
@@ -89,8 +90,9 @@ inside a `<!-- stamped -->` section, which accounts for its whole interval.
 
 - English, Conventional Commits, with a scope when one applies: `fix(instrumentation): ...`.
 - Branch names: `feature/...`, `bugfix/...`, `hotfix/...`, `fix/...`, `breaking/...` get a
-  `canary` prerelease published on every push, which is expected. Any other prefix works too,
-  without the prerelease.
+  manual `canary` job, which publishes a prerelease only when someone plays it. Its version is the
+  one the branch will publish plus `.pre.<sha>` (`script/canary-version`), so it sorts after the
+  last release. Any other prefix works too, without the job.
 - No history rewrite on a shared branch: follow-up commits.
 - No em dash anywhere: code, commits, CHANGELOG, merge request descriptions.
 

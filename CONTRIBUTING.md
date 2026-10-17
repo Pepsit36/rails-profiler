@@ -112,11 +112,15 @@ is computed from your commits, never chosen by hand, so the commit type matters.
 - **Conventional Commits, in English**, with a scope when one applies:
   `fix(instrumentation): keep the request context in Thread.start`.
 - **Only three things publish**: `feat:` a minor version, `fix:` a patch, a breaking change
-  (`type!:` or a `BREAKING CHANGE:` footer) a major. Every other type publishes nothing: `docs`,
-  `refactor`, `perf`, `test`, `chore`, `ci`, `build`, `deps`, `style`, `security`, `revert`. A
-  revert that users need to receive has to be written as a `fix:`.
+  (`type!:`, or a `BREAKING CHANGE:` or `BREAKING-CHANGE:` footer) a major. The type is read from
+  the subject line only: a `fix:` line further down the body publishes nothing. Every other type
+  publishes nothing: `docs`, `refactor`, `perf`, `test`, `chore`, `ci`, `build`, `deps`, `style`,
+  `security`, `revert`. A revert that users need to receive has to be written as a `fix:`.
 - **Never edit `lib/profiler/version.rb`**: it stays at `0.0.0`; the release job computes the
   version with `bin/changelog version`.
+- **Never publish from your machine**: the gem is published only by the `release` CI job.
+  `rake release` (and its `release:*` subtasks) refuses to run; `rake build` and `rake install`
+  still work for a local try.
 - **A branch with a `feat:` or `fix:` commit stamps `CHANGELOG.md`**:
   1. describe the change for users under `## [Unreleased]`, in Keep a Changelog form
      (`### Added`, `### Changed`, `### Removed`, `### Fixed`, `### Security`), following the style
@@ -139,8 +143,10 @@ is computed from your commits, never chosen by hand, so the commit type matters.
 
 1. Open an issue on GitLab first for anything larger than a fix, to agree on the approach.
 2. Create a branch from an up-to-date `master`. Prefixes `feature/`, `bugfix/`, `hotfix/`, `fix/`
-   and `breaking/` publish a `canary` pre-release on every push, which is expected; any other
-   prefix (`docs/...`, `refactor/...`) works too, without it.
+   and `breaking/` get a manual `canary` job: played by hand from the pipeline, it publishes a
+   pre-release to the GitLab registry, numbered after the version the branch will publish
+   (`1.2.1.pre.<sha>` for a fix after `1.2.0`), so it sorts after the last release. Nothing is
+   published on a plain push. Any other prefix (`docs/...`, `refactor/...`) works too, without it.
 3. Add specs with the change, and documentation when users see it: the [README](README.md) for the
    essentials, the pages under [docs/](docs/) for the details, [ARCHITECTURE.md](ARCHITECTURE.md)
    when the structure changes. A change to the dashboard may need new screenshots:
