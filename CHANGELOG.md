@@ -19,6 +19,16 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Added
+
+- **Collectors:** a collector whose `subscribe` or `collect` raises `collector_circuit_breaker_threshold` times in a row (`3` by default) is no longer run: its circuit opens and the profiles leave it out. After 60 seconds one request tries it again; a success closes the circuit, a failure opens it for another 60 seconds. `collector_circuit_breaker_enabled = false` turns the counting and the blocking off.
+- **API:** `GET /_profiler/health` (a page, or JSON with `/_profiler/health.json`) shows the circuit state (`closed`, `open`, `half_open`) and the consecutive failures of each configured collector. It always answers `200`.
+- **Toolbar:** a `Health` link next to the `Profiler` link opens that page.
+
+### Fixed
+
+- **Collectors:** a collector whose `subscribe` raises no longer stops the profiler for the whole request, job, console expression or test: only that collector is left out and the others keep profiling.
+
 ## [0.36.2] - 2026-10-18
 
 <!-- stamped -->

@@ -82,10 +82,10 @@ module Profiler
           @released = true
           @profile.collectors_released_after_seconds = after_seconds if after_seconds
           @collectors.each do |collector|
-            collector.collect if collector.respond_to?(:collect)
-            @profile.refresh_collector_metadata(collector)
-          rescue => e
-            Profiler.log_error("ProfilerMiddleware: collector #{collector.class} failed", e)
+            Collectors::Lifecycle.guard(collector, "ProfilerMiddleware") do
+              collector.collect if collector.respond_to?(:collect)
+              @profile.refresh_collector_metadata(collector)
+            end
           end
           Collectors::Lifecycle.release_all(@collectors)
         end

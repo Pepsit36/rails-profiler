@@ -56,6 +56,7 @@ RSpec.configure do |config|
   config.after(:each) do
     Profiler.instance_variable_set(:@configuration, nil)
     Profiler.instance_variable_set(:@storage, nil)
+    Profiler::Collectors::CircuitBreaker.reset!
   end
 end
 
