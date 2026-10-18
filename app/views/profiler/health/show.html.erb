@@ -1,0 +1,26 @@
+<div style="max-width: 900px; margin: 24px auto; padding: 0 16px; font-family: system-ui, sans-serif;">
+  <p><a href="<%= profiler.root_path %>">&larr; Profiler</a></p>
+  <h1>Collector health</h1>
+  <p>
+    Circuit breaker: <strong><%= @enabled ? "enabled" : "disabled" %></strong>,
+    opens after <strong><%= @threshold %></strong> consecutive failures.
+  </p>
+  <table style="border-collapse: collapse; width: 100%;">
+    <thead>
+      <tr>
+        <th style="text-align: left; border-bottom: 1px solid #888; padding: 6px;">Collector</th>
+        <th style="text-align: left; border-bottom: 1px solid #888; padding: 6px;">State</th>
+        <th style="text-align: right; border-bottom: 1px solid #888; padding: 6px;">Consecutive failures</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @collectors.each do |collector| %>
+        <tr>
+          <td style="padding: 6px;"><%= collector[:name] %></td>
+          <td style="padding: 6px; font-weight: bold; color: <%= { closed: "#2e7d32", open: "#c62828", half_open: "#ef6c00" }[collector[:state]] %>;"><%= collector[:state] %></td>
+          <td style="padding: 6px; text-align: right;"><%= collector[:failures] %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
