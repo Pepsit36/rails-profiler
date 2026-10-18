@@ -57,7 +57,8 @@ module Profiler
                   :name, :master_url, :self_url,
                   :cluster_heartbeat_interval, :cluster_offline_threshold,
                   :cluster_master, :cluster_secret, :cluster_require_secret,
-                  :cluster_allow_insecure_http, :logger
+                  :cluster_allow_insecure_http, :logger,
+                  :collector_circuit_breaker_enabled
 
     attr_reader :authorize_block, :enabled, :track_tests, :max_profiles
 
@@ -156,6 +157,23 @@ module Profiler
       # Where the profiler's own errors go (Profiler.log): Rails.logger when nil, or $stderr when
       # there is none.
       @logger = nil
+      # A collector that fails this many times in a row is no longer run (see
+      # Profiler::Collectors::CircuitBreaker); false never stops one.
+      @collector_circuit_breaker_enabled = true
+      @collector_circuit_breaker_threshold = 3
+    end
+
+    attr_reader :collector_circuit_breaker_threshold
+
+    # A positive Integer. Anything else is left out with a warning, the previous value kept: the
+    # gem is loaded in production too, where a mistake here must not stop the application booting.
+    def collector_circuit_breaker_threshold=(value)
+      if value.is_a?(Integer) && value.positive?
+        @collector_circuit_breaker_threshold = value
+      else
+        Profiler.log_warn("config.collector_circuit_breaker_threshold: #{value.inspect} is not a positive " \
+                          "Integer; keeping #{@collector_circuit_breaker_threshold}")
+      end
     end
 
     # Always a Pathname, whether set from a String or left to its default.

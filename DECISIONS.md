@@ -487,3 +487,36 @@ option and the reason for it.
   that job's first result, then either make it blocking or raise the bounds to what passes
   (a compatibility change to announce). Until then rails 7.0 support is unverified and probably
   broken.
+
+## Collector circuit breaker and `/_profiler/health` (task-182)
+
+- **`subscribe_all` isolates each collector** (independent of the option). A collector whose
+  `subscribe` raises is logged, released (`unsubscribe`, as a precaution) and removed from the
+  caller's array in place; the others keep profiling. Only when none subscribed does it return
+  false (request run unprofiled, as before). In place, so that the four callers (request, job,
+  console, test) keep working on the same array without a signature change. For job, console and
+  test profiles the primary collector (job, console, test) is removed like any other if its
+  subscribe fails: the profile is then saved without that tab rather than not recorded.
+- **State per collector class**, in a process-wide registry behind a `Mutex`
+  (`Collectors::CircuitBreaker`). Per process, not shared between workers: cluster-wide state
+  would need storage and a failing collector is usually failing in every worker anyway.
+- **What counts**: a raising `subscribe` or `collect` (one counter step per raise), through
+  `Lifecycle.guard`, now used by every collect loop. A collector that collects without raising
+  clears its count and closes a half open circuit.
+- **Recovery**: fixed 60 seconds (`RECOVERY_SECONDS`, not an option, as asked). After it, the
+  first `allow?` moves the circuit to half open and lets one request through; others are refused
+  until that trial reports. A trial that never reports (request unprofiled, crash) is retried
+  after another 60 seconds rather than leaving the circuit stuck. Time is monotonic.
+- **Disabled**: nothing counted, nothing blocked, health reports everything `closed`.
+- **Threshold validation**: a value that is not a positive Integer is refused with a warning and
+  the previous value kept, like `http_skip_hosts`, because the gem loads in production.
+- **Health lists `Profiler.configuration.collectors`** (the configured classes), so an open
+  circuit is visible even though the collector is absent from profiles. State of an open circuit
+  past its delay is reported `half_open` (the next request will try it) without being changed by
+  the read.
+- **HTTP code: always 200.** An open circuit means a collector is left out of profiles, not that
+  the profiler is down; a 503 would make any probe or the toolbar link look like an outage. The
+  page sits behind the same access checks as the rest of the profiler.
+- **Not covered**: `Profiler.configuration.collectors` is the only list gated by the breaker. The
+  fixed collector lists of jobs, console and tests are not gated (they are not configurable),
+  though their failures count against the class and a gated class is skipped in HTTP only.

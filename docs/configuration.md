@@ -124,6 +124,15 @@ Profiler.configure do |config|
   # its slaves) are never recorded, whatever this list says.
   config.http_skip_hosts = []
 
+  # Collector circuit breaker: a collector class whose subscribe or collect raises this many
+  # times in a row is no longer run. After 60 seconds one request tries it again: a success
+  # closes the circuit, a failure opens it for another 60 seconds. The state of each collector
+  # is at /_profiler/health (HTML, or JSON with /_profiler/health.json). With false, nothing is
+  # counted and no collector is stopped. A collector whose subscribe raises is left out of the
+  # request whatever this says, the others keep profiling it.
+  config.collector_circuit_breaker_enabled = true
+  config.collector_circuit_breaker_threshold = 3
+
   # AJAX: a script in each profiled page links its fetch() and XMLHttpRequest calls to it.
   config.track_ajax = true
 

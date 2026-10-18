@@ -307,6 +307,7 @@ export function ToolbarApp({ profile, token }: Props) {
         </ToolbarItem>
       )}
 
+      <a href="/_profiler/health" class="profiler-toolbar-item">Health</a>
       <a href="/_profiler" class="profiler-toolbar-item profiler-toolbar-logo">&#11041; Profiler</a>
     </div>
     </>

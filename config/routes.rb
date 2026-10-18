@@ -29,6 +29,7 @@ Profiler::Engine.routes.draw do
   get "assets/icon.png", to: "assets#icon"
 
   get "test_runner", to: "test_runner#index"
+  get "health", to: "health#show"
 
   namespace :api do
     resources :profiles, only: [:index, :show, :destroy] do

@@ -102,11 +102,9 @@ module Profiler
         profile.finish(job_status == "completed" ? 200 : 500)
 
         collectors.each do |collector|
-          begin
+          Collectors::Lifecycle.guard(collector, "JobProfiler") do
             collector.collect if collector.respond_to?(:collect)
             profile.add_collector_metadata(collector)
-          rescue => e
-            Profiler.log_error("JobProfiler: collector #{collector.class} failed", e)
           end
         end
 

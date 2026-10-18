@@ -153,10 +153,10 @@ module Profiler
         # A Rack 3 streaming body (call without each) writes to the socket itself: nothing to relay.
         unless body.respond_to?(:each)
           kept.each do |collector|
-            collector.collect if collector.respond_to?(:collect)
-            profile.refresh_collector_metadata(collector)
-          rescue => e
-            Profiler.log_error("ProfilerMiddleware: collector #{collector.class} failed", e)
+            Collectors::Lifecycle.guard(collector, "ProfilerMiddleware") do
+              collector.collect if collector.respond_to?(:collect)
+              profile.refresh_collector_metadata(collector)
+            end
           end
           record_response(env, profile, request_body, status, profiled_headers, "", nil, false)
           # Saved before the headers leave: a profile that is not there gets no token.
@@ -199,10 +199,10 @@ module Profiler
           next unless collector.is_a?(Collectors::RequestCollector) ||
                       (error && collector.respond_to?(:capture) && !collect_from_any_thread?(collector))
 
-          collector.collect
-          profile.refresh_collector_metadata(collector)
-        rescue => e
-          Profiler.log_error("ProfilerMiddleware: collector #{collector.class} failed", e)
+          Collectors::Lifecycle.guard(collector, "ProfilerMiddleware") do
+            collector.collect
+            profile.refresh_collector_metadata(collector)
+          end
         end
 
         Profiler.save_profile(profile, from: "ProfilerMiddleware")
@@ -261,11 +261,9 @@ module Profiler
 
       def collect_all(profile, collectors)
         collectors.each do |collector|
-          begin
+          Collectors::Lifecycle.guard(collector, "ProfilerMiddleware") do
             collector.collect if collector.respond_to?(:collect)
             profile.add_collector_metadata(collector)
-          rescue => e
-            Profiler.log_error("ProfilerMiddleware: collector #{collector.class} failed", e)
           end
         end
       end
@@ -303,7 +301,9 @@ module Profiler
       # Builds the collectors without subscribing them: Lifecycle.subscribe_all does, so that
       # a failure part way leaves every collector reachable for release.
       def create_collectors(profile)
-        Profiler.configuration.collectors.map { |collector_class| collector_class.new(profile) }
+        Profiler.configuration.collectors
+                .select { |collector_class| Collectors::CircuitBreaker.allow?(collector_class) }
+                .map { |collector_class| collector_class.new(profile) }
       end
 
       def html_response?(headers)

@@ -101,11 +101,9 @@ module Profiler
         profile.finish(test_status == "passed" ? 200 : 500)
 
         collectors.each do |collector|
-          begin
+          Collectors::Lifecycle.guard(collector, "TestProfiler") do
             collector.collect if collector.respond_to?(:collect)
             profile.add_collector_metadata(collector)
-          rescue => e
-            Profiler.log_error("TestProfiler: collector #{collector.class} failed", e)
           end
         end
 
