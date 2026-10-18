@@ -16,6 +16,8 @@ module Profiler
         # without this the error would never come while a profile is being collected.
         return super if block.nil?
 
+        return super(*args, &RequestContext.without_inherited(block)) if RequestContext.detached?
+
         context = RequestContext.capture
         return super if context.nil?
         return super(*args, &RequestContext.without_inherited(block)) if RequestContext.creating_pool_thread?

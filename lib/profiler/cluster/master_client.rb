@@ -4,6 +4,7 @@ require "net/http"
 require "json"
 require "uri"
 require_relative "security"
+require_relative "../instrumentation/request_context"
 
 module Profiler
   module Cluster
@@ -105,21 +106,25 @@ module Profiler
       def start_heartbeat_thread
         return if @thread&.alive?
 
-        @thread = Thread.new do
-          interval = Profiler.configuration.cluster_heartbeat_interval
-          loop do
-            sleep interval
-            unless @registered
-              register!
-              @registered = true
-              log_info("Re-registered with master after previous failure")
-            else
-              heartbeat!
-            end
-          rescue => e
-            @registered = false
-            log_warn("communication with the master failed, will retry", e)
+        # Started from a request thread (a worker forked mid-request, a restart), it must not
+        # inherit that request's collectors for the life of the process.
+        @thread = Profiler::Instrumentation::RequestContext.detached { Thread.new { heartbeat_loop } }
+      end
+
+      def heartbeat_loop
+        interval = Profiler.configuration.cluster_heartbeat_interval
+        loop do
+          sleep interval
+          unless @registered
+            register!
+            @registered = true
+            log_info("Re-registered with master after previous failure")
+          else
+            heartbeat!
           end
+        rescue => e
+          @registered = false
+          log_warn("communication with the master failed, will retry", e)
         end
       end
 
