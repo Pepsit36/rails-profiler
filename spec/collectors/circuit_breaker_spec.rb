@@ -88,7 +88,7 @@ RSpec.describe "Collector isolation and circuit breaker" do
       Profiler.configuration.collectors = [broken_class, healthy_class]
       Profiler.configuration.collector_circuit_breaker_threshold = 3
       instantiations = 0
-      allow(broken_class).to receive(:new).and_wrap_original { |m, *a| instantiations += 1; m.call(*a) }
+      allow(broken_class).to(receive(:new).and_wrap_original { |m, *a| instantiations += 1; m.call(*a) })
 
       3.times { get "/users" }
       expect(instantiations).to eq(3)
