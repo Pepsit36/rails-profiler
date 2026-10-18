@@ -122,4 +122,116 @@ RSpec.describe Profiler::Cluster::SlaveProxy do
       expect(proxy.instance_variable_get(:@read_timeout)).to eq(Profiler::Cluster::SlaveProxy::READ_TIMEOUT)
     end
   end
+
+  # The paths the master takes when the slave misbehaves: Net::HTTP.start is the one seam, so the
+  # answers (and the failures) are the ones a real slave could give.
+  describe "a slave that misbehaves" do
+    def answer(code, body)
+      response = Net::HTTPResponse::CODE_TO_OBJ.fetch(code.to_s).new("1.1", code.to_s, "")
+      response.instance_variable_set(:@read, true)
+      response.instance_variable_set(:@body, body)
+      response
+    end
+
+    def stub_start(response = nil, &block)
+      allow(Net::HTTP).to receive(:start) do |*_args, **_opts, &_blk|
+        block ? block.call : response
+      end
+    end
+
+    it "lets a timeout reach the caller" do
+      stub_start { raise Net::ReadTimeout }
+
+      expect { proxy.get_json("/_profiler/api/profiles") }.to raise_error(Net::ReadTimeout)
+    end
+
+    it "lets a refused connection reach the caller" do
+      stub_start { raise Errno::ECONNREFUSED }
+
+      expect { proxy.list }.to raise_error(Errno::ECONNREFUSED)
+    end
+
+    it "passes its timeouts to Net::HTTP" do
+      slow = described_class.new("payment", open_timeout: 1, read_timeout: 2)
+      stub_start(answer(200, "{}"))
+
+      slow.get_json("/_profiler/api/profiles")
+
+      expect(Net::HTTP).to have_received(:start).with("payment", 3001, hash_including(open_timeout: 1, read_timeout: 2))
+    end
+
+    it "keeps a body that is not JSON under raw" do
+      stub_start(answer(200, "<html>502 Bad Gateway</html>"))
+
+      expect(proxy.get_json("/_profiler/api/profiles")).to eq("raw" => "<html>502 Bad Gateway</html>")
+    end
+
+    it "gives an empty hash for an empty body and for a 204" do
+      stub_start(answer(200, ""))
+      expect(proxy.get_json("/_profiler/api/profiles")).to eq({})
+
+      stub_start(answer(204, nil))
+      expect(proxy.delete_json("/_profiler/api/profiles/abc")).to eq({})
+    end
+
+    it "reports a redirect rather than following it" do
+      stub_start(answer(302, ""))
+
+      expect { proxy.get_json("/_profiler/api/profiles") }
+        .to raise_error(Profiler::Error, /answered 302 \(redirect not followed\)/)
+    end
+
+    it "finds no profile in a malformed answer" do
+      stub_start(answer(200, "not json"))
+
+      expect(proxy.load(SecureRandom.hex(16))).to be_nil
+    end
+
+    it "lists nothing from an answer without profiles" do
+      allow(proxy).to receive(:get_json).and_return("raw" => "oops")
+
+      expect(proxy.list).to eq([])
+    end
+
+    it "unwraps a profile sent under the profile key" do
+      allow(proxy).to receive(:get_json).and_return(
+        "profile" => { "token" => "0a1b2c3d4e5f60718293a4b5c6d7e8f9", "profile_type" => "http", "path" => "/x",
+                       "method" => "GET", "status" => 200, "duration" => 1.0, "started_at" => Time.now.iso8601 }
+      )
+
+      expect(proxy.load("0a1b2c3d4e5f60718293a4b5c6d7e8f9").path).to eq("/x")
+    end
+
+    it "does not ask the slave for a token or a parent token that is not valid" do
+      allow(proxy).to receive(:get_json)
+
+      expect(proxy.load("../../etc")).to be_nil
+      expect(proxy.find_by_parent("nope")).to eq([])
+      expect(proxy).not_to have_received(:get_json)
+    end
+  end
+
+  describe "#clear" do
+    it "deletes all profiles, or those of one type, on the slave" do
+      allow(proxy).to receive(:delete_json).and_return({})
+
+      proxy.clear
+      proxy.clear(type: "job")
+
+      expect(proxy).to have_received(:delete_json).with("/_profiler/api/profiles/clear")
+      expect(proxy).to have_received(:delete_json).with("/_profiler/api/profiles/clear?type=job")
+    end
+  end
+
+  describe "the path of a request" do
+    it "is refused when it leaves the slave's API, before anything is sent" do
+      allow(Net::HTTP).to receive(:start)
+
+      expect { proxy.get_json("/other/path") }.to raise_error(Profiler::Error, /Refusing to send a request/)
+      expect { proxy.post_json("/_profiler/api/../admin") }.to raise_error(Profiler::Error, /Refusing/)
+      expect { proxy.patch_json("/_profiler/api//x") }.to raise_error(Profiler::Error, /Refusing/)
+      expect { proxy.delete_json("/_profiler/api/%2e%2e/x") }.to raise_error(Profiler::Error, /Refusing/)
+      expect(Net::HTTP).not_to have_received(:start)
+    end
+  end
 end
