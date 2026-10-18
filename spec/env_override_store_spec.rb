@@ -267,6 +267,121 @@ RSpec.describe Profiler::EnvOverrideStore do
     end
   end
 
+  describe "partial and total resets, concurrently with sets" do
+    let(:threads) { 6 }
+
+    after do
+      threads.times { |t| ENV.delete("PROFILER_UNIT_R#{t}") }
+      ENV.delete("PROFILER_UNIT_KEEP")
+    end
+
+    def restored?(entry)
+      entry.is_a?(Hash) && entry["value"] == described_class::RESTORE_SENTINEL
+    end
+
+    def raw_file
+      JSON.parse(File.read(File.join(tmp_dir, "env_overrides.json")))
+    end
+
+    it "reset of one key leaves the other overrides active in the file and in ENV" do
+      store.set("PROFILER_UNIT_R0", "a")
+      store.set("PROFILER_UNIT_KEEP", "b")
+
+      store.reset("PROFILER_UNIT_R0")
+
+      expect(store.all_overrides.keys).to include("PROFILER_UNIT_KEEP")
+      expect(store.all_overrides.keys).not_to include("PROFILER_UNIT_R0")
+      expect(ENV["PROFILER_UNIT_R0"]).to be_nil
+    end
+
+    it "reset_all leaves a restore marker for every key, and no active override" do
+      store.set("PROFILER_UNIT_R0", "a")
+      store.set("PROFILER_UNIT_KEEP", "b")
+
+      store.reset_all
+
+      expect(store.all_overrides).to be_empty
+      expect(raw_file.keys).to include("PROFILER_UNIT_R0", "PROFILER_UNIT_KEEP")
+      expect(raw_file.values.map { |e| restored?(e) }).to all(be(true))
+    end
+
+    it "a partial reset after a total one keeps the earlier restore marker" do
+      store.set("PROFILER_UNIT_R0", "a")
+      store.reset_all
+      marker = raw_file["PROFILER_UNIT_R0"]
+
+      store.reset("PROFILER_UNIT_R0")
+
+      expect(raw_file["PROFILER_UNIT_R0"]).to eq(marker)
+    end
+
+    it "reset of a key without an entry is a no-op that leaves the file alone" do
+      store.set("PROFILER_UNIT_KEEP", "b")
+      before = raw_file
+
+      expect(store.reset("PROFILER_UNIT_NEVER_SET")).to be_falsey
+
+      expect(raw_file).to eq(before)
+    end
+
+    it "keeps one consistent file when threads set, reset and reset_all at the same time" do
+      FileUtils.rm_f(File.join(tmp_dir, "env_overrides.json"))
+
+      Array.new(threads) do |t|
+        Thread.new do
+          own = described_class.new
+          20.times do |i|
+            own.set("PROFILER_UNIT_R#{t}", "v#{i}")
+            own.reset("PROFILER_UNIT_R#{t}") if i.odd?
+            own.reset_all if t.zero? && (i % 5).zero?
+          end
+        end
+      end.each(&:join)
+
+      parsed = nil
+      expect { parsed = raw_file }.not_to raise_error
+      expect(parsed.keys).to all(start_with("PROFILER_UNIT_R"))
+      expect(Dir.children(tmp_dir)).to contain_exactly("env_overrides.json", "env_overrides.json.lock")
+    end
+  end
+
+  describe "the file it reads" do
+    it "reads a file that holds something else than an object as no override" do
+      File.write(File.join(tmp_dir, "env_overrides.json"), "[1, 2]")
+
+      expect(store.all_overrides).to eq({})
+    end
+
+    it "reads a file that does not parse as no override" do
+      File.write(File.join(tmp_dir, "env_overrides.json"), "{oops")
+
+      expect(store.all_overrides).to eq({})
+    end
+  end
+
+  describe ".reserved_key?" do
+    it "protects the test runner marker, whatever its case" do
+      expect(described_class.reserved_key?(described_class::TEST_RUNNER_CHILD_ENV)).to be(true)
+      expect(described_class.reserved_key?(described_class::TEST_RUNNER_CHILD_ENV.downcase)).to be(true)
+      expect(described_class.reserved_key?("PROFILER_UNIT_PROBE")).to be(false)
+    end
+  end
+
+  describe "a reset that restores an unset key" do
+    after { ENV.delete("PROFILER_UNIT_RESTORED_HERE") }
+
+    it "removes it from ENV when it had no value before the override" do
+      store.set("PROFILER_UNIT_RESTORED_HERE", "temp")
+      ENV["PROFILER_UNIT_RESTORED_HERE"] = "temp"
+      store.apply!
+
+      store.reset("PROFILER_UNIT_RESTORED_HERE")
+      store.apply!
+
+      expect(ENV.key?("PROFILER_UNIT_RESTORED_HERE")).to be(false)
+    end
+  end
+
   describe "callers that re-apply the overrides at run time" do
     before { Profiler.instance_variable_set(:@env_override_store, store) }
 

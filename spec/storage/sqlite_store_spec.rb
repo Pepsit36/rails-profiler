@@ -207,4 +207,153 @@ RSpec.describe Profiler::Storage::SqliteStore do
       end
     end
   end
+
+  describe "saving, loading and deleting" do
+    let(:blobs) { File.join(@dir, "blobs") }
+
+    def with_body(profile, body)
+      profile.add_collector_data("http", { "requests" => [{ "url" => "https://api.test/", "response_body" => body }] })
+      profile
+    end
+
+    it "round-trips a profile" do
+      profile = save(profile_started(Time.now))
+
+      loaded = store.load(profile.token)
+
+      expect(loaded.token).to eq(profile.token)
+      expect(loaded.path).to eq("/")
+      expect(loaded.status).to eq(200)
+    end
+
+    it "keeps the collector data that has no HTTP requests as it is" do
+      profile = profile_started(Time.now)
+      profile.add_collector_data("http", { "other" => 1 })
+      profile.add_collector_data("db", { "queries" => [] })
+      save(profile)
+
+      data = store.load(profile.token).collectors_data
+      expect(data["http"]).to eq("other" => 1)
+      expect(data["db"]).to eq("queries" => [])
+    end
+
+    it "answers nil for an unknown token and for one that is not a token" do
+      expect(store.load("f" * 32)).to be_nil
+      expect(store.load("../etc/passwd")).to be_nil
+    end
+
+    it "answers nil, and logs, when the database fails while loading" do
+      allow(Profiler).to receive(:log_error)
+      allow(db).to receive(:get_first_row).and_raise(SQLite3::Exception, "disk I/O error")
+
+      expect(store.load("f" * 32)).to be_nil
+      expect(Profiler).to have_received(:log_error).with(/could not load profile/, an_instance_of(SQLite3::Exception))
+    end
+
+    it "answers nil, and logs, for a row that cannot be turned into a profile" do
+      profile = save(profile_started(Time.now))
+      allow(Profiler).to receive(:log_error)
+      allow(Profiler::Models::Profile).to receive(:new).and_raise(ArgumentError, "bad row")
+
+      expect(store.load(profile.token)).to be_nil
+      expect(Profiler).to have_received(:log_error).with(/could not deserialize profile #{profile.token}/, anything)
+    end
+
+    it "falls back to empty values for a column holding broken JSON" do
+      profile = save(profile_started(Time.now))
+      db.execute("UPDATE profiler_profiles SET response_headers = ?, params = ?, headers = ? WHERE token = ?",
+                 ["{oops", "", nil, profile.token])
+
+      loaded = store.load(profile.token)
+
+      expect(loaded.response_headers).to eq({})
+      expect(loaded.params).to eq({})
+      expect(loaded.headers).to eq({})
+    end
+
+    it "answers nil, and logs, for a row whose start time is not a time" do
+      profile = save(profile_started(Time.now))
+      db.execute("UPDATE profiler_profiles SET started_at = ? WHERE token = ?", ["not a time", profile.token])
+      allow(Profiler).to receive(:log_error)
+
+      expect(store.load(profile.token)).to be_nil
+      expect(Profiler).to have_received(:log_error).with(/could not deserialize profile #{profile.token}/, anything)
+    end
+
+    describe "#delete" do
+      it "removes the row and the blobs of the profile, and leaves the others" do
+        gone = save(with_body(profile_started(Time.now), "GONE"))
+        kept = save(with_body(profile_started(Time.now), "KEPT"))
+
+        store.delete(gone.token)
+
+        expect(store.load(gone.token)).to be_nil
+        expect(File.exist?(File.join(blobs, gone.token))).to be(false)
+        expect(File.exist?(File.join(blobs, kept.token))).to be(true)
+        expect(store.load(kept.token)).not_to be_nil
+      end
+
+      it "ignores a token that is not valid" do
+        expect { store.delete("../blobs") }.not_to raise_error
+      end
+    end
+
+    describe "#clear" do
+      it "removes every row and every blob" do
+        tokens = 2.times.map { save(with_body(profile_started(Time.now), "BODY")).token }
+
+        store.clear
+
+        expect(tokens.map { |t| store.load(t) }).to all(be_nil)
+        expect(tokens.map { |t| File.exist?(File.join(blobs, t)) }).to all(be(false))
+      end
+
+      it "removes the profiles of one type, and their blobs only" do
+        request = save(with_body(profile_started(Time.now), "REQ"))
+        job = profile_started(Time.now)
+        job.profile_type = "job"
+        with_body(job, "JOB")
+        save(job)
+
+        store.clear(type: "job")
+
+        expect(store.load(job.token)).to be_nil
+        expect(File.exist?(File.join(blobs, job.token))).to be(false)
+        expect(store.load(request.token)).not_to be_nil
+        expect(File.exist?(File.join(blobs, request.token))).to be(true)
+      end
+    end
+  end
+
+  describe "lists" do
+    it "pages newest first and finds the children of a profile" do
+      parent = save(profile_started(Time.now - 30))
+      child = profile_started(Time.now - 20)
+      child.parent_token = parent.token
+      save(child)
+      newest = save(profile_started(Time.now - 10))
+
+      expect(store.list(limit: 10).map(&:token)).to eq([newest.token, child.token, parent.token])
+      expect(store.list(limit: 1, offset: 1).map(&:token)).to eq([child.token])
+      expect(store.find_by_parent(parent.token).map(&:token)).to eq([child.token])
+    end
+
+    it "gives summaries, and falls back to the whole row for one written without its summary" do
+      profile = save(profile_started(Time.now))
+      db.execute("UPDATE profiler_profiles SET summary = NULL WHERE token = ?", [profile.token])
+
+      listed = store.list(limit: 5, summary: true)
+
+      expect(listed.map(&:token)).to eq([profile.token])
+    end
+
+    it "skips, and logs, a summary that is not valid JSON" do
+      profile = save(profile_started(Time.now))
+      db.execute("UPDATE profiler_profiles SET summary = ? WHERE token = ?", ["{broken", profile.token])
+      allow(Profiler).to receive(:log_error)
+
+      expect(store.list(limit: 5, summary: true)).to be_empty
+      expect(Profiler).to have_received(:log_error).with(/could not read the summary of #{profile.token}/, anything)
+    end
+  end
 end
