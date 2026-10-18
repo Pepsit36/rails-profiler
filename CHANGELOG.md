@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-18
+
+<!-- stamped -->
+
 ### Added
 
 - **Collectors:** a collector whose `subscribe` or `collect` raises `collector_circuit_breaker_threshold` times in a row (`3` by default) is no longer run: its circuit opens and the profiles leave it out. After 60 seconds one request tries it again; a success closes the circuit, a failure opens it for another 60 seconds. `collector_circuit_breaker_enabled = false` turns the counting and the blocking off.
