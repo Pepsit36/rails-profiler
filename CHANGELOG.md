@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cluster:** the heartbeat thread of a worker no longer keeps the collectors of the request that was running when it was started (a worker forked or restarted mid-request), and no longer records its own HTTP calls into them.
+
 ## [0.36.1] - 2026-10-17
 
 <!-- stamped -->

@@ -139,6 +139,28 @@ RSpec.describe Profiler::Cluster::MasterClient do
     end
   end
 
+  # A heartbeat thread started from a request thread (a fork taken mid-request) would run the
+  # request's context wrapper for the life of the process: it would hold the request's collectors
+  # and record the cluster's own HTTP calls into them.
+  describe "a heartbeat thread started while a request is profiled" do
+    let(:collector) { Object.new }
+
+    after { Thread.current[:profiler_http_collector] = nil }
+
+    it "does not carry the request's collectors" do
+      stub_request(:post, register_url).to_return(status: 201)
+      stub_request(:post, heartbeat_url).to_return(status: 200)
+      seen = Queue.new
+      allow(client).to receive(:heartbeat!) { seen << Thread.current[:profiler_http_collector] }
+
+      Thread.current[:profiler_http_collector] = collector
+      start_client
+      Thread.current[:profiler_http_collector] = nil
+
+      expect(seen.pop).to be_nil
+    end
+  end
+
   describe "after fork" do
     before { skip "Process.fork is not available on this platform" unless Process.respond_to?(:fork) }
 
