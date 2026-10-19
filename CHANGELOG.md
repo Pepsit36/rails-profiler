@@ -19,6 +19,12 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Added
+
+- **OpenTelemetry:** with `config.otel_enabled = true`, each profiled request is exported as a trace: a root span carrying the profile's own `trace_id` and `span_id`, and a child span for each SQL query, view or partial render, cache operation and outbound `Net::HTTP` call. An application that already initialised OpenTelemetry keeps its own tracer provider; otherwise the gem sends the spans itself over OTLP `http/protobuf` to `config.otel_otlp_endpoint`, with `config.otel_service_name` (the application's name by default).
+- **OpenTelemetry:** the gem does not depend on OpenTelemetry. Add `opentelemetry-sdk` and `opentelemetry-exporter-otlp` to the application's `Gemfile` to use it; without them, `otel_enabled = true` writes one message to the log and exports nothing. With `otel_enabled` at `false` (the default) nothing of OpenTelemetry is loaded.
+- **Collectors:** the SQL, view and cache events now record their `started_at` (epoch seconds), which the trace export uses to place their spans.
+
 ## [0.38.0] - 2026-10-19
 
 <!-- stamped -->

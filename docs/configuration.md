@@ -124,6 +124,23 @@ Profiler.configure do |config|
   # its slaves) are never recorded, whatever this list says.
   config.http_skip_hosts = []
 
+  # OpenTelemetry export (traces). Off by default: with false nothing of OpenTelemetry is loaded.
+  # The gem does not depend on it. To turn it on, add the SDK to the application's own Gemfile
+  # (`gem "opentelemetry-sdk"` and `gem "opentelemetry-exporter-otlp"`), then:
+  #   config.otel_enabled = true
+  # Each profiled request becomes a trace: a root span carrying the profile's trace_id and span_id,
+  # and a child span per SQL query, view or partial, cache operation and outbound Net::HTTP call.
+  # If the application already initialised OpenTelemetry (OpenTelemetry::SDK.configure), its tracer
+  # provider is reused and nothing else is needed; sampling and the exporter are then its own.
+  # Otherwise the gem sends the spans itself, over OTLP http/protobuf, to otel_otlp_endpoint (or
+  # the standard OTEL_EXPORTER_OTLP_(TRACES_)ENDPOINT variable). The gem has no sampling option:
+  # leave it to the SDK or the collector.
+  # Enabled without the opentelemetry gems, or without an endpoint when the gem has to send the
+  # spans itself: one message in the log, no export, and the application is not affected.
+  config.otel_enabled = false
+  config.otel_service_name = nil     # default: the application's name
+  config.otel_otlp_endpoint = nil    # e.g. "http://localhost:4318/v1/traces"; no default
+
   # Collector circuit breaker: a collector class whose subscribe or collect raises this many
   # times in a row is no longer run. After 60 seconds one request tries it again: a success
   # closes the circuit, a failure opens it for another 60 seconds. The state of each collector
