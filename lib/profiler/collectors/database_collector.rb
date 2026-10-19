@@ -63,6 +63,7 @@ module Profiler
           query = Models::SqlQuery.new(
             sql: payload[:sql],
             duration: duration,
+            started_at: started.to_f,
             binds: extract_binds(payload[:binds]),
             name: payload[:name],
             connection: payload[:connection],

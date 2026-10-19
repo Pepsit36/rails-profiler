@@ -561,3 +561,62 @@ Taken without the maintainer, choosing the most cautious option each time.
   `Profile`.
 - **Dashboard:** a `Trace` tab, always shown, listing the other profiles of the trace and saying
   so explicitly when there are none (single-span trace) or when the profile predates tracing.
+
+# Decisions: feat/otel-traces (gem #35, part 1)
+
+## OpenTelemetry is a purely optional dependency
+
+- **No dependency anywhere in the gem.** `profiler.gemspec` declares nothing `opentelemetry-*`
+  and the gem requires nothing from OpenTelemetry at load. This is the `stackprof` precedent
+  exactly: not in the gemspec, in the `Gemfile` under "Optional dependencies" with
+  `require: false` (for the specs), required lazily in a `begin/rescue LoadError` by the one
+  file that needs it (`Profiler::Otel::Sdk`), and only once `otel_enabled` is true. A runtime
+  dependency would force the SDK, and its protobuf and OTLP gems, on every application, most of
+  which never export anything, and would pin their versions against the application's own.
+- **Failure mode:** enabled without the gems (or without an endpoint when the gem has to send the
+  spans itself): one `Profiler.log_error` message, export off for the process, nothing raised.
+  A failed export of one profile is logged once per error class (`log_error_once`) and the
+  request goes on. `otel_enabled` false (the default) reaches no OpenTelemetry code at all;
+  `spec/otel/optional_dependency_spec.rb` proves it in child processes, one of them with every
+  `opentelemetry*` require made to raise `LoadError`.
+- **Reusable by part 2 (metrics):** gem loading, the host-SDK detection, the resource attributes
+  and the OTLP endpoint are in `Profiler::Otel::Sdk`, not in the trace exporter.
+- Versions in the `Gemfile` (specs only): `opentelemetry-sdk ~> 1.4`, `opentelemetry-exporter-otlp
+  ~> 0.26`. The application chooses its own.
+
+## The spans carry the profile's W3C ids
+
+- The root span has the profile's `trace_id` and `span_id` (not ids drawn by the SDK), so the
+  trace in the collector and the profile in the dashboard are findable from one another. A
+  request that came with a `traceparent` yields a root span whose parent is the caller's span
+  (`parent_span_id`), as the profile already records.
+- The OpenTelemetry Ruby API has no way to give a span chosen ids, so the SDK tracer provider's
+  public `id_generator` is wrapped once (`Otel::ScopedIdGenerator`): it hands out the ids a
+  thread asked for, once, around the root span's creation, and defers to the original generator
+  otherwise. It is thread-local, so concurrent requests and the application's own spans are
+  unaffected. The wrapper is also installed on a provider the application owns, with no
+  other effect on it. Child spans get ids from the SDK (only the root needs to match the profile).
+
+## Where the export happens, and what it carries
+
+- **Hook:** `ProfilerMiddleware` exports right after it saves the profile (`save_and_export`),
+  on the four paths that do. Not in `Profiler.save_profile`, which a profile reaches again each
+  time a late outbound call completes: that would export the same trace several times. Jobs,
+  console and test profiles are not exported (no HTTP request, no root span in this part).
+- **No double instrumentation:** the spans are built from the events the collectors already
+  hold, after the request. That needs a start time per event; SQL, view and cache events now
+  record `started_at` (the HTTP ones already did). A profile without it (stored by an older
+  version) starts its child spans with the request.
+- **What leaves the process** (cautious): SQL text as `db.query.text` (as the Database tab shows
+  it, already credential-masked); outbound URLs without query string, userinfo or fragment;
+  cache keys are not exported; request bodies and headers are not exported. Transaction
+  statements (BEGIN/COMMIT) are skipped, like the Database tab counts them apart.
+
+## Default protocol: http/protobuf
+
+- When the gem configures its own exporter it uses OTLP over `http/protobuf`, the protocol
+  chosen for this feature and the one `opentelemetry-exporter-otlp` implements. The exporter is
+  attached to a private tracer provider that is not installed as the global one, so the
+  application's OpenTelemetry is left as it is. Endpoint: `otel_otlp_endpoint`, else the standard
+  `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_ENDPOINT` variables. No sampling
+  option of the gem's own: left to the SDK or the collector.
