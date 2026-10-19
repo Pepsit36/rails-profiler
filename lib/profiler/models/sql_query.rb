@@ -3,15 +3,16 @@
 module Profiler
   module Models
     class SqlQuery
-      attr_reader :sql, :duration, :binds, :name, :connection, :backtrace
+      attr_reader :sql, :duration, :binds, :name, :connection, :backtrace, :started_at
 
-      def initialize(sql:, duration:, binds: [], name: nil, connection: nil, backtrace: [])
+      def initialize(sql:, duration:, binds: [], name: nil, connection: nil, backtrace: [], started_at: nil)
         @sql = sql
         @duration = duration
         @binds = binds
         @name = name
         @connection = connection
         @backtrace = backtrace
+        @started_at = started_at
       end
 
       def slow?(threshold = 100)
@@ -29,6 +30,7 @@ module Profiler
       def to_h
         {
           sql: @sql,
+          started_at: @started_at,
           duration: @duration,
           binds: @binds,
           name: @name,

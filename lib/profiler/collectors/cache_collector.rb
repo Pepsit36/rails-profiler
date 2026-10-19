@@ -40,6 +40,7 @@ module Profiler
           @cache_reads << {
             key: payload[:key],
             hit: payload[:hit],
+            started_at: started.to_f,
             duration: duration
           }
         end
@@ -48,6 +49,7 @@ module Profiler
           duration = ((finished - started) * 1000).round(2)
           @cache_writes << {
             key: payload[:key],
+            started_at: started.to_f,
             duration: duration
           }
         end
@@ -56,6 +58,7 @@ module Profiler
           duration = ((finished - started) * 1000).round(2)
           @cache_deletes << {
             key: payload[:key],
+            started_at: started.to_f,
             duration: duration
           }
         end

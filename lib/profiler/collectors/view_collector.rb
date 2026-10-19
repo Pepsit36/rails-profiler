@@ -41,6 +41,7 @@ module Profiler
           @views << {
             identifier: payload[:identifier],
             layout: payload[:layout],
+            started_at: started.to_f,
             duration: duration
           }
         end
@@ -50,6 +51,7 @@ module Profiler
           @intervals << [started, finished]
           @partials << {
             identifier: payload[:identifier],
+            started_at: started.to_f,
             duration: duration
           }
         end
