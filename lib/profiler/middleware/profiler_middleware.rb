@@ -5,6 +5,7 @@ require_relative "../models/profile"
 require_relative "../current_context"
 require_relative "../trace_context"
 require_relative "../otel/trace_exporter"
+require_relative "../otel/metrics_exporter"
 require_relative "../collectors/lifecycle"
 require_relative "toolbar_injector"
 require_relative "capturing_body"
@@ -223,12 +224,13 @@ module Profiler
         Profiler.log_error("ProfilerMiddleware: could not finish the profile of a streamed response", e)
       end
 
-      # The profile is saved, then sent to OpenTelemetry when config.otel_enabled asks for it:
+      # The profile is saved, then sent to OpenTelemetry (spans, then metrics) when config.otel_enabled asks for it:
       # once per profile, here, and not from Profiler.save_profile, which a profile reaches again
       # whenever a late outbound call completes. The export never raises.
       def save_and_export(profile)
         saved = Profiler.save_profile(profile, from: "ProfilerMiddleware")
         Otel::TraceExporter.export(profile)
+        Otel::MetricsExporter.export(profile)
         saved
       end
 
