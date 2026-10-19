@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-19
+
+<!-- stamped -->
+
 ### Added
 
 - **Tracing:** a request carrying a valid W3C `traceparent` header continues that trace: the profile records its `trace_id`, a `span_id` of its own and the caller's span as `parent_span_id`. Without a header, or with an invalid one, the request starts a new trace.
