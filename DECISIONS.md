@@ -520,3 +520,44 @@ option and the reason for it.
 - **Not covered**: `Profiler.configuration.collectors` is the only list gated by the breaker. The
   fixed collector lists of jobs, console and tests are not gated (they are not configurable),
   though their failures count against the class and a gated class is skipped in HTTP only.
+
+## Distributed tracing, W3C `traceparent` (task-184)
+
+Taken without the maintainer, choosing the most cautious option each time.
+
+- **Scope: the gem only.** Extraction, propagation, the `Profile` fields, the storage lookup, the
+  API filter and the dashboard component all live in this repository. Nothing was needed in the
+  extension or the superproject, so no other branch exists for this change.
+- **Format:** version `00`, `00-{trace-id:32 hex}-{parent-id:16 hex}-{flags:2 hex}`, parsed by
+  `Profiler::TraceContext.parse`. A value is refused (a new trace starts) when it does not match,
+  when the version is `ff`, when the trace id or the parent id is all zeros, or when a version `00`
+  value has more than four fields. A later version is read by its first four fields, as the
+  specification asks. Ids are lower-cased.
+- **Entry:** `ProfilerMiddleware` reads `HTTP_TRACEPARENT` right after the profile is created. A
+  valid header: the profile keeps its trace id and its parent-id becomes `parent_span_id`. Absent
+  or invalid: `SecureRandom.hex(16)` trace id, `parent_span_id` nil. Always a new `span_id`
+  (`SecureRandom.hex(8)`). The trace flags received are not kept: outgoing calls always send `01`.
+- **Context:** `CurrentContext.trace_id`, a thread-local like the token, set by the middleware,
+  cleared with it, and lent again by `StreamedProfile` to the thread iterating a streamed body.
+  Like the token, it does not follow a thread the application starts itself.
+- **Propagation:** `NetHttpInstrumentation.inject_trace_context`, called first in
+  `RequestPatch#request`, before the "no collector" and "untracked" guards. Placed after them, the
+  cluster's master to slave calls (made under `Profiler.untracked_http`) would never carry it,
+  which is what the brief wanted covered. It never overwrites a `traceparent` already on the
+  request, and sends none to a host `skip_host?` excludes. A failure is logged and the call goes
+  out without the header.
+- **Known limit, measured:** the master's calls to a slave carry the header when the calling
+  thread has a trace context (tested through `SlaveProxy`). They are made from `/_profiler` API
+  requests, which the middleware does not profile, so in normal use that thread has no context and
+  no header goes out. Not changed: profiling the profiler's own routes is out of scope.
+- **Storage:** `find_by_trace(trace_id)` on every backend, oldest first, `[]` for a value that is
+  not 32 lower-case hex characters (the same check as a token, so nothing client-supplied becomes
+  a key or a path). Memory, file (index line gets a `trace` field, old lines read as no trace) and
+  Redis (`traces:{id}` set, same TTL handling as `children:`) mirror `find_by_parent`; SQLite gets
+  `trace_id`, `span_id` and `parent_span_id` columns added by the existing `ALTER TABLE` migration
+  plus an index on `trace_id`. Profiles saved before this change have no trace and are not found.
+- **API:** `GET /_profiler/api/profiles?trace_id=` (no new route), like `parent_token`; http
+  profiles unless `all_types`. Documented in `swagger/v1/swagger.yaml`, with the three fields on
+  `Profile`.
+- **Dashboard:** a `Trace` tab, always shown, listing the other profiles of the trace and saying
+  so explicitly when there are none (single-span trace) or when the profile predates tracing.
