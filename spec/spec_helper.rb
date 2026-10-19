@@ -77,6 +77,9 @@ def build_profile(attrs = {})
       collectors_data: attrs[:collectors_data] || {},
       tabs: attrs[:tabs] || [],
       parent_token: attrs[:parent_token],
+      trace_id: attrs[:trace_id],
+      span_id: attrs[:span_id],
+      parent_span_id: attrs[:parent_span_id],
       is_ajax: attrs[:is_ajax] || false,
       profile_type: attrs[:profile_type] || "http"
     }

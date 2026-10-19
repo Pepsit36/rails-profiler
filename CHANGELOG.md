@@ -19,6 +19,18 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-19
+
+<!-- stamped -->
+
+### Added
+
+- **Tracing:** a request carrying a valid W3C `traceparent` header continues that trace: the profile records its `trace_id`, a `span_id` of its own and the caller's span as `parent_span_id`. Without a header, or with an invalid one, the request starts a new trace.
+- **Instrumentation:** an outgoing `Net::HTTP` call made while a profiled request runs carries a `traceparent` header with that request's `trace_id`, unless the application set one itself or the host is listed in `http_skip_hosts`.
+- **Storage:** every backend answers `find_by_trace(trace_id)`; the SQLite database gains `trace_id`, `span_id` and `parent_span_id` columns on its own.
+- **API:** `GET /_profiler/api/profiles?trace_id=...` lists the profiles sharing a trace.
+- **Dashboard:** a `Trace` tab shows the trace, span and parent span ids of a profile and links to the other profiles of the trace.
+
 ## [0.37.0] - 2026-10-18
 
 <!-- stamped -->

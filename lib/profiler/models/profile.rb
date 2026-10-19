@@ -21,7 +21,7 @@ module Profiler
                     :request_body_size, :request_body_truncated, :request_body_size_is_minimum,
                     :response_body_size, :response_body_truncated, :response_body_size_is_minimum,
                     :collectors_released_after_seconds, :params_truncated,
-                    :gem_version
+                    :gem_version, :trace_id, :span_id, :parent_span_id
 
       # +params+: false leaves the params to capture_params, for a caller that builds the profile
       # before the router has run.
@@ -167,6 +167,9 @@ module Profiler
           collectors_data: @collectors_data,
           tabs: @collectors_metadata,
           parent_token: @parent_token,
+          trace_id: @trace_id,
+          span_id: @span_id,
+          parent_span_id: @parent_span_id,
           is_ajax: @is_ajax
         }
       end
@@ -217,6 +220,9 @@ module Profiler
         profile.is_ajax = data[:is_ajax] || false
         profile.profile_type = data[:profile_type] || "http"
         profile.gem_version = data[:gem_version]
+        profile.trace_id = data[:trace_id]
+        profile.span_id = data[:span_id]
+        profile.parent_span_id = data[:parent_span_id]
 
         # Convert collectors_data keys to strings recursively for consistency
         profile.collectors_data = (data[:collectors_data] || {}).transform_keys(&:to_s).transform_values do |value|

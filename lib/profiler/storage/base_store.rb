@@ -45,6 +45,11 @@ module Profiler
         raise NotImplementedError, "#{self.class} must implement #find_by_parent"
       end
 
+      # The profiles sharing a trace id, oldest first.
+      def find_by_trace(trace_id)
+        raise NotImplementedError, "#{self.class} must implement #find_by_trace"
+      end
+
       def delete(token)
         raise NotImplementedError, "#{self.class} must implement #delete"
       end

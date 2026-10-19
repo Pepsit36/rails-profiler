@@ -642,6 +642,14 @@ paths:
         required: false
         schema:
           type: integer
+      - name: trace_id
+        in: query
+        required: false
+        description: Lists the profiles sharing this W3C trace id (32 lowercase hex characters),
+          newest first, instead of the default list. A value that is not a trace id gives an
+          empty list.
+        schema:
+          type: string
       responses:
         '200':
           description: profiles list
@@ -967,6 +975,18 @@ components:
         parent_token:
           type: string
           nullable: true
+        trace_id:
+          type: string
+          nullable: true
+          description: W3C trace id (32 hex), taken from an incoming traceparent header or generated.
+        span_id:
+          type: string
+          nullable: true
+          description: Span id of this profile (16 hex).
+        parent_span_id:
+          type: string
+          nullable: true
+          description: The parent-id of the incoming traceparent header, null when this profile started the trace.
         child_jobs:
           type: array
           items:

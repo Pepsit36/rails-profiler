@@ -12,7 +12,7 @@ module Profiler
     # cap). Beside them, the start time, type and parent of each, and the children of each parent,
     # so that listing, finding the children and evicting deserialize only what they return.
     class MemoryStore < BaseStore
-      Entry = Struct.new(:at, :type, :parent, :sequence)
+      Entry = Struct.new(:at, :type, :parent, :sequence, :trace)
 
       def initialize(options = {})
         @profiles = Concurrent::Hash.new
@@ -20,6 +20,7 @@ module Profiler
         @mutex = Mutex.new
         @entries = {}
         @children = {}
+        @traces = {}
         @sequence = 0
         @sorted = nil
       end
@@ -30,8 +31,9 @@ module Profiler
           cleanup_if_needed unless @profiles.key?(token)
           remove_entry(token)
           @profiles[token] = data
-          @entries[token] = Entry.new(profile.started_at.to_f, data[:profile_type].to_s, profile.parent_token, @sequence += 1)
+          @entries[token] = Entry.new(profile.started_at.to_f, data[:profile_type].to_s, profile.parent_token, @sequence += 1, profile.trace_id)
           (@children[profile.parent_token] ||= {})[token] = true if profile.parent_token
+          (@traces[profile.trace_id] ||= {})[token] = true if profile.trace_id
           @sorted = nil
         end
         token
@@ -68,6 +70,13 @@ module Profiler
 
         children = @mutex.synchronize { (@children[parent_token] || {}).keys.filter_map { |token| @profiles[token] } }
         children.map { |data| deserialize_profile(data) }.sort_by(&:started_at)
+      end
+
+      def find_by_trace(trace_id)
+        return [] unless Token.valid?(trace_id)
+
+        members = @mutex.synchronize { (@traces[trace_id] || {}).keys.filter_map { |token| @profiles[token] } }
+        members.map { |data| deserialize_profile(data) }.sort_by(&:started_at)
       end
 
       def delete(token)
@@ -108,6 +117,10 @@ module Profiler
         if entry.parent && (siblings = @children[entry.parent])
           siblings.delete(token)
           @children.delete(entry.parent) if siblings.empty?
+        end
+        if entry.trace && (members = @traces[entry.trace])
+          members.delete(token)
+          @traces.delete(entry.trace) if members.empty?
         end
         @sorted = nil
       end

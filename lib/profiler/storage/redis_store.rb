@@ -102,6 +102,16 @@ module Profiler
               .sort_by(&:started_at)
       end
 
+      def find_by_trace(trace_id)
+        return [] unless Token.valid?(trace_id)
+
+        ensure_index
+        @redis.smembers(traces_key(trace_id))
+              .filter_map { |token| load(token) if Token.valid?(token) }
+              .select { |profile| profile.trace_id == trace_id }
+              .sort_by(&:started_at)
+      end
+
       def delete(token)
         return unless Token.valid?(token)
 
@@ -172,6 +182,11 @@ module Profiler
         client.zadd(saved_key, saved_at, token)
         client.sadd(types_key, type)
         [list_key, type_list_key(type), saved_key, types_key].each { |key| client.expire(key, @ttl) }
+        trace = summary[:trace_id] || summary["trace_id"]
+        if Token.valid?(trace)
+          client.sadd(traces_key(trace), token)
+          client.expire(traces_key(trace), @ttl)
+        end
         return unless Token.valid?(parent)
 
         client.sadd(children_key(parent), token)
@@ -185,6 +200,8 @@ module Profiler
         @redis.zrem(type_list_key(summary["profile_type"] || "http"), token)
         parent = summary["parent_token"]
         @redis.srem(children_key(parent), token) if Token.valid?(parent)
+        trace = summary["trace_id"]
+        @redis.srem(traces_key(trace), token) if Token.valid?(trace)
       end
 
       def remove(token)
@@ -205,6 +222,8 @@ module Profiler
               pipe.zrem(type_list_key(summary["profile_type"] || "http"), token)
               parent = summary["parent_token"]
               pipe.srem(children_key(parent), token) if Token.valid?(parent)
+              trace = summary["trace_id"]
+              pipe.srem(traces_key(trace), token) if Token.valid?(trace)
             else
               types.each { |type| pipe.zrem(type_list_key(type), token) }
             end
@@ -347,6 +366,10 @@ module Profiler
 
       def children_key(parent_token)
         "#{@key_prefix}:children:#{parent_token}"
+      end
+
+      def traces_key(trace_id)
+        "#{@key_prefix}:traces:#{trace_id}"
       end
 
       def index_version_key
