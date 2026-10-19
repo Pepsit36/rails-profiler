@@ -19,6 +19,18 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-10-19
+
+<!-- stamped -->
+
+### Added
+
+- **Otel:** Export request metrics through the shared OpenTelemetry SDK
+
+### Changed
+
+- **Otel:** Document the experimental metrics export and its decisions
+
 ## [0.39.0] - 2026-10-19
 
 <!-- stamped -->
