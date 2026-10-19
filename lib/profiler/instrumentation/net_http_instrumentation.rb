@@ -8,12 +8,18 @@ require "securerandom"
 require_relative "../redaction"
 require_relative "../body_content"
 require_relative "../configuration"
+require_relative "../current_context"
+require_relative "../trace_context"
 
 module Profiler
   module Instrumentation
     module NetHttpInstrumentation
       module RequestPatch
         def request(req, body = nil, &block)
+          # Before the guards below: the profiler's own calls (the master's requests to its
+          # slaves) carry the trace too, so that the slave's profile joins the request's trace.
+          NetHttpInstrumentation.inject_trace_context(req, address.to_s, port)
+
           collector = Thread.current[:profiler_http_collector]
           return super unless collector
           # Re-entrancy guard: Net::HTTP#request calls itself recursively when
@@ -126,6 +132,20 @@ module Profiler
         return if @installed
         Net::HTTP.prepend(RequestPatch)
         @installed = true
+      end
+
+      # Adds a traceparent to a call made while a profiled request runs on this thread: the trace
+      # id of that request and a span id of its own. A traceparent the application set is kept,
+      # and a host excluded from the instrumentation gets none.
+      def self.inject_trace_context(req, host, port)
+        trace_id = CurrentContext.trace_id
+        return unless trace_id
+        return if req[TraceContext::HEADER]
+        return if skip_host?(host, port)
+
+        req[TraceContext::HEADER] = TraceContext.format(trace_id, TraceContext.new_span_id)
+      rescue => e
+        Profiler.log_error("NetHttpInstrumentation: could not add the traceparent header", e)
       end
 
       # The hosts of http_skip_hosts, and the cluster's master (host and port): a slave's calls to
