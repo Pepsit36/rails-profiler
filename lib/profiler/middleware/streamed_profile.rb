@@ -114,7 +114,9 @@ module Profiler
       # once the collectors are released.
       def enter
         token = CurrentContext.token
+        trace_id = CurrentContext.trace_id
         CurrentContext.token = @profile.token
+        CurrentContext.trace_id = @profile.trace_id
         lent = @mutex.synchronize do
           next [] if @released
 
@@ -122,13 +124,14 @@ module Profiler
             [collector, collector.lend_thread_slots] if collector.respond_to?(:lend_thread_slots)
           end
         end
-        [token, lent]
+        [token, lent, trace_id]
       end
 
       def leave(state)
-        token, lent = state
+        token, lent, trace_id = state
         lent.reverse_each { |collector, previous| collector.return_thread_slots(previous) }
         CurrentContext.token = token
+        CurrentContext.trace_id = trace_id
       end
     end
   end

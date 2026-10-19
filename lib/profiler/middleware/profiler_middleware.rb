@@ -3,6 +3,7 @@
 require "rack"
 require_relative "../models/profile"
 require_relative "../current_context"
+require_relative "../trace_context"
 require_relative "../collectors/lifecycle"
 require_relative "toolbar_injector"
 require_relative "capturing_body"
@@ -31,6 +32,7 @@ module Profiler
             profile = Models::Profile.new(build_request(env), params: false)
             profile.gem_version = Profiler.version
             Profiler::CurrentContext.token = profile.token
+            assign_trace(env, profile)
 
             # Capture request body before app processes it
             request_body = read_request_body(env)
@@ -75,6 +77,16 @@ module Profiler
       end
 
       private
+
+      # Continues the trace of a valid incoming traceparent (its parent-id becomes this profile's
+      # parent_span_id), or starts a new one. Either way the profile gets a span of its own.
+      def assign_trace(env, profile)
+        incoming = TraceContext.parse(env["HTTP_TRACEPARENT"])
+        profile.trace_id = incoming ? incoming.trace_id : TraceContext.new_trace_id
+        profile.parent_span_id = incoming&.parent_id
+        profile.span_id = TraceContext.new_span_id
+        Profiler::CurrentContext.trace_id = profile.trace_id
+      end
 
       # Read after the application has run, so after the routing: the route parameters are there,
       # and the params carry the encoding the route declared, as the controller saw them.
