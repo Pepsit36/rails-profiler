@@ -620,3 +620,65 @@ Taken without the maintainer, choosing the most cautious option each time.
   application's OpenTelemetry is left as it is. Endpoint: `otel_otlp_endpoint`, else the standard
   `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_ENDPOINT` variables. No sampling
   option of the gem's own: left to the SDK or the collector.
+
+# Decisions: feat/otel-metrics (gem #35, part 2)
+
+## The metrics SDK is alpha, and pinned exactly
+
+- `opentelemetry-metrics-sdk` is in development: its API changes between releases and its
+  maintainers recommend an exact pin. The `Gemfile` (specs only, "Optional dependencies",
+  `require: false`, never the gemspec) pins `opentelemetry-metrics-api = 0.10.0`,
+  `opentelemetry-metrics-sdk = 0.21.0` and `opentelemetry-exporter-otlp-metrics = 0.14.0`
+  (latest on rubygems.org when written). No `~>`.
+- **A third gem, not in the brief:** the OTLP metrics exporter is a separate gem
+  (`opentelemetry-exporter-otlp-metrics`, the trace one does not carry it). Needed only for the
+  case where the gem sends the metrics itself; pinned like the other two.
+- Class names were read in the installed gems, not assumed: `OpenTelemetry::SDK::Metrics::MeterProvider`,
+  `...::Export::PeriodicMetricReader` (wrapping `OpenTelemetry::Exporter::OTLP::Metrics::MetricsExporter`),
+  and `...::Export::InMemoryMetricPullExporter` for the specs. If a later version renames them
+  the setup fails into a logged warning (no raise), and the specs fail loudly.
+- Documented as experimental in `docs/configuration.md` and the changelog: whoever turns metrics
+  on takes an alpha dependency. The gem does not hide it behind a separate option: `otel_enabled`
+  is the only switch, as asked.
+
+## Same `Sdk`, one provider per signal
+
+- `Profiler::Otel::Sdk` now serves both signals from a small table (gems to load, endpoint
+  variables); `tracer_provider` and `meter_provider` share the host detection (the SDK provider
+  behind the API's proxy), the resource and the own-provider scheme (never installed globally,
+  `at_exit` shutdown). Availability and failures are per signal: with only the trace gems, traces
+  export and one message says the metrics are off; with only the metrics gems, the reverse. Both
+  missing: two messages, once each, no exception.
+- One setting for the endpoint: `otel_otlp_endpoint` ending in `/v1/traces` is read as
+  `/v1/metrics` for metrics (a path that does not end so is used as given). When only environment
+  variables are set, the exporter resolves them itself.
+
+## What is recorded, and with which attributes
+
+- Histograms in **milliseconds** (the unit the profiler measures; the SDK's default buckets,
+  0 to 10 000, suit it) rather than the semantic conventions' seconds: converting would only
+  add a rounding step. Unit is declared (`ms`).
+- Same events as the spans (SQL without transaction statements, views and partials, cache reads,
+  writes and deletes, outbound HTTP not in flight), taken from the collector data after the
+  request, at the same call site as `TraceExporter.export`.
+- Attributes, all bounded: `profiler.controller_action` (the `RequestCollector` value; `unknown`
+  for a 404 or non-Rails request, never the path), `http.request.method` (standard verbs, else
+  `_OTHER`), `http.response.status_code` (request duration only; HTTP statuses are bounded),
+  `db.operation.name` (SELECT/INSERT/UPDATE/DELETE, else `OTHER`) and `cache.operation`. Never
+  the token, path, URL, host, SQL text or cache key. `spec/otel/metrics_exporter_spec.rb` greps
+  every attribute the in-memory reader collected for those.
+
+## The counters
+
+- **Allocations:** `Profile#allocated_objects` added to `profiler.request.allocations`. With
+  `track_memory` off it is nil: nothing is recorded for it and nothing fails.
+- **N+1:** +1 per HTTP request in which at least one group of queries, grouped by
+  `N1Patterns.normalize_sql` (reused, not rewritten), has more than one member; not +1 per extra
+  query or per group. Why: it answers "how many requests have the problem", is directly comparable
+  to the request count, and does not make one bad page weigh a hundred times a slightly bad one;
+  the number of repeated queries is already in the SQL histogram's count. Transaction statements
+  are left out, as for the spans. Limits it shares with `N1Patterns`: a normalized `IN (?, ?)`
+  list of different length is not merged, and a legitimately repeated query counts too.
+- Measured vs reasoned: the values, the attributes and the counter behaviour are measured by the
+  specs against the real SDK; the "+1 per request" choice and the ms unit are reasoned.
+
