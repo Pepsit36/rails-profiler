@@ -36,6 +36,7 @@ RSpec.describe Profiler::Storage::BaseStore do
       list: [],
       cleanup: [],
       find_by_parent: [SecureRandom.hex(16)],
+      find_by_trace: [SecureRandom.hex(16)],
       delete: [SecureRandom.hex(16)],
       clear: []
     }.each do |method, args|

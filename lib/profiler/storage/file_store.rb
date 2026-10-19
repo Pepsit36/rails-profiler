@@ -41,7 +41,7 @@ module Profiler
       # Past a cap, the oldest profiles are evicted down to this share of it.
       LOW_WATER = 0.8
 
-      Entry = Struct.new(:token, :at, :type, :parent, :bytes, :summary, :sequence)
+      Entry = Struct.new(:token, :at, :type, :parent, :bytes, :summary, :sequence, :trace)
 
       def initialize(options = {})
         super()
@@ -138,6 +138,16 @@ module Profiler
         children.filter_map { |entry| load(entry.token) }.sort_by(&:started_at)
       end
 
+      def find_by_trace(trace_id)
+        return [] unless Token.valid?(trace_id)
+
+        members = @mutex.synchronize do
+          refresh
+          (@traces[trace_id] || {}).keys.filter_map { |token| @entries[token] }
+        end
+        members.filter_map { |entry| load(entry.token) }.sort_by(&:started_at)
+      end
+
       def delete(token)
         return unless Token.valid?(token)
 
@@ -173,13 +183,14 @@ module Profiler
       def put_record(token, data, bytes, started_at: nil)
         started_at = started_at&.to_f || (data[:started_at] ? Time.parse(data[:started_at]).to_f : Time.now.to_f)
         { "op" => "put", "token" => token, "at" => started_at, "type" => (data[:profile_type] || "http").to_s,
-          "parent" => data[:parent_token], "bytes" => bytes, "summary" => Summary.build(data) }
+          "parent" => data[:parent_token], "trace" => data[:trace_id], "bytes" => bytes, "summary" => Summary.build(data) }
       end
 
       def forget_index
         @entries = {}
         @sequence = 0
         @children = {}
+        @traces = {}
         @bytes = 0
         @records = 0
         @offset = 0
@@ -243,8 +254,9 @@ module Profiler
         when "put"
           remove_entry(token)
           parent = Token.valid?(record["parent"]) ? record["parent"] : nil
+          trace = Token.valid?(record["trace"]) ? record["trace"] : nil
           add_entry(Entry.new(token, record["at"].to_f, record["type"], parent, record["bytes"].to_i,
-                              record["summary"].is_a?(Hash) ? record["summary"] : nil))
+                              record["summary"].is_a?(Hash) ? record["summary"] : nil, nil, trace))
         when "del"
           remove_entry(token)
         end
@@ -255,6 +267,7 @@ module Profiler
         @entries[entry.token] = entry
         @bytes += entry.bytes
         (@children[entry.parent] ||= {})[entry.token] = true if entry.parent
+        (@traces[entry.trace] ||= {})[entry.token] = true if entry.trace
         @sorted = nil
       end
 
@@ -266,6 +279,10 @@ module Profiler
         if entry.parent && (siblings = @children[entry.parent])
           siblings.delete(token)
           @children.delete(entry.parent) if siblings.empty?
+        end
+        if entry.trace && (members = @traces[entry.trace])
+          members.delete(token)
+          @traces.delete(entry.trace) if members.empty?
         end
         @sorted = nil
       end
@@ -344,7 +361,8 @@ module Profiler
       def entry_from_file(token)
         json = PrivateFiles.open_for_reading(profile_file_path(token), &:read)
         record = put_record(token, Models::Profile.from_json(json).to_h, json.bytesize)
-        Entry.new(token, record["at"], record["type"], record["parent"], record["bytes"], record["summary"])
+        trace = Token.valid?(record["trace"]) ? record["trace"] : nil
+        Entry.new(token, record["at"], record["type"], record["parent"], record["bytes"], record["summary"], nil, trace)
       rescue StandardError => e
         # Unreadable: kept in the count, so that it is evicted in turn; listed by no one.
         Profiler.log_error_once(:file_store_entry, "FileStore: could not read profile #{token} to index it", e)
@@ -353,7 +371,7 @@ module Profiler
         rescue SystemCallError
           nil
         end
-        Entry.new(token, stat ? stat.mtime.to_f : 0.0, nil, nil, stat ? stat.size : 0, nil)
+        Entry.new(token, stat ? stat.mtime.to_f : 0.0, nil, nil, stat ? stat.size : 0, nil, nil, nil)
       end
 
       def modified_at(token)
@@ -390,7 +408,8 @@ module Profiler
                                "compacted_at" => Time.now.to_f)]
         @entries.each_value do |entry|
           lines << JSON.generate("op" => "put", "token" => entry.token, "at" => entry.at, "type" => entry.type,
-                                 "parent" => entry.parent, "bytes" => entry.bytes, "summary" => entry.summary)
+                                 "parent" => entry.parent, "trace" => entry.trace, "bytes" => entry.bytes,
+                                 "summary" => entry.summary)
         end
         data = "#{lines.join("\n")}\n"
         PrivateFiles.write(@index_path, data)

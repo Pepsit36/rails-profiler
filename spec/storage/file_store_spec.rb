@@ -117,6 +117,44 @@ RSpec.describe Profiler::Storage::FileStore do
     end
   end
 
+  describe "#find_by_trace" do
+    let(:trace_id) { SecureRandom.hex(16) }
+
+    it "returns the profiles of the trace only, oldest first" do
+      later = build_profile(trace_id: trace_id, span_id: "b" * 16, started_at: Time.now)
+      earlier = build_profile(trace_id: trace_id, span_id: "a" * 16, parent_span_id: "c" * 16, started_at: Time.now - 10)
+      other = build_profile(trace_id: SecureRandom.hex(16))
+      [later, earlier, other].each { |p| store.save(p.token, p) }
+
+      results = store.find_by_trace(trace_id)
+
+      expect(results.map(&:token)).to eq([earlier.token, later.token])
+      expect(results.first.span_id).to eq("a" * 16)
+      expect(results.first.parent_span_id).to eq("c" * 16)
+    end
+
+    it "forgets a profile that was deleted" do
+      kept = build_profile(trace_id: trace_id)
+      gone = build_profile(trace_id: trace_id)
+      [kept, gone].each { |p| store.save(p.token, p) }
+      store.delete(gone.token)
+
+      expect(store.find_by_trace(trace_id).map(&:token)).to eq([kept.token])
+    end
+
+    it "returns an empty array for an unknown or invalid trace id" do
+      expect(store.find_by_trace(SecureRandom.hex(16))).to be_empty
+      expect(store.find_by_trace("none")).to be_empty
+    end
+
+    it "finds a profile saved by another process through the shared index" do
+      profile = build_profile(trace_id: trace_id)
+      store.save(profile.token, profile)
+
+      expect(described_class.new(path: @tmpdir).find_by_trace(trace_id).map(&:token)).to eq([profile.token])
+    end
+  end
+
   describe "#find_by_parent" do
     it "returns profiles with matching parent_token" do
       parent_token = SecureRandom.hex(16)

@@ -66,11 +66,11 @@ module Profiler
           <<~SQL,
             INSERT OR REPLACE INTO profiler_profiles (
               token, profile_type, gem_version, path, method, status, duration, memory,
-              started_at, finished_at, parent_token, is_ajax,
+              started_at, finished_at, parent_token, trace_id, span_id, parent_span_id, is_ajax,
               tabs, params, headers, response_headers, collectors_meta, summary
             ) VALUES (
               :token, :profile_type, :gem_version, :path, :method, :status, :duration, :memory,
-              :started_at, :finished_at, :parent_token, :is_ajax,
+              :started_at, :finished_at, :parent_token, :trace_id, :span_id, :parent_span_id, :is_ajax,
               :tabs, :params, :headers, :response_headers, :collectors_meta, :summary
             )
           SQL
@@ -85,6 +85,9 @@ module Profiler
           started_at:       utc_iso8601(data[:started_at]),
           finished_at:      utc_iso8601(data[:finished_at]),
           parent_token:     data[:parent_token],
+          trace_id:         data[:trace_id],
+          span_id:          data[:span_id],
+          parent_span_id:   data[:parent_span_id],
           is_ajax:          data[:is_ajax] ? 1 : 0,
           tabs:             JSON.generate(data[:tabs] || []),
           params:           JSON.generate(data[:params] || {}),
@@ -132,6 +135,16 @@ module Profiler
         rows = @db.execute(
           "SELECT * FROM profiler_profiles WHERE parent_token = :parent_token ORDER BY started_at ASC",
           parent_token: parent_token
+        )
+        rows.map { |row| row_to_profile(row) }.compact
+      end
+
+      def find_by_trace(trace_id)
+        return [] unless Token.valid?(trace_id)
+
+        rows = @db.execute(
+          "SELECT * FROM profiler_profiles WHERE trace_id = :trace_id ORDER BY started_at ASC, rowid ASC",
+          trace_id: trace_id
         )
         rows.map { |row| row_to_profile(row) }.compact
       end
@@ -276,12 +289,13 @@ module Profiler
             ON profiler_profiles(profile_type);
         SQL
 
-        %w[gem_version summary].each do |column|
+        %w[gem_version summary trace_id span_id parent_span_id].each do |column|
           @db.execute("ALTER TABLE profiler_profiles ADD COLUMN #{column} TEXT")
         rescue SQLite3::Exception
           # column already exists
         end
 
+        @db.execute("CREATE INDEX IF NOT EXISTS idx_profiler_trace_id ON profiler_profiles(trace_id)")
         migrate_times_to_utc
       end
 
@@ -331,6 +345,9 @@ module Profiler
           started_at:             local_iso8601(row["started_at"]),
           finished_at:            local_iso8601(row["finished_at"]),
           parent_token:           row["parent_token"],
+          trace_id:               row["trace_id"],
+          span_id:                row["span_id"],
+          parent_span_id:         row["parent_span_id"],
           is_ajax:                row["is_ajax"] == 1,
           tabs:                   parse_json(row["tabs"], []),
           params:                 parse_json(row["params"], {}),
