@@ -8,12 +8,12 @@ require "open3"
 RSpec.describe "OpenTelemetry as an optional dependency" do
   let(:root) { File.expand_path("../..", __dir__) }
 
-  def run_isolated(script, hide_gems:)
+  def run_isolated(script, hide_gems:, hidden: /\Aopentelemetry/)
     prelude = <<~RUBY
       module Kernel
         alias_method :__orig_require, :require
         def require(name)
-          raise LoadError, "cannot load such file -- \#{name}" if #{hide_gems} && name.to_s.start_with?("opentelemetry")
+          raise LoadError, "cannot load such file -- \#{name}" if #{hide_gems} && name.to_s.match?(#{hidden.inspect})
           __orig_require(name)
         end
       end
@@ -60,7 +60,7 @@ RSpec.describe "OpenTelemetry as an optional dependency" do
     expect(output).to include("OK")
   end
 
-  it "warns clearly, once, and raises nothing when enabled without the gems" do
+  it "warns clearly, once per signal, and raises nothing when enabled without the gems" do
     script = <<~RUBY
       require "bundler/setup"
       require "rack"
@@ -82,12 +82,50 @@ RSpec.describe "OpenTelemetry as an optional dependency" do
         status, headers, = app.call(Rack::MockRequest.env_for("/"))
         abort("not profiled") unless status == 200 && (headers["x-profiler-token"] || headers["X-Profiler-Token"])
       end
-      lines = log.string.lines.grep(/OpenTelemetry gems are not available/)
-      abort("expected one warning, got \#{lines.size}: \#{log.string}") unless lines.size == 1
+      # One warning per signal (traces, metrics), however many requests.
+      lines = log.string.lines.grep(/OpenTelemetry (traces|metrics) gems are not available/)
+      abort("expected two warnings, got \#{lines.size}: \#{log.string}") unless lines.size == 2
       puts "OK"
     RUBY
     require "logger"
     output, status = run_isolated(script, hide_gems: true)
+    expect(status).to be_success, output
+    expect(output).to include("OK")
+  end
+
+  # The signals are independent: the gems of one missing leaves the other working, with one
+  # warning naming the missing one.
+  def partial_script(expect_warning:, expect_provider:)
+    <<~RUBY
+      require "bundler/setup"
+      require "logger"
+      require "stringio"
+      require "profiler"
+      require "profiler/otel/sdk"
+      log = StringIO.new
+      Profiler.configure do |c|
+        c.otel_enabled = true; c.otel_otlp_endpoint = "http://localhost:4318/v1/traces"; c.logger = Logger.new(log)
+      end
+      traces = Profiler::Otel::Sdk.tracer_provider
+      metrics = Profiler::Otel::Sdk.meter_provider
+      abort("traces provider: \#{traces.inspect}") if #{expect_provider == :traces} != !traces.nil?
+      abort("metrics provider: \#{metrics.inspect}") if #{expect_provider == :metrics} != !metrics.nil?
+      lines = log.string.lines.grep(/#{expect_warning} gems are not available/)
+      abort("expected one #{expect_warning} warning, got \#{log.string}") unless lines.size == 1 && log.string.lines.size == 1
+      puts "OK"
+    RUBY
+  end
+
+  it "warns for the metrics gems alone, and still exports traces, when only the metrics gems are missing" do
+    output, status = run_isolated(partial_script(expect_warning: "metrics", expect_provider: :traces),
+                                  hide_gems: true, hidden: %r{\Aopentelemetry-metrics|otlp_metrics\z})
+    expect(status).to be_success, output
+    expect(output).to include("OK")
+  end
+
+  it "warns for the trace gems alone, and still exports metrics, when only the trace exporter is missing" do
+    output, status = run_isolated(partial_script(expect_warning: "traces", expect_provider: :metrics),
+                                  hide_gems: true, hidden: %r{\Aopentelemetry/exporter/otlp\z})
     expect(status).to be_success, output
     expect(output).to include("OK")
   end
@@ -100,5 +138,7 @@ RSpec.describe "OpenTelemetry as an optional dependency" do
     profile.span_id = "b" * 16
     expect(Profiler::Otel::TraceExporter.export(profile)).to be(false)
     expect(Profiler::Otel::Sdk.tracer_provider).to be_nil
+    expect(Profiler::Otel::Sdk.meter_provider).to be_nil
+    expect(Profiler::Otel::MetricsExporter.export(profile)).to be(false)
   end
 end

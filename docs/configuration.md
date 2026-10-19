@@ -137,6 +137,29 @@ Profiler.configure do |config|
   # leave it to the SDK or the collector.
   # Enabled without the opentelemetry gems, or without an endpoint when the gem has to send the
   # spans itself: one message in the log, no export, and the application is not affected.
+  #
+  # OpenTelemetry metrics, same opt-in (there is no separate option). EXPERIMENTAL: the metrics
+  # SDK (opentelemetry-metrics-sdk) is alpha, its API changes from one release to the next, and
+  # its maintainers recommend pinning an exact version. Turning metrics on means depending on an
+  # alpha package: add `opentelemetry-metrics-api`, `opentelemetry-metrics-sdk` and
+  # `opentelemetry-exporter-otlp-metrics` to the application's Gemfile, each with an exact
+  # version (`gem "opentelemetry-metrics-sdk", "= 0.21.0"`, no `~>`), and review them on every
+  # upgrade. This gem's specs run against metrics-api 0.10.0, metrics-sdk 0.21.0 and
+  # exporter-otlp-metrics 0.14.0; no other version is tested. Without these gems, traces still
+  # work and one message in the log says the metrics are off.
+  # Each profiled request records, in milliseconds: histograms `profiler.request.duration`,
+  # `profiler.db.query.duration`, `profiler.view.render.duration`,
+  # `profiler.cache.operation.duration` and `profiler.http.client.request.duration` (outbound
+  # Net::HTTP), and counters `profiler.request.allocations` (objects allocated, only when
+  # config.track_memory is on) and `profiler.request.n_plus_one` (requests that ran an N+1: one
+  # SQL query, constants normalized, repeated within the request; +1 per such request). Attributes
+  # are few on purpose: `profiler.controller_action` ("unknown" when no route matched),
+  # `http.request.method`, `http.response.status_code` (request duration only), `db.operation.name`
+  # (SELECT, INSERT, UPDATE, DELETE or OTHER) and `cache.operation`. Never a profile token, URL,
+  # SQL text or cache key. The application's own MeterProvider is reused when it has one;
+  # otherwise the gem exports over OTLP http/protobuf to otel_otlp_endpoint (a `/v1/traces` path
+  # is read as `/v1/metrics`) or the OTEL_EXPORTER_OTLP_(METRICS_)ENDPOINT variable, every 60 s
+  # (OTEL_METRIC_EXPORT_INTERVAL).
   config.otel_enabled = false
   config.otel_service_name = nil     # default: the application's name
   config.otel_otlp_endpoint = nil    # e.g. "http://localhost:4318/v1/traces"; no default

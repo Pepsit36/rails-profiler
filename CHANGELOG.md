@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-10-19
+
+<!-- stamped -->
+
+### Added
+
+- **OpenTelemetry:** with the same `config.otel_enabled = true`, each profiled request also records metrics: duration histograms (request, SQL query, view, cache operation, outbound `Net::HTTP` call) and counters for allocated objects and for requests that ran an N+1. Attributes are low-cardinality on purpose: `controller#action`, HTTP method and status, SQL verb and cache operation, never a token, URL or SQL text. **Experimental:** it needs `opentelemetry-metrics-api`, `opentelemetry-metrics-sdk` and `opentelemetry-exporter-otlp-metrics` in the application's `Gemfile`, pinned to an exact version because the metrics SDK is alpha; without them one message is logged and traces are unaffected.
+
 ## [0.39.0] - 2026-10-19
 
 <!-- stamped -->
