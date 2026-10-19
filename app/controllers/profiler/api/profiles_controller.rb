@@ -9,6 +9,8 @@ module Profiler
         # dashboard relies on the default: http profiles, as summaries.
         if params[:parent_token].present?
           render_children_page
+        elsif params[:trace_id].present?
+          render_trace_page
         elsif all_types?
           render_profile_page(type: profile_type_param, summary: false)
         else
@@ -55,6 +57,14 @@ module Profiler
 
       def profile_type_param
         params[:type].to_s.match?(/\A[a-z_]{1,32}\z/) ? params[:type].to_s : nil
+      end
+
+      # The profiles of a trace, oldest last, read through the store's trace index.
+      def render_trace_page
+        limit, offset = page_params
+        members = Profiler.storage.find_by_trace(params[:trace_id].to_s).reverse
+        members = members.select { |p| p.profile_type == "http" } unless all_types?
+        render_page(members.drop(offset).first(limit + 1), limit, offset)
       end
 
       # The children of a page, oldest last, read through the store's parent index.

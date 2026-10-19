@@ -111,6 +111,50 @@ RSpec.describe "Profile lists and children through the profiler API", type: :req
     end
   end
 
+  describe "GET /api/profiles?trace_id=" do
+    let(:trace_id) { SecureRandom.hex(16) }
+
+    it "lists the profiles of the trace, newest first, and no other" do
+      first = save(0, trace_id: trace_id, span_id: "a" * 16)
+      second = save(1, trace_id: trace_id, span_id: "b" * 16, parent_span_id: "a" * 16)
+      save(2, trace_id: SecureRandom.hex(16))
+      save(3)
+
+      get "/_profiler/api/profiles", { trace_id: trace_id }, local
+
+      expect(last_response.status).to eq(200)
+      expect(json["profiles"].map { |p| p["token"] }).to eq([second.token, first.token])
+      expect(json["profiles"].first).to include("trace_id" => trace_id, "span_id" => "b" * 16,
+                                                "parent_span_id" => "a" * 16)
+      expect(json["has_more"]).to be(false)
+    end
+
+    it "pages the trace" do
+      3.times { |i| save(i, trace_id: trace_id) }
+
+      get "/_profiler/api/profiles", { trace_id: trace_id, limit: 2 }, local
+
+      expect(json["profiles"].size).to eq(2)
+      expect(json["has_more"]).to be(true)
+    end
+
+    it "gives an empty list for a trace id that is not valid" do
+      save(0)
+
+      get "/_profiler/api/profiles", { trace_id: "nope" }, local
+
+      expect(json["profiles"]).to be_empty
+    end
+
+    it "returns the trace fields in the profile" do
+      profile = save(0, trace_id: trace_id, span_id: "a" * 16)
+
+      get "/_profiler/api/profiles/#{profile.token}", {}, local
+
+      expect(json).to include("trace_id" => trace_id, "span_id" => "a" * 16, "parent_span_id" => nil)
+    end
+  end
+
   describe "a page with AJAX sub-requests, under the default collectors" do
     let!(:parent) { save(0) }
     let!(:children) { (1..2).map { |i| save(i, parent_token: parent.token, is_ajax: true, method: "POST") } }
