@@ -15,9 +15,10 @@ import { I18nTab } from './tabs/I18nTab'
 import { JobsTab } from './tabs/JobsTab'
 import { EnvTab } from './tabs/EnvTab'
 import { MailerTab } from './tabs/MailerTab'
+import { TraceTab } from './tabs/TraceTab'
 import { getGemVersion, allocatedObjects, formatAllocations, ALLOCATIONS_HINT } from '../../dashboard/utils'
 
-type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception' | 'routes' | 'i18n' | 'jobs' | 'env' | 'mailer'
+type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception' | 'routes' | 'i18n' | 'jobs' | 'env' | 'mailer' | 'trace'
 
 interface Props {
   profile: Profile
@@ -103,6 +104,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {hasMailers && (
             <a href="#" class={tabClass('mailer')} onClick={handleTabClick('mailer')}>Mailers</a>
           )}
+          <a href="#" class={tabClass('trace')} onClick={handleTabClick('trace')}>Trace</a>
           <a href="#" class={tabClass('env')} onClick={handleTabClick('env')}>Env</a>
         </div>
 
@@ -121,6 +123,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
           {activeTab === 'i18n' && <I18nTab i18nData={cd.i18n} />}
           {activeTab === 'jobs' && <JobsTab jobs={profile.child_jobs!} />}
           {activeTab === 'mailer' && <MailerTab mailerData={cd.mailer} />}
+          {activeTab === 'trace' && <TraceTab profile={profile} />}
           {activeTab === 'env' && <EnvTab envData={cd.env} readOnly />}
         </div>
       </div>
