@@ -45,6 +45,7 @@ module Profiler
                   :cors_allowed_origins, :api_forgery_protection, :frame_ancestors,
                   :track_ajax, :ajax_skip_paths,
                   :track_http, :slow_http_threshold, :http_backtrace_depth,
+                  :otel_enabled, :otel_service_name, :otel_otlp_endpoint,
                   :track_jobs,
                   :track_console,
                   :apply_env_overrides_when_disabled, :restrict_storage_permissions,
@@ -105,6 +106,11 @@ module Profiler
       # The profiler's own calls (cluster, slave proxy) are never recorded, whatever this says.
       @http_skip_hosts = []
       @http_backtrace_depth = 40
+      # OpenTelemetry export of each profiled request as a trace. Off: nothing of OpenTelemetry is
+      # loaded or touched. The opentelemetry-* gems are the application's to add to its Gemfile.
+      @otel_enabled = false
+      @otel_service_name = nil
+      @otel_otlp_endpoint = nil
       @track_jobs = true
       @track_console = true
       @apply_env_overrides_when_disabled = false
@@ -292,6 +298,11 @@ module Profiler
     # on it.
     def mcp_http_enabled?
       mcp_enabled && mcp_transport.to_s == "http" ? true : false
+    end
+
+    # The service.name of the exported spans: otel_service_name, else the application's name.
+    def resolved_otel_service_name
+      otel_service_name.to_s.strip.empty? ? resolved_name : otel_service_name.to_s
     end
 
     def resolved_name

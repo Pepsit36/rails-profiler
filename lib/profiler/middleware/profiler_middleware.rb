@@ -4,6 +4,7 @@ require "rack"
 require_relative "../models/profile"
 require_relative "../current_context"
 require_relative "../trace_context"
+require_relative "../otel/trace_exporter"
 require_relative "../collectors/lifecycle"
 require_relative "toolbar_injector"
 require_relative "capturing_body"
@@ -128,7 +129,7 @@ module Profiler
 
         # A profile that was not saved (a store unavailable, a save that failed) gets no token and
         # no toolbar: both would point to a profile that is not there.
-        return [status, headers, body] unless Profiler.save_profile(profile, from: "ProfilerMiddleware")
+        return [status, headers, body] unless save_and_export(profile)
 
         set_header(headers, TOKEN_HEADER, profile.token)
 
@@ -172,7 +173,7 @@ module Profiler
           end
           record_response(env, profile, request_body, status, profiled_headers, "", nil, false)
           # Saved before the headers leave: a profile that is not there gets no token.
-          set_header(headers, TOKEN_HEADER, profile.token) if Profiler.save_profile(profile, from: "ProfilerMiddleware")
+          set_header(headers, TOKEN_HEADER, profile.token) if save_and_export(profile)
           return [[status, headers, body], nil]
         end
 
@@ -217,9 +218,18 @@ module Profiler
           end
         end
 
-        Profiler.save_profile(profile, from: "ProfilerMiddleware")
+        save_and_export(profile)
       rescue => e
         Profiler.log_error("ProfilerMiddleware: could not finish the profile of a streamed response", e)
+      end
+
+      # The profile is saved, then sent to OpenTelemetry when config.otel_enabled asks for it:
+      # once per profile, here, and not from Profiler.save_profile, which a profile reaches again
+      # whenever a late outbound call completes. The export never raises.
+      def save_and_export(profile)
+        saved = Profiler.save_profile(profile, from: "ProfilerMiddleware")
+        Otel::TraceExporter.export(profile)
+        saved
       end
 
       def collect_from_any_thread?(collector)
@@ -266,7 +276,7 @@ module Profiler
           resp_content_type: ""
         )
         collect_all(profile, collectors)
-        Profiler.save_profile(profile, from: "ProfilerMiddleware")
+        save_and_export(profile)
       rescue => e
         Profiler.log_error("ProfilerMiddleware: could not record a failed request", e)
       end
