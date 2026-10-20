@@ -6,10 +6,10 @@ require_relative "http_guard"
 module Profiler
   module MCP
     class Server
-      # The tools that change the profiler's data, ENV or run code: left out when
+      # The tools that change the profiler's data, ENV, run code or send real requests: left out when
       # config.mcp_read_only is true or PROFILER_MCP_READ_ONLY is set (Server.read_only?).
       WRITE_TOOLS = %w[
-        run_tests clear_profiles set_env_var delete_env_var reset_env_var reset_all_env_vars
+        run_tests clear_profiles set_env_var delete_env_var reset_env_var reset_all_env_vars replay_request
       ].freeze
 
       # Makes the server read-only like config.mcp_read_only, for exe/profiler-mcp above all: that

@@ -44,6 +44,32 @@ RSpec.describe "MCP read-only mode" do
     end
   end
 
+  describe Profiler::MCP::Server, "replay_request" do
+    before { ENV.delete("PROFILER_MCP_READ_ONLY") }
+
+    def built_tool_names
+      described_class.new.send(:build_tools).map { |tool| tool.name_value }
+    end
+
+    it "is a write tool" do
+      expect(described_class::WRITE_TOOLS).to include("replay_request")
+    end
+
+    it "is listed and built when the server is not read-only" do
+      expect(built_tool_names).to include("replay_request")
+    end
+
+    it "is neither listed nor built with config.mcp_read_only" do
+      Profiler.configuration.mcp_read_only = true
+      expect(built_tool_names).not_to include("replay_request")
+    end
+
+    it "is neither listed nor built with PROFILER_MCP_READ_ONLY=1" do
+      ENV["PROFILER_MCP_READ_ONLY"] = "1"
+      expect(built_tool_names).not_to include("replay_request")
+    end
+  end
+
   describe "exe/profiler-mcp" do
     let(:executable) { File.expand_path("../../exe/profiler-mcp", __dir__) }
     let(:lib) { File.expand_path("../../lib", __dir__) }

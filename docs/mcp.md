@@ -83,8 +83,8 @@ end
 ```
 
 With `config.mcp_read_only = true` (false by default), the server leaves out every tool marked
-**write** below: `run_tests`, `clear_profiles`, `set_env_var`, `delete_env_var`, `reset_env_var`
-and `reset_all_env_vars`. They are not listed by `tools/list`, and a client that calls one by name
+**write** below: `run_tests`, `clear_profiles`, `set_env_var`, `delete_env_var`, `reset_env_var`,
+`reset_all_env_vars` and `replay_request`. They are not listed by `tools/list`, and a client that calls one by name
 gets a "tool not found" error. Everything else stays, `explain_query` included: it only explains
 read-only statements, in a transaction always rolled back. The server is built once per process,
 at its first request: restart the application (or `rake profiler:mcp`) after changing it. It does
@@ -132,6 +132,7 @@ others only read.
 | Tests | [`query_test_profiles`](#query_test_profiles), [`get_test_profile`](#get_test_profile), [`run_tests`](#run_tests) (**write**: runs your test files) | `profiler://slow-tests`, `profiler://failing-tests` |
 | Console | [`query_console_profiles`](#query_console_profiles) | `profiler://recent-console` |
 | `ENV` variables | [`list_env_vars`](#list_env_vars), [`set_env_var`](#set_env_var) (**write**), [`delete_env_var`](#delete_env_var) (**write**), [`reset_env_var`](#reset_env_var) (**write**), [`reset_all_env_vars`](#reset_all_env_vars) (**write**) | |
+| Replay | [`replay_request`](#replay_request) (**write**: sends real requests, `POST`, `PUT`, `PATCH` and `DELETE` included) | |
 | Cluster | [`list_slaves`](#list_slaves), and the `slave` parameter of every other tool | |
 
 Most tools that take a profile token also accept `"latest"` for the most recent profile;
@@ -649,6 +650,8 @@ Run test files and wait for results. Synchronous: blocks until tests complete or
 
 ### `replay_request`
 
+**Write** tool: left out by [read-only mode](#read-only-mode), neither listed nor callable when `config.mcp_read_only` or `PROFILER_MCP_READ_ONLY` is set.
+
 Send a profiled HTTP request again, for real, to the application's own host, and wait for the answers. Each replay creates a new profile, linked to the original (`replay_of`). Disabled unless `config.replay_enabled = true`: the tool then answers with an error saying so.
 
 | Parameter | Type | Description |
@@ -663,7 +666,7 @@ Send a profiled HTTP request again, for real, to the application's own host, and
 | `timeout` | number | Seconds to wait for each replay (default `config.replay_timeout`, at most 120). |
 | `slave` | string | Run the replay on a connected slave. |
 
-The target is always the host name of the original request on the port the application server really listened on (never the port of its `Host` header); a `host`, `port`, `url` or similar argument is refused. Methods with side effects (`POST`, `PUT`, `PATCH`, `DELETE`) are replayed too and **there is no confirmation on this channel: calling the tool is the confirmation**, the client answers for the request it replays.
+The target is always the host name of the original request (a loopback name, or one listed literally in `config.hosts`) on the port the application server really listened on (never the port of its `Host` header); a `host`, `port`, `url` or similar argument is refused. Methods with side effects (`POST`, `PUT`, `PATCH`, `DELETE`) are replayed too and **there is no confirmation on this channel: calling the tool is the confirmation**, the client answers for the request it replays.
 
 **Returns:** the target, and for each replay its status, the token of the new profile and its duration.
 
