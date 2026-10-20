@@ -7,6 +7,7 @@ import { JobProfileDashboard } from './components/dashboard/JobProfileDashboard'
 import { ConsoleProfileDashboard } from './components/dashboard/ConsoleProfileDashboard'
 import { TestProfileDashboard } from './components/dashboard/TestProfileDashboard'
 import { TestRunnerPage } from './components/test-runner/TestRunnerPage'
+import { CompareView } from './components/CompareView'
 import { initTimeline } from './timeline'
 import { themeManager, createThemeToggle } from './theme'
 
@@ -72,7 +73,16 @@ document.addEventListener('DOMContentLoaded', () => {
     )
   }
 
-  if (!indexEl && !showEl && !testRunnerEl) {
+  const compareEl = document.getElementById('profiler-compare')
+  if (compareEl) {
+    const tokenA = compareEl.dataset.tokenA
+    const tokenB = compareEl.dataset.tokenB
+    if (tokenA && tokenB) {
+      render(<CompareView tokenA={tokenA} tokenB={tokenB} nodeA={compareEl.dataset.nodeA || ''} nodeB={compareEl.dataset.nodeB || ''} />, compareEl)
+    }
+  }
+
+  if (!indexEl && !showEl && !testRunnerEl && !compareEl) {
     const header = document.querySelector('.header, .profiler-detail') as HTMLElement | null
     if (header) {
       const toggle = createThemeToggle()

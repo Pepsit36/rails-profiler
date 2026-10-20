@@ -19,6 +19,15 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-10-20
+
+<!-- stamped -->
+
+### Added
+
+- **Compare:** `compare_profiles` (MCP) and the dashboard's Compare page diff two profiles: total duration, allocations, cache hit rate, rendered views, and SQL queries grouped by normalized statement into new, gone and slower blocks.
+- **Compare:** each of the two profiles can come from another instance: `config.peers = [{ name:, url: }]` is an explicit allow list (empty by default, so no outgoing call), `config.peer_token` is sent in the `X-Profiler-Peer-Token` header and, on the serving instance, opens `GET /_profiler/api/profiles/:token` only. A URL from a request or a tool argument is never called, and an unknown node is refused with an error. `node_a` and `node_b` pick the node, in the MCP tool and with a selector per profile in the dashboard.
+
 ## [0.41.0] - 2026-10-20
 
 <!-- stamped -->

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../../../lib/profiler/cluster/security"
+require_relative "../../../lib/profiler/peers"
 
 module Profiler
   class ApplicationController < ActionController::Base
@@ -23,6 +24,7 @@ module Profiler
     def authorize_request
       # Checked first, so that :allow_local does not log a refusal for the master's calls.
       return if cluster_master_request?
+      return if peer_read_request?
       return if Profiler.configuration.authorized?(request)
 
       deny("Not authorized to access the profiler")
@@ -45,6 +47,13 @@ module Profiler
     # a configured secret.
     def cluster_master_request?
       Profiler.configuration.slave? && Cluster::Security.request_secret_valid?(request)
+    end
+
+    # Another instance reading one profile to compare it with its own (Profiler::Peers). The
+    # shared peer_token opens exactly one door: GET of a single profile, nothing else.
+    def peer_read_request?
+      request.get? && controller_path == "profiler/api/profiles" && action_name == "show" &&
+        Peers.request_token_valid?(request)
     end
 
     def handle_unverified_request

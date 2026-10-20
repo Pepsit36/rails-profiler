@@ -736,3 +736,46 @@ Taken without the maintainer, choosing the most cautious option each time.
 - **RuboCop.** The repository has no `.rubocop.yml`; the default cops report thousands of offenses
   on untouched code. The changed Ruby was checked with 1.92.0 under a config matching the code
   base (double quotes, no metrics or line length): no offense on the new code.
+
+## gem #48: compare two profiles across instances
+
+### The requested starting point was not used as given
+
+The brief said `feature/34-profile-comparison-diff-regression-mcp` (commit `ee4f5d6`) was absent from
+the hub mirror, and that `origin/reference/rails-profiler-gem` was the base. Checked in this sandbox:
+`feature/34-...` **is** present in `origin` (`ee4f5d6`), and `origin/reference/rails-profiler-gem` is
+**not** (no `reference/*` ref in `/hub.git`); the branch is based on `origin/master`
+(`9444774`). So the work was done as asked originally: `ee4f5d6` was cherry-picked onto the current
+`master` (it was far behind: conflicts in `configuration.rb`, `server.rb`, `main.tsx`,
+`ProfileList.tsx`, `profiler.rb` were resolved keeping both sides), then extended. It was not written
+from scratch.
+
+### `peers` is separate from the cluster
+
+The master/slave cluster is dynamic (slaves register themselves, `Profiler.slave_registry`) and
+authenticated by `cluster_secret`. Comparing profiles needs the opposite: a static list written by the
+operator. So `config.peers`, `config.peer_token` and `Profiler::Peers` / `Peers::PeerProxy` are new,
+`SlaveProxy` and `slave_registry` are untouched. The proxy copies SlaveProxy's style (5 s / 10 s
+timeouts, `untracked_http`, no redirect following, defensive JSON), not its code.
+
+### Security choices
+
+- A node is always a **name** looked up in `config.peers`. No code path builds a request target from
+  anything else; an unknown node fails before any request, and all nodes are resolved before the first
+  profile is read.
+- Peer URLs are validated once per configured list (memoized on the list), with the cluster's URL
+  parser (`Cluster::Security.normalize`). HTTPS is required except for loopback, with an explicit
+  `config.peer_allow_insecure_http` opt-out, same idea as `cluster_allow_insecure_http`.
+- **Missing `peer_token` is a strict refusal**, not a warning (the most prudent option): with peers
+  configured but no token of 32 characters or more, `PeerProxy.new` raises and nothing is sent; the
+  serving side never accepts any token when none is configured. A warning is also logged at boot.
+- The serving side accepts the peer token for `GET /_profiler/api/profiles/:id` only (`peer_read_request?`),
+  compared in constant time; it does not open the list, delete or any other endpoint.
+- The node name `local` is reserved for this instance.
+
+### Diff content
+
+SQL fingerprints reuse `MCP::Resources::N1Patterns.normalize_sql`. "Slower" means the total time of a
+fingerprint grew by more than 20% (`ProfileDiff::SLOWER_THRESHOLD_PCT`, a constant, not a setting);
+each block is capped at 25 entries. The scorecard's memory row is replaced by allocated objects,
+since `memory` is deprecated in the profile model.

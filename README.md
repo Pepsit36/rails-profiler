@@ -209,6 +209,47 @@ assistant can and cannot do, both transports (stdio, which opens no endpoint, an
 `/_profiler/mcp` once `config.mcp_enabled = true` and `config.mcp_transport = :http` are set,
 behind the same access checks as the dashboard) and the reference of every tool.
 
+### Comparing two profiles, across instances
+
+`compare_profiles` (MCP) and the **Compare** page of the dashboard diff two profiles: total duration,
+allocations, cache hit rate, rendered views, and the SQL queries grouped by normalized statement
+(literals replaced by `?`) in three blocks: new (only in B), gone (only in A) and slower (total time
+per statement grew by more than 20%). Both profiles can come from this instance, or each from
+another instance you list in `config.peers`:
+
+```ruby
+Profiler.configure do |config|
+  config.peers = [
+    { name: "staging", url: "https://staging.example.com" },
+    { name: "worker-2", url: "https://worker-2.internal" }
+  ]
+  config.peer_token = ENV.fetch("PROFILER_PEER_TOKEN") # same value on every instance, 32 characters or more
+end
+```
+
+```
+compare_profiles(token_a: "...", token_b: "...", node_a: "local", node_b: "staging")
+```
+
+`node_a` and `node_b` are names from `config.peers` (blank or `local` means this instance). The dashboard
+offers the same choice with a selector per profile.
+
+This is **not** the master/slave cluster: the list is static and written by you, nothing registers at
+runtime, and `Profiler.slave_registry` is not involved.
+
+- `config.peers` is empty by default: no outgoing call is ever made. Each URL is validated once (plain
+  http(s), no user info or query, HTTPS required unless the host is a loopback address or
+  `config.peer_allow_insecure_http = true`).
+- The only URLs ever called are those of `config.peers`. A URL given in an API parameter or an MCP argument
+  is never used: an unknown `node_a`/`node_b` is refused with an error listing the known nodes, before any
+  request is sent.
+- `config.peer_token` is sent in the `X-Profiler-Peer-Token` header on every call to a peer. A peer
+  that has the same token configured serves `GET /_profiler/api/profiles/:token` to a caller presenting
+  it, and nothing else. Without a token of 32 characters or more, calls to peers are refused (and a
+  warning is logged at boot when peers are configured).
+- Calls use a 5 second connect and a 10 second read timeout, never follow a redirect, and are not recorded
+  in any profile. An unreachable peer is reported by name.
+
 ## Documentation
 
 | Page | Contents |
