@@ -18,8 +18,6 @@ module Profiler
         profiler_flamegraph_collector
       ].freeze
 
-      DETACHED_KEY = :profiler_detached_thread
-
       # The files whose code calls Thread.new to create the threads of a pool: concurrent-ruby's
       # executors (a worker of RubyThreadPoolExecutor, the thread of SimpleExecutorService) and
       # Puma's thread pool.
@@ -29,6 +27,8 @@ module Profiler
 
       # The current request's context, or nil outside of one.
       def capture
+        return nil if Thread.current[DETACHED_KEY]
+
         slots = KEYS.filter_map do |key|
           value = Thread.current[key]
           [key, value] unless value.nil?
@@ -38,6 +38,8 @@ module Profiler
 
         { slots: slots, scope: scope }.freeze
       end
+
+      DETACHED_KEY = :profiler_detached
 
       # Runs the block in +context+, and gives the thread back what it had before.
       def with(context)
@@ -66,8 +68,9 @@ module Profiler
       end
 
       # Runs the block, in which a Thread.new starts a thread of the gem's own that outlives any
-      # request (the cluster heartbeat): it gets no context and drops the scope its Fiber storage
-      # inherits, so it cannot keep a request's collectors alive for as long as it runs.
+      # request (the cluster heartbeat, an alert webhook): it gets no context and drops the scope
+      # its Fiber storage inherits, so it cannot keep a request's collectors alive for as long as
+      # it runs.
       def detached
         previous = Thread.current[DETACHED_KEY]
         Thread.current[DETACHED_KEY] = true

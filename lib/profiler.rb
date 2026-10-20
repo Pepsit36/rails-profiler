@@ -54,6 +54,7 @@ module Profiler
       return false if target.is_a?(Storage::Unavailable)
 
       target.save(profile.token, profile)
+      Alerts.check(profile)
       true
     rescue StandardError => e
       log_error("#{from}: could not save profile #{profile.token}", e)
@@ -274,6 +275,7 @@ require_relative "profiler/storage/token"
 require_relative "profiler/storage/private_files"
 require_relative "profiler/storage/unavailable"
 require_relative "profiler/assets"
+require_relative "profiler/alerts"
 require_relative "profiler/ajax_data"
 require_relative "profiler/peers"
 require_relative "profiler/peers/peer_proxy"
