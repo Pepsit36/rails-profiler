@@ -10,7 +10,7 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['spec/javascript/**/*.spec.{ts,tsx}'],
+    include: ['spec/javascript/**/*.spec.{ts,tsx}', 'app/assets/typescript/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       // Hand-written sources only: the orval client is regenerated on every run and not committed.
