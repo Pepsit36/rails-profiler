@@ -46,6 +46,8 @@ module Profiler
                            x-original-host x-host x-http-host-override content-length connection
                            transfer-encoding upgrade te trailer proxy-authorization
                            x-profiler-replay-of x-profiler-token].freeze
+    # Whitespace and control characters, which have no place in the request line.
+    REQUEST_LINE_UNSAFE = /[\x00-\x20\x7f]/
     ROUTE_PARAMS = %w[controller action].freeze
     MAX_TIMEOUT = 120
 
@@ -178,6 +180,7 @@ module Profiler
         unless path.match?(%r{\A/(?!/)[^\s\\\x00-\x1f\x7f]*\z})
           raise Invalid, "path must be an absolute path of the application (starting with a single \"/\")."
         end
+        raise Invalid, "the query string of path must not contain whitespace or control characters." if query&.match?(REQUEST_LINE_UNSAFE)
 
         [path, query]
       end
@@ -273,7 +276,7 @@ module Profiler
         case value
         when nil then nil
         when Hash then URI.encode_www_form(flatten_params(value))
-        else value.to_s.delete("\r\n ")
+        else value.to_s.gsub(REQUEST_LINE_UNSAFE, "")
         end
       end
 

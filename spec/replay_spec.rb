@@ -172,6 +172,14 @@ RSpec.describe Profiler::Replay do
       expect(seen.last).to include(path: "/other", query: "x=1", host: "localhost:3000")
     end
 
+    it "keeps whitespace and control characters out of the request line, query included" do
+      ["/a?x=1\tHost: evil", "/a?x=1 HTTP/1.1", "/a?x=1\r\nHost: evil", "/a?x=\x00"].each do |path|
+        expect { replay(path: path) }.to raise_error(described_class::Invalid, /query string/)
+      end
+      replay(query: "x=1\tb=2\x00 \r\nHost:evil")
+      expect(seen.last).to include(query: "x=1b=2Host:evil", host: "localhost:3000")
+    end
+
     it "refuses a profile whose captured Host is neither local nor allowed" do
       forged = build_profile(headers: { "Host" => "evil.example" })
       storage.save(forged.token, forged)
