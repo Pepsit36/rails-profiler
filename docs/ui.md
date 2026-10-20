@@ -250,6 +250,8 @@ Sensitive headers and parameters are already masked in the stored profile; see
 
 ---
 
+**Replay request.** With `config.replay_enabled = true`, the Request tab has a **Replay request** button. It asks you to confirm (a replay really sends the request again, with its effects for a `POST` or a `DELETE`), sends the request to the host of the original one, and links to the new profile, which shows "Replay of" the original. See "Replaying a request" in the README.
+
 ### Dump tab
 
 ![Dump tab](screenshots/tab-dump.png)

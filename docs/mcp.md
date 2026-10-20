@@ -647,6 +647,31 @@ Run test files and wait for results. Synchronous: blocks until tests complete or
 
 ---
 
+### `replay_request`
+
+Send a profiled HTTP request again, for real, to the application's own host, and wait for the answers. Each replay creates a new profile, linked to the original (`replay_of`). Disabled unless `config.replay_enabled = true`: the tool then answers with an error saying so.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `token` | string | Token of the profiled HTTP request to replay (required). |
+| `count` | number | Replays in a row (default 1, at most `config.replay_max_count`, 10 by default). |
+| `method` | string | Replace the method. |
+| `path` | string | Replace the path (a path of the application, starting with one `/`). |
+| `query` / `params` | object | Replace the query string / the parameters (query for GET, HEAD, DELETE, OPTIONS; body otherwise). |
+| `body` | string | Replace the request body. |
+| `headers` / `cookies` | object | Headers to add or replace; the cookies to send. `Host` and forwarding headers are ignored. |
+| `timeout` | number | Seconds to wait for each replay (default `config.replay_timeout`, at most 120). |
+| `slave` | string | Run the replay on a connected slave. |
+
+The target is always the host and port of the original request; a `host`, `port`, `url` or similar argument is refused. Methods with side effects (`POST`, `PUT`, `PATCH`, `DELETE`) are replayed too and **there is no confirmation on this channel: calling the tool is the confirmation**, the client answers for the request it replays.
+
+**Returns:** the target, and for each replay its status, the token of the new profile and its duration.
+
+**Example prompts:**
+> "Replay the slowest request of the last hour 5 times and compare the new profiles"
+
+---
+
 ### `query_mailers`
 
 Search and filter ActionMailer deliveries across profiles. Returns emails sent via `deliver_now` or `deliver_later`.

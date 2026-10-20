@@ -19,6 +19,23 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Added
+
+- **Replay:** A profiled HTTP request can be sent again, for real, from the new **Replay request**
+  button of the dashboard's Request tab, `POST /_profiler/api/profiles/:token/replay` and the MCP
+  `replay_request` tool, with `count` replays in a row (at most `config.replay_max_count`, 10 by
+  default) and variations of the method, path, query, params, body, headers and cookies. Each replay
+  is a new profile whose `replay_of` is the original's token, read with the new
+  `find_by_replay_of` of every storage backend. It is off by default
+  (`config.replay_enabled = false`). A replay always goes to the host, port and scheme of the
+  original request, captured from the server's own environment (`SERVER_PORT`, `rack.url_scheme`)
+  rather than from any header: no option can name another host, port, scheme or URL, a `Host` or
+  `X-Forwarded-*` header override is ignored, and a captured host that is neither local nor in
+  `config.hosts` is refused. A profile captured before this option existed has no port/scheme
+  recorded and cannot be replayed. Every method is allowed; the dashboard asks for a confirmation,
+  the MCP tool does not, its caller answers for the request. The replay call is never profiled
+  itself.
+
 ## [0.43.0] - 2026-10-20
 
 <!-- stamped -->

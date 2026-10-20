@@ -250,6 +250,40 @@ runtime, and `Profiler.slave_registry` is not involved.
 - Calls use a 5 second connect and a 10 second read timeout, never follow a redirect, and are not recorded
   in any profile. An unreachable peer is reported by name.
 
+### Replaying a request
+
+Off by default. With `config.replay_enabled = true`, the **Replay request** button of the Request
+tab, the `POST /_profiler/api/profiles/:token/replay` endpoint and the MCP `replay_request` tool
+send a profiled request again, for real. Each replay is profiled like any other request and is
+linked to the original by `replay_of` (shown on the new profile, readable through
+`Profiler.storage.find_by_replay_of(token)`).
+
+```ruby
+Profiler.configure do |config|
+  config.replay_enabled = true
+  config.replay_max_count = 10   # most replays one call may ask for (default 10)
+  config.replay_timeout = 30     # seconds to wait for each replay (default 30)
+end
+```
+
+- **The target is the application's own host, port and scheme.** A replay goes to the host, port
+  and scheme of the original request: the host from the `Host` header, the port and scheme
+  captured from the server's own environment (`SERVER_PORT`, `rack.url_scheme`) rather than from
+  any header. No option can name another host, port, scheme or URL: the ones that try are
+  refused, a `Host` or `X-Forwarded-*` header given as an override is ignored, a path override
+  must be a path of the application, and a redirect is never followed. The captured host must
+  also be a local name or one `config.hosts` allows, otherwise the replay is refused. A profile
+  recorded before this option existed has no captured port or scheme and cannot be replayed.
+- **Variations:** `method`, `path`, `query`, `params`, `body`, `headers`, `cookies`, and `count` to
+  replay several times in a row (each a new profile). Headers and parameters the profiler masked
+  (`Authorization`, `Cookie`, filtered parameters) are not sent unless you give them again.
+- **Every method is allowed**, `POST` and `DELETE` included, and a replay really does what the
+  request did. The dashboard asks you to confirm before it sends. The MCP tool has no confirmation:
+  the client that calls it answers for the request it replays.
+- The call itself is never profiled (`Profiler.untracked_http`), so a replay cannot profile itself
+  in a loop. On a cluster master, `replay_request` takes the same `slave` argument as the other
+  tools and the replay runs on that slave.
+
 ## Documentation
 
 | Page | Contents |

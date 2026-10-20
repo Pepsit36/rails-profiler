@@ -830,3 +830,52 @@ since `memory` is deprecated in the profile model.
   is the single shared implementation, merged into the base; there is no minimal copy to
   reconcile any more.
 - **Payload shape** and activation are documented in `docs/configuration.md`.
+
+## Replaying a profiled request (`replay_request`)
+
+- **The target is locked to the original host, port and scheme.** `Profiler::Replay` builds the
+  target from the stored profile: the `Host` header for the host name, and `server_port` /
+  `url_scheme` (captured from the Rack environment itself, `SERVER_PORT` and `rack.url_scheme`,
+  never from a header) for the port and scheme. An earlier version of this branch took the port
+  from the `Host` header and the scheme from `X-Forwarded-Proto`; both are attacker-controlled on
+  the original request, so a forged `Host: localhost:6379` could redirect a replay to an
+  arbitrary local port. Fixed by capturing the real listening port and scheme at the point the
+  profile is created, and using them unconditionally at replay time: a profile recorded before
+  this fix, with no `server_port`/`url_scheme`, refuses to be replayed rather than falling back to
+  the header. Nothing a caller passes reaches the connection: options named `host`, `port`,
+  `scheme`, `url`, `base_url`, `origin`... are refused with an error (not ignored in silence),
+  unknown options are refused, `Host` and forwarding headers in a header override are dropped and
+  reported, a path override must match `/` followed by a non-`/` and no whitespace or control
+  character, and `Net::HTTP` never follows a redirect. As defence in depth, the captured `Host`
+  must also pass `LocalRequest.host_allowed?` (local name, or allowed by `config.hosts`), and be a
+  bare host (no user info, path or query): a profile recorded from a forged `Host` header cannot
+  turn the replay into a request to an arbitrary server (SSRF). Consequence: in production the
+  application's host must be in `config.hosts`.
+- **`replay_of` is its own field, not `parent_token`.** `parent_token` links an AJAX call or a job
+  to its page and the AJAX tab and `get_profile_ajax` list the children of a profile through
+  `find_by_parent`: reusing it would show replays as AJAX calls of the original. `find_by_replay_of`
+  is implemented once, in `BaseStore`, over the list summaries (which `Profile#to_h` already feeds
+  with `replay_of`) rather than with a new index in each of the 4 backends: replays are rare, the
+  scan is bounded by `max_profiles` and pages of 200, and no storage format or schema changes (the
+  SQLite store reads `replay_of` from its summary column; no migration). If replays become
+  frequent, an index like the `children` of the other stores is the next step.
+- **How the new profile is linked.** The replay request carries `X-Profiler-Replay-Of: <token>`;
+  the middleware sets `replay_of` from it, only while `config.replay_enabled`, and only for a
+  well-formed token. A client could forge the header to link its profile to another one: this only
+  changes a label, never what the application does, and needs `replay_enabled`.
+- **Bound of N replays.** `config.replay_max_count`, 10 by default; `count` above it, below 1 or
+  not a whole number is refused. Replays run one after the other and stop at the first transport
+  error. Each waits at most `config.replay_timeout` (30 s by default, 120 s at most). 10 was chosen
+  as enough to compare timings and small enough that a mistake costs seconds, not a load test.
+- **No self-profiling.** The whole sending goes through `Profiler.untracked_http`, as the cluster
+  proxy does, so it is not recorded in the outbound HTTP data of a current profile.
+- **Confirmation.** The dashboard uses a native `window.confirm()` (the dashboard has no modal
+  component), for every method, with a stronger sentence for `POST`, `PUT`, `PATCH` and `DELETE`.
+  The confirmation is the client's: the endpoint does not check one. The MCP tool adds **no**
+  guard: there is no interactive channel, and the client that calls `replay_request` answers for
+  the request it replays. Both channels refuse clearly (403 / tool error) while
+  `config.replay_enabled` is false.
+- **What is replayed.** Headers and parameters the profiler masked (`[FILTERED]`) are not sent, and
+  the response says so: a replayed request needing a session cookie or a bearer token must be given
+  them in `headers` / `cookies`. The stored body is sent as captured (decoded; if truncated, a
+  note says so). A `slave` argument forwards the call to that slave's own endpoint.
