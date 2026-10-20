@@ -402,14 +402,29 @@ module Profiler
         Referer User-Agent Turbo-Frame X-Forwarded-Proto
       ].freeze
 
-      # The port the application server really listened on (SERVER_PORT) and the scheme of that
-      # connection (rack.url_scheme), set by the server and not by a header the client sent. A
-      # replay uses them instead of the port of the Host header, which anyone can forge.
+      # The port the application server really listens on and the scheme of that connection, read
+      # from the connection itself and from nothing a client wrote. SERVER_PORT is not used: Puma
+      # derives it from the Host header (Host: localhost:6379 gives SERVER_PORT 6379), and it derives
+      # rack.url_scheme from X-Forwarded-Proto. Puma exposes the accepted connection as
+      # env["puma.socket"]: its local port is the listening port, and a TLS socket means https. Any
+      # other server gives no port (nil), and a replay then needs config.replay_port.
       def listening_endpoint(env)
-        port = Integer(env["SERVER_PORT"].to_s, 10, exception: false)
-        port = nil unless port && port.between?(1, 65_535)
-        scheme = env["rack.url_scheme"].to_s.downcase
-        [port, %w[http https].include?(scheme) ? scheme : nil]
+        socket = env["puma.socket"]
+        port = socket_port(socket)
+        return [nil, nil] unless port
+
+        [port, socket.class.name.to_s.match?(/SSL/) ? "https" : "http"]
+      end
+
+      def socket_port(socket)
+        return nil unless socket
+
+        io = socket.respond_to?(:to_io) ? socket.to_io : socket
+        address = io.local_address
+        port = address.ip? ? address.ip_port : nil
+        port&.between?(1, 65_535) ? port : nil
+      rescue StandardError
+        nil
       end
 
       def extract_headers(env)

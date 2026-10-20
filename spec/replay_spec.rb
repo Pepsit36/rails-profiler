@@ -4,6 +4,7 @@ require "spec_helper"
 require "webmock"
 require "webmock/rspec/matchers"
 require "rack/mock"
+require "action_dispatch"
 require "profiler/replay"
 require "profiler/mcp/tools/replay_request"
 
@@ -247,7 +248,7 @@ RSpec.describe Profiler::Replay do
       it "refuses a profile that recorded no server port, instead of falling back to the Host port" do
         old = build_profile(headers: { "Host" => "localhost:6379" })
         storage.save(old.token, old)
-        expect { replay({}, old.token) }.to raise_error(described_class::Invalid, /does not record the port/)
+        expect { replay({}, old.token) }.to raise_error(described_class::Invalid, /port the application listens on is unknown/)
         expect(a_request(:any, /./)).not_to have_been_made
       end
 
@@ -255,7 +256,7 @@ RSpec.describe Profiler::Replay do
         [[0, "http"], [70_000, "http"], [3000, "ftp"], [3000, nil]].each do |port, scheme|
           bad = build_profile(headers: { "Host" => "localhost" }, server_port: port, url_scheme: scheme)
           storage.save(bad.token, bad)
-          expect { replay({}, bad.token) }.to raise_error(described_class::Invalid, /does not record the port/)
+          expect { replay({}, bad.token) }.to raise_error(described_class::Invalid, /port the application listens on is unknown/)
         end
       end
 
@@ -264,13 +265,155 @@ RSpec.describe Profiler::Replay do
         expect(Profiler::Models::Profile.from_json(profile.to_json).server_port).to eq(3000)
       end
 
-      it "captures SERVER_PORT and rack.url_scheme from the Rack env, not from headers" do
-        env = Rack::MockRequest.env_for("http://localhost:6379/x", "SERVER_PORT" => "3000",
+      it "captures the port of the Puma socket, never SERVER_PORT, the Host or a forwarded header" do
+        socket = TCPServer.new("127.0.0.1", 0)
+        env = Rack::MockRequest.env_for("http://localhost:6379/x", "SERVER_PORT" => "6379", "puma.socket" => socket,
                                                                    "HTTP_X_FORWARDED_PORT" => "6379",
                                                                    "HTTP_X_FORWARDED_PROTO" => "https")
         profile = Profiler::Models::Profile.new(Rack::Request.new(env))
-        expect([profile.server_port, profile.url_scheme]).to eq([3000, "http"])
-        expect(Profiler::Models::Profile.new(Rack::Request.new(env.merge("SERVER_PORT" => "x"))).server_port).to be_nil
+        expect([profile.server_port, profile.url_scheme]).to eq([socket.local_address.ip_port, "http"])
+      ensure
+        socket&.close
+      end
+
+      it "captures no port without a socket to read it from, whatever SERVER_PORT says" do
+        env = Rack::MockRequest.env_for("http://localhost:6379/x", "SERVER_PORT" => "3000")
+        profile = Profiler::Models::Profile.new(Rack::Request.new(env))
+        expect([profile.server_port, profile.url_scheme]).to eq([nil, nil])
+      end
+
+      it "captures no port from a Unix socket" do
+        path = File.join(Dir.mktmpdir, "s.sock")
+        socket = UNIXServer.new(path)
+        env = Rack::MockRequest.env_for("http://localhost/x", "puma.socket" => socket)
+        expect(Profiler::Models::Profile.new(Rack::Request.new(env)).server_port).to be_nil
+      ensure
+        socket&.close
+      end
+    end
+
+    describe "config.replay_port" do
+      def stored_with(port, scheme, host = "localhost:6379")
+        profile = build_profile(headers: { "Host" => host }, server_port: port, url_scheme: scheme)
+        storage.save(profile.token, profile)
+        profile
+      end
+
+      it "always wins over the captured port" do
+        Profiler.configuration.replay_port = 4000
+        stub_request(:any, /localhost:4000/).to_return(status: 200)
+        result = replay({}, stored_with(3000, "http").token)
+        expect(result.target).to eq("http://localhost:4000")
+        expect(a_request(:any, /:3000|:6379/)).not_to have_been_made
+      end
+
+      it "replays a profile that captured no port (a server other than Puma)" do
+        Profiler.configuration.replay_port = 4000
+        stub_request(:any, /localhost:4000/).to_return(status: 200)
+        expect(replay({}, stored_with(nil, nil).token).target).to eq("http://localhost:4000")
+      end
+
+      it "still refuses a host that config.hosts does not allow" do
+        Profiler.configuration.replay_port = 4000
+        expect { replay({}, stored_with(nil, nil, "evil.example:4000").token) }
+          .to raise_error(described_class::Invalid, /neither local nor allowed/)
+      end
+
+      it "validates the value" do
+        config = Profiler::Configuration.new
+        config.replay_port = "4000"
+        expect(config.replay_port).to eq(4000)
+        config.replay_port = nil
+        expect(config.replay_port).to be_nil
+        ["x", 0, 70_000, "80 "].each { |bad| expect { config.replay_port = bad }.to raise_error(ArgumentError, /replay_port/) }
+      end
+    end
+
+    describe "without a captured port nor config.replay_port" do
+      it "refuses with an explicit message that names config.replay_port, and sends nothing" do
+        Profiler.configuration.replay_port = nil
+        profile = build_profile(headers: { "Host" => "localhost:6379" }, server_port: nil, url_scheme: nil)
+        storage.save(profile.token, profile)
+        expect { replay({}, profile.token) }
+          .to raise_error(described_class::Invalid, /config\.replay_port.*rather than using the Host header or SERVER_PORT/m)
+        expect(a_request(:any, /./)).not_to have_been_made
+      end
+    end
+
+    describe "against a real Puma" do
+      require "socket"
+      require "puma"
+      require "puma/server"
+
+      def start_puma(app)
+        server = Puma::Server.new(app)
+        server.add_tcp_listener("127.0.0.1", 0)
+        server.run
+        [server, server.connected_ports.first]
+      end
+
+      def get(port, host, extra = "")
+        TCPSocket.open("127.0.0.1", port) do |c|
+          c.write("GET /orders HTTP/1.1\r\nHost: #{host}\r\n#{extra}Connection: close\r\n\r\n")
+          c.read
+        end
+      end
+
+      it "replays to the port of the socket, not to the forged Host port nor the SERVER_PORT derived from it" do
+        WebMock.allow_net_connect!
+        WebMock.disable!
+        decoy = TCPServer.new("127.0.0.1", 0)
+        decoy_port = decoy.addr[1]
+        decoy_hits = 0
+        decoy_thread = Thread.new do
+          loop do
+            decoy.accept.close
+            decoy_hits += 1
+          rescue IOError
+            break
+          end
+        end
+        server_ports = []
+        real_hits = []
+        rack_app = lambda do |env|
+          server_ports << env["SERVER_PORT"]
+          real_hits << env["HTTP_HOST"]
+          [200, { "Content-Type" => "text/plain" }, ["ok"]]
+        end
+        server, port = start_puma(Profiler::Middleware::ProfilerMiddleware.new(rack_app))
+
+        get(port, "localhost:#{decoy_port}", "X-Forwarded-Proto: https\r\n")
+        expect(server_ports).to eq([decoy_port.to_s]) # Puma derives SERVER_PORT from the Host header
+        token = storage.list(limit: 10).find { |p| p.path == "/orders" }.token
+        profile = storage.load(token)
+        expect([profile.server_port, profile.url_scheme]).to eq([port, "http"])
+
+        result = replay({}, token)
+
+        expect(result.target).to eq("http://localhost:#{port}")
+        expect(result.replays.first[:status]).to eq(200)
+        expect(real_hits.size).to eq(2)
+        expect(decoy_hits).to eq(0)
+      ensure
+        server&.stop(true)
+        decoy&.close
+        decoy_thread&.join
+      end
+
+      it "lets config.replay_port win over the Puma socket" do
+        WebMock.allow_net_connect!
+        WebMock.disable!
+        rack_app = ->(_env) { [200, {}, ["ok"]] }
+        server, port = start_puma(Profiler::Middleware::ProfilerMiddleware.new(rack_app))
+        other, other_port = start_puma(rack_app)
+        get(port, "localhost:1")
+        token = storage.list(limit: 10).find { |p| p.path == "/orders" }.token
+        Profiler.configuration.replay_port = other_port
+
+        expect(replay({}, token).target).to eq("http://localhost:#{other_port}")
+      ensure
+        server&.stop(true)
+        other&.stop(true)
       end
     end
 

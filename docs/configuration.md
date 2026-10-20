@@ -238,8 +238,10 @@ Profiler.configure do |config|
 
   # Replaying a profiled request (see "Replaying a request" in the README). Off by default: a
   # replay sends a real request. It goes to the captured host name on the port the application
-  # server really listened on (SERVER_PORT), never to the port written in the Host header.
+  # really listens on: config.replay_port when set, otherwise the port of the Puma socket captured
+  # with the profile. Never the Host header, never SERVER_PORT (Puma derives it from the Host).
   config.replay_enabled = false
+  config.replay_port = nil                  # the port the application server listens on (1-65535)
   config.replay_max_count = 10              # most replays one call may ask for
   config.replay_timeout = 30                # seconds to wait for each replay
 

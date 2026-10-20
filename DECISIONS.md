@@ -834,8 +834,8 @@ since `memory` is deprecated in the profile model.
 ## Replaying a profiled request (`replay_request`)
 
 - **The target is locked to the original host.** `Profiler::Replay` builds the target only from the
-  stored profile: the host name of the `Host` header, the port from `SERVER_PORT` and the scheme from
-  `rack.url_scheme`, both captured by `Models::Profile` as `server_port` and `url_scheme`. The target
+  stored profile: the host name of the `Host` header, the port from `config.replay_port` or the Puma socket
+  and the scheme of that socket, captured by `Models::Profile` as `server_port` and `url_scheme`. The target
   is not read from `X-Forwarded-Host` nor `X-Forwarded-Proto`: a replay goes where the application
   received the request.
   Nothing a caller passes reaches the connection: options named `host`, `port`, `scheme`, `url`,
@@ -847,19 +847,24 @@ since `memory` is deprecated in the profile model.
   (no user info, path or query): a profile recorded from a forged `Host` header cannot turn the
   replay into a request to an arbitrary server (SSRF). Consequence: in production the application's
   host must be in `config.hosts`.
-- **The port is not taken from the `Host` header.** The first version checked the host name but
-  reused the port of the captured `Host` (`localhost:6379`), so a forged `Host` could aim a replay
-  at any local service (Redis, a database, an admin API) while passing the name check;
-  `config.hosts` does not help, Rails ignores the port by design. Now the port is `SERVER_PORT`
-  and the scheme `rack.url_scheme`, set by the server and not by a client header. Chosen over
-  refusing a replay whose `Host` port differs from `SERVER_PORT`: that check would also refuse the
-  honest cases (a reverse proxy forwarding `Host: app.test` or `app.test:443` to a server on 3000)
-  and still need `SERVER_PORT`, while the substitution is always correct and has no case where a
-  header value decides the connection. A profile without `server_port` (stored before this fix, no
-  schema migration: the field lives in the profile JSON, and in the SQLite `summary` column) is
-  refused with an explicit error rather than falling back to the `Host` port; the cost is that old
-  profiles have to be captured again to be replayed, which is acceptable for a feature that never
-  shipped.
+- **The port is not taken from the `Host` header, nor from `SERVER_PORT`.** The first version
+  reused the port of the captured `Host` (`localhost:6379`), so a forged `Host` could aim a replay at
+  any local service (Redis, a database, an admin API) while passing the name check; `config.hosts`
+  does not help, Rails ignores the port by design. The second version captured `SERVER_PORT`, but
+  measured against a real Puma 8.0.2, `SERVER_PORT` is derived from the `Host` header
+  (`Host: localhost:6379` gives `6379`, `localhost` gives `80`), and `rack.url_scheme` follows
+  `X-Forwarded-Proto`: the trust had only moved. Now there are two sources and no other:
+  `config.replay_port` (explicit, portable, always wins) and the local port of the accepted
+  connection, `env["puma.socket"].local_address.ip_port`, captured as `server_port` (the scheme is
+  `https` when that socket is a TLS one, `http` otherwise). Only Puma, the documented default server,
+  is covered; other servers expose no such object in a common place and are not guessed at. With no
+  `replay_port` and no captured socket port (another server, or a profile stored before this fix, no
+  schema migration: the field lives in the profile JSON, and in the SQLite `summary` column) the
+  replay is refused with an error naming `config.replay_port`, never a fallback on `SERVER_PORT` or the
+  `Host` port. Chosen over comparing the `Host` port with `SERVER_PORT`: both are client controlled
+  under Puma. The cost is that a non-Puma setup must set one option, which is acceptable for a
+  feature that is off by default and never shipped. Tests run a real Puma, since a `MockRequest`
+  cannot show that `SERVER_PORT` follows the `Host`.
 - **`replay_of` is its own field, not `parent_token`.** `parent_token` links an AJAX call or a job
   to its page and the AJAX tab and `get_profile_ajax` list the children of a profile through
   `find_by_parent`: reusing it would show replays as AJAX calls of the original. `find_by_replay_of`

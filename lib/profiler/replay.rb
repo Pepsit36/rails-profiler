@@ -13,11 +13,12 @@ module Profiler
   # replay is profiled like any other request and linked to the original (Profile#replay_of).
   #
   # The target is the host name the original request was made to (the Host header, port removed)
-  # on the port and scheme the application server really used (SERVER_PORT and rack.url_scheme,
-  # captured as Profile#server_port and #url_scheme). The port written in the Host header is
-  # ignored: a client controls it, and neither config.hosts nor Rails look at it. A profile
-  # without a recorded server port (captured before this was) is refused, never replayed to the
-  # port of its Host header. It is read from the stored profile only: no option names a host, a
+  # on the port the application really listens on: config.replay_port when set, otherwise the port
+  # of the listening socket captured with the profile (Profile#server_port, from Puma's
+  # env["puma.socket"]). Neither the Host header nor SERVER_PORT is ever a source: a client controls
+  # both under Puma, and neither config.hosts nor Rails look at the port. With no replay_port and no
+  # captured port (another server than Puma, or a profile captured before the port was) the replay
+  # is refused with an explicit error. It is read from the stored profile only: no option names a host, a
   # port, a scheme or a URL, the ones that try are refused, and the Host header of an override is
   # ignored. The captured host name must also be a local name or one config.hosts allows (the
   # check authorization_mode :allow_local applies), so a profile that recorded a forged Host
@@ -135,19 +136,22 @@ module Profiler
       end
 
       # The host name of the original request (Host header) on the port and scheme the application
-      # server really used (SERVER_PORT, rack.url_scheme), from the profile alone. The port of the
-      # Host header is never used: it is whatever the client wrote.
+      # server really listens on: config.replay_port, else the socket port stored in the profile.
+      # Neither the Host header nor SERVER_PORT is used: both are whatever the client wrote.
       def target_for(source)
         headers = headers_by_name(source.headers)
         host = headers["host"].to_s.strip
         raise Invalid, "The profile has no Host header, so the original host is unknown." if host.empty?
 
-        port = source.server_port
+        configured = Profiler.configuration.replay_port
+        port = configured || source.server_port
         scheme = source.url_scheme
+        scheme = "http" if configured && !%w[http https].include?(scheme)
         unless port.is_a?(Integer) && port.between?(1, 65_535) && %w[http https].include?(scheme)
-          raise Invalid, "The profile does not record the port and scheme the application listened on (it was " \
-                         "captured before they were), so the replay is refused rather than guessing them " \
-                         "from the Host header. Profile the request again."
+          raise Invalid, "The port the application listens on is unknown: the profile did not capture the " \
+                         "listening socket (only Puma exposes it) and config.replay_port is not set. Set " \
+                         "config.replay_port to the port the application server listens on; the replay is " \
+                         "refused rather than using the Host header or SERVER_PORT, which a client controls."
         end
 
         uri = parse_host(scheme, host)

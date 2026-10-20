@@ -180,6 +180,7 @@ module Profiler
       @replay_enabled = false
       @replay_max_count = 10 # most replays one call may ask for
       @replay_timeout = 30   # seconds, per replay
+      @replay_port = nil     # port the application listens on; set it when the server is not Puma
       # Where the profiler's own errors go (Profiler.log): Rails.logger when nil, or $stderr when
       # there is none.
       @logger = nil
@@ -249,6 +250,17 @@ module Profiler
 
     def tmp_path=(value)
       @tmp_path = value.nil? ? nil : Pathname.new(value)
+    end
+
+    attr_reader :replay_port
+
+    # The port the application server really listens on (1 to 65535), or nil to rely on the one the
+    # profiler captured from the Puma socket. When set, a replay always uses it.
+    def replay_port=(value)
+      port = value.to_s.match?(/\A\d{1,5}\z/) ? value.to_s.to_i : nil
+      raise ArgumentError, "config.replay_port must be a port from 1 to 65535 or nil, got #{value.inspect}" unless value.nil? || port&.between?(1, 65_535)
+
+      @replay_port = port
     end
 
     attr_reader :cluster_allowed_slave_urls, :mcp_allowed_hosts, :skip_paths, :http_skip_hosts

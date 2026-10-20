@@ -28,11 +28,13 @@ every commit of every tag interval is accounted for one way or the other.
   is a new profile whose `replay_of` is the original's token, read with the new
   `find_by_replay_of` of every storage backend. It is off by default
   (`config.replay_enabled = false`). A replay always goes to the host name of the original
-  request, on the port and scheme the application server really used (`SERVER_PORT` and
-  `rack.url_scheme`, now kept in the profile), never the port written in the `Host` header: no option
-  can name another host, port or URL, a `Host` or `X-Forwarded-*` header override is ignored, and a
-  captured host that is neither local nor in `config.hosts` is refused. A profile that did not
-  record the server port is not replayed. Every method is allowed; the dashboard asks for a confirmation,
+  request, on the port the application really listens on: `config.replay_port` when set, otherwise
+  the port of the Puma socket captured with the profile (`env["puma.socket"]`, kept as `server_port`).
+  Never the port written in the `Host` header and never `SERVER_PORT`, which Puma derives from that
+  header. No option can name another host, port or URL, a `Host` or `X-Forwarded-*` header override
+  is ignored, and a captured host that is neither local nor in `config.hosts` is refused. Under a
+  server other than Puma, or for a profile captured without a port, the replay is refused until
+  `config.replay_port` is set. Every method is allowed; the dashboard asks for a confirmation,
   the MCP tool does not, its caller answers for the request. The replay call is never profiled
   itself.
 
