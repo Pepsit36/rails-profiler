@@ -307,7 +307,6 @@ RSpec.describe Profiler::Alerts do
         expect(json).not_to include("CRETVALUE"), "#{name}: #{json}"
       end
     end
-
   end
 
   it "keeps the statement readable around plain literals" do
