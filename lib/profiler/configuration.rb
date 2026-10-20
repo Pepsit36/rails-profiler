@@ -69,7 +69,8 @@ module Profiler
                   :collector_circuit_breaker_enabled,
                   :peers, :peer_token, :peer_allow_insecure_http,
                   :regression_duration_threshold, :regression_memory_threshold,
-                  :regression_query_threshold, :regression_cache_threshold
+                  :regression_query_threshold, :regression_cache_threshold,
+                  :replay_enabled, :replay_max_count, :replay_timeout
 
     attr_reader :authorize_block, :enabled, :track_tests, :max_profiles, :editor_url_scheme, :editor_path_map
 
@@ -175,6 +176,11 @@ module Profiler
       @cluster_allowed_slave_urls = []
       @mcp_allowed_hosts = []
       @cluster_allow_insecure_http = false
+      # Replaying a profiled request (Profiler::Replay): off by default, it sends real requests.
+      @replay_enabled = false
+      @replay_max_count = 10 # most replays one call may ask for
+      @replay_timeout = 30   # seconds, per replay
+      @replay_port = nil     # port the application listens on; set it when the server is not Puma
       # Where the profiler's own errors go (Profiler.log): Rails.logger when nil, or $stderr when
       # there is none.
       @logger = nil
@@ -244,6 +250,17 @@ module Profiler
 
     def tmp_path=(value)
       @tmp_path = value.nil? ? nil : Pathname.new(value)
+    end
+
+    attr_reader :replay_port
+
+    # The port the application server really listens on (1 to 65535), or nil to rely on the one the
+    # profiler captured from the Puma socket. When set, a replay always uses it.
+    def replay_port=(value)
+      port = value.to_s.match?(/\A\d{1,5}\z/) ? value.to_s.to_i : nil
+      raise ArgumentError, "config.replay_port must be a port from 1 to 65535 or nil, got #{value.inspect}" unless value.nil? || port&.between?(1, 65_535)
+
+      @replay_port = port
     end
 
     attr_reader :cluster_allowed_slave_urls, :mcp_allowed_hosts, :skip_paths, :http_skip_hosts

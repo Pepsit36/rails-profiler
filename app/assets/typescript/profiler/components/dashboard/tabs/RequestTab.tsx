@@ -1,4 +1,6 @@
-import { Profile, RequestData } from '../../../dashboard/types'
+import { useState } from 'preact/hooks'
+import { useReplayProfile } from '../../../generated/api'
+import { Profile, ReplayResult, RequestData } from '../../../dashboard/types'
 import { HttpCardHeader, HttpReqRespDetail } from './shared/HttpComponents'
 
 interface Props {
@@ -66,6 +68,52 @@ function truncationNotes(profile: Profile, routeData: RequestData): string[] {
   return notes
 }
 
+// Methods that normally change something on the server.
+const SIDE_EFFECT_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE']
+
+// Sends the request again for real, to the host it was made to (the server fixes the target; the
+// button cannot change it). A native confirm() comes first for every method: a replay may have
+// real effects, and a native dialog needs no modal component the dashboard does not have.
+function ReplayButton({ profile }: Props) {
+  const { mutateAsync: replay, isPending } = useReplayProfile()
+  const [result, setResult] = useState<ReplayResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleClick = async () => {
+    const effects = SIDE_EFFECT_METHODS.includes(profile.method)
+      ? `\n\n${profile.method} requests usually change data: the replay will really do it.`
+      : ''
+    const message = `Replay ${profile.method} ${profile.path} against the application for real?${effects}`
+    if (!window.confirm(message)) return
+
+    setError(null)
+    setResult(null)
+    try {
+      setResult(await replay({ id: profile.token, data: {} }))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  return (
+    <div class="profiler-ajax-card__row">
+      <button class="profiler-btn profiler-btn--sm" disabled={isPending} onClick={handleClick}>
+        {isPending ? 'Replaying…' : '↻ Replay request'}
+      </button>
+      {error && <span class="profiler-text--xs profiler-text--error" style="margin-left:8px">{error}</span>}
+      {result && result.replays.map(item => (
+        <span class="profiler-text--xs" style="margin-left:8px" key={item.index}>
+          {item.error
+            ? item.error
+            : item.token
+              ? <a href={`/_profiler/profiles/${item.token}?tab=request`}>{item.status} · open the new profile</a>
+              : `${item.status} (not profiled)`}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export function RequestTab({ profile }: Props) {
   const routeData = (profile.collectors_data?.request ?? {}) as RequestData
   const hasParams = profile.params && Object.keys(profile.params).length > 0
@@ -82,6 +130,14 @@ export function RequestTab({ profile }: Props) {
         duration={profile.duration}
         curlCommand={buildCurl(profile)}
       />
+
+      {profile.replay_of && (
+        <div class="profiler-ajax-card__row profiler-text--xs profiler-text--muted">
+          Replay of <a href={`/_profiler/profiles/${profile.replay_of}?tab=request`}>{profile.replay_of}</a>
+        </div>
+      )}
+
+      <ReplayButton profile={profile} />
 
       {(routeData.controller_action || routeData.route_pattern) && (
         <div class="profiler-ajax-card__row">

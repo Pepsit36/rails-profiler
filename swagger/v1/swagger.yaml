@@ -706,6 +706,86 @@ paths:
       responses:
         '204':
           description: profile deleted
+  "/_profiler/api/profiles/{id}/replay":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      summary: Replay a profiled request against the application's own host
+      description: Sends the request again for real, to the host and port the original request was
+        made to. No option can change that target. Disabled unless config.replay_enabled is true.
+        The client is responsible for asking the user to confirm first.
+      operationId: replayProfile
+      tags:
+      - Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                count:
+                  type: integer
+                  description: Number of replays in a row (at most config.replay_max_count)
+                method:
+                  type: string
+                path:
+                  type: string
+                query:
+                  type: object
+                  additionalProperties: true
+                params:
+                  type: object
+                  additionalProperties: true
+                body:
+                  type: string
+                headers:
+                  type: object
+                  additionalProperties:
+                    type: string
+                cookies:
+                  type: object
+                  additionalProperties:
+                    type: string
+                timeout:
+                  type: number
+      responses:
+        '200':
+          description: replays done
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ReplayResult"
+        '403':
+          description: replays are disabled (config.replay_enabled)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: profile not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '422':
+          description: invalid replay options, or one that tries to change the target
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
   "/_profiler/api/profiles/clear":
     delete:
       summary: Clear all HTTP profiles
@@ -939,6 +1019,40 @@ components:
           type: integer
         has_more:
           type: boolean
+    ReplayResult:
+      type: object
+      required:
+      - source_token
+      - target
+      - replays
+      properties:
+        source_token:
+          type: string
+        target:
+          type: string
+          description: Origin the requests were sent to (the host of the original request)
+        notes:
+          type: array
+          items:
+            type: string
+        replays:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              status:
+                type: integer
+                nullable: true
+              token:
+                type: string
+                nullable: true
+                description: Token of the new profile
+              duration_ms:
+                type: number
+              error:
+                type: string
     Profile:
       type: object
       required:
@@ -1000,6 +1114,10 @@ components:
           type: string
           nullable: true
           description: The parent-id of the incoming traceparent header, null when this profile started the trace.
+        replay_of:
+          type: string
+          nullable: true
+          description: Token of the profile this request replays (see POST /_profiler/api/profiles/{id}/replay).
         child_jobs:
           type: array
           items:

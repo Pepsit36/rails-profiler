@@ -830,3 +830,90 @@ since `memory` is deprecated in the profile model.
   is the single shared implementation, merged into the base; there is no minimal copy to
   reconcile any more.
 - **Payload shape** and activation are documented in `docs/configuration.md`.
+
+## Replaying a profiled request (`replay_request`)
+
+- **The target is locked to the original host.** `Profiler::Replay` builds the target only from the
+  stored profile: the host name of the `Host` header, the port from `config.replay_port` or the Puma socket
+  and the scheme of that socket, captured by `Models::Profile` as `server_port` and `url_scheme`. The target
+  is not read from `X-Forwarded-Host` nor `X-Forwarded-Proto`: a replay goes where the application
+  received the request.
+  Nothing a caller passes reaches the connection: options named `host`, `port`, `scheme`, `url`,
+  `base_url`, `origin`... are refused with an error (not ignored in silence), unknown options are
+  refused, `Host` and forwarding headers in a header override are dropped and reported, a path
+  override must match `/` followed by a non-`/` and no whitespace or control character, and
+  `Net::HTTP` never follows a redirect. As defence in depth, the captured `Host` must be a bare host
+  (no user info, path or query) and pass the replay's own check (next item): a profile recorded from a
+  forged `Host` header cannot turn the replay into a request to an arbitrary server (SSRF).
+- **The host check does not rely on Rails' `config.hosts` as such.** The first version asked
+  `LocalRequest.host_allowed?`, which defers to `config.hosts`. That list decides whether an INCOMING
+  request is accepted; it is not a lock on an OUTGOING target. In development Rails sets it to
+  include `IPAddr 0.0.0.0/0` and `::/0`, so `Host: 169.254.169.254` or `Host: 10.0.0.5` passed and the
+  replay connected to that IP, with the stored unmasked body and headers. Now a captured host is
+  replayed to only when it is (1) a loopback name, `Profiler::Configuration::LOCAL_HTTP_HOSTS`
+  (`127.0.0.1`, `localhost`, `::1`; `*.localhost` is no longer accepted), or (2) a LITERAL String entry
+  of `config.hosts` (compared case-insensitively, its port ignored). A match that comes only from a
+  wildcard (`".example.com"`, `"*"`), an `IPAddr` range, a `Regexp` or a `Proc` is refused: those are
+  the entries through which an arbitrary address passes without the operator having chosen it for this
+  use. What is guaranteed: a replay connects to a loopback address, or to a name or IP the operator
+  wrote out in `config.hosts`, on the port of the application server; never to an address that only
+  a permissive default matched. What is not: a literal name is resolved by DNS at send time and its
+  address is not pinned, so whoever controls that name's DNS controls the destination; and a literal
+  IP the operator wrote (even `169.254.169.254`) is allowed since they chose it. Consequence: in
+  production the application's host must be listed literally in `config.hosts` (a `.example.com`
+  wildcard is not enough), or the replay is refused; on a developer machine `localhost` just works.
+- **The port is not taken from the `Host` header, nor from `SERVER_PORT`.** The first version
+  reused the port of the captured `Host` (`localhost:6379`), so a forged `Host` could aim a replay at
+  any local service (Redis, a database, an admin API) while passing the name check; `config.hosts`
+  does not help, Rails ignores the port by design. The second version captured `SERVER_PORT`, but
+  measured against a real Puma 8.0.2, `SERVER_PORT` is derived from the `Host` header
+  (`Host: localhost:6379` gives `6379`, `localhost` gives `80`), and `rack.url_scheme` follows
+  `X-Forwarded-Proto`: the trust had only moved. Now there are two sources and no other:
+  `config.replay_port` (explicit, portable, always wins) and the local port of the accepted
+  connection, `env["puma.socket"].local_address.ip_port`, captured as `server_port` (the scheme is
+  `https` when that socket is a TLS one, `http` otherwise). Only Puma, the documented default server,
+  is covered; other servers expose no such object in a common place and are not guessed at. With no
+  `replay_port` and no captured socket port (another server, or a profile stored before this fix, no
+  schema migration: the field lives in the profile JSON, and in the SQLite `summary` column) the
+  replay is refused with an error naming `config.replay_port`, never a fallback on `SERVER_PORT` or the
+  `Host` port. Chosen over comparing the `Host` port with `SERVER_PORT`: both are client controlled
+  under Puma. The cost is that a non-Puma setup must set one option, which is acceptable for a
+  feature that is off by default and never shipped. Tests run a real Puma, since a `MockRequest`
+  cannot show that `SERVER_PORT` follows the `Host`.
+- **`replay_of` is its own field, not `parent_token`.** `parent_token` links an AJAX call or a job
+  to its page and the AJAX tab and `get_profile_ajax` list the children of a profile through
+  `find_by_parent`: reusing it would show replays as AJAX calls of the original. `find_by_replay_of`
+  is implemented once, in `BaseStore`, over the list summaries (which `Profile#to_h` already feeds
+  with `replay_of`) rather than with a new index in each of the 4 backends: replays are rare, the
+  scan is bounded by `max_profiles` and pages of 200, and no storage format or schema changes (the
+  SQLite store reads `replay_of` from its summary column; no migration). If replays become
+  frequent, an index like the `children` of the other stores is the next step.
+- **How the new profile is linked.** The replay request carries `X-Profiler-Replay-Of: <token>`;
+  the middleware sets `replay_of` from it, only while `config.replay_enabled`, and only for a
+  well-formed token. A client could forge the header to link its profile to another one: this only
+  changes a label, never what the application does, and needs `replay_enabled`.
+- **Bound of N replays.** `config.replay_max_count`, 10 by default; `count` above it, below 1 or
+  not a whole number is refused. Replays run one after the other and stop at the first transport
+  error. Each waits at most `config.replay_timeout` (30 s by default, 120 s at most). 10 was chosen
+  as enough to compare timings and small enough that a mistake costs seconds, not a load test.
+- **The replay is synchronous, and needs more than one server thread.** `Replay.call` runs in the
+  thread of the request that asked for it, and sends up to `replay_max_count` requests to the same
+  application, each waiting up to `replay_timeout` (120 s at most). On a single-threaded server (Puma
+  `threads 1,1`, WEBrick) the replayed request can only be served by the thread that is waiting for
+  it, so every replay waits for its timeout and fails; with several threads, a `count` of 10 can
+  hold one server thread for minutes. Chosen: document the limit and recommend several Puma threads,
+  rather than a background job and a polling API (a lot of machinery for a developer feature that is
+  off by default). A check of Puma's thread count was not added: the setting is not exposed in the
+  Rack environment, and reading it from `Puma` internals would break with the next release.
+- **No self-profiling.** The whole sending goes through `Profiler.untracked_http`, as the cluster
+  proxy does, so it is not recorded in the outbound HTTP data of a current profile.
+- **Confirmation.** The dashboard uses a native `window.confirm()` (the dashboard has no modal
+  component), for every method, with a stronger sentence for `POST`, `PUT`, `PATCH` and `DELETE`.
+  The confirmation is the client's: the endpoint does not check one. The MCP tool adds **no**
+  guard: there is no interactive channel, and the client that calls `replay_request` answers for
+  the request it replays. Both channels refuse clearly (403 / tool error) while
+  `config.replay_enabled` is false.
+- **What is replayed.** Headers and parameters the profiler masked (`[FILTERED]`) are not sent, and
+  the response says so: a replayed request needing a session cookie or a bearer token must be given
+  them in `headers` / `cookies`. The stored body is sent as captured (decoded; if truncated, a
+  note says so). A `slave` argument forwards the call to that slave's own endpoint.

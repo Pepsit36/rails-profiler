@@ -332,6 +332,7 @@ module Profiler
         end
 
         req_collector = collectors_data["request"] || {}
+        summary = parse_json(row["summary"], {})
 
         Models::Profile.from_hash(
           token:                  row["token"],
@@ -348,6 +349,11 @@ module Profiler
           trace_id:               row["trace_id"],
           span_id:                row["span_id"],
           parent_span_id:         row["parent_span_id"],
+          # Not columns: the summary column holds the whole to_h, replay_of and the listening
+          # endpoint included.
+          replay_of:              summary["replay_of"],
+          server_port:            summary["server_port"],
+          url_scheme:             summary["url_scheme"],
           is_ajax:                row["is_ajax"] == 1,
           tabs:                   parse_json(row["tabs"], []),
           params:                 parse_json(row["params"], {}),

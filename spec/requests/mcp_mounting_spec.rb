@@ -128,7 +128,8 @@ RSpec.describe "MCP HTTP endpoint", type: :request do
         names = rpc_result.dig("result", "tools").map { |tool| tool["name"] }
         expect(names).not_to include(*Profiler::MCP::Server::WRITE_TOOLS)
         expect(Profiler::MCP::Server::WRITE_TOOLS).to contain_exactly(
-          "run_tests", "clear_profiles", "set_env_var", "delete_env_var", "reset_env_var", "reset_all_env_vars"
+          "run_tests", "clear_profiles", "set_env_var", "delete_env_var", "reset_env_var", "reset_all_env_vars",
+          "replay_request"
         )
         expect(names).to include("query_profiles", "get_profile", "list_env_vars", "list_slaves")
       end
@@ -144,6 +145,17 @@ RSpec.describe "MCP HTTP endpoint", type: :request do
         expect(ENV).not_to have_key("PROFILER_SPEC_READ_ONLY")
       ensure
         ENV.delete("PROFILER_SPEC_READ_ONLY")
+      end
+
+      it "does not run replay_request called by name, nor send anything" do
+        session = handshake(local.merge(mcp_headers))
+        allow(Profiler::Replay).to receive(:call)
+
+        result = call_tool(session, "replay_request", { token: "abcdef0123456789" })
+
+        expect(result["result"]).to be_nil
+        expect(result.dig("error", "data")).to include("Tool not found: replay_request")
+        expect(Profiler::Replay).not_to have_received(:call)
       end
     end
 

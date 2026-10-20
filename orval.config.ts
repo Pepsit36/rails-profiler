@@ -33,7 +33,7 @@ export default defineConfig({
             'listOutboundRequests',
             'getEnvVars', 'updateEnvVar', 'resetEnvVar', 'resetAllEnvVars',
             'getEditorConfig', 'getFunctionProfiling', 'updateFunctionProfiling',
-            'explainQuery',
+            'explainQuery', 'replayProfile',
             'getToolbar',
             'getTestRunnerFiles', 'createTestRun', 'getTestRun', 'deleteTestRun',
           ].map(id => [id, { query: { useInfinite: false } }])

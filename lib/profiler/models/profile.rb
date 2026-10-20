@@ -15,7 +15,7 @@ module Profiler
       attr_accessor :token, :method, :status, :duration, :allocated_objects,
                     :started_at, :finished_at, :params, :headers,
                     :response_headers, :collectors_data, :collectors_metadata,
-                    :parent_token, :is_ajax, :profile_type,
+                    :parent_token, :replay_of, :server_port, :url_scheme, :is_ajax, :profile_type,
                     :request_body, :request_body_encoding,
                     :response_body, :response_body_encoding,
                     :request_body_size, :request_body_truncated, :request_body_size_is_minimum,
@@ -31,6 +31,7 @@ module Profiler
         @collectors_data = {}
         @collectors_metadata = []
         @parent_token = nil
+        @replay_of = nil
         @is_ajax = false
         @profile_type = "http"
 
@@ -39,6 +40,7 @@ module Profiler
           @method = request.request_method
           capture_params(request) if params
           @headers = extract_headers(request.env)
+          @server_port, @url_scheme = listening_endpoint(request.env)
         end
       end
 
@@ -170,6 +172,9 @@ module Profiler
           trace_id: @trace_id,
           span_id: @span_id,
           parent_span_id: @parent_span_id,
+          replay_of: @replay_of,
+          server_port: @server_port,
+          url_scheme: @url_scheme,
           is_ajax: @is_ajax
         }
       end
@@ -217,6 +222,9 @@ module Profiler
         profile.response_body_size_is_minimum = data[:response_body_size_is_minimum]
         profile.collectors_released_after_seconds = data[:collectors_released_after_seconds]
         profile.parent_token = data[:parent_token]
+        profile.replay_of = data[:replay_of]
+        profile.server_port = data[:server_port]
+        profile.url_scheme = data[:url_scheme]
         profile.is_ajax = data[:is_ajax] || false
         profile.profile_type = data[:profile_type] || "http"
         profile.gem_version = data[:gem_version]
@@ -391,8 +399,33 @@ module Profiler
         Accept Accept-Charset Accept-Encoding Accept-Language
         Authorization Cache-Control Connection Content-Length Content-Type
         Cookie Host If-Modified-Since If-None-Match Origin
-        Referer User-Agent Turbo-Frame
+        Referer User-Agent Turbo-Frame X-Forwarded-Proto
       ].freeze
+
+      # The port the application server really listens on and the scheme of that connection, read
+      # from the connection itself and from nothing a client wrote. SERVER_PORT is not used: Puma
+      # derives it from the Host header (Host: localhost:6379 gives SERVER_PORT 6379), and it derives
+      # rack.url_scheme from X-Forwarded-Proto. Puma exposes the accepted connection as
+      # env["puma.socket"]: its local port is the listening port, and a TLS socket means https. Any
+      # other server gives no port (nil), and a replay then needs config.replay_port.
+      def listening_endpoint(env)
+        socket = env["puma.socket"]
+        port = socket_port(socket)
+        return [nil, nil] unless port
+
+        [port, socket.class.name.to_s.match?(/SSL/) ? "https" : "http"]
+      end
+
+      def socket_port(socket)
+        return nil unless socket
+
+        io = socket.respond_to?(:to_io) ? socket.to_io : socket
+        address = io.local_address
+        port = address.ip? ? address.ip_port : nil
+        port&.between?(1, 65_535) ? port : nil
+      rescue StandardError
+        nil
+      end
 
       def extract_headers(env)
         env.select { |k, _| k.start_with?("HTTP_") }

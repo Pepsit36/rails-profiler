@@ -50,6 +50,26 @@ module Profiler
         raise NotImplementedError, "#{self.class} must implement #find_by_trace"
       end
 
+      # The profiles that replay the profile +source_token+ (Profile#replay_of), oldest first.
+      # Unlike parent_token, which links an AJAX call to its page and is indexed by each store,
+      # replay_of is carried by the summary every store keeps for its lists, so one scan of the
+      # summaries serves the four backends. Replays are rare and the scan is bounded by
+      # max_profiles.
+      def find_by_replay_of(source_token, page_size: 200)
+        return [] unless Token.valid?(source_token)
+
+        found = []
+        offset = 0
+        loop do
+          page = list(limit: page_size, offset: offset, summary: true)
+          found.concat(page.select { |profile| profile.replay_of == source_token })
+          break if page.size < page_size
+
+          offset += page_size
+        end
+        found.sort_by { |profile| profile.started_at || Time.at(0) }
+      end
+
       def delete(token)
         raise NotImplementedError, "#{self.class} must implement #delete"
       end

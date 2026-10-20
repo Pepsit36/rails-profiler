@@ -39,6 +39,7 @@ Profiler::Engine.routes.draw do
 
     resources :profiles, only: [:index, :show, :destroy] do
       collection { delete :clear }
+      member { post :replay, to: "replays#create" }
     end
     resources :jobs, only: [:index, :show, :destroy] do
       collection { delete :clear }
