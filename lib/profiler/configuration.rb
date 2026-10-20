@@ -69,7 +69,8 @@ module Profiler
                   :collector_circuit_breaker_enabled,
                   :peers, :peer_token, :peer_allow_insecure_http,
                   :regression_duration_threshold, :regression_memory_threshold,
-                  :regression_query_threshold, :regression_cache_threshold
+                  :regression_query_threshold, :regression_cache_threshold,
+                  :replay_enabled, :replay_max_count, :replay_timeout
 
     attr_reader :authorize_block, :enabled, :track_tests, :max_profiles, :editor_url_scheme, :editor_path_map
 
@@ -175,6 +176,10 @@ module Profiler
       @cluster_allowed_slave_urls = []
       @mcp_allowed_hosts = []
       @cluster_allow_insecure_http = false
+      # Replaying a profiled request (Profiler::Replay): off by default, it sends real requests.
+      @replay_enabled = false
+      @replay_max_count = 10 # most replays one call may ask for
+      @replay_timeout = 30   # seconds, per replay
       # Where the profiler's own errors go (Profiler.log): Rails.logger when nil, or $stderr when
       # there is none.
       @logger = nil

@@ -49,7 +49,7 @@ module Profiler
         token
       end
 
-      %i[load list cleanup exists? find_by_parent delete clear].each do |name|
+      %i[load list cleanup exists? find_by_parent find_by_replay_of delete clear].each do |name|
         define_method(name) { |*, **| raise @error }
       end
     end

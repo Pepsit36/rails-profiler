@@ -348,6 +348,8 @@ module Profiler
           trace_id:               row["trace_id"],
           span_id:                row["span_id"],
           parent_span_id:         row["parent_span_id"],
+          # Not a column: the summary column holds the whole to_h, replay_of included.
+          replay_of:              parse_json(row["summary"], {})["replay_of"],
           is_ajax:                row["is_ajax"] == 1,
           tabs:                   parse_json(row["tabs"], []),
           params:                 parse_json(row["params"], {}),

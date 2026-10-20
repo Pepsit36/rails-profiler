@@ -2,6 +2,7 @@
 
 require "rack"
 require_relative "../models/profile"
+require_relative "../replay"
 require_relative "../current_context"
 require_relative "../trace_context"
 require_relative "../otel/trace_exporter"
@@ -33,6 +34,7 @@ module Profiler
           begin
             profile = Models::Profile.new(build_request(env), params: false)
             profile.gem_version = Profiler.version
+            profile.replay_of = replay_source(env)
             Profiler::CurrentContext.token = profile.token
             assign_trace(env, profile)
 
@@ -312,6 +314,16 @@ module Profiler
         path = env["PATH_INFO"]
         # === matches a Regexp against the path and compares a String with it.
         Profiler.configuration.skip_paths.none? { |pattern| pattern === path }
+      end
+
+      # The token of the profile a replay (Profiler::Replay) repeats, named by the header the
+      # replay adds. Only honoured when replays are enabled, and only a well-formed token: the
+      # header changes how the profile is linked, never what the application does.
+      def replay_source(env)
+        return nil unless Profiler.configuration.replay_enabled
+
+        token = env[Profiler::Replay::SOURCE_ENV_KEY].to_s
+        Storage::Token.valid?(token) ? token : nil
       end
 
       def build_request(env)
