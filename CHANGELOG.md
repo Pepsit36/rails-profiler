@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-10-20
+
+<!-- stamped -->
+
 ### Added
 
 - **Compare:** `compare_profiles` (MCP) and the dashboard's Compare page diff two profiles: total duration, allocations, cache hit rate, rendered views, and SQL queries grouped by normalized statement into new, gone and slower blocks.
