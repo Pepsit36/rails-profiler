@@ -12,6 +12,8 @@ Profiler::Engine.routes.draw do
 
   root to: "profiles#index"
 
+  get "compare", to: "compare#show"
+
   resources :profiles, only: [:index, :show] do
     member do
       get :timeline
@@ -32,6 +34,9 @@ Profiler::Engine.routes.draw do
   get "health", to: "health#show"
 
   namespace :api do
+    get "compare", to: "compare#show"
+    get "compare/nodes", to: "compare#nodes"
+
     resources :profiles, only: [:index, :show, :destroy] do
       collection { delete :clear }
     end

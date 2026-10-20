@@ -162,6 +162,7 @@ export function ProfileList() {
   const consoleLoadingMore = consolesQuery.isFetchingNextPage
   const testLoadingMore    = testsQuery.isFetchingNextPage
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
+  const [selectedForCompare, setSelectedForCompare] = useState<Set<string>>(new Set())
 
   // HTTP filters
   const [httpSearch, setHttpSearch] = useState('')
@@ -274,6 +275,17 @@ export function ProfileList() {
 
   const deleteProfile = (token: string) =>
     deleteProfileMutation({ id: token }).then(() => httpQuery.refetch())
+  const toggleCompareSelect = (token: string) => {
+    setSelectedForCompare(prev => {
+      const next = new Set(prev)
+      if (next.has(token)) {
+        next.delete(token)
+      } else if (next.size < 2) {
+        next.add(token)
+      }
+      return next
+    })
+  }
 
   const deleteJob = (token: string) =>
     deleteJobMutation({ id: token }).then(() => jobsQuery.refetch())
@@ -551,6 +563,12 @@ export function ProfileList() {
                     {httpFiltersActive && (
                       <span class="profiler-filter-count">{filteredProfiles.length} / {profiles.length}</span>
                     )}
+                    {selectedForCompare.size === 2 && (
+                      <a class="btn btn-secondary btn-sm" href={`${BASE}/compare?a=${encodeURIComponent(Array.from(selectedForCompare)[0])}&b=${encodeURIComponent(Array.from(selectedForCompare)[1])}`}>Compare 2 profiles</a>
+                    )}
+                    {selectedForCompare.size === 1 && (
+                      <span class="profiler-text--xs profiler-text--muted">Select 1 more to compare</span>
+                    )}
                     <button class={`btn-refresh${loadingHttp ? ' btn-refresh--spinning' : ''}`} onClick={refresh} disabled={loadingHttp} title="Refresh">↺</button>
                     <button class="btn btn-danger btn-sm" onClick={clearProfiles} title="Delete HTTP profiles">Clear</button>
                     <button class="btn btn-danger btn-sm" onClick={clearAll} title="Delete all HTTP and job profiles">Clear All</button>
@@ -564,6 +582,7 @@ export function ProfileList() {
                   <table>
                     <thead>
                       <tr>
+                        <th style="width:32px"></th>
                         <th class={`sortable${httpSort.col === 'date' ? ' sortable--active' : ''}`} onClick={() => toggleHttpSort('date')}>
                           Time {sortIcon(httpSort.col, httpSort.dir, 'date')}
                         </th>
@@ -608,6 +627,41 @@ export function ProfileList() {
                           <td><button class="btn-row-delete" onClick={() => deleteProfile(p.token)} title="Delete">×</button></td>
                         </tr>
                       ))}
+                      {sortedProfiles.map(p => {
+                        const isSelected = selectedForCompare.has(p.token)
+                        const isDisabled = !isSelected && selectedForCompare.size >= 2
+                        return (
+                          <tr key={p.token} class={isSelected ? 'profiler-row--selected' : ''}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                disabled={isDisabled}
+                                onChange={() => toggleCompareSelect(p.token)}
+                                title={isDisabled ? 'Deselect another profile first' : 'Select for comparison'}
+                              />
+                            </td>
+                            <td>{formatTime(p.started_at)}</td>
+                            <td><span class={methodClass(p.method)}>{p.method}</span></td>
+                            <td>
+                              <a href={`${BASE}/profiles/${p.token}`}>{p.path}</a>
+                              {p.gem_version && p.gem_version !== currentVersion && (
+                                <span class="profiler-version-warn" title={`Capturé avec v${p.gem_version} (actuel : v${currentVersion})`}>⚠️</span>
+                              )}
+                            </td>
+                            <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
+                            <td>{p.collectors_data?.database?.total_queries ?? '-'}</td>
+                            <td>{formatMemory(p.memory)}</td>
+                            <td><span class={statusClass(p.status)}>{p.status}</span></td>
+                            <td class="profiler-text--xs profiler-text--mono profiler-text--muted">
+                              <button class="token-copy" onClick={() => copyToken(p.token)} title="Copy full token">
+                                {copiedToken === p.token ? '✓' : p.token.substring(0, 8) + '…'}
+                              </button>
+                            </td>
+                            <td><button class="btn-row-delete" onClick={() => deleteProfile(p.token)} title="Delete">×</button></td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 )}
