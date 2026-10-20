@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-10-20
+
+<!-- stamped -->
+
 ### Added
 
 - **Replay:** A profiled HTTP request can be sent again, for real, from the new **Replay request**
