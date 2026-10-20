@@ -605,28 +605,6 @@ export function ProfileList() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedProfiles.map(p => (
-                        <tr key={p.token}>
-                          <td>{formatTime(p.started_at)}</td>
-                          <td><span class={methodClass(p.method)}>{p.method}</span></td>
-                          <td>
-                            <a href={`${BASE}/profiles/${p.token}`}>{p.path}</a>
-                            {p.gem_version && p.gem_version !== currentVersion && (
-                              <span class="profiler-version-warn" title={`Capturé avec v${p.gem_version} (actuel : v${currentVersion})`}>⚠️</span>
-                            )}
-                          </td>
-                          <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
-                          <td>{p.collectors_data?.database?.total_queries ?? '-'}</td>
-                          <td>{formatAllocations(allocatedObjects(p))}</td>
-                          <td><span class={statusClass(p.status)}>{p.status}</span></td>
-                          <td class="profiler-text--xs profiler-text--mono profiler-text--muted">
-                            <button class="token-copy" onClick={() => copyToken(p.token)} title="Copy full token">
-                              {copiedToken === p.token ? '✓' : p.token.substring(0, 8) + '…'}
-                            </button>
-                          </td>
-                          <td><button class="btn-row-delete" onClick={() => deleteProfile(p.token)} title="Delete">×</button></td>
-                        </tr>
-                      ))}
                       {sortedProfiles.map(p => {
                         const isSelected = selectedForCompare.has(p.token)
                         const isDisabled = !isSelected && selectedForCompare.size >= 2
@@ -651,7 +629,7 @@ export function ProfileList() {
                             </td>
                             <td><span class={durationClass(p.duration)}>{p.duration.toFixed(2)} ms</span></td>
                             <td>{p.collectors_data?.database?.total_queries ?? '-'}</td>
-                            <td>{formatMemory(p.memory)}</td>
+                            <td>{formatAllocations(allocatedObjects(p))}</td>
                             <td><span class={statusClass(p.status)}>{p.status}</span></td>
                             <td class="profiler-text--xs profiler-text--mono profiler-text--muted">
                               <button class="token-copy" onClick={() => copyToken(p.token)} title="Copy full token">
