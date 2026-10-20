@@ -62,7 +62,10 @@ module Profiler
                   :cluster_heartbeat_interval, :cluster_offline_threshold,
                   :cluster_master, :cluster_secret, :cluster_require_secret,
                   :cluster_allow_insecure_http, :logger,
-                  :collector_circuit_breaker_enabled
+                  :collector_circuit_breaker_enabled,
+                  :peers, :peer_token, :peer_allow_insecure_http,
+                  :regression_duration_threshold, :regression_memory_threshold,
+                  :regression_query_threshold, :regression_cache_threshold
 
     attr_reader :authorize_block, :enabled, :track_tests, :max_profiles, :editor_url_scheme, :editor_path_map
 
@@ -172,6 +175,15 @@ module Profiler
       @collector_circuit_breaker_threshold = 3
       @editor_url_scheme = "vscode"
       @editor_path_map = {}
+      # Other instances whose profiles can be compared with this one's: [{ name:, url: }]. The only
+      # URLs the profiler ever calls to read a profile (Profiler::Peers). Empty: no outgoing call.
+      @peers = []
+      @peer_token = nil
+      @peer_allow_insecure_http = false
+      @regression_duration_threshold = 10  # % change threshold, changes below this are neutral
+      @regression_memory_threshold = 10    # % change threshold
+      @regression_query_threshold = 0      # % change threshold, 0 means any query count increase is a regression
+      @regression_cache_threshold = 5      # % change threshold for cache hit rate
     end
 
     attr_reader :collector_circuit_breaker_threshold

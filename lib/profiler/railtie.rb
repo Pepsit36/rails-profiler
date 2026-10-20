@@ -131,6 +131,8 @@ module Profiler
 
         require_relative "cluster/security"
         Profiler::Cluster::Security.warn_about_configuration(Rails.logger)
+        require_relative "peers"
+        Profiler::Peers.warn_about_configuration(Rails.logger)
         next unless Profiler.configuration.slave?
 
         require_relative "cluster/master_client"
