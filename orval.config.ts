@@ -32,7 +32,7 @@ export default defineConfig({
             'getTest', 'deleteTest', 'clearTests',
             'listOutboundRequests',
             'getEnvVars', 'updateEnvVar', 'resetEnvVar', 'resetAllEnvVars',
-            'getFunctionProfiling', 'updateFunctionProfiling',
+            'getEditorConfig', 'getFunctionProfiling', 'updateFunctionProfiling',
             'explainQuery',
             'getToolbar',
             'getTestRunnerFiles', 'createTestRun', 'getTestRun', 'deleteTestRun',
