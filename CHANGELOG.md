@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-10-20
+
+<!-- stamped -->
+
 ### Added
 
 - **Alerts:** The new `config.alerts_enabled` (default `false`) turns on threshold alerts. Each profile
