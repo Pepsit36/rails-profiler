@@ -1,4 +1,5 @@
 import { TestData } from '../../../dashboard/types'
+import { SourceLink } from '../../SourceLink'
 
 interface Props {
   testData: TestData
@@ -26,7 +27,7 @@ export function TestTab({ testData }: Props) {
           </tr>
           <tr>
             <th>File</th>
-            <td class="profiler-text--mono profiler-text--xs">{testData.test_file}:{testData.test_line}</td>
+            <td class="profiler-text--mono profiler-text--xs"><SourceLink file={testData.test_file} line={testData.test_line} /></td>
           </tr>
           <tr>
             <th>Framework</th>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'preact/hooks'
+import { SourceFrame } from '../../SourceLink'
 import { useExplainQuery } from '../../../generated/api'
 import { DatabaseData, DatabaseQuery } from '../../../dashboard/types'
 
@@ -230,7 +231,7 @@ export function DatabaseTab({ dbData, token }: Props) {
           {openBacktraces.has(group.pattern) && group.backtrace.length > 0 && (
             <div class="profiler-n1-backtrace">
               {group.backtrace.map((frame, i) => (
-                <div key={i} class="profiler-n1-backtrace__frame">{frame}</div>
+                <div key={i} class="profiler-n1-backtrace__frame"><SourceFrame frame={frame} /></div>
               ))}
             </div>
           )}

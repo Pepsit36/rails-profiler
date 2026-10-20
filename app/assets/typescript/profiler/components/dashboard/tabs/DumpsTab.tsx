@@ -1,4 +1,5 @@
 import { DumpData } from '../../../dashboard/types'
+import { SourceLink } from '../../SourceLink'
 
 interface Props {
   dumpData: DumpData | undefined
@@ -29,7 +30,7 @@ export function DumpsTab({ dumpData }: Props) {
               {dump.label && <span class="profiler-dump-card__label">{dump.label}</span>}
             </div>
             <div>
-              <div class="profiler-dump-card__location">{dump.file}:{dump.line}</div>
+              <div class="profiler-dump-card__location"><SourceLink file={dump.file} line={dump.line} /></div>
               <div class="profiler-text--xs profiler-text--muted profiler-mt-1">
                 {new Date(dump.timestamp).toLocaleTimeString('en', { hour12: false })}
               </div>

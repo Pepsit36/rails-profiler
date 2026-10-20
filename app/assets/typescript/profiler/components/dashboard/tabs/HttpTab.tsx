@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks'
+import { SourceFrame } from '../../SourceLink'
 import { HttpData, HttpRequest } from '../../../dashboard/types'
 import { formatBytes } from './shared/utils'
 import { HttpCardHeader, HttpReqRespDetail } from './shared/HttpComponents'
@@ -125,7 +126,7 @@ export function HttpRequestDetail({ req, index, threshold }: { req: HttpRequest,
           ↑ {req.request_size == null ? 'size unknown' : `${req.request_size_is_minimum ? 'at least ' : ''}${formatBytes(req.request_size)}`} · ↓ {formatBytes(req.response_size)}
         </span>
         {req.backtrace && req.backtrace.length > 0 && (
-          <span class="profiler-text--xs profiler-text--muted" style="margin-left:12px">{req.backtrace[0]}</span>
+          <span class="profiler-text--xs profiler-text--muted" style="margin-left:12px"><SourceFrame frame={req.backtrace[0]} /></span>
         )}
       </div>
 

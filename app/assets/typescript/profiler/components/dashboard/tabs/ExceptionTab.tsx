@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks'
+import { SourceFrame } from '../../SourceLink'
 import { ExceptionData, BacktraceFrame } from '../../../dashboard/types'
 
 interface Props {
@@ -40,7 +41,7 @@ export function ExceptionTab({ exceptionData }: Props) {
           <h3 class="profiler-section__header">Application frames ({appFrames.length})</h3>
           {appFrames.map((frame: BacktraceFrame, i: number) => (
             <div key={i} class="profiler-query-card profiler-mb-1">
-              <code class="profiler-text--sm">{frame.location}</code>
+              <code class="profiler-text--sm"><SourceFrame frame={frame.location} /></code>
             </div>
           ))}
         </div>
@@ -57,7 +58,7 @@ export function ExceptionTab({ exceptionData }: Props) {
             style={frame.app_frame ? '' : 'opacity:0.45;'}
           >
             <code class={`profiler-text--sm${frame.app_frame ? ' profiler-text--success' : ' profiler-text--muted'}`}>
-              {frame.location}
+              <SourceFrame frame={frame.location} />
             </code>
           </div>
         ))}

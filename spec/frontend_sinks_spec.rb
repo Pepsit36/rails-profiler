@@ -2,9 +2,12 @@
 
 require "spec_helper"
 
+# The sources scanned are the ones that ship: the Vitest files (*.test.ts, *.test.tsx) are not bundled
+# and name the hostile inputs they check.
+#
 # The dashboard displays values captured from the profiled application (bodies, headers,
-# SQL, emails) in the profiler's origin, which is the application's own. The front end has
-# no test runner, so these examples read its sources and fail on the constructs that turn
+# SQL, emails) in the profiler's origin, which is the application's own. The front end is
+# checked by reading its sources: these examples fail on the constructs that turn
 # such a value into live markup or script.
 RSpec.describe "Front-end HTML sinks" do
   root = File.expand_path("../app/assets", __dir__)
@@ -91,7 +94,7 @@ RSpec.describe "Front-end HTML sinks" do
   end
 
   sources = Dir.glob(File.join(root, "{typescript,javascript}", "**", "*.{ts,tsx,js}"))
-               .reject { |path| path.include?("/generated/") }
+               .reject { |path| path.include?("/generated/") || path.match?(/\.test\.tsx?\z/) }
                .to_h { |path| [path.delete_prefix("#{root}/"), strip_comments.call(File.read(path))] }
 
   mailer_tab = "typescript/profiler/components/dashboard/tabs/MailerTab.tsx"
@@ -155,13 +158,16 @@ RSpec.describe "Front-end HTML sinks" do
     attributes = offending_lines(/\b(href|src|action|formAction|poster|xlinkHref)=\{/)
     allowed = /\b(href|src|action|formAction|poster|xlinkHref)=\{(
                  `(\/|\$\{BASE\}\/|data:image\/svg\+xml;base64,)[^`]*`|
-                 BASE|url|objectUrl|downloadUrl|href
+                 BASE|url|objectUrl|downloadUrl|href|editorUrl
                )\}/x
     expect(attributes).not_to be_empty
     expect(attributes.select { |line| line.split(": ", 2).last.gsub(allowed, "").match?(/\b(href|src|action|formAction|poster|xlinkHref)=\{/) }).to be_empty
 
     # The href prop is ToolbarItem's own, which the toolbar fills with fixed paths.
     expect(offending_lines(/href=\{href\}/).map { |line| line.split(":").first }.uniq).to eq(["typescript/profiler/components/toolbar/ToolbarItem.tsx"])
+    # editorUrl is SourceLink's own: buildEditorUrl answers only vscode://, idea:// or cursor://
+    # URLs, or null, and null renders no anchor.
+    expect(offending_lines(/href=\{editorUrl\}/).map { |line| line.split(":").first }.uniq).to eq(["typescript/profiler/components/SourceLink.tsx"])
     expect(offending_lines(/<ToolbarItem\b[^>]*\bhref=(?!\{`\/_profiler\/)/)).to be_empty
 
     assignments = offending_lines(/\.(href|src|action)\s*=(?!=)|setAttribute\(\s*['"`](href|src|action|xlink:href)|\blocation(\.href)?\s*=(?!=)|location\.(assign|replace)\(|window\.open\(/)

@@ -1,4 +1,5 @@
 import { DumpData } from '../../../dashboard/types'
+import { SourceLink } from '../../SourceLink'
 
 interface Props {
   dumpData: DumpData
@@ -21,7 +22,7 @@ export function DumpsPanel({ dumpData }: Props) {
                 )}
               </span>
               <span class="profiler-text--xs profiler-text--muted">
-                {dump.file.split('/').pop()}:{dump.line}
+                <SourceLink file={dump.file} line={dump.line}>{dump.file.split('/').pop()}:{dump.line}</SourceLink>
               </span>
             </div>
             <pre
