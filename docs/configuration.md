@@ -236,6 +236,13 @@ Profiler.configure do |config|
   config.cluster_require_secret = true
   config.cluster_allow_insecure_http = false
 
+  # Replaying a profiled request (see "Replaying a request" in the README). Off by default: a
+  # replay sends a real request. It goes to the captured host name on the port the application
+  # server really listened on (SERVER_PORT), never to the port written in the Host header.
+  config.replay_enabled = false
+  config.replay_max_count = 10              # most replays one call may ask for
+  config.replay_timeout = 30                # seconds to wait for each replay
+
   # Where the profiler's own errors and warnings go (see below).
   config.logger = nil
 end

@@ -11,7 +11,8 @@ RSpec.describe "POST /_profiler/api/profiles/:id/replay", type: :request do
   include WebMock::Matchers
 
   let(:storage) { Profiler::Storage::MemoryStore.new }
-  let(:source) { build_profile(method: "DELETE", path: "/things/1", headers: { "Host" => "localhost:3000" }) }
+  let(:source) { build_profile(method: "DELETE", path: "/things/1", headers: { "Host" => "localhost:3000" },
+                                 server_port: 3000, url_scheme: "http") }
   let(:headers) { { "REMOTE_ADDR" => "127.0.0.1", "CONTENT_TYPE" => "application/json", "HTTP_HOST" => "localhost" } }
 
   def app

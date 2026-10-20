@@ -12,12 +12,16 @@ module Profiler
   # Sends a profiled request again, for real, to the application that served it, so that the
   # replay is profiled like any other request and linked to the original (Profile#replay_of).
   #
-  # The target is the host and port the original request was made to, as the profile captured
-  # them (the Host header, and X-Forwarded-Proto for the scheme). It is read from the stored
-  # profile only: no option names a host, a port, a scheme or a URL, the ones that try are
-  # refused, and the Host header of an override is ignored. The captured host must also be a
-  # local name or one config.hosts allows (the check authorization_mode :allow_local applies),
-  # so a profile that recorded a forged Host header cannot aim a replay elsewhere. Redirects
+  # The target is the host name the original request was made to (the Host header, port removed)
+  # on the port and scheme the application server really used (SERVER_PORT and rack.url_scheme,
+  # captured as Profile#server_port and #url_scheme). The port written in the Host header is
+  # ignored: a client controls it, and neither config.hosts nor Rails look at it. A profile
+  # without a recorded server port (captured before this was) is refused, never replayed to the
+  # port of its Host header. It is read from the stored profile only: no option names a host, a
+  # port, a scheme or a URL, the ones that try are refused, and the Host header of an override is
+  # ignored. The captured host name must also be a local name or one config.hosts allows (the
+  # check authorization_mode :allow_local applies), so a profile that recorded a forged Host
+  # header cannot aim a replay elsewhere. Redirects
   # are never followed. The call itself goes through Profiler.untracked_http: it is not
   # recorded in whatever profile is current, and cannot profile itself in a loop.
   #
@@ -130,20 +134,31 @@ module Profiler
         [seconds, MAX_TIMEOUT].min
       end
 
-      # The host and port of the original request, from the profile alone.
+      # The host name of the original request (Host header) on the port and scheme the application
+      # server really used (SERVER_PORT, rack.url_scheme), from the profile alone. The port of the
+      # Host header is never used: it is whatever the client wrote.
       def target_for(source)
         headers = headers_by_name(source.headers)
         host = headers["host"].to_s.strip
         raise Invalid, "The profile has no Host header, so the original host is unknown." if host.empty?
 
-        scheme = headers["x-forwarded-proto"].to_s.split(",").first.to_s.strip.downcase == "https" ? "https" : "http"
+        port = source.server_port
+        scheme = source.url_scheme
+        unless port.is_a?(Integer) && port.between?(1, 65_535) && %w[http https].include?(scheme)
+          raise Invalid, "The profile does not record the port and scheme the application listened on (it was " \
+                         "captured before they were), so the replay is refused rather than guessing them " \
+                         "from the Host header. Profile the request again."
+        end
+
         uri = parse_host(scheme, host)
         unless LocalRequest.host_allowed?(host)
           raise Invalid, "The host #{uri.hostname.inspect} of the original request is neither local nor allowed " \
                          "by config.hosts: refusing to send a request to it."
         end
 
-        { scheme: scheme, host: uri.hostname, port: uri.port, origin: "#{scheme}://#{uri.authority}" }
+        hostname = uri.hostname
+        authority = hostname.include?(":") ? "[#{hostname}]:#{port}" : "#{hostname}:#{port}"
+        { scheme: scheme, host: hostname, port: port, origin: "#{scheme}://#{authority}" }
       end
 
       def parse_host(scheme, host)

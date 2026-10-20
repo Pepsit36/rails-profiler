@@ -663,7 +663,7 @@ Send a profiled HTTP request again, for real, to the application's own host, and
 | `timeout` | number | Seconds to wait for each replay (default `config.replay_timeout`, at most 120). |
 | `slave` | string | Run the replay on a connected slave. |
 
-The target is always the host and port of the original request; a `host`, `port`, `url` or similar argument is refused. Methods with side effects (`POST`, `PUT`, `PATCH`, `DELETE`) are replayed too and **there is no confirmation on this channel: calling the tool is the confirmation**, the client answers for the request it replays.
+The target is always the host name of the original request on the port the application server really listened on (never the port of its `Host` header); a `host`, `port`, `url` or similar argument is refused. Methods with side effects (`POST`, `PUT`, `PATCH`, `DELETE`) are replayed too and **there is no confirmation on this channel: calling the tool is the confirmation**, the client answers for the request it replays.
 
 **Returns:** the target, and for each replay its status, the token of the new profile and its duration.
 

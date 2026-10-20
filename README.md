@@ -266,14 +266,18 @@ Profiler.configure do |config|
 end
 ```
 
-- **The target is the application's own host, port and scheme.** A replay goes to the host, port
-  and scheme of the original request: the host from the `Host` header, the port and scheme
-  captured from the server's own environment (`SERVER_PORT`, `rack.url_scheme`) rather than from
-  any header. No option can name another host, port, scheme or URL: the ones that try are
-  refused, a `Host` or `X-Forwarded-*` header given as an override is ignored, a path override
-  must be a path of the application, and a redirect is never followed. The captured host must
-  also be a local name or one `config.hosts` allows, otherwise the replay is refused. A profile
-  recorded before this option existed has no captured port or scheme and cannot be replayed.
+- **The target is the application's own host, on the port it really listened on.** A replay goes
+  to the host name of the original request (the `Host` header, port removed) on the port and scheme
+  the application server reported when it received that request (`SERVER_PORT` and
+  `rack.url_scheme`, kept in the profile as `server_port` and `url_scheme`). The port written in the
+  `Host` header is ignored: a client can write any port there, and neither `config.hosts` nor Rails
+  look at it. The host name must be a local name or one `config.hosts` allows, otherwise the replay
+  is refused. A profile captured before `server_port` was recorded cannot be replayed (the replay is
+  refused, it never falls back to the `Host` port): profile the request again. No option can name
+  another host, port, scheme or URL: the ones that try are refused, a `Host` or `X-Forwarded-*`
+  header given as an override is ignored, a path override must be a path of the application, and a
+  redirect is never followed. Behind a reverse proxy, the port is the one of the application
+  server, not the public one, which is what a replay must reach.
 - **Variations:** `method`, `path`, `query`, `params`, `body`, `headers`, `cookies`, and `count` to
   replay several times in a row (each a new profile). Headers and parameters the profiler masked
   (`Authorization`, `Cookie`, filtered parameters) are not sent unless you give them again.

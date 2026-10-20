@@ -26,7 +26,8 @@ RSpec.describe Profiler::Replay do
   let(:source) do
     build_profile(path: "/orders", method: "POST", params: { "a" => "1" },
                   headers: { "Host" => "localhost:3000", "Content-Type" => "application/x-www-form-urlencoded",
-                             "Cookie" => "[FILTERED]" }).tap do |profile|
+                             "Cookie" => "[FILTERED]" },
+                  server_port: 3000, url_scheme: "http").tap do |profile|
       profile.request_body = "a=1"
       profile.request_body_encoding = "text"
     end
@@ -181,14 +182,14 @@ RSpec.describe Profiler::Replay do
     end
 
     it "refuses a profile whose captured Host is neither local nor allowed" do
-      forged = build_profile(headers: { "Host" => "evil.example" })
+      forged = build_profile(headers: { "Host" => "evil.example" }, server_port: 3000, url_scheme: "http")
       storage.save(forged.token, forged)
       expect { replay({}, forged.token) }.to raise_error(described_class::Invalid, /neither local nor allowed/)
       expect(a_request(:any, /evil/)).not_to have_been_made
     end
 
     it "refuses a Host header that is not a bare host name" do
-      forged = build_profile(headers: { "Host" => "localhost@evil.example/x" })
+      forged = build_profile(headers: { "Host" => "localhost@evil.example/x" }, server_port: 3000, url_scheme: "http")
       storage.save(forged.token, forged)
       expect { replay({}, forged.token) }.to raise_error(described_class::Invalid)
     end
@@ -200,12 +201,113 @@ RSpec.describe Profiler::Replay do
     end
 
     it "uses https only when the captured X-Forwarded-Proto says so, on the captured host" do
-      secure = build_profile(headers: { "Host" => "localhost:8443", "X-Forwarded-Proto" => "https" })
+      secure = build_profile(headers: { "Host" => "localhost:8443" }, server_port: 8443, url_scheme: "https")
       storage.save(secure.token, secure)
       stub_request(:any, "https://localhost:8443/test").to_return(status: 200)
       result = replay({}, secure.token)
       expect(result.target).to eq("https://localhost:8443")
       expect(a_request(:get, "https://localhost:8443/test")).to have_been_made
+    end
+
+    it "ignores a forged X-Forwarded-Proto: the scheme is the one the server saw" do
+      forged = build_profile(headers: { "Host" => "localhost:3000", "X-Forwarded-Proto" => "https" },
+                             server_port: 3000, url_scheme: "http")
+      storage.save(forged.token, forged)
+      expect(replay({}, forged.token).target).to eq("http://localhost:3000")
+    end
+
+    describe "port lock" do
+      def stored(host, **attrs)
+        profile = build_profile(headers: { "Host" => host }, server_port: 3000, url_scheme: "http", **attrs)
+        storage.save(profile.token, profile)
+        profile
+      end
+
+      ["localhost:6379", "127.0.0.1:5432", "[::1]:11211", "localhost:80", "localhost:1"].each do |host|
+        it "sends a replay of Host #{host} to the captured server port, never to the Host port" do
+          forged_port = host[/(\d+)\z/, 1]
+          stub_request(:any, /127\.0\.0\.1|::1|localhost/).to_return(status: 200)
+          result = replay({}, stored(host).token)
+
+          expect(result.target).to end_with(":3000")
+          expect(a_request(:any, /:#{forged_port}\//)).not_to have_been_made
+          expect(a_request(:any, /:3000\//)).to have_been_made.once
+        end
+      end
+
+      it "does not let a host listed in config.hosts choose the port" do
+        stub_const("Rails", double(application: double(config: double(hosts: ["app.example.test"])), env: double(test?: false)))
+        stub_request(:any, /app\.example\.test/).to_return(status: 200)
+        result = replay({}, stored("app.example.test:6379").token)
+
+        expect(result.target).to eq("http://app.example.test:3000")
+        expect(a_request(:any, /:6379/)).not_to have_been_made
+      end
+
+      it "refuses a profile that recorded no server port, instead of falling back to the Host port" do
+        old = build_profile(headers: { "Host" => "localhost:6379" })
+        storage.save(old.token, old)
+        expect { replay({}, old.token) }.to raise_error(described_class::Invalid, /does not record the port/)
+        expect(a_request(:any, /./)).not_to have_been_made
+      end
+
+      it "refuses an out-of-range server port or an unknown scheme" do
+        [[0, "http"], [70_000, "http"], [3000, "ftp"], [3000, nil]].each do |port, scheme|
+          bad = build_profile(headers: { "Host" => "localhost" }, server_port: port, url_scheme: scheme)
+          storage.save(bad.token, bad)
+          expect { replay({}, bad.token) }.to raise_error(described_class::Invalid, /does not record the port/)
+        end
+      end
+
+      it "survives the stores: the server port is kept by the SQLite store and by to_h / from_json" do
+        profile = stored("localhost:6379")
+        expect(Profiler::Models::Profile.from_json(profile.to_json).server_port).to eq(3000)
+      end
+
+      it "captures SERVER_PORT and rack.url_scheme from the Rack env, not from headers" do
+        env = Rack::MockRequest.env_for("http://localhost:6379/x", "SERVER_PORT" => "3000",
+                                                                   "HTTP_X_FORWARDED_PORT" => "6379",
+                                                                   "HTTP_X_FORWARDED_PROTO" => "https")
+        profile = Profiler::Models::Profile.new(Rack::Request.new(env))
+        expect([profile.server_port, profile.url_scheme]).to eq([3000, "http"])
+        expect(Profiler::Models::Profile.new(Rack::Request.new(env.merge("SERVER_PORT" => "x"))).server_port).to be_nil
+      end
+    end
+
+    describe "against a real TCP server" do
+      require "socket"
+
+      it "never reaches a decoy listening on the port the Host header names" do
+        WebMock.allow_net_connect!
+        WebMock.disable!
+        decoy = TCPServer.new("127.0.0.1", 0)
+        real = TCPServer.new("127.0.0.1", 0)
+        hits = { decoy: 0, real: 0 }
+        threads = { decoy: decoy, real: real }.map do |name, server|
+          Thread.new do
+            loop do
+              client = server.accept
+              hits[name] += 1
+              client.gets
+              client.write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+              client.close
+            rescue IOError
+              break
+            end
+          end
+        end
+        profile = build_profile(headers: { "Host" => "127.0.0.1:#{decoy.addr[1]}" },
+                                server_port: real.addr[1], url_scheme: "http")
+        storage.save(profile.token, profile)
+
+        result = replay({ count: 2 }, profile.token)
+
+        expect(result.replays.map { |r| r[:status] }).to eq([200, 200])
+        expect(hits).to eq(decoy: 0, real: 2)
+      ensure
+        [decoy, real].compact.each(&:close)
+        threads&.each(&:join)
+      end
     end
 
     it "does not follow a redirect to another host" do

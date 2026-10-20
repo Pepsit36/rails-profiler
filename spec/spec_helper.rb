@@ -80,6 +80,8 @@ def build_profile(attrs = {})
       trace_id: attrs[:trace_id],
       span_id: attrs[:span_id],
       parent_span_id: attrs[:parent_span_id],
+      server_port: attrs[:server_port],
+      url_scheme: attrs[:url_scheme],
       is_ajax: attrs[:is_ajax] || false,
       profile_type: attrs[:profile_type] || "http"
     }

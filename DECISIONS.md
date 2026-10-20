@@ -833,24 +833,33 @@ since `memory` is deprecated in the profile model.
 
 ## Replaying a profiled request (`replay_request`)
 
-- **The target is locked to the original host, port and scheme.** `Profiler::Replay` builds the
-  target from the stored profile: the `Host` header for the host name, and `server_port` /
-  `url_scheme` (captured from the Rack environment itself, `SERVER_PORT` and `rack.url_scheme`,
-  never from a header) for the port and scheme. An earlier version of this branch took the port
-  from the `Host` header and the scheme from `X-Forwarded-Proto`; both are attacker-controlled on
-  the original request, so a forged `Host: localhost:6379` could redirect a replay to an
-  arbitrary local port. Fixed by capturing the real listening port and scheme at the point the
-  profile is created, and using them unconditionally at replay time: a profile recorded before
-  this fix, with no `server_port`/`url_scheme`, refuses to be replayed rather than falling back to
-  the header. Nothing a caller passes reaches the connection: options named `host`, `port`,
-  `scheme`, `url`, `base_url`, `origin`... are refused with an error (not ignored in silence),
-  unknown options are refused, `Host` and forwarding headers in a header override are dropped and
-  reported, a path override must match `/` followed by a non-`/` and no whitespace or control
-  character, and `Net::HTTP` never follows a redirect. As defence in depth, the captured `Host`
-  must also pass `LocalRequest.host_allowed?` (local name, or allowed by `config.hosts`), and be a
-  bare host (no user info, path or query): a profile recorded from a forged `Host` header cannot
-  turn the replay into a request to an arbitrary server (SSRF). Consequence: in production the
-  application's host must be in `config.hosts`.
+- **The target is locked to the original host.** `Profiler::Replay` builds the target only from the
+  stored profile: the host name of the `Host` header, the port from `SERVER_PORT` and the scheme from
+  `rack.url_scheme`, both captured by `Models::Profile` as `server_port` and `url_scheme`. The target
+  is not read from `X-Forwarded-Host` nor `X-Forwarded-Proto`: a replay goes where the application
+  received the request.
+  Nothing a caller passes reaches the connection: options named `host`, `port`, `scheme`, `url`,
+  `base_url`, `origin`... are refused with an error (not ignored in silence), unknown options are
+  refused, `Host` and forwarding headers in a header override are dropped and reported, a path
+  override must match `/` followed by a non-`/` and no whitespace or control character, and
+  `Net::HTTP` never follows a redirect. As defence in depth, the captured `Host` must also pass
+  `LocalRequest.host_allowed?` (local name, or allowed by `config.hosts`), and be a bare host
+  (no user info, path or query): a profile recorded from a forged `Host` header cannot turn the
+  replay into a request to an arbitrary server (SSRF). Consequence: in production the application's
+  host must be in `config.hosts`.
+- **The port is not taken from the `Host` header.** The first version checked the host name but
+  reused the port of the captured `Host` (`localhost:6379`), so a forged `Host` could aim a replay
+  at any local service (Redis, a database, an admin API) while passing the name check;
+  `config.hosts` does not help, Rails ignores the port by design. Now the port is `SERVER_PORT`
+  and the scheme `rack.url_scheme`, set by the server and not by a client header. Chosen over
+  refusing a replay whose `Host` port differs from `SERVER_PORT`: that check would also refuse the
+  honest cases (a reverse proxy forwarding `Host: app.test` or `app.test:443` to a server on 3000)
+  and still need `SERVER_PORT`, while the substitution is always correct and has no case where a
+  header value decides the connection. A profile without `server_port` (stored before this fix, no
+  schema migration: the field lives in the profile JSON, and in the SQLite `summary` column) is
+  refused with an explicit error rather than falling back to the `Host` port; the cost is that old
+  profiles have to be captured again to be replayed, which is acceptable for a feature that never
+  shipped.
 - **`replay_of` is its own field, not `parent_token`.** `parent_token` links an AJAX call or a job
   to its page and the AJAX tab and `get_profile_ajax` list the children of a profile through
   `find_by_parent`: reusing it would show replays as AJAX calls of the original. `find_by_replay_of`

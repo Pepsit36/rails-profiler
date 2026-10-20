@@ -15,7 +15,7 @@ module Profiler
       attr_accessor :token, :method, :status, :duration, :allocated_objects,
                     :started_at, :finished_at, :params, :headers,
                     :response_headers, :collectors_data, :collectors_metadata,
-                    :parent_token, :replay_of, :is_ajax, :profile_type,
+                    :parent_token, :replay_of, :server_port, :url_scheme, :is_ajax, :profile_type,
                     :request_body, :request_body_encoding,
                     :response_body, :response_body_encoding,
                     :request_body_size, :request_body_truncated, :request_body_size_is_minimum,
@@ -40,6 +40,7 @@ module Profiler
           @method = request.request_method
           capture_params(request) if params
           @headers = extract_headers(request.env)
+          @server_port, @url_scheme = listening_endpoint(request.env)
         end
       end
 
@@ -172,6 +173,8 @@ module Profiler
           span_id: @span_id,
           parent_span_id: @parent_span_id,
           replay_of: @replay_of,
+          server_port: @server_port,
+          url_scheme: @url_scheme,
           is_ajax: @is_ajax
         }
       end
@@ -220,6 +223,8 @@ module Profiler
         profile.collectors_released_after_seconds = data[:collectors_released_after_seconds]
         profile.parent_token = data[:parent_token]
         profile.replay_of = data[:replay_of]
+        profile.server_port = data[:server_port]
+        profile.url_scheme = data[:url_scheme]
         profile.is_ajax = data[:is_ajax] || false
         profile.profile_type = data[:profile_type] || "http"
         profile.gem_version = data[:gem_version]
@@ -396,6 +401,16 @@ module Profiler
         Cookie Host If-Modified-Since If-None-Match Origin
         Referer User-Agent Turbo-Frame X-Forwarded-Proto
       ].freeze
+
+      # The port the application server really listened on (SERVER_PORT) and the scheme of that
+      # connection (rack.url_scheme), set by the server and not by a header the client sent. A
+      # replay uses them instead of the port of the Host header, which anyone can forge.
+      def listening_endpoint(env)
+        port = Integer(env["SERVER_PORT"].to_s, 10, exception: false)
+        port = nil unless port && port.between?(1, 65_535)
+        scheme = env["rack.url_scheme"].to_s.downcase
+        [port, %w[http https].include?(scheme) ? scheme : nil]
+      end
 
       def extract_headers(env)
         env.select { |k, _| k.start_with?("HTTP_") }
