@@ -779,3 +779,54 @@ SQL fingerprints reuse `MCP::Resources::N1Patterns.normalize_sql`. "Slower" mean
 fingerprint grew by more than 20% (`ProfileDiff::SLOWER_THRESHOLD_PCT`, a constant, not a setting);
 each block is capped at 25 entries. The scorecard's memory row is replaced by allocated objects,
 since `memory` is deprecated in the profile model.
+
+## Threshold alerts (gem #50)
+
+- **Where it runs**: in `Profiler.save_profile`, after a profile is saved, so HTTP requests, jobs,
+  console and tests are all covered by one code path (`Profiler::Alerts.check`).
+- **Allocation threshold**: `allocated_objects_warning_threshold`. `memory_warning_threshold` is
+  deprecated (the same figure times 40, never a byte count) and assigning it logs a warning.
+- **N+1**: at least one `N1Patterns.normalize_sql` group with more than one query in the request.
+  It is broad on purpose (same definition as the OTel counter); no minimum repeat count.
+- **No raw data**: the payload has the normalized SQL (cut at 200 characters) and a fingerprint, no
+  body, parameter or header. The shared `N1Patterns.normalize_sql` (used by the MCP server, left as
+  is) misses backslash escapes, doubled quotes, comments and dollar quoting, so `Alerts.redact_sql`
+  runs first and only for alerts: it removes those forms, reading the statement with and without
+  backslash escapes, and cuts the statement at the first quote, comment or dollar tag when the two
+  readings differ or one is left unclosed (a value is dropped rather than guessed). Chosen over
+  sending the fingerprint alone because the statement is what makes an alert actionable. A literal
+  in a vendor syntax not listed can still remain: the guarantee is "the known forms are removed",
+  not "no literal ever", hence also the cut at 200 characters and the fingerprint.
+- **Load order**: `alerts.rb` requires `mcp/resources/n1_patterns` at the top (it is otherwise only
+  loaded by the MCP server) rather than extracting `normalize_sql`, to keep one definition. Each
+  family of alert is detected in its own rescue, so one failing never hides the others.
+- **Hook and detection off the request**: the whole check (the detections, which walk and
+  normalize every query, then `on_detection`, then the webhook) runs on the worker thread, not
+  only the HTTP call. Alerts are therefore delivered one after the other.
+- **One worker, bounded queue** (review of v4): `Alerts::Worker` is one thread fed by a
+  `SizedQueue` of 100. A thread per profile accumulated without limit behind a slow webhook (3 s
+  connect plus 3 s read, in series). A full queue drops the check and logs it. The thread is
+  started on first use and again after a fork. `Alerts.drain` waits for the queue (tests).
+- **Both key types** (review of v4): `Alerts.check` receives the live profile, whose
+  `collectors_data` has the symbol keys `DatabaseCollector#collect` wrote, while a stored profile
+  has strings. `Alerts.read` accepts both, the principle of `Otel::TraceExporter.list`. The SQL
+  alerts and `controller_action` had never fired on a real profile because the specs used
+  string-key hashes; `spec/alerts_pipeline_spec.rb` now runs the middleware, the real collectors
+  and `Profiler.save_profile`.
+- **One alert per type and profile** (review of v4): `Profiler.save_profile` runs again whenever
+  a late outbound HTTP call completes (`HttpCollector#save_if_collected`). The check stays in
+  `save_profile` so jobs, console and tests are covered, and `Alerts` remembers the types already
+  delivered per profile token (the last 2000 tokens) instead of moving the call to the middleware
+  as the OTel export does.
+- **Console path left out** (review of v4): for a console profile `path` is the expression
+  typed, which may hold a secret passed as a literal, so the payload sends `path: null` for it.
+  Masking was not chosen: the profiler only knows its own credentials.
+- **Webhook URL** (review of v4): validated at assignment, `ArgumentError` for a URL that is not
+  http(s) with a host. Credentials in the URL are refused rather than turned into `basic_auth`,
+  to keep a secret out of a configuration line that is often logged.
+- **SQL redaction bound** (review of v4): the statement is cut at 5000 characters before
+  `SqlRedaction` reads it, since the dollar-quote pattern rescans to the end for each opener.
+- **Asynchronous**: `RequestContext.detached { Thread.new { ... } }`. `RequestContext.detached`
+  is the single shared implementation, merged into the base; there is no minimal copy to
+  reconcile any more.
+- **Payload shape** and activation are documented in `docs/configuration.md`.

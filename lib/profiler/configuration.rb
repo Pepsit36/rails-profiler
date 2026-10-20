@@ -3,6 +3,7 @@
 require "pathname"
 require_relative "local_request"
 require_relative "allocation_counter"
+require_relative "alerts/webhook"
 
 module Profiler
   # Header the profiler's own clients send on every request. A page on another origin cannot
@@ -40,9 +41,12 @@ module Profiler
     # URL schemes the source links can use. Anything else is never turned into a link.
     EDITOR_URL_SCHEMES = %w[vscode idea cursor].freeze
 
+    attr_reader :alert_webhook_url
+
     attr_accessor :storage_options, :collectors,
                   :slow_query_threshold, :max_queries_warning, :sql_backtrace,
                   :track_memory, :allocated_objects_warning_threshold,
+                  :alerts_enabled, :alert_webhook_timeout,
                   :mcp_enabled, :mcp_transport, :mcp_port, :mcp_read_only,
                   :authorization_mode, :extension_cors_enabled,
                   :cors_allowed_origins, :api_forgery_protection, :frame_ancestors,
@@ -84,6 +88,11 @@ module Profiler
       # versions did, about 0.1 ms each), :none never.
       @sql_backtrace = :first_and_slow
       @track_memory = true
+      # Threshold alerts (Profiler::Alerts): off until enabled; the webhook stays off until a URL is set.
+      @alerts_enabled = false
+      @alert_webhook_url = nil
+      @alert_webhook_timeout = 3 # seconds, for the connection and for the answer
+      @on_detection = nil
       # Not compared with anything yet. The default is the former 100 MB memory threshold read
       # as the objects it stood for.
       @allocated_objects_warning_threshold = 100 * 1024 * 1024 / AllocationCounter::LEGACY_BYTES_PER_OBJECT
@@ -202,6 +211,13 @@ module Profiler
     # The editor the file:line links open: "vscode", "idea" or "cursor" (String or Symbol). A
     # value outside that list is kept as given, but #editor_link_scheme answers nil for it, so
     # that no link is built.
+    # Nil or empty turns the webhook off. Otherwise an absolute http(s) URL with a host, and no
+    # user or password in it: the webhook sends none, so a URL carrying them is refused rather than
+    # silently called without them.
+    def alert_webhook_url=(value)
+      @alert_webhook_url = Alerts::Webhook.validate!(value)
+    end
+
     def editor_url_scheme=(value)
       @editor_url_scheme = value.nil? ? nil : value.to_s
     end
@@ -346,6 +362,13 @@ module Profiler
 
     def resolved_name
       @name || (defined?(Rails) ? Rails.application.class.module_parent_name.underscore : "profiler")
+    end
+
+    # Block called with the alert (a Hash, see Profiler::Alerts) each time a profile crosses a
+    # threshold or shows an N+1. Only runs when config.alerts_enabled is true.
+    def on_detection(&block)
+      @on_detection = block if block
+      @on_detection
     end
 
     def authorize_with(&block)
