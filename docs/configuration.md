@@ -438,6 +438,9 @@ Profiler.configure do |config|
   end
 
   # Optional: a generic JSON webhook, off while no URL is set.
+  # An absolute http(s) URL with a host; anything else raises ArgumentError at assignment. Credentials in
+  # the URL (https://user:pass@...) are refused too: they are never sent, so put the secret in the path
+  # or a query parameter of the receiver.
   config.alert_webhook_url = "https://alerts.example.com/profiler"
   config.alert_webhook_timeout = 3 # seconds, connection and answer (default 3)
 end
@@ -483,7 +486,8 @@ The hook receives this Hash (symbol keys); the webhook POSTs it as `application/
 - `threshold`, `unit`, `value`: the limit crossed and the measured figure. Units: `ms` (value is
   the slowest query), `queries`, `objects`, `repeats` (value is the largest repeat count).
 - `profile_token`: opens the profile in the dashboard (`/_profiler/profiles/<token>`).
-- `controller_action`: `null` when the route is unknown. `path` carries no query string.
+- `controller_action`: `null` when the route is unknown. `path` carries no query string, and is `null`
+  for a console profile: its path is the expression typed, which may hold a secret passed as a literal.
 - `slow_query` adds `count` (number of slow queries) and `query`: `{ "sql", "fingerprint" }` for the slowest.
 - `n_plus_one` adds `patterns`: up to 10 of `{ "sql", "fingerprint", "count" }`, the most repeated first.
 - `sql` is the **normalized** statement (literals replaced with `?`, cut at 200 characters) and
@@ -499,10 +503,13 @@ remain, so do not treat the `sql` field as a guarantee for a database that has i
 
 ### Delivery
 
-The detection itself, `on_detection` and the webhook all run on a thread of their own, started with
+The detection itself, `on_detection` and the webhook all run on one worker thread, started with
 `Profiler::Instrumentation::RequestContext.detached`, so it holds neither the request's
 collectors nor its notification scope and its own HTTP call is not recorded in a profile. The
-request never waits for it. A hook that raises, an unreachable host, a timeout or a non 2xx answer
+request never waits for it. Checks are queued (100 at most) and run one after the other: when the
+queue is full, for instance behind a webhook that is slow or down, the check is dropped and logged
+instead of starting more threads. A profile saved again later (a background outbound call that
+finishes after the response) is not alerted again for a type already delivered. A hook that raises, an unreachable host, a timeout or a non 2xx answer
 is logged with `Profiler.log_error` and never reaches the request. There is no retry.
 To reach Slack or another service, point the URL at a relay that turns this JSON into the format
 it expects.

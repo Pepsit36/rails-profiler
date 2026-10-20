@@ -801,15 +801,32 @@ since `memory` is deprecated in the profile model.
   loaded by the MCP server) rather than extracting `normalize_sql`, to keep one definition. Each
   family of alert is detected in its own rescue, so one failing never hides the others.
 - **Hook and detection off the request**: the whole check (the detections, which walk and
-  normalize every query, then `on_detection`, then the webhook) runs in the detached thread, not
-  only the HTTP call. `Alerts.check` returns that thread. Alerts of one profile are therefore
-  delivered one after the other, a slow webhook delaying the next alert of the same profile only.
-- **Generic webhook**: plain JSON, no Slack format; the user plugs a relay. Timeout 3 s by default
-  (`alert_webhook_timeout`), no retry, errors logged.
-- **Asynchronous**: `RequestContext.detached { Thread.new { ... } }`. The brief called `detached`
-  and the OTel counter merged, but the base available to this branch (`origin/master`
-  9444774) had neither (no `reference/rails-profiler-gem` branch in the hub). Decision taken with
-  the orchestrator: implement a minimal `detached` here (a fiber-local flag that makes
-  `RequestContext.capture` return nil) and the alert code, without the OTel counter. Expect a
-  merge conflict to resolve in `request_context.rb` if the real `detached` lands first: keep that one.
+  normalize every query, then `on_detection`, then the webhook) runs on the worker thread, not
+  only the HTTP call. Alerts are therefore delivered one after the other.
+- **One worker, bounded queue** (review of v4): `Alerts::Worker` is one thread fed by a
+  `SizedQueue` of 100. A thread per profile accumulated without limit behind a slow webhook (3 s
+  connect plus 3 s read, in series). A full queue drops the check and logs it. The thread is
+  started on first use and again after a fork. `Alerts.drain` waits for the queue (tests).
+- **Both key types** (review of v4): `Alerts.check` receives the live profile, whose
+  `collectors_data` has the symbol keys `DatabaseCollector#collect` wrote, while a stored profile
+  has strings. `Alerts.read` accepts both, the principle of `Otel::TraceExporter.list`. The SQL
+  alerts and `controller_action` had never fired on a real profile because the specs used
+  string-key hashes; `spec/alerts_pipeline_spec.rb` now runs the middleware, the real collectors
+  and `Profiler.save_profile`.
+- **One alert per type and profile** (review of v4): `Profiler.save_profile` runs again whenever
+  a late outbound HTTP call completes (`HttpCollector#save_if_collected`). The check stays in
+  `save_profile` so jobs, console and tests are covered, and `Alerts` remembers the types already
+  delivered per profile token (the last 2000 tokens) instead of moving the call to the middleware
+  as the OTel export does.
+- **Console path left out** (review of v4): for a console profile `path` is the expression
+  typed, which may hold a secret passed as a literal, so the payload sends `path: null` for it.
+  Masking was not chosen: the profiler only knows its own credentials.
+- **Webhook URL** (review of v4): validated at assignment, `ArgumentError` for a URL that is not
+  http(s) with a host. Credentials in the URL are refused rather than turned into `basic_auth`,
+  to keep a secret out of a configuration line that is often logged.
+- **SQL redaction bound** (review of v4): the statement is cut at 5000 characters before
+  `SqlRedaction` reads it, since the dollar-quote pattern rescans to the end for each opener.
+- **Asynchronous**: `RequestContext.detached { Thread.new { ... } }`. `RequestContext.detached`
+  is the single shared implementation, merged into the base; there is no minimal copy to
+  reconcile any more.
 - **Payload shape** and activation are documented in `docs/configuration.md`.

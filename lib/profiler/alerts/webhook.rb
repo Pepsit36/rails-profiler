@@ -12,6 +12,24 @@ module Profiler
     module Webhook
       module_function
 
+      # The URL as a String, nil when none is given. Raises ArgumentError for a URL that cannot be
+      # called: not http(s), no host, or credentials in it (never sent, so refused).
+      def validate!(value)
+        return nil if value.nil? || value.to_s.strip.empty?
+
+        uri = URI.parse(value.to_s.strip)
+        unless uri.is_a?(URI::HTTP) && !uri.host.to_s.empty?
+          raise ArgumentError, "config.alert_webhook_url: #{value.to_s.inspect} must be an http(s) URL with a host"
+        end
+        if uri.userinfo
+          raise ArgumentError, "config.alert_webhook_url: credentials in the URL are not sent; " \
+                               "put the secret in the path or a query parameter of the receiver"
+        end
+        uri.to_s
+      rescue URI::InvalidURIError
+        raise ArgumentError, "config.alert_webhook_url: #{value.to_s.inspect} is not a valid URL"
+      end
+
       def post(alert, url, timeout)
         return if url.nil? || url.to_s.empty?
 

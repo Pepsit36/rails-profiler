@@ -4,6 +4,7 @@ require "spec_helper"
 require "socket"
 require "stringio"
 require "logger"
+require "benchmark"
 require "open3"
 require "rbconfig"
 
@@ -33,9 +34,10 @@ RSpec.describe Profiler::Alerts do
     profile
   end
 
-  # Alerts.check works on a thread of its own: wait for it.
+  # Alerts.check hands the profile to the worker thread: wait for the queue to empty.
   def run_check(profile)
-    described_class.check(profile)&.join
+    described_class.check(profile)
+    described_class.drain
   end
 
   def types
@@ -200,10 +202,10 @@ RSpec.describe Profiler::Alerts do
       gate = Queue.new
       allow(Profiler::Alerts::Webhook).to receive(:send_request) { gate.pop }
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      thread = described_class.check(profile_with(allocated_objects: 5000))
+      described_class.check(profile_with(allocated_objects: 5000))
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.5
       gate << :go
-      thread.join
+      described_class.drain
     end
 
     it "logs a timeout without raising it nor slowing the request" do
@@ -212,10 +214,9 @@ RSpec.describe Profiler::Alerts do
       Profiler.configuration.alert_webhook_timeout = 0.3
       serve(answer: false)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      thread = nil
-      expect { thread = described_class.check(profile_with(allocated_objects: 5000)) }.not_to raise_error
+      expect { described_class.check(profile_with(allocated_objects: 5000)) }.not_to raise_error
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.2
-      thread.join
+      described_class.drain
       Timeout.timeout(5) { sleep 0.05 until io.string.include?("webhook failed") }
       expect(io.string).to include("webhook failed for excessive_allocations")
     end
@@ -261,7 +262,7 @@ RSpec.describe Profiler::Alerts do
   end
 
   describe "a fresh process" do
-    it "sends the alerts without the MCP server having been loaded that never loaded the MCP server" do
+    it "sends the alerts in a process that never loaded the MCP server" do
       script = <<~RUBY
         require "profiler"
         require "profiler/models/profile"
@@ -275,11 +276,62 @@ RSpec.describe Profiler::Alerts do
         profile = Profiler::Models::Profile.new
         profile.allocated_objects = 5000
         profile.collectors_data["database"] = { "queries" => [{ "sql" => "SELECT 1", "duration" => 500.0 }] }
-        Profiler::Alerts.check(profile).join
+        Profiler::Alerts.check(profile)
+        Profiler::Alerts.drain
       RUBY
       out, status = Open3.capture2e(RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", script)
       expect(status).to be_success, out
       expect(out.split).to contain_exactly("slow_query", "excessive_allocations")
+    end
+  end
+
+  describe "the worker" do
+    it "uses one thread for every check and drops the checks over its bounded queue" do
+      io = StringIO.new
+      Profiler.configuration.logger = Logger.new(io)
+      gate = Queue.new
+      allow(described_class).to receive(:run) { gate.pop }
+      before_count = Thread.list.size
+      accepted = Array.new(Profiler::Alerts::Worker::CAPACITY + 20) do
+        described_class.check(profile_with(allocated_objects: 5000))
+      end
+      expect(Thread.list.size).to be <= before_count + 1
+      # One job is held by the worker, the queue holds CAPACITY more, the rest is dropped.
+      expect(accepted.compact.size).to be_between(Profiler::Alerts::Worker::CAPACITY,
+                                                  Profiler::Alerts::Worker::CAPACITY + 1)
+      expect(io.string).to include("queue full")
+      (Profiler::Alerts::Worker::CAPACITY + 1).times { gate << :go }
+      expect(described_class.drain).to be(true)
+    end
+  end
+
+  describe "config.alert_webhook_url=" do
+    let(:config) { Profiler::Configuration.new }
+
+    it "accepts an http(s) URL with a host, and nil or an empty string to turn the webhook off" do
+      config.alert_webhook_url = "https://hooks.example.com/alerts?k=1"
+      expect(config.alert_webhook_url).to eq("https://hooks.example.com/alerts?k=1")
+      config.alert_webhook_url = ""
+      expect(config.alert_webhook_url).to be_nil
+    end
+
+    it "refuses a URL without a scheme, with another scheme or without a host" do
+      ["hooks.example.com/alerts", "ftp://example.com/x", "http:///path", "not a url"].each do |url|
+        expect { config.alert_webhook_url = url }.to raise_error(ArgumentError, /alert_webhook_url/), url
+      end
+    end
+
+    it "refuses credentials in the URL rather than silently dropping them" do
+      expect { config.alert_webhook_url = "https://user:secret@example.com/x" }
+        .to raise_error(ArgumentError, /credentials/)
+    end
+  end
+
+  describe "SqlRedaction on a long statement" do
+    it "stays fast on many dollar-quote openers that never close" do
+      sql = "SELECT #{(1..20_000).map { |i| "$t#{i}$ x" }.join(" ")}"
+      elapsed = Benchmark.realtime { described_class::SqlRedaction.redact(sql) }
+      expect(elapsed).to be < 1
     end
   end
 

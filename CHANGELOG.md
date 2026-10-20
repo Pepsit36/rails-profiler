@@ -25,8 +25,10 @@ every commit of every tag interval is accounted for one way or the other.
   saved that crosses `slow_query_threshold`, `max_queries_warning` or
   `allocated_objects_warning_threshold`, or that repeats a normalized SQL statement (an N+1), is handed to
   the `config.on_detection` block and, when `config.alert_webhook_url` is set, POSTed there as generic JSON
-  (see `docs/configuration.md` for the payload). The webhook is sent from a detached thread, never delays the
-  request, and its failures are logged. An alert carries the normalized SQL and a fingerprint, never a body
+  (see `docs/configuration.md` for the payload). The checks run on one worker thread with a bounded queue (a full queue drops and logs the check), never delay the
+  request, and their failures are logged. A profile saved again is not alerted again for a type already delivered,
+  and the `path` of a console profile is `null` in the payload. `config.alert_webhook_url=` raises `ArgumentError`
+  for a URL that is not http(s) with a host, or that carries credentials. An alert carries the normalized SQL and a fingerprint, never a body
   or a parameter; SQL literals (quoted strings with a backslash or a doubled quote, double quoted text,
   comments, dollar-quoted bodies) are removed from the statement, and a statement whose literals cannot be
   read with certainty is cut before the first one.

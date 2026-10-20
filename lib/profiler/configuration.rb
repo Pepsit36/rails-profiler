@@ -3,6 +3,7 @@
 require "pathname"
 require_relative "local_request"
 require_relative "allocation_counter"
+require_relative "alerts/webhook"
 
 module Profiler
   # Header the profiler's own clients send on every request. A page on another origin cannot
@@ -40,10 +41,12 @@ module Profiler
     # URL schemes the source links can use. Anything else is never turned into a link.
     EDITOR_URL_SCHEMES = %w[vscode idea cursor].freeze
 
+    attr_reader :alert_webhook_url
+
     attr_accessor :storage_options, :collectors,
                   :slow_query_threshold, :max_queries_warning, :sql_backtrace,
                   :track_memory, :allocated_objects_warning_threshold,
-                  :alerts_enabled, :alert_webhook_url, :alert_webhook_timeout,
+                  :alerts_enabled, :alert_webhook_timeout,
                   :mcp_enabled, :mcp_transport, :mcp_port, :mcp_read_only,
                   :authorization_mode, :extension_cors_enabled,
                   :cors_allowed_origins, :api_forgery_protection, :frame_ancestors,
@@ -208,6 +211,13 @@ module Profiler
     # The editor the file:line links open: "vscode", "idea" or "cursor" (String or Symbol). A
     # value outside that list is kept as given, but #editor_link_scheme answers nil for it, so
     # that no link is built.
+    # Nil or empty turns the webhook off. Otherwise an absolute http(s) URL with a host, and no
+    # user or password in it: the webhook sends none, so a URL carrying them is refused rather than
+    # silently called without them.
+    def alert_webhook_url=(value)
+      @alert_webhook_url = Alerts::Webhook.validate!(value)
+    end
+
     def editor_url_scheme=(value)
       @editor_url_scheme = value.nil? ? nil : value.to_s
     end
