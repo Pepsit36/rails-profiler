@@ -779,3 +779,24 @@ SQL fingerprints reuse `MCP::Resources::N1Patterns.normalize_sql`. "Slower" mean
 fingerprint grew by more than 20% (`ProfileDiff::SLOWER_THRESHOLD_PCT`, a constant, not a setting);
 each block is capped at 25 entries. The scorecard's memory row is replaced by allocated objects,
 since `memory` is deprecated in the profile model.
+
+## Threshold alerts (gem #50)
+
+- **Where it runs**: in `Profiler.save_profile`, after a profile is saved, so HTTP requests, jobs,
+  console and tests are all covered by one code path (`Profiler::Alerts.check`).
+- **Allocation threshold**: `allocated_objects_warning_threshold`. `memory_warning_threshold` is
+  deprecated (the same figure times 40, never a byte count) and assigning it logs a warning.
+- **N+1**: at least one `N1Patterns.normalize_sql` group with more than one query in the request.
+  It is broad on purpose (same definition as the OTel counter); no minimum repeat count.
+- **No raw data**: the payload has the normalized SQL (cut at 200 characters) and a fingerprint, no
+  body, parameter, header or literal. `normalize_sql` replaces numbers and quoted strings; a
+  literal it does not recognize (dollar quoting) is not covered, hence the cut and the fingerprint.
+- **Generic webhook**: plain JSON, no Slack format; the user plugs a relay. Timeout 3 s by default
+  (`alert_webhook_timeout`), no retry, errors logged.
+- **Asynchronous**: `RequestContext.detached { Thread.new { ... } }`. The brief called `detached`
+  and the OTel counter merged, but the base available to this branch (`origin/master`
+  9444774) had neither (no `reference/rails-profiler-gem` branch in the hub). Decision taken with
+  the orchestrator: implement a minimal `detached` here (a fiber-local flag that makes
+  `RequestContext.capture` return nil) and the alert code, without the OTel counter. Expect a
+  merge conflict to resolve in `request_context.rb` if the real `detached` lands first: keep that one.
+- **Payload shape** and activation are documented in `docs/configuration.md`.

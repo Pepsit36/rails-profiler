@@ -12,6 +12,7 @@ Every option of the profiler, where to set it and when it is read. The
 - [Custom collectors](#custom-collectors)
 - [Rake tasks](#rake-tasks)
 - [Clickable file:line links](#clickable-fileline-links)
+- [Threshold alerts](#threshold-alerts)
 
 ## Where options are set
 
@@ -422,3 +423,80 @@ built. A path no entry matches is used as it is. With `{ "/app" => "/home/me/pro
 ```
 
 `editor_url_scheme` is `null` when the configured scheme is not in the allow list.
+
+## Threshold alerts
+
+Off by default. Nothing is checked, called or sent unless `config.alerts_enabled` is `true`.
+
+```ruby
+Profiler.configure do |config|
+  config.alerts_enabled = true
+
+  # Optional: a block called for each detection with the alert (a Hash, shape below).
+  config.on_detection do |alert|
+    Rails.logger.warn("[alert] #{alert[:type]} #{alert[:path]} #{alert[:value]}#{alert[:unit]}")
+  end
+
+  # Optional: a generic JSON webhook, off while no URL is set.
+  config.alert_webhook_url = "https://alerts.example.com/profiler"
+  config.alert_webhook_timeout = 3 # seconds, connection and answer (default 3)
+end
+```
+
+Every profile saved is compared with thresholds the profiler already has:
+
+| Alert `type`            | Fires when                                                              | Threshold option                          |
+|-------------------------|-------------------------------------------------------------------------|-------------------------------------------|
+| `slow_query`            | a query lasts more than the threshold (ms)                              | `slow_query_threshold`                    |
+| `too_many_queries`      | the request runs more queries than the threshold                        | `max_queries_warning`                     |
+| `excessive_allocations` | the request allocates more objects than the threshold                   | `allocated_objects_warning_threshold`     |
+| `n_plus_one`            | at least one normalized SQL statement appears more than once            | none (`threshold` is always `1`)          |
+
+The allocation alert reads `allocated_objects_warning_threshold`, not `memory_warning_threshold`:
+the latter is deprecated (it is the former times 40, a figure that was never a byte count) and
+logs a warning when assigned. A threshold set to `nil` disables its alert.
+
+An N+1 uses the definition of `Profiler::MCP::Resources::N1Patterns.normalize_sql`: statements are
+grouped once their literals are replaced with `?`.
+
+### Alert payload
+
+The hook receives this Hash (symbol keys); the webhook POSTs it as `application/json`
+(`Content-Type: application/json`, string keys). One alert per type and per profile.
+
+```json
+{
+  "type": "slow_query",
+  "threshold": 100,
+  "unit": "ms",
+  "value": 250.5,
+  "profile_token": "3f2c...32 hex characters",
+  "method": "GET",
+  "path": "/orders",
+  "controller_action": "OrdersController#index",
+  "status": 200,
+  "detected_at": "2026-10-20T09:15:00Z"
+}
+```
+
+- `type`: `slow_query`, `too_many_queries`, `excessive_allocations` or `n_plus_one`.
+- `threshold`, `unit`, `value`: the limit crossed and the measured figure. Units: `ms` (value is
+  the slowest query), `queries`, `objects`, `repeats` (value is the largest repeat count).
+- `profile_token`: opens the profile in the dashboard (`/_profiler/profiles/<token>`).
+- `controller_action`: `null` when the route is unknown. `path` carries no query string.
+- `slow_query` adds `count` (number of slow queries) and `query`: `{ "sql", "fingerprint" }` for the slowest.
+- `n_plus_one` adds `patterns`: up to 10 of `{ "sql", "fingerprint", "count" }`, the most repeated first.
+- `sql` is the **normalized** statement (literals replaced with `?`, cut at 200 characters) and
+  `fingerprint` the first 12 hex characters of its SHA-256.
+
+No request or response body, no parameter, no header and no SQL literal is ever in an alert.
+
+### Delivery
+
+The webhook is sent from a thread of its own, started with
+`Profiler::Instrumentation::RequestContext.detached`, so it holds neither the request's
+collectors nor its notification scope and its own HTTP call is not recorded in a profile. The
+request never waits for it. A hook that raises, an unreachable host, a timeout or a non 2xx answer
+is logged with `Profiler.log_error` and never reaches the request. There is no retry.
+To reach Slack or another service, point the URL at a relay that turns this JSON into the format
+it expects.

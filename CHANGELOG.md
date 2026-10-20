@@ -19,6 +19,16 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Added
+
+- **Alerts:** The new `config.alerts_enabled` (default `false`) turns on threshold alerts. Each profile
+  saved that crosses `slow_query_threshold`, `max_queries_warning` or
+  `allocated_objects_warning_threshold`, or that repeats a normalized SQL statement (an N+1), is handed to
+  the `config.on_detection` block and, when `config.alert_webhook_url` is set, POSTed there as generic JSON
+  (see `docs/configuration.md` for the payload). The webhook is sent from a detached thread, never delays the
+  request, and its failures are logged. An alert carries the normalized SQL and a fingerprint, never a body,
+  a parameter or a literal value.
+
 ## [0.42.0] - 2026-10-20
 
 <!-- stamped -->
