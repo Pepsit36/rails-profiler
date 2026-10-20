@@ -155,14 +155,38 @@ module Profiler
         end
 
         uri = parse_host(scheme, host)
-        unless LocalRequest.host_allowed?(host)
-          raise Invalid, "The host #{uri.hostname.inspect} of the original request is neither local nor allowed " \
-                         "by config.hosts: refusing to send a request to it."
+        unless replay_host_allowed?(uri.hostname)
+          raise Invalid, "The host #{uri.hostname.inspect} of the original request is neither a loopback name " \
+                         "nor listed literally in config.hosts: refusing to send a request to it."
         end
 
         hostname = uri.hostname
         authority = hostname.include?(":") ? "[#{hostname}]:#{port}" : "#{hostname}:#{port}"
         { scheme: scheme, host: hostname, port: port, origin: "#{scheme}://#{authority}" }
+      end
+
+      # A host is replayed to only when it is a loopback name (Configuration::LOCAL_HTTP_HOSTS) or a
+      # literal String entry of config.hosts. Rails' own check is not used: it decides whether an
+      # incoming request is accepted, and in development config.hosts holds 0.0.0.0/0 and ::/0, which
+      # let any IP through (Host: 169.254.169.254). A wildcard (".example.com"), an IPAddr range, a
+      # Regexp or a Proc proves nothing about this one address, so a match through one is refused.
+      def replay_host_allowed?(hostname)
+        name = hostname.to_s.downcase.chomp(".")
+        return false if name.empty?
+        return true if Configuration::LOCAL_HTTP_HOSTS.any? { |pattern| pattern.match?(name) }
+
+        literal_hosts.include?(name)
+      end
+
+      def literal_hosts
+        entries = Rails.application.config.hosts if defined?(Rails) && Rails.respond_to?(:application) && Rails.application
+        Array(entries).filter_map do |entry|
+          next unless entry.is_a?(String) && !entry.empty? && !entry.start_with?(".") && !entry.include?("*")
+
+          URI.parse("http://#{entry}").hostname&.downcase&.chomp(".")
+        rescue URI::InvalidURIError
+          nil
+        end
       end
 
       def parse_host(scheme, host)

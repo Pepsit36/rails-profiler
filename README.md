@@ -279,7 +279,11 @@ end
   `config.replay_port` to the port the application server listens on**, otherwise the replay is
   refused with an error that says so. The same goes for a profile captured before the port was
   recorded: it cannot be replayed without `config.replay_port` (profile the request again). The
-  host name must be a local name or one `config.hosts` allows, otherwise the replay is refused. No
+  host name must be a loopback name (`localhost`, `127.0.0.1`, `::1`) or be listed **literally** in
+  `config.hosts` (a plain String entry such as `"app.example.com"`), otherwise the replay is refused.
+  A match through a wildcard (`".example.com"`), an IP range (`IPAddr`), a `Regexp` or a `Proc` does
+  not count, and Rails' permissive development default (`0.0.0.0/0`, `::/0`) therefore lets no
+  address through. The name of a literal entry is resolved by DNS when the request is sent. No
   option can name another host, port, scheme or URL: the ones that try are refused, a `Host` or
   `X-Forwarded-*` header given as an override is ignored, a path override must be a path of the
   application, and a redirect is never followed. Behind a reverse proxy, the port is the one of the
@@ -287,9 +291,17 @@ end
 - **Variations:** `method`, `path`, `query`, `params`, `body`, `headers`, `cookies`, and `count` to
   replay several times in a row (each a new profile). Headers and parameters the profiler masked
   (`Authorization`, `Cookie`, filtered parameters) are not sent unless you give them again.
+- **Needs a multi-threaded server.** A replay runs synchronously in the thread that serves the
+  call and sends up to `replay_max_count` requests to the same application, each waiting at most
+  `replay_timeout` (120 s at most). On a single-threaded server (Puma `threads 1,1`, WEBrick) the
+  replayed request can never be served while that thread waits, so each one runs into its timeout.
+  Use at least 2 Puma threads (`threads 2, 5`), and keep `count` and `replay_timeout` low: even
+  then, a large `count` holds one thread for as long as the replays take.
 - **Every method is allowed**, `POST` and `DELETE` included, and a replay really does what the
   request did. The dashboard asks you to confirm before it sends. The MCP tool has no confirmation:
-  the client that calls it answers for the request it replays.
+  the client that calls it answers for the request it replays, which is why `replay_request` is a
+  **write** tool: a read-only MCP server (`config.mcp_read_only` or `PROFILER_MCP_READ_ONLY`)
+  neither lists nor runs it.
 - The call itself is never profiled (`Profiler.untracked_http`), so a replay cannot profile itself
   in a loop. On a cluster master, `replay_request` takes the same `slave` argument as the other
   tools and the replay runs on that slave.

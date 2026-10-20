@@ -842,11 +842,26 @@ since `memory` is deprecated in the profile model.
   `base_url`, `origin`... are refused with an error (not ignored in silence), unknown options are
   refused, `Host` and forwarding headers in a header override are dropped and reported, a path
   override must match `/` followed by a non-`/` and no whitespace or control character, and
-  `Net::HTTP` never follows a redirect. As defence in depth, the captured `Host` must also pass
-  `LocalRequest.host_allowed?` (local name, or allowed by `config.hosts`), and be a bare host
-  (no user info, path or query): a profile recorded from a forged `Host` header cannot turn the
-  replay into a request to an arbitrary server (SSRF). Consequence: in production the application's
-  host must be in `config.hosts`.
+  `Net::HTTP` never follows a redirect. As defence in depth, the captured `Host` must be a bare host
+  (no user info, path or query) and pass the replay's own check (next item): a profile recorded from a
+  forged `Host` header cannot turn the replay into a request to an arbitrary server (SSRF).
+- **The host check does not rely on Rails' `config.hosts` as such.** The first version asked
+  `LocalRequest.host_allowed?`, which defers to `config.hosts`. That list decides whether an INCOMING
+  request is accepted; it is not a lock on an OUTGOING target. In development Rails sets it to
+  include `IPAddr 0.0.0.0/0` and `::/0`, so `Host: 169.254.169.254` or `Host: 10.0.0.5` passed and the
+  replay connected to that IP, with the stored unmasked body and headers. Now a captured host is
+  replayed to only when it is (1) a loopback name, `Profiler::Configuration::LOCAL_HTTP_HOSTS`
+  (`127.0.0.1`, `localhost`, `::1`; `*.localhost` is no longer accepted), or (2) a LITERAL String entry
+  of `config.hosts` (compared case-insensitively, its port ignored). A match that comes only from a
+  wildcard (`".example.com"`, `"*"`), an `IPAddr` range, a `Regexp` or a `Proc` is refused: those are
+  the entries through which an arbitrary address passes without the operator having chosen it for this
+  use. What is guaranteed: a replay connects to a loopback address, or to a name or IP the operator
+  wrote out in `config.hosts`, on the port of the application server; never to an address that only
+  a permissive default matched. What is not: a literal name is resolved by DNS at send time and its
+  address is not pinned, so whoever controls that name's DNS controls the destination; and a literal
+  IP the operator wrote (even `169.254.169.254`) is allowed since they chose it. Consequence: in
+  production the application's host must be listed literally in `config.hosts` (a `.example.com`
+  wildcard is not enough), or the replay is refused; on a developer machine `localhost` just works.
 - **The port is not taken from the `Host` header, nor from `SERVER_PORT`.** The first version
   reused the port of the captured `Host` (`localhost:6379`), so a forged `Host` could aim a replay at
   any local service (Redis, a database, an admin API) while passing the name check; `config.hosts`
@@ -881,6 +896,15 @@ since `memory` is deprecated in the profile model.
   not a whole number is refused. Replays run one after the other and stop at the first transport
   error. Each waits at most `config.replay_timeout` (30 s by default, 120 s at most). 10 was chosen
   as enough to compare timings and small enough that a mistake costs seconds, not a load test.
+- **The replay is synchronous, and needs more than one server thread.** `Replay.call` runs in the
+  thread of the request that asked for it, and sends up to `replay_max_count` requests to the same
+  application, each waiting up to `replay_timeout` (120 s at most). On a single-threaded server (Puma
+  `threads 1,1`, WEBrick) the replayed request can only be served by the thread that is waiting for
+  it, so every replay waits for its timeout and fails; with several threads, a `count` of 10 can
+  hold one server thread for minutes. Chosen: document the limit and recommend several Puma threads,
+  rather than a background job and a polling API (a lot of machinery for a developer feature that is
+  off by default). A check of Puma's thread count was not added: the setting is not exposed in the
+  Rack environment, and reading it from `Puma` internals would break with the next release.
 - **No self-profiling.** The whole sending goes through `Profiler.untracked_http`, as the cluster
   proxy does, so it is not recorded in the outbound HTTP data of a current profile.
 - **Confirmation.** The dashboard uses a native `window.confirm()` (the dashboard has no modal

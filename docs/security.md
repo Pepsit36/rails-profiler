@@ -136,6 +136,22 @@ own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension:/
 `["'self'", "http:", "https:"]`, which lets any website frame the profiler.
 
 
+## Replaying a request
+
+`config.replay_enabled` is `false` by default: a replay sends a real request, side effects included
+(see "Replaying a request" in the README). What is guaranteed once it is on:
+
+- The destination is the host of the captured `Host` header, on the port of the application server
+  (`config.replay_port` or the Puma socket), never a port or a URL a caller or a header names.
+- That host must be a loopback name (`localhost`, `127.0.0.1`, `::1`) or be listed **literally**
+  in `config.hosts`. Wildcards, IP ranges, regular expressions and procs of `config.hosts` do not
+  qualify, so the permissive development default (`0.0.0.0/0`, `::/0`) does not let a forged
+  `Host: 169.254.169.254` through. Not guaranteed: a literal name is resolved by DNS when the request
+  is sent, and an IP you write yourself in `config.hosts` is trusted.
+- The MCP `replay_request` tool is a **write** tool: it is neither listed nor callable when
+  `config.mcp_read_only` or `PROFILER_MCP_READ_ONLY` is set.
+- It runs synchronously and needs a multi-threaded server (at least 2 Puma threads).
+
 ## Sensitive data
 
 The profiler masks sensitive values with `[FILTERED]` **before** a profile is stored, with one

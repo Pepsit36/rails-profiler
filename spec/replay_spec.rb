@@ -182,11 +182,62 @@ RSpec.describe Profiler::Replay do
       expect(seen.last).to include(query: "x=1b=2Host:evil", host: "localhost:3000")
     end
 
-    it "refuses a profile whose captured Host is neither local nor allowed" do
+    it "refuses a profile whose captured Host is neither loopback nor a literal config.hosts entry" do
       forged = build_profile(headers: { "Host" => "evil.example" }, server_port: 3000, url_scheme: "http")
       storage.save(forged.token, forged)
-      expect { replay({}, forged.token) }.to raise_error(described_class::Invalid, /neither local nor allowed/)
+      expect { replay({}, forged.token) }.to raise_error(described_class::Invalid, /neither a loopback name/)
       expect(a_request(:any, /evil/)).not_to have_been_made
+    end
+
+    describe "host check independent of Rails' permissive config.hosts" do
+      def with_rails_hosts(hosts)
+        stub_const("Rails", double(application: double(config: double(hosts: hosts)), env: double(test?: false)))
+      end
+
+      def stored_host(host)
+        profile = build_profile(headers: { "Host" => host }, server_port: 3000, url_scheme: "http")
+        storage.save(profile.token, profile)
+        profile.token
+      end
+
+      # What Rails sets in development: every IPv4 and IPv6 address, plus .localhost and the like.
+      let(:development_hosts) { [IPAddr.new("0.0.0.0/0"), IPAddr.new("::/0"), ".localhost", "localhost"] }
+
+      ["10.0.0.5", "169.254.169.254", "169.254.169.254:80", "[fd00::1]", "192.168.1.10"].each do |host|
+        it "refuses Host #{host} although config.hosts holds 0.0.0.0/0 and ::/0" do
+          with_rails_hosts(development_hosts)
+          expect { replay({}, stored_host(host)) }.to raise_error(described_class::Invalid, /neither a loopback name/)
+          expect(a_request(:any, /./)).not_to have_been_made
+        end
+      end
+
+      it "refuses a host that only a wildcard, a CIDR range, a Regexp or a Proc of config.hosts matches" do
+        with_rails_hosts([".example.test", IPAddr.new("10.0.0.0/8"), /\Aregexp\.test\z/, ->(_h) { true }])
+        ["app.example.test", "example.test", "10.0.0.5", "regexp.test"].each do |host|
+          expect { replay({}, stored_host(host)) }.to raise_error(described_class::Invalid, /neither a loopback name/), host
+        end
+      end
+
+      it "refuses a name that merely ends in .localhost" do
+        with_rails_hosts(development_hosts)
+        expect { replay({}, stored_host("evil.localhost")) }.to raise_error(described_class::Invalid)
+      end
+
+      it "accepts the loopback names whatever config.hosts says" do
+        with_rails_hosts([])
+        stub_request(:any, /127\.0\.0\.1|\[::1\]|localhost/).to_return(status: 200)
+        ["localhost", "LOCALHOST:3000", "127.0.0.1", "[::1]:3000"].each do |host|
+          expect { replay({}, stored_host(host)) }.not_to raise_error, host
+        end
+      end
+
+      it "accepts a literal config.hosts entry, with or without a port, and an IP written literally" do
+        with_rails_hosts(["app.example.test", "api.example.test:3000", "10.0.0.5"])
+        stub_request(:any, /example\.test|10\.0\.0\.5/).to_return(status: 200)
+        ["app.example.test", "API.example.test", "10.0.0.5"].each do |host|
+          expect { replay({}, stored_host(host)) }.not_to raise_error, host
+        end
+      end
     end
 
     it "refuses a Host header that is not a bare host name" do
@@ -316,7 +367,7 @@ RSpec.describe Profiler::Replay do
       it "still refuses a host that config.hosts does not allow" do
         Profiler.configuration.replay_port = 4000
         expect { replay({}, stored_with(nil, nil, "evil.example:4000").token) }
-          .to raise_error(described_class::Invalid, /neither local nor allowed/)
+          .to raise_error(described_class::Invalid, /neither a loopback name/)
       end
 
       it "validates the value" do

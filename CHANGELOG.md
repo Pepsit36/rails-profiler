@@ -32,11 +32,15 @@ every commit of every tag interval is accounted for one way or the other.
   the port of the Puma socket captured with the profile (`env["puma.socket"]`, kept as `server_port`).
   Never the port written in the `Host` header and never `SERVER_PORT`, which Puma derives from that
   header. No option can name another host, port or URL, a `Host` or `X-Forwarded-*` header override
-  is ignored, and a captured host that is neither local nor in `config.hosts` is refused. Under a
+  is ignored, and a captured host that is neither a loopback name (`localhost`, `127.0.0.1`, `::1`) nor listed
+  literally in `config.hosts` is refused: a wildcard, IP range, `Regexp` or `Proc` entry does not count,
+  so Rails' permissive development default (`0.0.0.0/0`, `::/0`) lets no address through. Under a
   server other than Puma, or for a profile captured without a port, the replay is refused until
   `config.replay_port` is set. Every method is allowed; the dashboard asks for a confirmation,
-  the MCP tool does not, its caller answers for the request. The replay call is never profiled
-  itself.
+  the MCP tool does not, its caller answers for the request, which is why `replay_request` is a
+  **write** tool: a read-only MCP server (`config.mcp_read_only` or `PROFILER_MCP_READ_ONLY`) neither
+  lists nor runs it. The replay is synchronous and needs a server with more than one thread (Puma
+  `threads 2, 5`). The replay call is never profiled itself.
 
 ## [0.43.0] - 2026-10-20
 
