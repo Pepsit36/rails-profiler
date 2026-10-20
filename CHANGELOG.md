@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-10-20
+
+<!-- stamped -->
+
 ### Added
 
 - **Dashboard:** Every file and line the dashboard shows is now a link that opens in your editor:
