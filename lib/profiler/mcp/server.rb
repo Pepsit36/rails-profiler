@@ -113,6 +113,7 @@ module Profiler
         require_relative "tools/query_test_profiles"
         require_relative "tools/get_test_profile_detail"
         require_relative "tools/run_tests"
+        require_relative "tools/replay_request"
         require_relative "tools/query_console_profiles"
         require_relative "tools/clear_profiles"
         require_relative "tools/list_env_vars"
@@ -332,6 +333,27 @@ module Profiler
               }
             },
             handler: Tools::RunTests
+          ),
+          define_tool(
+            name: "replay_request",
+            description: "Replay a profiled HTTP request for real against the application's own host (the host and port of the original request; no option can change it). Creates one new profile per replay, linked to the original (replay_of). Methods with side effects (POST, PUT, PATCH, DELETE) are replayed too and there is no confirmation: calling this tool is the confirmation. Disabled unless config.replay_enabled is true.",
+            input_schema: {
+              properties: {
+                token: { type: "string", description: "Token of the profiled HTTP request to replay" },
+                count: { type: "number", description: "Number of replays in a row (default 1, at most config.replay_max_count, 10 by default)" },
+                method: { type: "string", description: "Override the HTTP method (GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS)" },
+                path: { type: "string", description: "Override the path of the application, e.g. '/users/1?x=2'. Must start with a single '/'" },
+                query: { type: "object", description: "Replace the query string with these parameters" },
+                params: { type: "object", description: "Replace the parameters: sent as the query for GET/HEAD/DELETE/OPTIONS, as the body otherwise" },
+                body: { type: "string", description: "Replace the request body" },
+                headers: { type: "object", description: "Request headers to add or replace. Host and forwarding headers are ignored" },
+                cookies: { type: "object", description: "Replace the Cookie header with these cookies" },
+                timeout: { type: "number", description: "Seconds to wait for each replay (default config.replay_timeout, at most 120)" },
+                slave: slave_param
+              },
+              required: ["token"]
+            },
+            handler: Tools::ReplayRequest
           ),
           define_tool(
             name: "query_console_profiles",

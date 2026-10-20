@@ -97,6 +97,13 @@ module Profiler
         ActionDispatch::HostAuthorization::Permissions.new(hosts).allows?(host)
       end
 
+      # Whether a Host header value (with or without a port) names this machine or a host the
+      # application allows in config.hosts: the test Profiler::Replay applies to the host it is
+      # about to send a request to.
+      def host_allowed?(value)
+        allowed_host?(host_name(value))
+      end
+
       private
 
       def host_denial_reason(request)
