@@ -789,8 +789,21 @@ since `memory` is deprecated in the profile model.
 - **N+1**: at least one `N1Patterns.normalize_sql` group with more than one query in the request.
   It is broad on purpose (same definition as the OTel counter); no minimum repeat count.
 - **No raw data**: the payload has the normalized SQL (cut at 200 characters) and a fingerprint, no
-  body, parameter, header or literal. `normalize_sql` replaces numbers and quoted strings; a
-  literal it does not recognize (dollar quoting) is not covered, hence the cut and the fingerprint.
+  body, parameter or header. The shared `N1Patterns.normalize_sql` (used by the MCP server, left as
+  is) misses backslash escapes, doubled quotes, comments and dollar quoting, so `Alerts.redact_sql`
+  runs first and only for alerts: it removes those forms, reading the statement with and without
+  backslash escapes, and cuts the statement at the first quote, comment or dollar tag when the two
+  readings differ or one is left unclosed (a value is dropped rather than guessed). Chosen over
+  sending the fingerprint alone because the statement is what makes an alert actionable. A literal
+  in a vendor syntax not listed can still remain: the guarantee is "the known forms are removed",
+  not "no literal ever", hence also the cut at 200 characters and the fingerprint.
+- **Load order**: `alerts.rb` requires `mcp/resources/n1_patterns` at the top (it is otherwise only
+  loaded by the MCP server) rather than extracting `normalize_sql`, to keep one definition. Each
+  family of alert is detected in its own rescue, so one failing never hides the others.
+- **Hook and detection off the request**: the whole check (the detections, which walk and
+  normalize every query, then `on_detection`, then the webhook) runs in the detached thread, not
+  only the HTTP call. `Alerts.check` returns that thread. Alerts of one profile are therefore
+  delivered one after the other, a slow webhook delaying the next alert of the same profile only.
 - **Generic webhook**: plain JSON, no Slack format; the user plugs a relay. Timeout 3 s by default
   (`alert_webhook_timeout`), no retry, errors logged.
 - **Asynchronous**: `RequestContext.detached { Thread.new { ... } }`. The brief called `detached`

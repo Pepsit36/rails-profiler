@@ -489,11 +489,17 @@ The hook receives this Hash (symbol keys); the webhook POSTs it as `application/
 - `sql` is the **normalized** statement (literals replaced with `?`, cut at 200 characters) and
   `fingerprint` the first 12 hex characters of its SHA-256.
 
-No request or response body, no parameter, no header and no SQL literal is ever in an alert.
+No request or response body, no parameter and no header is ever in an alert. SQL literals are removed
+before the statement is added: numbers, quoted strings (including a backslash escape or a doubled
+quote), double quoted text, `/* */` and `--` comments and dollar-quoted bodies. When a statement cannot
+be read with certainty (an unclosed quote, a backslash that standard SQL and MySQL read differently) it
+is cut before the first quote or comment. A literal in a vendor syntax not listed here may still
+remain, so do not treat the `sql` field as a guarantee for a database that has its own quoting forms;
+`fingerprint` alone never carries text.
 
 ### Delivery
 
-The webhook is sent from a thread of its own, started with
+The detection itself, `on_detection` and the webhook all run on a thread of their own, started with
 `Profiler::Instrumentation::RequestContext.detached`, so it holds neither the request's
 collectors nor its notification scope and its own HTTP call is not recorded in a profile. The
 request never waits for it. A hook that raises, an unreachable host, a timeout or a non 2xx answer

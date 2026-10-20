@@ -6,6 +6,12 @@ require "net/http"
 require "uri"
 require "digest"
 require_relative "alerts/webhook"
+require_relative "alerts/sql_redaction"
+# Alerts.normalize_sql wraps N1Patterns.normalize_sql. That file is otherwise only loaded by the MCP
+# server, which an application without MCP never starts, so it is required here, not on first use.
+require_relative "mcp/resources/n1_patterns"
+require_relative "instrumentation/request_context"
+require_relative "collectors/scoped_notifications"
 
 module Profiler
   # Threshold alerts. When config.alerts_enabled is true, every profile saved is compared with the
@@ -13,11 +19,13 @@ module Profiler
   # allocated_objects_warning_threshold) and checked for an N+1. Each detection is handed to
   # config.on_detection and, when config.alert_webhook_url is set, POSTed there as JSON.
   #
-  # An alert carries no raw data: no body, no parameters, no SQL text with its literals, only the
-  # normalized statement (the literals replaced with ?) and a fingerprint of it.
+  # An alert carries no raw data: no body, no parameters, no header, only the SQL statement with
+  # its literals replaced with ? (see SqlRedaction) and a fingerprint of it.
   #
-  # Nothing here may reach the request: the hook and the webhook run in a rescue, and the webhook
-  # on a thread of its own that holds nothing of the request.
+  # Nothing here may slow or break the request: the whole check (the detections, which walk the
+  # queries of the profile, then the hook and the webhook) runs on a thread of its own started
+  # with RequestContext.detached, so it holds nothing of the request and `check` returns at once.
+  # Each family of alert is detected in its own rescue, so an error on one never hides the others.
   module Alerts
     TYPES = %w[slow_query too_many_queries excessive_allocations n_plus_one].freeze
     SQL_LIMIT = 200
@@ -25,24 +33,44 @@ module Profiler
 
     module_function
 
+    # Starts the check on a thread detached from the request and returns it (nil when alerts are
+    # off). The profile is saved and no longer written to by then.
     def check(profile)
       config = Profiler.configuration
       return unless config.alerts_enabled
 
+      Instrumentation::RequestContext.detached { Thread.new { run(profile, config) } }
+    rescue StandardError => e
+      Profiler.log_error("Alerts: could not start the check of profile #{profile&.token}", e)
+      nil
+    end
+
+    def run(profile, config)
+      Collectors::ScopedNotifications.forget_inherited_scope
       detections(profile, config).each { |alert| deliver(alert, config) }
     rescue StandardError => e
       Profiler.log_error("Alerts: could not check profile #{profile&.token}", e)
     end
 
+    # Every family in its own rescue: an error on one is logged and the others still go out.
     def detections(profile, config)
       base = base_payload(profile)
-      alerts = []
       queries = queries_of(profile)
-      alerts.concat(slow_query_alerts(base, queries, config))
-      alerts.concat(too_many_queries_alerts(base, queries, config))
-      alerts.concat(allocation_alerts(base, profile, config))
-      alerts.concat(n_plus_one_alerts(base, queries))
-      alerts
+      { slow_query: -> { slow_query_alerts(base, queries, config) },
+        too_many_queries: -> { too_many_queries_alerts(base, queries, config) },
+        excessive_allocations: -> { allocation_alerts(base, profile, config) },
+        n_plus_one: -> { n_plus_one_alerts(base, queries) } }
+        .flat_map { |family, detect| safely(family, profile, &detect) }
+    rescue StandardError => e
+      Profiler.log_error("Alerts: could not read profile #{profile&.token}", e)
+      []
+    end
+
+    def safely(family, profile)
+      yield
+    rescue StandardError => e
+      Profiler.log_error("Alerts: could not detect #{family} for profile #{profile&.token}", e)
+      []
     end
 
     def base_payload(profile)
@@ -72,7 +100,7 @@ module Profiler
 
       slowest = slow.max_by { |q| q["duration"].to_f }
       [base.merge(type: "slow_query", threshold: threshold, unit: "ms", value: slowest["duration"].to_f,
-                  count: slow.size, query: describe(slowest["sql"]))]
+                  count: slow.size, query: describe_normalized(normalize_sql(slowest["sql"])))]
     end
 
     def too_many_queries_alerts(base, queries, config)
@@ -91,8 +119,7 @@ module Profiler
     end
 
     def n_plus_one_alerts(base, queries)
-      require_relative "mcp/resources/n1_patterns"
-      groups = queries.group_by { |q| MCP::Resources::N1Patterns.normalize_sql(q["sql"]) }
+      groups = queries.group_by { |q| normalize_sql(q["sql"]) }
       repeated = groups.select { |_, list| list.size > 1 }
       return [] if repeated.empty?
 
@@ -106,8 +133,9 @@ module Profiler
       end
     end
 
-    def describe(sql)
-      describe_normalized(MCP::Resources::N1Patterns.normalize_sql(sql))
+    # The shared normalization (numbers, $1 and simple quoted strings) after SqlRedaction.redact.
+    def normalize_sql(sql)
+      MCP::Resources::N1Patterns.normalize_sql(SqlRedaction.redact(sql))
     end
 
     def describe_normalized(normalized)
@@ -116,7 +144,7 @@ module Profiler
 
     def deliver(alert, config)
       call_hook(alert, config)
-      post_webhook(alert, config)
+      Webhook.post(alert, config.alert_webhook_url, config.alert_webhook_timeout)
     end
 
     def call_hook(alert, config)
@@ -124,10 +152,6 @@ module Profiler
       hook&.call(alert)
     rescue StandardError => e
       Profiler.log_error("Alerts: config.on_detection raised for #{alert[:type]}", e)
-    end
-
-    def post_webhook(alert, config)
-      Webhook.post(alert, config.alert_webhook_url, config.alert_webhook_timeout)
     end
   end
 end
