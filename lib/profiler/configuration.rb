@@ -37,6 +37,9 @@ module Profiler
     # config.http_skip_hosts += Profiler::Configuration::LOCAL_HTTP_HOSTS.
     LOCAL_HTTP_HOSTS = [/\A127\.0\.0\.1\z/, /\Alocalhost\z/i, /\A::1\z/].freeze
 
+    # URL schemes the source links can use. Anything else is never turned into a link.
+    EDITOR_URL_SCHEMES = %w[vscode idea cursor].freeze
+
     attr_accessor :storage_options, :collectors,
                   :slow_query_threshold, :max_queries_warning, :sql_backtrace,
                   :track_memory, :allocated_objects_warning_threshold,
@@ -61,7 +64,7 @@ module Profiler
                   :cluster_allow_insecure_http, :logger,
                   :collector_circuit_breaker_enabled
 
-    attr_reader :authorize_block, :enabled, :track_tests, :max_profiles
+    attr_reader :authorize_block, :enabled, :track_tests, :max_profiles, :editor_url_scheme, :editor_path_map
 
     def initialize
       @assigned = []
@@ -167,6 +170,8 @@ module Profiler
       # Profiler::Collectors::CircuitBreaker); false never stops one.
       @collector_circuit_breaker_enabled = true
       @collector_circuit_breaker_threshold = 3
+      @editor_url_scheme = "vscode"
+      @editor_path_map = {}
     end
 
     attr_reader :collector_circuit_breaker_threshold
@@ -180,6 +185,28 @@ module Profiler
         Profiler.log_warn("config.collector_circuit_breaker_threshold: #{value.inspect} is not a positive " \
                           "Integer; keeping #{@collector_circuit_breaker_threshold}")
       end
+    end
+
+    # The editor the file:line links open: "vscode", "idea" or "cursor" (String or Symbol). A
+    # value outside that list is kept as given, but #editor_link_scheme answers nil for it, so
+    # that no link is built.
+    def editor_url_scheme=(value)
+      @editor_url_scheme = value.nil? ? nil : value.to_s
+    end
+
+    # Container path prefix => host path prefix, for a server running in a container while the
+    # editor runs on the host: { "/app" => "/home/me/project" }. The longest matching prefix wins.
+    def editor_path_map=(value)
+      unless value.nil? || value.respond_to?(:to_h)
+        raise ArgumentError, "editor_path_map must be a Hash of container path => host path"
+      end
+
+      @editor_path_map = (value || {}).to_h.to_h { |from, to| [from.to_s, to.to_s] }
+    end
+
+    # The scheme the dashboard may use, or nil when the setting is not on the allow list.
+    def editor_link_scheme
+      EDITOR_URL_SCHEMES.include?(@editor_url_scheme) ? @editor_url_scheme : nil
     end
 
     # Always a Pathname, whether set from a String or left to its default.

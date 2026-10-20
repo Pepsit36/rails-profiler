@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'preact/hooks'
+import { SourceFrame } from '../../../SourceLink'
 import { methodBadge, statusBadge } from './utils'
 import { copyText } from '../../../../clipboard'
 
@@ -352,7 +353,7 @@ export function HttpReqRespDetail({ request, response, backtrace }: {
         <div style="margin-top:12px">
           <div class="profiler-text--xs profiler-text--muted" style="margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Backtrace</div>
           {backtrace.map((frame, i) => (
-            <div key={i} class="profiler-text--xs profiler-text--muted" style="padding:2px 0">{frame}</div>
+            <div key={i} class="profiler-text--xs profiler-text--muted" style="padding:2px 0"><SourceFrame frame={frame} /></div>
           ))}
         </div>
       )}

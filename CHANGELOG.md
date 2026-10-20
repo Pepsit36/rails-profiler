@@ -19,6 +19,23 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-10-20
+
+<!-- stamped -->
+
+### Added
+
+- **Dashboard:** Every file and line the dashboard shows is now a link that opens in your editor:
+  the backtraces of the Database, Http and Exception tabs, the Dumps tab and toolbar panel, the
+  function table of the flame graph tab, and the file of the Test tab. Set the editor with
+  `config.editor_url_scheme` (`"vscode"` by default, `"idea"` or `"cursor"`; any other value gives
+  no link). For a server running in a container while the editor runs on the host, translate the
+  paths with `config.editor_path_map`, for example `{ "/app" => "/home/me/project" }`; the longest
+  matching prefix wins. Paths are escaped in the generated URLs.
+- **API:** `GET /_profiler/api/config` is read-only and returns `editor_url_scheme` (`null` when
+  the configured scheme is not allowed) and `editor_path_map`, for the dashboard and for the browser
+  extension, which uses them when it has no setting of its own.
+
 ## [0.40.0] - 2026-10-19
 
 <!-- stamped -->

@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'preact/hooks'
+import { SourceLink } from '../../SourceLink'
 import { useUpdateFunctionProfiling } from '../../../generated/api'
 import type { FlameGraphData, FlameGraphNode, FlameGraphCategory, PerformanceData, FunctionProfileData, FunctionStat } from '../../../dashboard/types'
 import { FlameGraphRenderer, FlatFrame } from '../../../flamegraph/FlameGraphRenderer'
@@ -667,7 +668,7 @@ function FunctionProfilingSection({ data, enabled, toggling, maxFrames, maxFrame
                     )}
                     {fn.name}
                   </td>
-                  <td class="profiler-text--muted profiler-text--xs" style={{ fontFamily: 'var(--profiler-font-mono)' }}>{fn.file}:{fn.line}</td>
+                  <td class="profiler-text--muted profiler-text--xs" style={{ fontFamily: 'var(--profiler-font-mono)' }}><SourceLink file={fn.file} line={fn.line} /></td>
                   <td class="profiler-text--right">{fn.calls}</td>
                   <td class="profiler-text--right">
                     {isObjectClock

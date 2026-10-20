@@ -488,6 +488,19 @@ paths:
                 query_index:
                   type: integer
                   description: Index of the query in collectors_data.database.queries
+  "/_profiler/api/config":
+    get:
+      summary: Read the settings the source links use
+      operationId: getEditorConfig
+      tags:
+      - Config
+      responses:
+        '200':
+          description: editor settings
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EditorConfig"
   "/_profiler/api/function_profiling":
     get:
       summary: Get function profiling configuration
@@ -2067,6 +2080,25 @@ components:
           format: int64
           description: Version of the profile's last save when this data was read, to ask
             GET /_profiler/api/events/{token}?since= whether it was saved again since.
+    EditorConfig:
+      type: object
+      required:
+      - editor_url_scheme
+      - editor_path_map
+      properties:
+        editor_url_scheme:
+          type: string
+          nullable: true
+          enum:
+          - vscode
+          - idea
+          - cursor
+          description: Editor the file:line links open; null when the configured scheme is not allowed
+        editor_path_map:
+          type: object
+          additionalProperties:
+            type: string
+          description: Container path prefix to host path prefix
     FunctionProfilingConfig:
       type: object
       required:

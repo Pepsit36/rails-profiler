@@ -11,6 +11,7 @@ Every option of the profiler, where to set it and when it is read. The
 - [Function profiling](#function-profiling)
 - [Custom collectors](#custom-collectors)
 - [Rake tasks](#rake-tasks)
+- [Clickable file:line links](#clickable-fileline-links)
 
 ## Where options are set
 
@@ -369,3 +370,55 @@ bundle exec rake profiler:mcp                       # MCP server, stdio transpor
 `OLDER_THAN` and `LIMIT` take a whole number (seconds for `OLDER_THAN`, 86400 when it is not set).
 Any other value, an empty one included, stops the task with an error and removes nothing:
 `OLDER_THAN=0` removes every profile, and only when written so.
+
+## Clickable `file:line` links
+
+Wherever the dashboard shows a file and a line, it is a link that opens the file in your editor
+at that line.
+
+```ruby
+Profiler.configure do |config|
+  config.editor_url_scheme = :vscode            # :vscode (default), :idea or :cursor
+  config.editor_path_map   = { "/app" => "/home/me/project" }  # container path => host path
+end
+```
+
+### `editor_url_scheme`
+
+| Value    | URL built for `/home/me/project/app/models/user.rb`, line 12                |
+|----------|-----------------------------------------------------------------------------|
+| `vscode` | `vscode://file/home/me/project/app/models/user.rb:12`                        |
+| `cursor` | `cursor://file/home/me/project/app/models/user.rb:12`                        |
+| `idea`   | `idea://open?file=%2Fhome%2Fme%2Fproject%2Fapp%2Fmodels%2Fuser.rb&line=12`   |
+
+Only these three schemes exist. Any other value (a typo, `javascript`, a custom scheme) is kept in
+the configuration but produces no link: the file and line stay plain text. `nil` turns the links
+off. Paths are escaped in the URLs (`encodeURIComponent`, per segment for `vscode` and `cursor`).
+A relative path, or a line below 1, is never linked.
+
+### `editor_path_map`
+
+For a server running in a container while the editor runs on the host. Keys are path prefixes as
+the server sees them, values the same prefixes on the host. The longest matching prefix is replaced,
+on a path segment boundary (`/app` matches `/app/x.rb`, not `/application/x.rb`), before the URL is
+built. A path no entry matches is used as it is. With `{ "/app" => "/home/me/project" }`,
+`/app/models/user.rb` opens `/home/me/project/models/user.rb`.
+
+### Where the links appear
+
+- Database tab: backtrace of each N+1 group
+- Http tab: backtrace of an outbound request, and the first frame in the card header
+- Exception tab: application frames and the full backtrace
+- Dumps tab (dashboard) and Dumps panel (toolbar): where each variable was dumped
+- Flame graph tab: file and line of each function in the function profiling table
+- Test tab: test file and line
+
+### Reading the settings from the API
+
+`GET /_profiler/api/config` (same access rules as the rest of the API) returns:
+
+```json
+{ "editor_url_scheme": "vscode", "editor_path_map": { "/app": "/home/me/project" } }
+```
+
+`editor_url_scheme` is `null` when the configured scheme is not in the allow list.

@@ -1,8 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'preact'
 import { act } from 'preact/test-utils'
 import { CachePanel } from '../../app/assets/typescript/profiler/components/toolbar/panels/CachePanel'
 import { TestTab } from '../../app/assets/typescript/profiler/components/dashboard/tabs/TestTab'
+
+vi.mock('../../app/assets/typescript/profiler/hooks/useEditorConfig', () => ({
+  useEditorConfig: () => ({ scheme: 'vscode', pathMap: {} }),
+}))
 
 let host: HTMLElement
 beforeEach(() => {

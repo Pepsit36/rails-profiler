@@ -682,3 +682,57 @@ Taken without the maintainer, choosing the most cautious option each time.
 - Measured vs reasoned: the values, the attributes and the counter behaviour are measured by the
   specs against the real SDK; the "+1 per request" choice and the ms unit are reasoned.
 
+
+---
+
+# Decisions
+
+## Clickable file:line links (gem #49, gem side)
+
+- **Base.** `origin/reference/rails-profiler-gem` does not exist in the hub; the branch was cut
+  from `master` (9444774), which is where the work is based.
+- **Settings.** `config.editor_url_scheme` (default `"vscode"`, allow list `vscode`, `idea`,
+  `cursor`) and `config.editor_path_map` (default `{}`). The setter of the scheme does not raise
+  on another value: it is stored, and `editor_link_scheme` answers `nil` for it, so nothing but
+  the three schemes ever reaches a link. The most prudent behaviour for a typo is no link, not a
+  boot failure. The allow list is checked again in the browser (`source-links.ts`), because the
+  value comes from the server.
+- **URL forms.** `vscode://file/<path>:<line>` and `cursor://file/<path>:<line>` (Cursor is a VS
+  Code fork and registers the same handler shape), `idea://open?file=<path>&line=<line>` (JetBrains
+  IDEs). Paths are escaped per segment with `encodeURIComponent` for vscode and cursor (slashes
+  kept, as the editors parse a path), whole for idea. These forms are from the editors'
+  documented URL handlers, not tested against the editors themselves in this sandbox.
+- **Path map.** Longest prefix on a segment boundary, applied before the URL is built. Done in the
+  client (`mapPath`), so the extension reimplements nothing server-side.
+- **URLs are built in the client**, not in Ruby: backtraces are plain strings shown by the front
+  end, and the extension builds its own links. Ruby only validates and serves the settings.
+- **Endpoint.** No existing endpoint exposed configuration (`function_profiling` and `env_vars`
+  are about runtime toggles and ENV; `toolbar/:token` is per profile). Adding a field to a
+  per-profile endpoint would repeat it in every response, so a minimal read-only
+  `GET /_profiler/api/config` was added. Same access guards as every API route.
+
+  Contract (JSON, status 200):
+
+  ```json
+  { "editor_url_scheme": "vscode" | "idea" | "cursor" | null,
+    "editor_path_map": { "<container prefix>": "<host prefix>" } }
+  ```
+
+  `editor_url_scheme` is `null` when the configured value is not allowed (the extension must then
+  show no link, or use its own setting). `editor_path_map` is always an object of strings, `{}`
+  when unset. Nothing else is exposed. Defaults on a fresh install: `"vscode"` and `{}`.
+- **`<SourceLink>`** (`components/SourceLink.tsx`) and `<SourceFrame>` (for a backtrace line such
+  as ``/app/a.rb:12:in `m'``). Without a safe URL (scheme not allowed, settings not yet loaded,
+  relative path, invalid line) they render the same text in a `<span>`. If the config endpoint
+  cannot be read (older gem), the gem default `vscode` applies. Click does not propagate, so a
+  link inside a clickable row does not trigger the row.
+- **Tabs wired:** Database (N+1 backtraces), Http (backtraces, card header frame), Exception
+  (both lists), Dumps (dashboard and toolbar panel), Flame graph (function table), Test (test
+  file and line). Not wired: Timeline, Views and Logs show no file and line pairs.
+- **Tooling.** Vitest (+ jsdom, @testing-library/preact) was added: there was no JS test runner.
+  `yarn test` runs `*.test.ts(x)`. The front-end sink spec (`spec/frontend_sinks_spec.rb`) skips
+  those test files, which are not bundled and name hostile inputs on purpose, and allows
+  `href={editorUrl}` in `SourceLink.tsx` only.
+- **RuboCop.** The repository has no `.rubocop.yml`; the default cops report thousands of offenses
+  on untouched code. The changed Ruby was checked with 1.92.0 under a config matching the code
+  base (double quotes, no metrics or line length): no offense on the new code.

@@ -108,4 +108,35 @@ RSpec.describe Profiler::Configuration do
       expect(Profiler).not_to have_received(:log_warn)
     end
   end
+
+  describe "source links" do
+    it "defaults to vscode and no path map" do
+      expect(config.editor_url_scheme).to eq("vscode")
+      expect(config.editor_link_scheme).to eq("vscode")
+      expect(config.editor_path_map).to eq({})
+    end
+
+    it "accepts a Symbol or a String for each allowed scheme" do
+      %i[vscode idea cursor].each do |scheme|
+        config.editor_url_scheme = scheme
+        expect(config.editor_link_scheme).to eq(scheme.to_s)
+      end
+    end
+
+    it "keeps a scheme outside the allow list out of #editor_link_scheme" do
+      config.editor_url_scheme = "javascript"
+
+      expect(config.editor_link_scheme).to be_nil
+    end
+
+    it "normalizes the path map to Strings" do
+      config.editor_path_map = { :"/app" => Pathname.new("/home/me/projet") }
+
+      expect(config.editor_path_map).to eq("/app" => "/home/me/projet")
+    end
+
+    it "rejects a path map that is not a Hash" do
+      expect { config.editor_path_map = 3 }.to raise_error(ArgumentError, /editor_path_map/)
+    end
+  end
 end
