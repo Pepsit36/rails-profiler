@@ -123,6 +123,7 @@ module Profiler
         require_relative "tools/list_slaves"
 
         slave_param = { type: "string", description: "Name of a connected slave profiler to target. Omit to use this profiler's own data." }
+        require_relative "tools/compare_profiles"
 
         [
           define_tool(
@@ -419,6 +420,20 @@ module Profiler
             description: "List all slave profilers connected to this master profiler, with their connection status.",
             input_schema: { properties: {} },
             handler: Tools::ListSlaves
+          ),
+          define_tool(
+            name: "compare_profiles",
+            description: "Compare two profiles, possibly from different instances listed in config.peers, and show metric deltas (duration, allocations, cache hit rate, views, HTTP) and SQL grouped by normalized fingerprint (new, gone, slower). Detects regressions based on configured thresholds.",
+            input_schema: {
+              properties: {
+                token_a: { type: "string", description: "Token of the baseline profile (required)" },
+                token_b: { type: "string", description: "Token of the profile to compare against baseline (required)" },
+                node_a: { type: "string", description: "Name of the config.peers entry holding profile A. Omit or \"local\" for this instance." },
+                node_b: { type: "string", description: "Name of the config.peers entry holding profile B. Omit or \"local\" for this instance." }
+              },
+              required: ["token_a", "token_b"]
+            },
+            handler: Tools::CompareProfiles
           )
         ].compact
       end
