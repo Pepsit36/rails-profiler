@@ -88,6 +88,33 @@ RSpec.describe Profiler::Cluster::SlaveProxy do
       )
     end
 
+    it "reads every page of children and gives them oldest first" do
+      child = lambda do |token, at|
+        { "token" => token, "profile_type" => "job", "path" => "/w", "method" => "JOB", "status" => 200,
+          "duration" => 1.0, "started_at" => at.iso8601 }
+      end
+      base = Time.now.round
+      pages = [
+        { "profiles" => [child.call("c3", base + 3), child.call("c2", base + 2)], "has_more" => true },
+        { "profiles" => [child.call("c1", base + 1)], "has_more" => false }
+      ]
+      allow(proxy).to receive(:get_json).and_return(*pages)
+
+      result = proxy.find_by_parent("9f8e7d6c5b4a39281706f5e4d3c2b1a0")
+
+      expect(result.map(&:token)).to eq(%w[c1 c2 c3])
+      expect(proxy).to have_received(:get_json).twice
+      expect(proxy).to have_received(:get_json).with("/_profiler/api/profiles", hash_including(offset: 0))
+      expect(proxy).to have_received(:get_json).with("/_profiler/api/profiles", hash_including(offset: 2))
+    end
+
+    it "stops on an empty page even if the slave claims there is more" do
+      allow(proxy).to receive(:get_json).and_return({ "profiles" => [], "has_more" => true })
+
+      expect(proxy.find_by_parent("9f8e7d6c5b4a39281706f5e4d3c2b1a0")).to eq([])
+      expect(proxy).to have_received(:get_json).once
+    end
+
     it "returns an array of Profile objects" do
       allow(proxy).to receive(:get_json).and_return(
         "profiles" => [
@@ -181,6 +208,33 @@ RSpec.describe Profiler::Cluster::SlaveProxy do
         .to raise_error(Profiler::Error, /answered 302 \(redirect not followed\)/)
     end
 
+    it "reads a 404 as not found: no profile for #load, an error for the rest" do
+      stub_start(answer(404, '{"error":"Profile not found"}'))
+
+      expect(proxy.load(SecureRandom.hex(16))).to be_nil
+      expect { proxy.list }.to raise_error(Profiler::Cluster::SlaveProxy::NotFound, /Profile not found/)
+    end
+
+    %w[401 403].each do |code|
+      it "reports a #{code} as a refused secret, not as an empty slave" do
+        stub_start(answer(code.to_i, '{"error":"Forbidden"}'))
+
+        expect { proxy.list }.to raise_error(Profiler::Error, /refused the request \(#{code}\).*cluster_secret/)
+        expect { proxy.load(SecureRandom.hex(16)) }.to raise_error(Profiler::Error, /refused the request/)
+        expect { proxy.find_by_parent(SecureRandom.hex(16)) }.to raise_error(Profiler::Error, /refused the request/)
+      end
+    end
+
+    it "raises on any other status outside 2xx, with the slave's message" do
+      stub_start(answer(422, '{"error":"key refused"}'))
+      expect { proxy.patch_json("/_profiler/api/env_vars", {}) }
+        .to raise_error(Profiler::Error, /answered 422: key refused/)
+
+      stub_start(answer(500, "<html>boom</html>"))
+      expect { proxy.get_json("/_profiler/api/profiles") }
+        .to raise_error(Profiler::Error, /answered 500: no detail/)
+    end
+
     it "finds no profile in a malformed answer" do
       stub_start(answer(200, "not json"))
 
@@ -212,14 +266,20 @@ RSpec.describe Profiler::Cluster::SlaveProxy do
   end
 
   describe "#clear" do
-    it "deletes all profiles, or those of one type, on the slave" do
-      allow(proxy).to receive(:delete_json).and_return({})
+    before { allow(proxy).to receive(:delete_json).and_return({}) }
 
-      proxy.clear
+    it "deletes the profiles of the type given, on the slave" do
       proxy.clear(type: "job")
 
-      expect(proxy).to have_received(:delete_json).with("/_profiler/api/profiles/clear")
-      expect(proxy).to have_received(:delete_json).with("/_profiler/api/profiles/clear?type=job")
+      expect(proxy).to have_received(:delete_json).once.with("/_profiler/api/profiles/clear?type=job")
+    end
+
+    it "deletes the profiles of every type, one call each, when no type is given" do
+      proxy.clear
+
+      %w[http job test console].each do |type|
+        expect(proxy).to have_received(:delete_json).once.with("/_profiler/api/profiles/clear?type=#{type}")
+      end
     end
   end
 

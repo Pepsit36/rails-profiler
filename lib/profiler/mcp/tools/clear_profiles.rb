@@ -2,8 +2,6 @@
 
 require_relative "../slave_support"
 
-require "uri"
-
 module Profiler
   module MCP
     module Tools
@@ -16,9 +14,7 @@ module Profiler
           end
 
           if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
-            path = "/_profiler/api/profiles/clear"
-            path += "?type=#{URI.encode_www_form_component(type)}" if type
-            proxy.delete_json(path)
+            proxy.clear(type: type)
           else
             Profiler.storage.clear(type: type)
           end

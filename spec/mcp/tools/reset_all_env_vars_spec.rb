@@ -75,7 +75,7 @@ RSpec.describe Profiler::MCP::Tools::ResetAllEnvVars do
     require "profiler/cluster/slave_proxy"
     proxy = instance_double(Profiler::Cluster::SlaveProxy)
     allow(Profiler::MCP::SlaveSupport).to receive(:with_slave_proxy).and_return(proxy)
-    expect(proxy).to receive(:delete_json).with("/_profiler/api/env_vars/reset_all")
+    expect(proxy).to receive(:delete_json).with("/_profiler/api/env_vars/reset_all").and_return({})
 
     expect(call("slave" => "payment").first[:text]).to eq("Reset all ENV overrides on slave 'payment'.")
   end

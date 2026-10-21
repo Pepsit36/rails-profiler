@@ -9,6 +9,9 @@ require_relative "../storage/token"
 module Profiler
   module Cluster
     class SlaveProxy
+      # The slave answered 404: it has no such resource.
+      class NotFound < Profiler::Error; end
+
       # A slow or hung slave must not block the master's request thread for long.
       OPEN_TIMEOUT = 5  # seconds
       READ_TIMEOUT = 10 # seconds
@@ -51,18 +54,40 @@ module Profiler
 
         raw = data["profile"] || data
         profile_from_api(raw)
+      rescue NotFound
+        nil
       end
 
+      CHILDREN_PAGE_SIZE = 100
+
+      # Every child, not the first page of them: the slave lists children newest first, in pages,
+      # and the local storages answer oldest first, which is the order given back.
       def find_by_parent(parent_token)
         return [] unless Storage::Token.valid?(parent_token)
 
-        data = get_json("/_profiler/api/profiles", parent_token: parent_token, all_types: true)
-        Array(data["profiles"]).map { |h| profile_from_api(h) }
+        children = []
+        offset = 0
+        loop do
+          data = get_json("/_profiler/api/profiles", parent_token: parent_token, all_types: true,
+                                                     limit: CHILDREN_PAGE_SIZE, offset: offset)
+          page = Array(data["profiles"])
+          children.concat(page.map { |h| profile_from_api(h) })
+          break if data["has_more"] != true || page.empty?
+
+          offset += page.size
+        end
+        children.sort_by { |p| p.started_at || Time.at(0) }
       end
 
+      CLEARABLE_TYPES = %w[http job test console].freeze
+
+      # ProfilesController#clear honours one type per call (http when none is given), so
+      # clearing everything takes one call per type.
       def clear(type: nil)
-        params = type ? "?type=#{URI.encode_www_form_component(type)}" : ""
-        delete_json("/_profiler/api/profiles/clear#{params}")
+        (type ? [type.to_s] : CLEARABLE_TYPES).each do |t|
+          delete_json("/_profiler/api/profiles/clear?type=#{URI.encode_www_form_component(t)}")
+        end
+        {}
       end
 
       # Generic HTTP access for action tools
@@ -123,12 +148,29 @@ module Profiler
             http.request(req)
           end
         end
-        return {} if resp.code == "204"
-        if resp.code.to_s.start_with?("3")
-          raise Profiler::Error, "Slave profiler answered #{resp.code} (redirect not followed)"
+        interpret(resp)
+      end
+
+      # What a slave's status means, as PeerProxy#interpret reads a peer's: a wrong secret or a
+      # refusal is never an empty answer, and neither is an error of the slave.
+      def interpret(resp)
+        code = resp.code.to_s
+        return {} if code == "204"
+        raise NotFound, "Slave profiler answered 404: #{failure_detail(resp, "not found")}" if code == "404"
+        raise Profiler::Error, "Slave profiler answered #{code} (redirect not followed)" if code.start_with?("3")
+        if %w[401 403].include?(code)
+          raise Profiler::Error, "Slave profiler refused the request (#{code}): check that master and slave " \
+                                 "share the same config.cluster_secret"
         end
+        raise Profiler::Error, "Slave profiler answered #{code}: #{failure_detail(resp, "no detail")}" unless code.start_with?("2")
 
         parse_response(resp)
+      end
+
+      # The slave's own message when its body carries one; never the raw body, which may be anything.
+      def failure_detail(resp, fallback)
+        message = parse_response(resp)["error"] if resp.body.to_s.start_with?("{")
+        message.is_a?(String) && !message.empty? ? message.slice(0, 200) : fallback
       end
 
       def parse_response(resp)
