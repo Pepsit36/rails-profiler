@@ -43,6 +43,8 @@ RSpec.describe "Cluster requests and forgery protection" do
   end
 
   describe Profiler::Cluster::MasterClient do
+    let(:http) { instance_double(Net::HTTP, post: ok) }
+
     before do
       Profiler.configure do |config|
         config.master_url = "http://master:3000"
@@ -54,31 +56,31 @@ RSpec.describe "Cluster requests and forgery protection" do
     end
 
     it "sends the header when registering and on each heartbeat" do
-      allow(Net::HTTP).to receive(:post).and_return(ok)
+      allow(Net::HTTP).to receive(:start).and_yield(http)
 
       client = described_class.new
       client.send(:register!)
       client.send(:heartbeat!)
 
-      expect(Net::HTTP).to have_received(:post)
+      expect(http).to have_received(:post)
         .with(anything, anything, hash_including(Profiler::FORGERY_PROTECTION_HEADER => "1",
                                                  "X-Profiler-Cluster-Secret" => "spec-secret-0123456789abcdefghijklmnop")).twice
     end
 
     it "sends nothing to a remote master over plain HTTP" do
       Profiler.configuration.cluster_allow_insecure_http = false
-      allow(Net::HTTP).to receive(:post).and_return(ok)
+      allow(Net::HTTP).to receive(:start).and_yield(http)
 
       expect { described_class.new.send(:register!) }.to raise_error(/HTTPS is required/)
-      expect(Net::HTTP).not_to have_received(:post)
+      expect(Net::HTTP).not_to have_received(:start)
     end
 
     it "sends nothing when no secret is configured" do
       Profiler.configuration.cluster_secret = nil
-      allow(Net::HTTP).to receive(:post).and_return(ok)
+      allow(Net::HTTP).to receive(:start).and_yield(http)
 
       expect { described_class.new.send(:heartbeat!) }.to raise_error(/cluster_secret/)
-      expect(Net::HTTP).not_to have_received(:post)
+      expect(Net::HTTP).not_to have_received(:start)
     end
   end
 end

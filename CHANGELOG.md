@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cluster:** a slave no longer delays the boot of the server, of `rails console` or of a rake task when its master is unreachable. The first registration now runs in the heartbeat thread instead of `after_initialize`, and calls to the master time out after 3 seconds to connect and 5 seconds to read, instead of 60 seconds each.
+
 ## [0.44.3] - 2026-10-21
 
 <!-- stamped -->

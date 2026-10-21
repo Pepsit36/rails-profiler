@@ -74,6 +74,39 @@ RSpec.describe Profiler::Cluster::MasterClient do
       expect(log.string).to include("Cluster: Registered with master at http://127.0.0.1:3000 as 'worker-1'")
     end
 
+    it "returns before any request is made, the registration belongs to the heartbeat thread" do
+      stub_request(:post, register_url).to_return(status: 201)
+      stub_request(:post, heartbeat_url).to_return(status: 200)
+      allow(client).to receive(:start_heartbeat_thread)
+
+      client.start
+
+      expect(a_request(:post, register_url)).not_to have_been_made
+    end
+
+    it "does not wait for a master that never answers" do
+      gate = Queue.new
+      stub_request(:post, register_url).to_return { gate.pop && { status: 201 } }
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      start_client
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      gate << true
+
+      expect(elapsed).to be < 1
+    end
+
+    it "gives the master short timeouts" do
+      http = instance_double(Net::HTTP, post: instance_double(Net::HTTPResponse, code: "201", body: ""))
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      client.send(:register!)
+      client.send(:heartbeat!)
+
+      expect(Net::HTTP).to have_received(:start)
+        .with("127.0.0.1", 3000, hash_including(open_timeout: 3, read_timeout: 5, use_ssl: false)).twice
+    end
+
     it "keeps running when the master is unreachable at startup, and registers once it answers" do
       stub_request(:post, register_url).to_raise(Errno::ECONNREFUSED).then.to_return(status: 201)
       stub_request(:post, heartbeat_url).to_return(status: 200)
@@ -81,7 +114,7 @@ RSpec.describe Profiler::Cluster::MasterClient do
       start_client
       wait_until { requests_to(heartbeat_url) >= 1 }
 
-      expect(log.string).to include("Cluster: could not register with master at startup, will retry in the heartbeat loop")
+      expect(log.string).to include("Cluster: communication with the master failed, will retry")
       expect(log.string).to include("Errno::ECONNREFUSED")
       expect(log.string).to include("Cluster: Re-registered with master after previous failure")
       expect(a_request(:post, register_url)).to have_been_made.twice
@@ -94,7 +127,7 @@ RSpec.describe Profiler::Cluster::MasterClient do
       start_client
       wait_until { requests_to(heartbeat_url) >= 1 }
 
-      expect(log.string).to match(/could not register with master at startup.*Net::OpenTimeout/m)
+      expect(log.string).to match(/communication with the master failed.*Net::OpenTimeout/m)
       expect(log.string).to include("Re-registered with master after previous failure")
     end
 
@@ -114,6 +147,7 @@ RSpec.describe Profiler::Cluster::MasterClient do
       stub_request(:post, register_url).to_return(status: 403, body: "x" * 300)
 
       start_client
+      wait_until { log.string.include?("Master returned 403") }
 
       expect(log.string).to include("Master returned 403: #{"x" * 200}")
       expect(log.string).not_to include("x" * 201)

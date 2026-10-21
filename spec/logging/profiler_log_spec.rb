@@ -310,8 +310,7 @@ RSpec.describe "Profiler's own log messages" do
       thread = nil
       allow(client).to receive(:start_heartbeat_thread).and_wrap_original { |original| thread = original.call }
 
-      expect { client.start }.to output(/\[Profiler\] Cluster: could not register with master/).to_stderr
-      sleep 0.1
+      expect { client.start; sleep 0.1 }.to output(/\[Profiler\] Cluster: communication with the master failed/).to_stderr
       expect(thread).to be_alive
     ensure
       thread&.kill

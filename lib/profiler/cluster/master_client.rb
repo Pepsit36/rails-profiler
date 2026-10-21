@@ -20,6 +20,10 @@ module Profiler
         end
       end
 
+      # A master that does not answer must cost the heartbeat thread a few seconds, not a minute.
+      OPEN_TIMEOUT = 3
+      READ_TIMEOUT = 5
+
       class << self
         # The client the railtie started in this process, for the fork hook to restart.
         attr_accessor :current
@@ -42,12 +46,7 @@ module Profiler
         self.class.current = self
         self.class.install_fork_hook!
         @registered = false
-        begin
-          register!
-          @registered = true
-        rescue => e
-          log_warn("could not register with master at startup, will retry in the heartbeat loop", e)
-        end
+        @failed = false
         @started = true
         start_heartbeat_thread
       end
@@ -59,6 +58,7 @@ module Profiler
         return if @started.nil? || @thread&.alive?
 
         @registered = false
+        @failed = false
         start_heartbeat_thread
       end
 
@@ -68,7 +68,7 @@ module Profiler
         config = Profiler.configuration
         uri = master_uri("register")
         body = { name: config.resolved_name, url: config.self_url }.to_json
-        resp = Profiler.untracked_http { Net::HTTP.post(uri, body, request_headers) }
+        resp = post(uri, body)
         unless resp.code.to_i.between?(200, 299)
           raise "Master returned #{resp.code}: #{resp.body.to_s.slice(0, 200)}"
         end
@@ -80,8 +80,17 @@ module Profiler
         config = Profiler.configuration
         uri = master_uri("heartbeat")
         body = { name: config.resolved_name }.to_json
-        resp = Profiler.untracked_http { Net::HTTP.post(uri, body, request_headers) }
+        resp = post(uri, body)
         raise "Heartbeat rejected #{resp.code}" unless resp.code.to_i.between?(200, 299)
+      end
+
+      def post(uri, body)
+        Profiler.untracked_http do
+          Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https",
+                                                  open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT) do |http|
+            http.post(uri.request_uri, body, request_headers)
+          end
+        end
       end
 
       # Refused before any request when the secret would cross the network in clear, or when
@@ -111,20 +120,24 @@ module Profiler
         @thread = Profiler::Instrumentation::RequestContext.detached { Thread.new { heartbeat_loop } }
       end
 
+      # The first registration is the first turn of the loop, so an unreachable master never
+      # delays the boot of the process that started the client.
       def heartbeat_loop
         interval = Profiler.configuration.cluster_heartbeat_interval
         loop do
-          sleep interval
-          unless @registered
+          if @registered
+            heartbeat!
+          else
             register!
             @registered = true
-            log_info("Re-registered with master after previous failure")
-          else
-            heartbeat!
+            log_info("Re-registered with master after previous failure") if @failed
           end
         rescue => e
           @registered = false
+          @failed = true
           log_warn("communication with the master failed, will retry", e)
+        ensure
+          sleep interval
         end
       end
 
