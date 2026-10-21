@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cluster:** `DELETE /_profiler/api/profiles/clear` now honours its `type` parameter (`http`, `job`, `test` or `console`, anything else is a 422; `http` when it is absent, as before). The `clear_profiles` MCP tool on a slave used to delete the slave's HTTP profiles whatever the type asked, and answered that it had cleared the jobs; with no type it now clears every type of the slave.
+
 ## [0.44.2] - 2026-10-21
 
 <!-- stamped -->

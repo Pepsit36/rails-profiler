@@ -60,9 +60,15 @@ module Profiler
         Array(data["profiles"]).map { |h| profile_from_api(h) }
       end
 
+      CLEARABLE_TYPES = %w[http job test console].freeze
+
+      # ProfilesController#clear honours one type per call (http when none is given), so
+      # clearing everything takes one call per type.
       def clear(type: nil)
-        params = type ? "?type=#{URI.encode_www_form_component(type)}" : ""
-        delete_json("/_profiler/api/profiles/clear#{params}")
+        (type ? [type.to_s] : CLEARABLE_TYPES).each do |t|
+          delete_json("/_profiler/api/profiles/clear?type=#{URI.encode_www_form_component(t)}")
+        end
+        {}
       end
 
       # Generic HTTP access for action tools

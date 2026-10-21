@@ -44,8 +44,18 @@ module Profiler
         head :no_content
       end
 
+      CLEARABLE_TYPES = %w[http job test console].freeze
+
+      # Without a type the dashboard's long-standing behaviour holds: http profiles only. The
+      # cluster proxy names the type it means.
       def clear
-        Profiler.storage.clear(type: "http")
+        type = params[:type].presence || "http"
+        unless CLEARABLE_TYPES.include?(type.to_s)
+          return render json: { error: "type must be one of #{CLEARABLE_TYPES.join(", ")}" },
+                        status: :unprocessable_entity
+        end
+
+        Profiler.storage.clear(type: type.to_s)
         head :no_content
       end
 

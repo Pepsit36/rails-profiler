@@ -59,14 +59,14 @@ RSpec.describe Profiler::MCP::Tools::ClearProfiles do
 
     it "asks the slave to clear everything, leaving the local storage alone" do
       save
-      expect(proxy).to receive(:delete_json).with("/_profiler/api/profiles/clear")
+      expect(proxy).to receive(:clear).with(type: nil)
 
       expect(text("slave" => "payment")).to eq("Cleared all profiles.")
       expect(store.list.size).to eq(1)
     end
 
     it "passes the type on to the slave" do
-      expect(proxy).to receive(:delete_json).with("/_profiler/api/profiles/clear?type=test")
+      expect(proxy).to receive(:clear).with(type: "test")
 
       expect(text("slave" => "payment", "type" => "test")).to eq("Cleared test profiles.")
     end

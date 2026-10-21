@@ -212,14 +212,20 @@ RSpec.describe Profiler::Cluster::SlaveProxy do
   end
 
   describe "#clear" do
-    it "deletes all profiles, or those of one type, on the slave" do
-      allow(proxy).to receive(:delete_json).and_return({})
+    before { allow(proxy).to receive(:delete_json).and_return({}) }
 
-      proxy.clear
+    it "deletes the profiles of the type given, on the slave" do
       proxy.clear(type: "job")
 
-      expect(proxy).to have_received(:delete_json).with("/_profiler/api/profiles/clear")
-      expect(proxy).to have_received(:delete_json).with("/_profiler/api/profiles/clear?type=job")
+      expect(proxy).to have_received(:delete_json).once.with("/_profiler/api/profiles/clear?type=job")
+    end
+
+    it "deletes the profiles of every type, one call each, when no type is given" do
+      proxy.clear
+
+      %w[http job test console].each do |type|
+        expect(proxy).to have_received(:delete_json).once.with("/_profiler/api/profiles/clear?type=#{type}")
+      end
     end
   end
 
