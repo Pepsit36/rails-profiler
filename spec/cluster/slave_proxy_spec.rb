@@ -88,6 +88,33 @@ RSpec.describe Profiler::Cluster::SlaveProxy do
       )
     end
 
+    it "reads every page of children and gives them oldest first" do
+      child = lambda do |token, at|
+        { "token" => token, "profile_type" => "job", "path" => "/w", "method" => "JOB", "status" => 200,
+          "duration" => 1.0, "started_at" => at.iso8601 }
+      end
+      base = Time.now.round
+      pages = [
+        { "profiles" => [child.call("c3", base + 3), child.call("c2", base + 2)], "has_more" => true },
+        { "profiles" => [child.call("c1", base + 1)], "has_more" => false }
+      ]
+      allow(proxy).to receive(:get_json).and_return(*pages)
+
+      result = proxy.find_by_parent("9f8e7d6c5b4a39281706f5e4d3c2b1a0")
+
+      expect(result.map(&:token)).to eq(%w[c1 c2 c3])
+      expect(proxy).to have_received(:get_json).twice
+      expect(proxy).to have_received(:get_json).with("/_profiler/api/profiles", hash_including(offset: 0))
+      expect(proxy).to have_received(:get_json).with("/_profiler/api/profiles", hash_including(offset: 2))
+    end
+
+    it "stops on an empty page even if the slave claims there is more" do
+      allow(proxy).to receive(:get_json).and_return({ "profiles" => [], "has_more" => true })
+
+      expect(proxy.find_by_parent("9f8e7d6c5b4a39281706f5e4d3c2b1a0")).to eq([])
+      expect(proxy).to have_received(:get_json).once
+    end
+
     it "returns an array of Profile objects" do
       allow(proxy).to receive(:get_json).and_return(
         "profiles" => [

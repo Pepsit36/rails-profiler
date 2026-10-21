@@ -58,11 +58,25 @@ module Profiler
         nil
       end
 
+      CHILDREN_PAGE_SIZE = 100
+
+      # Every child, not the first page of them: the slave lists children newest first, in pages,
+      # and the local storages answer oldest first, which is the order given back.
       def find_by_parent(parent_token)
         return [] unless Storage::Token.valid?(parent_token)
 
-        data = get_json("/_profiler/api/profiles", parent_token: parent_token, all_types: true)
-        Array(data["profiles"]).map { |h| profile_from_api(h) }
+        children = []
+        offset = 0
+        loop do
+          data = get_json("/_profiler/api/profiles", parent_token: parent_token, all_types: true,
+                                                     limit: CHILDREN_PAGE_SIZE, offset: offset)
+          page = Array(data["profiles"])
+          children.concat(page.map { |h| profile_from_api(h) })
+          break if data["has_more"] != true || page.empty?
+
+          offset += page.size
+        end
+        children.sort_by { |p| p.started_at || Time.at(0) }
       end
 
       CLEARABLE_TYPES = %w[http job test console].freeze

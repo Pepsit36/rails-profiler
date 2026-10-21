@@ -21,6 +21,7 @@ every commit of every tag interval is accounted for one way or the other.
 
 ### Fixed
 
+- **Cluster:** The children of a profile read on a slave (child jobs, AJAX sub-requests) are no longer cut at the slave's first 50: the master reads every page until the slave reports no more, and returns them oldest first like the local storages do.
 - **Cluster:** The master no longer takes any answer of a slave for data. A `401` or `403` (a wrong `config.cluster_secret`) raises an error that names the secret instead of showing an empty slave, a `404` is no profile for `load` and an error elsewhere, and any other status outside 2xx raises a `Profiler::Error` carrying the slave's message. The `set_env_var`, `delete_env_var`, `reset_env_var`, `reset_all_env_vars` and `clear_profiles` MCP tools on a slave report that error instead of announcing a success, and the dashboard's slave proxy answers a slave's `404` with a `404`.
 - **Cluster:** `DELETE /_profiler/api/profiles/clear` now honours its `type` parameter (`http`, `job`, `test` or `console`, anything else is a 422; `http` when it is absent, as before). The `clear_profiles` MCP tool on a slave used to delete the slave's HTTP profiles whatever the type asked, and answered that it had cleared the jobs; with no type it now clears every type of the slave.
 
