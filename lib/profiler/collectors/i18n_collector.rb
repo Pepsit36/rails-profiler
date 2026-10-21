@@ -4,7 +4,7 @@ require_relative "base_collector"
 
 module Profiler
   module I18nLookupTracker
-    def translate(key, **options)
+    def translate(key = nil, **options)
       result = super
       if (collector = Thread.current[:profiler_i18n_collector])
         missing = result.is_a?(String) && result.downcase.include?("translation missing:")
