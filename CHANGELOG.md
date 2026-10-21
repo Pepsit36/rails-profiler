@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.6] - 2026-10-21
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Toolbar:** the toolbar's own requests (`/api/toolbar/` and `/api/events/`) no longer receive
