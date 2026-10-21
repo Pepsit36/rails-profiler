@@ -19,6 +19,12 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Toolbar:** the toolbar's own requests (`/api/toolbar/` and `/api/events/`) no longer receive
+  the slave prefix, fixing a "Profiler data could not be loaded" error on every profiled page of
+  a tab where a slave was selected.
+
 ## [0.44.5] - 2026-10-21
 
 <!-- stamped -->

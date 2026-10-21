@@ -1,6 +1,11 @@
 import { getActiveSlavePrefix } from './cluster-context'
 
-const MASTER_ONLY_PREFIX = '/_profiler/api/cluster/'
+const MASTER_ONLY_PATHS = ['/_profiler/api/cluster/', '/_profiler/api/toolbar/', '/_profiler/api/events/']
+
+// Endpoints that should never receive the slave prefix: cluster management, toolbar UI, and event polling.
+function shouldSkipSlavePrefix(url: string): boolean {
+  return MASTER_ONLY_PATHS.some(path => url.startsWith(path))
+}
 
 // Custom HTTP fetcher for orval-generated code, uses native fetch, no axios dependency.
 export async function apiFetch<T>(config: {
@@ -11,10 +16,10 @@ export async function apiFetch<T>(config: {
   headers?: Record<string, string>
   signal?: AbortSignal
 }): Promise<T> {
-  // The cluster endpoints belong to the master, which the slave selector asks which slaves
-  // exist: sent through the proxy of the slave being viewed, they would reach a node that does
-  // not route them and the selector would disappear.
-  const prefix = config.url.startsWith(MASTER_ONLY_PREFIX) ? '' : getActiveSlavePrefix()
+  // Endpoints like cluster, toolbar, and events belong to the master. Sent through a slave proxy,
+  // cluster endpoints would reach a node that does not route them and the selector would disappear.
+  // Toolbar and events endpoints do not exist on slaves, causing 404s and "Profiler data could not be loaded" errors.
+  const prefix = shouldSkipSlavePrefix(config.url) ? '' : getActiveSlavePrefix()
   const resolvedUrl = prefix
     ? config.url.replace('/_profiler/api', `/_profiler/api${prefix}`)
     : config.url
