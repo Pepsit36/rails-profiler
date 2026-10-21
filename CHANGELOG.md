@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.5] - 2026-10-21
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Cluster:** `docs/cluster.md` now says that the master must run as a single process. Its registry
