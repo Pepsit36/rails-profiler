@@ -82,7 +82,7 @@ module Profiler
         # SQL queries
         @subscriptions << subscribe_notification("sql.active_record") do |_name, started, finished, _unique_id, payload|
           next if payload[:name] == "SCHEMA"
-          next if payload[:sql] =~ /^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT)/i
+          next if payload[:sql] =~ /\A\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i
 
           sql = payload[:sql].to_s
           add_event Models::TimelineEvent.new(

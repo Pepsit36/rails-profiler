@@ -159,6 +159,24 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
 
       collector.collect
     end
+
+    it "skips transaction SQL but keeps a query with a keyword on a later line" do
+      collector.subscribe
+
+      ActiveSupport::Notifications.instrument("sql.active_record",
+        sql: "  rollback", name: "TRANSACTION") {}
+      ActiveSupport::Notifications.instrument("sql.active_record",
+        sql: "RELEASE SAVEPOINT sp1", name: "TRANSACTION") {}
+      ActiveSupport::Notifications.instrument("sql.active_record",
+        sql: "SELECT 1\nCOMMIT FROM t", name: "User Load") {}
+      ActiveSupport::Notifications.instrument("sql.active_record",
+        sql: "COMMITTED_AT_QUERY", name: "User Load") {}
+
+      events = collector.instance_variable_get(:@events)
+      expect(events.map(&:name)).to eq(["SELECT 1\nCOMMIT FROM t", "COMMITTED_AT_QUERY"])
+
+      collector.collect
+    end
   end
 
   describe "#record_http_event" do

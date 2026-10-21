@@ -19,6 +19,12 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Database:** A real query that contains a line starting with `COMMIT`, `BEGIN`, `ROLLBACK`,
+  `SAVEPOINT` or `RELEASE` is no longer hidden from the database and flamegraph collectors: only a
+  statement that is itself a transaction instruction is skipped, whatever the leading whitespace.
+
 ## [0.44.1] - 2026-10-21
 
 <!-- stamped -->

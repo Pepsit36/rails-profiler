@@ -58,7 +58,7 @@ module Profiler
 
           # Skip schema queries and internal Rails queries
           next if payload[:name] == "SCHEMA"
-          next if payload[:sql] =~ /^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)/i
+          next if payload[:sql] =~ /\A\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i
 
           query = Models::SqlQuery.new(
             sql: payload[:sql],

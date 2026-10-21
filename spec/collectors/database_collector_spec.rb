@@ -63,6 +63,32 @@ RSpec.describe Profiler::Collectors::DatabaseCollector do
       expect(data[:total_queries]).to eq(0)
     end
 
+    it "skips transaction statements with leading whitespace or lowercase" do
+      collector.subscribe
+
+      ["  BEGIN", "\ncommit", "SAVEPOINT sp1", "RELEASE SAVEPOINT sp1"].each do |stmt|
+        ActiveSupport::Notifications.instrument("sql.active_record", {
+          sql: stmt, name: "TRANSACTION", binds: [], connection: nil
+        })
+      end
+
+      collector.collect
+      expect(profile.collector_data("database")[:total_queries]).to eq(0)
+    end
+
+    it "keeps a real query that merely contains a transaction keyword on a later line" do
+      collector.subscribe
+
+      ["SELECT 1\nCOMMIT FROM t", "SELECT * FROM t\nBEGIN_DATE", "COMMITTED_AT_QUERY"].each do |stmt|
+        ActiveSupport::Notifications.instrument("sql.active_record", {
+          sql: stmt, name: "User Load", binds: [], connection: nil
+        })
+      end
+
+      collector.collect
+      expect(profile.collector_data("database")[:total_queries]).to eq(3)
+    end
+
     it "counts slow queries" do
       collector.subscribe
 
