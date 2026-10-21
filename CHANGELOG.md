@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.2] - 2026-10-21
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Database:** A real query that contains a line starting with `COMMIT`, `BEGIN`, `ROLLBACK`,
