@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.1] - 2026-10-21
+
+<!-- stamped -->
+
 ### Fixed
 
 - **I18n:** `I18n.t(default: "Fallback")` and `I18n.translate(default: "Fallback")`, called without a
