@@ -19,6 +19,12 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cluster:** `docs/cluster.md` now says that the master must run as a single process. Its registry
+  of slaves is kept in memory, so with several workers each heartbeat reaches one of them and a
+  slave appears `offline` on the others.
+
 ## [0.44.4] - 2026-10-21
 
 <!-- stamped -->
