@@ -66,6 +66,14 @@ end
 
 For Unicorn, the same call goes in `after_fork`. It is safe to call in addition to the hook.
 
+**The master must run as a single process.** The registry of slaves lives in the memory of the
+process that received the registration, and each heartbeat reaches only one process. With several
+workers (Puma in cluster mode, Unicorn, several `rails server`), a worker that misses every
+heartbeat of a `cluster_offline_threshold` window shows its slaves as `offline`, or does not know
+them at all, and the answer of the dashboard depends on which worker takes the request. Run the
+master with a single process (`workers 0` in Puma, threads are fine). The slaves themselves may
+run as many workers as you like.
+
 **Two applications on one machine** (for example two git worktrees on ports 3000 and 3001) need
 no HTTPS: loopback addresses are accepted over plain HTTP.
 
