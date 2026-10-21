@@ -26,6 +26,8 @@ module Profiler
                  end
 
         render json: result
+      rescue Cluster::SlaveProxy::NotFound => e
+        render json: { error: e.message }, status: :not_found
       # The profiler's own refusals (unknown or offline slave, refused URL, missing secret).
       rescue Profiler::Error => e
         render json: { error: e.message }, status: :bad_gateway

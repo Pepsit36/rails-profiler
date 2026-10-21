@@ -9,6 +9,9 @@ require_relative "../storage/token"
 module Profiler
   module Cluster
     class SlaveProxy
+      # The slave answered 404: it has no such resource.
+      class NotFound < Profiler::Error; end
+
       # A slow or hung slave must not block the master's request thread for long.
       OPEN_TIMEOUT = 5  # seconds
       READ_TIMEOUT = 10 # seconds
@@ -51,6 +54,8 @@ module Profiler
 
         raw = data["profile"] || data
         profile_from_api(raw)
+      rescue NotFound
+        nil
       end
 
       def find_by_parent(parent_token)
@@ -129,12 +134,29 @@ module Profiler
             http.request(req)
           end
         end
-        return {} if resp.code == "204"
-        if resp.code.to_s.start_with?("3")
-          raise Profiler::Error, "Slave profiler answered #{resp.code} (redirect not followed)"
+        interpret(resp)
+      end
+
+      # What a slave's status means, as PeerProxy#interpret reads a peer's: a wrong secret or a
+      # refusal is never an empty answer, and neither is an error of the slave.
+      def interpret(resp)
+        code = resp.code.to_s
+        return {} if code == "204"
+        raise NotFound, "Slave profiler answered 404: #{failure_detail(resp, "not found")}" if code == "404"
+        raise Profiler::Error, "Slave profiler answered #{code} (redirect not followed)" if code.start_with?("3")
+        if %w[401 403].include?(code)
+          raise Profiler::Error, "Slave profiler refused the request (#{code}): check that master and slave " \
+                                 "share the same config.cluster_secret"
         end
+        raise Profiler::Error, "Slave profiler answered #{code}: #{failure_detail(resp, "no detail")}" unless code.start_with?("2")
 
         parse_response(resp)
+      end
+
+      # The slave's own message when its body carries one; never the raw body, which may be anything.
+      def failure_detail(resp, fallback)
+        message = parse_response(resp)["error"] if resp.body.to_s.start_with?("{")
+        message.is_a?(String) && !message.empty? ? message.slice(0, 200) : fallback
       end
 
       def parse_response(resp)

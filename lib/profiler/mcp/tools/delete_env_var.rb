@@ -22,7 +22,8 @@ module Profiler
           end
 
           if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
-            proxy.patch_json("/_profiler/api/env_vars", { key: key, value: "" })
+            data = proxy.patch_json("/_profiler/api/env_vars", { key: key, value: "" })
+            return ::MCP::Tool::Response.new([{ type: "text", text: "Error: #{data["error"]}" }], error: true) if data["error"]
             return [{ type: "text", text: "Deleted #{key} on slave '#{params["slave"]}'. Override persisted across restarts until reset." }]
           end
 

@@ -15,7 +15,8 @@ module Profiler
           return [{ type: "text", text: "Error: key cannot be blank." }] if key.empty?
 
           if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
-            proxy.delete_json("/_profiler/api/env_vars/reset?key=#{URI.encode_www_form_component(key)}")
+            data = proxy.delete_json("/_profiler/api/env_vars/reset?key=#{URI.encode_www_form_component(key)}")
+            return ::MCP::Tool::Response.new([{ type: "text", text: "Error: #{data["error"]}" }], error: true) if data["error"]
             return [{ type: "text", text: "Reset #{key} on slave '#{params["slave"]}'." }]
           end
 

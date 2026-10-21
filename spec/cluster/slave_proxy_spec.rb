@@ -181,6 +181,33 @@ RSpec.describe Profiler::Cluster::SlaveProxy do
         .to raise_error(Profiler::Error, /answered 302 \(redirect not followed\)/)
     end
 
+    it "reads a 404 as not found: no profile for #load, an error for the rest" do
+      stub_start(answer(404, '{"error":"Profile not found"}'))
+
+      expect(proxy.load(SecureRandom.hex(16))).to be_nil
+      expect { proxy.list }.to raise_error(Profiler::Cluster::SlaveProxy::NotFound, /Profile not found/)
+    end
+
+    %w[401 403].each do |code|
+      it "reports a #{code} as a refused secret, not as an empty slave" do
+        stub_start(answer(code.to_i, '{"error":"Forbidden"}'))
+
+        expect { proxy.list }.to raise_error(Profiler::Error, /refused the request \(#{code}\).*cluster_secret/)
+        expect { proxy.load(SecureRandom.hex(16)) }.to raise_error(Profiler::Error, /refused the request/)
+        expect { proxy.find_by_parent(SecureRandom.hex(16)) }.to raise_error(Profiler::Error, /refused the request/)
+      end
+    end
+
+    it "raises on any other status outside 2xx, with the slave's message" do
+      stub_start(answer(422, '{"error":"key refused"}'))
+      expect { proxy.patch_json("/_profiler/api/env_vars", {}) }
+        .to raise_error(Profiler::Error, /answered 422: key refused/)
+
+      stub_start(answer(500, "<html>boom</html>"))
+      expect { proxy.get_json("/_profiler/api/profiles") }
+        .to raise_error(Profiler::Error, /answered 500: no detail/)
+    end
+
     it "finds no profile in a malformed answer" do
       stub_start(answer(200, "not json"))
 

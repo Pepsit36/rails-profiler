@@ -28,7 +28,8 @@ module Profiler
           end
 
           if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
-            proxy.patch_json("/_profiler/api/env_vars", { key: key, value: value })
+            data = proxy.patch_json("/_profiler/api/env_vars", { key: key, value: value })
+            return ::MCP::Tool::Response.new([{ type: "text", text: "Error: #{data["error"]}" }], error: true) if data["error"]
             return [{ type: "text", text: "Set #{key}=#{value} on slave '#{params["slave"]}'" }]
           end
 

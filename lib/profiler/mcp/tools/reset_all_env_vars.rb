@@ -9,7 +9,8 @@ module Profiler
       class ResetAllEnvVars
         def self.call(params)
           if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
-            proxy.delete_json("/_profiler/api/env_vars/reset_all")
+            data = proxy.delete_json("/_profiler/api/env_vars/reset_all")
+            return ::MCP::Tool::Response.new([{ type: "text", text: "Error: #{data["error"]}" }], error: true) if data["error"]
             return [{ type: "text", text: "Reset all ENV overrides on slave '#{params["slave"]}'." }]
           end
 
