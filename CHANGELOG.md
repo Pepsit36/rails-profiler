@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.3] - 2026-10-21
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Cluster:** The children of a profile read on a slave (child jobs, AJAX sub-requests) are no longer cut at the slave's first 50: the master reads every page until the slave reports no more, and returns them oldest first like the local storages do.
