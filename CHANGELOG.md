@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.10] - 2026-10-22
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Cluster:** the master now logs a warning when a process with `cluster_master=true` forks, and
