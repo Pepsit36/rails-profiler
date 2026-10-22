@@ -80,7 +80,7 @@ module Profiler
 
       # Opens path for reading, refusing a symbolic link while the modes are restricted.
       def open_for_reading(path, &block)
-        File.open(path.to_s, File::RDONLY | nofollow, &block)
+        File.open(path.to_s, File::RDONLY | nofollow, encoding: Encoding::UTF_8, &block)
       end
 
       # Opens path for reading and writing, creating it 0600 when missing.

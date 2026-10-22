@@ -44,6 +44,22 @@ RSpec.describe Profiler::Storage::FileStore do
       File.write(File.join(@tmpdir, "#{token}.json"), "not valid json {{{}}")
       expect(store.load(token)).to be_nil
     end
+
+    it "handles UTF-8 paths when default_external is US-ASCII" do
+      profile = build_profile(path: "/café")
+      store.save(profile.token, profile)
+
+      # Temporarily set default_external to US-ASCII to verify UTF-8 encoding works
+      previous = Encoding.default_external
+      begin
+        Encoding.default_external = Encoding::US_ASCII
+        loaded = store.load(profile.token)
+        expect(loaded).not_to be_nil
+        expect(loaded.path).to eq("/café")
+      ensure
+        Encoding.default_external = previous
+      end
+    end
   end
 
   describe "#list" do
@@ -63,6 +79,20 @@ RSpec.describe Profiler::Storage::FileStore do
       5.times { store.save(SecureRandom.hex(16), build_profile) }
       expect(store.list(limit: 2).size).to eq(2)
       expect(store.list(limit: 10, offset: 3).size).to eq(2)
+    end
+
+    it "handles UTF-8 paths when default_external is US-ASCII" do
+      profile = build_profile(path: "/café")
+      store.save(profile.token, profile)
+
+      previous = Encoding.default_external
+      begin
+        Encoding.default_external = Encoding::US_ASCII
+        result = store.list
+        expect(result.map(&:path)).to include("/café")
+      ensure
+        Encoding.default_external = previous
+      end
     end
   end
 

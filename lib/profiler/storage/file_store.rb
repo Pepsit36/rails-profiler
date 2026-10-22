@@ -97,7 +97,7 @@ module Profiler
         file_path = profile_file_path(token)
         return nil unless File.exist?(file_path)
 
-        json_data = File.read(file_path)
+        json_data = File.read(file_path, encoding: Encoding::UTF_8)
         Models::Profile.from_json(json_data)
       rescue StandardError => e
         Profiler.log_error("FileStore: could not load profile #{token}", e)
@@ -240,7 +240,7 @@ module Profiler
 
         record = JSON.parse(line)
         record.is_a?(Hash) ? record : nil
-      rescue JSON::ParserError
+      rescue JSON::ParserError, EncodingError
         nil
       end
 
