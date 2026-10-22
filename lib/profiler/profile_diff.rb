@@ -103,16 +103,25 @@ module Profiler
     end
 
     def compute_status(delta, delta_pct, direction, threshold_pct)
-      change_pct = delta_pct&.abs || 0
-
       if delta == 0
         :neutral
-      elsif change_pct <= threshold_pct
-        :neutral
-      elsif (direction == :lower && delta < 0) || (direction == :higher && delta > 0)
-        :improved
+      elsif delta_pct.nil?
+        # Baseline is zero: apply direction logic directly without threshold
+        if (direction == :lower && delta < 0) || (direction == :higher && delta > 0)
+          :improved
+        else
+          :regression
+        end
       else
-        :regression
+        # Baseline is non-zero: apply threshold
+        change_pct = delta_pct.abs
+        if change_pct <= threshold_pct
+          :neutral
+        elsif (direction == :lower && delta < 0) || (direction == :higher && delta > 0)
+          :improved
+        else
+          :regression
+        end
       end
     end
 

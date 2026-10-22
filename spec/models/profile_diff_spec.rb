@@ -160,7 +160,15 @@ RSpec.describe Profiler::ProfileDiff do
       b = build_profile(collectors_data: { "cache" => { "hit_rate" => 50.0 } })
       metric = described_class.new(a, b).compute[:metrics][:cache_hit_rate]
       expect(metric[:delta_pct]).to be_nil
-      expect(metric[:status]).to eq(:neutral)
+      expect(metric[:status]).to eq(:improved)
+    end
+
+    it "marks a rise from zero as a regression for a :lower-direction metric" do
+      a = build_profile(collectors_data: { "database" => { "total_queries" => 0 } })
+      b = build_profile(collectors_data: { "database" => { "total_queries" => 50 } })
+      metric = described_class.new(a, b).compute[:metrics][:db_queries]
+      expect(metric[:delta_pct]).to be_nil
+      expect(metric[:status]).to eq(:regression)
     end
   end
 
