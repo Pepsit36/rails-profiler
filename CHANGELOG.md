@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.7] - 2026-10-22
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Cluster:** the `post` method of `MasterClient` now includes `write_timeout` alongside `open_timeout`
