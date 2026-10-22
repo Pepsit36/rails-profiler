@@ -19,6 +19,15 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.8] - 2026-10-22
+
+<!-- stamped -->
+
+### Fixed
+
+- **Tests:** Consolidate api-fetcher test files
+- **Decisions:** Update slave prefix exemption documentation
+
 ## [0.44.7] - 2026-10-22
 
 <!-- stamped -->
