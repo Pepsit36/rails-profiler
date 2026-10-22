@@ -924,11 +924,13 @@ since `memory` is deprecated in the profile model.
 - **Documented, not stored in a shared place.** `SlaveRegistry` keeps its entries in the memory of
   the process, so with several master workers each heartbeat reaches one of them. While the gem
   provides shared storage backends (file, SQLite, Redis) for collected profiles, a shared slave
-  registry would require writing a registry entry on every heartbeat of every slave—overhead
+  registry would require writing a registry entry on every heartbeat of every slave, overhead
   disproportionate to the problem. The simplest cautious option is taken: `docs/cluster.md`
   states that the master runs as a single process, with a future option to add shared registry
   storage if needed.
-- **No code change.** The behavior is unchanged; a shared registry stays possible later.
+- **Detection code added.** The master now logs a warning when a process with `cluster_master=true`
+  forks, and when a slave heartbeat is received from an unknown slave, to help detect this exact
+  misconfiguration. The detection warnings are always enabled to catch the problem early.
 
 ## Configuration errors in heartbeat loop (gem #63, followup audit)
 
