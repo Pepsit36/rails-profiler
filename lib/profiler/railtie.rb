@@ -133,9 +133,20 @@ module Profiler
         Profiler::Cluster::Security.warn_about_configuration(Rails.logger)
         require_relative "peers"
         Profiler::Peers.warn_about_configuration(Rails.logger)
-        next unless Profiler.configuration.slave?
 
         require_relative "cluster/master_client"
+
+        cluster_master = Profiler.configuration.cluster_master?
+        is_slave = Profiler.configuration.slave?
+
+        # Install fork hook for pure masters (cluster_master=true, not a slave).
+        # If also a slave, MasterClient.start will install the fork hook and handle warnings.
+        if cluster_master && !is_slave
+          Profiler::Cluster::MasterClient.install_pure_master_fork_hook!
+        end
+
+        next unless is_slave
+
         Profiler::Cluster::MasterClient.new.start
       end
     end

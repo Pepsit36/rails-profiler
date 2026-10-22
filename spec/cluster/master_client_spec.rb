@@ -326,5 +326,18 @@ RSpec.describe Profiler::Cluster::MasterClient do
 
       expect(result).to include("Cluster: master process forked: each worker maintains a separate slave registry")
     end
+
+    it "warns when a pure master (not a slave) forks" do
+      Profiler.configuration.cluster_master = true
+      Profiler.configuration.master_url = nil
+      described_class.install_pure_master_fork_hook!
+
+      result = in_forked_child do
+        log.string
+      end
+
+      expect(result).to include("Cluster: master process forked: each worker maintains a separate slave registry")
+      expect(described_class.current).to be_nil
+    end
   end
 end
