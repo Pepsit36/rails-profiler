@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cluster:** the `post` method of `MasterClient` now includes `write_timeout` alongside `open_timeout`
+  and `read_timeout`, preventing extended waits when the master server stops responding mid-write.
+- **Cluster:** configuration errors in the heartbeat loop (invalid `master_url` or missing secret) are
+  now logged once instead of on every heartbeat cycle, eliminating log noise from unrecoverable
+  configuration problems.
+
 ## [0.44.6] - 2026-10-21
 
 <!-- stamped -->
