@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Compare:** metric status now correctly identifies improvements and regressions when baseline values are zero, classifying direction-aligned changes as improvements without requiring a percentage threshold.
+
 ## [0.44.10] - 2026-10-22
 
 <!-- stamped -->
