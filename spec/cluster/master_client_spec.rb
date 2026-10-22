@@ -313,5 +313,30 @@ RSpec.describe Profiler::Cluster::MasterClient do
       expect { described_class.restart_after_fork }.not_to raise_error
       expect(described_class.current).to be_nil
     end
+
+    it "warns when a cluster_master forks and restarts the heartbeat" do
+      Profiler.configuration.cluster_master = true
+      start_client
+
+      result = in_forked_child do
+        client.restart_after_fork
+        log.string
+      end
+
+      expect(result).to include("Cluster: master process forked: each worker maintains a separate slave registry")
+    end
+
+    it "warns when a pure master (not a slave) forks" do
+      Profiler.configuration.cluster_master = true
+      Profiler.configuration.master_url = nil
+      described_class.install_pure_master_fork_hook!
+
+      result = in_forked_child do
+        log.string
+      end
+
+      expect(result).to include("Cluster: master process forked: each worker maintains a separate slave registry")
+      expect(described_class.current).to be_nil
+    end
   end
 end

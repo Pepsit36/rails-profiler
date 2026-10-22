@@ -20,6 +20,15 @@ module Profiler
         end
       end
 
+      # Fork hook for a pure master (cluster_master=true, not a slave): logs a warning when forking.
+      module PureMasterForkHook
+        def _fork
+          pid = super
+          Profiler.log_warn("Cluster: master process forked: each worker maintains a separate slave registry") if pid.zero?
+          pid
+        end
+      end
+
       # A master that does not answer must cost the heartbeat thread a few seconds, not a minute.
       OPEN_TIMEOUT = 3
       READ_TIMEOUT = 5
@@ -33,6 +42,13 @@ module Profiler
 
           Process.singleton_class.prepend(ForkHook)
           @fork_hook_installed = true
+        end
+
+        def install_pure_master_fork_hook!
+          return false if @pure_master_fork_hook_installed || !Process.respond_to?(:_fork)
+
+          Process.singleton_class.prepend(PureMasterForkHook)
+          @pure_master_fork_hook_installed = true
         end
 
         def restart_after_fork
@@ -56,6 +72,10 @@ module Profiler
       # Does nothing while a heartbeat thread is alive, nor before start.
       def restart_after_fork
         return if @started.nil? || @thread&.alive?
+
+        if Profiler.configuration.cluster_master?
+          log_warn("master process forked: each worker maintains a separate slave registry")
+        end
 
         @registered = false
         @failed = false

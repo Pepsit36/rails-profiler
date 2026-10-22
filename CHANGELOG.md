@@ -19,6 +19,19 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.10] - 2026-10-22
+
+<!-- stamped -->
+
+### Fixed
+
+- **Cluster:** the master now logs a warning when a process with `cluster_master=true` forks, and
+  when a heartbeat is received for a slave not seen in the current worker, to help detect the
+  misconfiguration of running multiple master workers without a shared registry.
+- **Documentation:** `DECISIONS.md` now correctly states that the gem provides shared storage
+  backends (file, SQLite, Redis); the decision to keep the slave registry single-process is based
+  on avoiding per-heartbeat writes, not on the lack of storage options.
+
 ## [0.44.9] - 2026-10-22
 
 <!-- stamped -->

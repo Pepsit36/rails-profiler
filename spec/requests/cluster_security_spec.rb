@@ -224,6 +224,26 @@ RSpec.describe "Cluster endpoints", type: :request do
         post "/_profiler/api/cluster/heartbeat", { name: "payment" }.to_json, json_headers.merge(local).merge(profiler_header)
         expect(last_response.status).to eq(403)
       end
+
+      it "warns, with the name quoted, when the slave is unknown to this worker" do
+        log = StringIO.new
+        Profiler.configure { |config| config.logger = Logger.new(log) }
+
+        post "/_profiler/api/cluster/heartbeat", { name: "ghost\nforged line" }.to_json, json_headers.merge(remote).merge(secret_header)
+
+        expect(last_response.status).to eq(404)
+        expect(log.string).to include('heartbeat for unknown slave "ghost\\nforged line"')
+        expect(log.string).not_to include("ghost\nforged line")
+      end
+
+      it "does not warn for a registered slave" do
+        log = StringIO.new
+        Profiler.configure { |config| config.logger = Logger.new(log) }
+
+        post "/_profiler/api/cluster/heartbeat", { name: "payment" }.to_json, json_headers.merge(remote).merge(secret_header)
+
+        expect(log.string).not_to include("unknown slave")
+      end
     end
 
     describe "the slave proxy" do
