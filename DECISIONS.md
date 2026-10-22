@@ -446,9 +446,10 @@ option and the reason for it.
   client reports 0 error.
 - `apiFetch` rewrites a URL through the proxy of the slave being viewed. Left alone, the
   selector would then ask the slave (which does not route `cluster/slaves`), get a 404 and
-  disappear, with no way back to the master. The cluster URLs are therefore never prefixed. The
-  request is otherwise the same (one GET, no retry, no refetch on focus); it now also carries
-  the `X-Profiler-Request` header like every other generated call, which a GET ignores.
+  disappear, with no way back to the master. The cluster, toolbar, and events URLs are therefore
+  never prefixed (these endpoints are exempt per `MASTER_ONLY_PATHS` in api-fetcher). The request
+  is otherwise the same (one GET, no retry, no refetch on focus); it now also carries the
+  `X-Profiler-Request` header like every other generated call, which a GET ignores.
 
 ## Token cleared on Turbo visits (case 4)
 
