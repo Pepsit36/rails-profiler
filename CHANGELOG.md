@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.9] - 2026-10-22
+
+<!-- stamped -->
+
+### Fixed
+
+- **File storage:** profile paths containing non-ASCII characters (e.g., `/café`) are now correctly saved and loaded even when the system's default encoding is not UTF-8 (e.g., `LANG=C`).
+
 ## [0.44.8] - 2026-10-22
 
 <!-- stamped -->
