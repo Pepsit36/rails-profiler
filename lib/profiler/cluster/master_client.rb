@@ -57,6 +57,10 @@ module Profiler
       def restart_after_fork
         return if @started.nil? || @thread&.alive?
 
+        if Profiler.configuration.cluster_master?
+          log_warn("master process forked: each worker maintains a separate slave registry")
+        end
+
         @registered = false
         @failed = false
         start_heartbeat_thread

@@ -27,6 +27,7 @@ module Profiler
         name = params[:name].to_s
         entry = Profiler.slave_registry.heartbeat(name)
         if entry.nil?
+          Profiler.log_warn("Cluster: received heartbeat for unknown slave '#{name}' (possible multi-worker misconfiguration)")
           render json: { error: "Unknown slave - please re-register" }, status: :not_found
         else
           render json: { ok: true }

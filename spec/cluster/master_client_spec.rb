@@ -313,5 +313,18 @@ RSpec.describe Profiler::Cluster::MasterClient do
       expect { described_class.restart_after_fork }.not_to raise_error
       expect(described_class.current).to be_nil
     end
+
+    it "warns when a cluster_master forks and restarts the heartbeat" do
+      Profiler.configuration.cluster_master = true
+      start_client
+      thread = client.instance_variable_get(:@thread)
+
+      result = in_forked_child do
+        client.restart_after_fork
+        log.string
+      end
+
+      expect(result).to include("Cluster: master process forked: each worker maintains a separate slave registry")
+    end
   end
 end
