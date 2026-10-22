@@ -58,6 +58,16 @@ RSpec.describe Profiler::Cluster::MasterClient do
   end
 
   describe "#start" do
+    it "sets write_timeout along with open_timeout and read_timeout" do
+      http = instance_double(Net::HTTP, post: instance_double(Net::HTTPResponse, code: "201", body: ""))
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      client.send(:register!)
+
+      expect(Net::HTTP).to have_received(:start)
+        .with("127.0.0.1", 3000, hash_including(open_timeout: 3, read_timeout: 5, write_timeout: 5))
+    end
+
     it "registers with the master, then sends a heartbeat on each interval" do
       stub_request(:post, register_url).to_return(status: 201)
       stub_request(:post, heartbeat_url).to_return(status: 200)
@@ -151,6 +161,33 @@ RSpec.describe Profiler::Cluster::MasterClient do
 
       expect(log.string).to include("Master returned 403: #{"x" * 200}")
       expect(log.string).not_to include("x" * 201)
+    end
+
+    it "logs configuration errors via log_error_once, appearing only once despite repeated heartbeat cycles" do
+      Profiler.configuration.cluster_secret = nil
+      Profiler.configuration.cluster_require_secret = true
+      Profiler.configuration.cluster_heartbeat_interval = 0.01
+
+      start_client
+      wait_until { log.string.include?("failed due to configuration") }
+
+      sleep 0.1  # Allow multiple heartbeat cycles (interval is 0.01s)
+
+      config_error_count = log.string.scan(/failed due to configuration/).count
+      expect(config_error_count).to eq(1)
+      expect(log.string).not_to include("will retry")
+    end
+
+    it "logs transient network errors on each cycle with log_warn, unlike configuration errors" do
+      stub_request(:post, register_url).to_raise(Errno::ECONNREFUSED).times(4).then.to_return(status: 201)
+      stub_request(:post, heartbeat_url).to_return(status: 200)
+
+      start_client
+      wait_until { requests_to(register_url) >= 3 }
+
+      network_error_count = log.string.scan(/Errno::ECONNREFUSED/).count
+      expect(network_error_count).to be >= 2
+      expect(log.string).to include("will retry")
     end
   end
 

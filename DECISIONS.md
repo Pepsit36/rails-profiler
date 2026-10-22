@@ -927,3 +927,19 @@ since `memory` is deprecated in the profile model.
   share between its workers. The simplest cautious option is taken: `docs/cluster.md` states that
   the master runs as a single process.
 - **No code change.** The behavior is unchanged; a shared registry stays possible later.
+
+## Configuration errors in heartbeat loop (gem #63, followup audit)
+
+- **Strategy: use `Profiler.log_error_once` for permanent configuration errors.** Configuration errors
+  (invalid master URL, missing secret when required) are not transient network failures and will never
+  resolve by retrying. Using `log_error_once` prevents polluting logs with the same error message on
+  every heartbeat cycle. Configuration errors are detected by checking if the error message starts with
+  `"master_url"` or contains `"secret"`, which covers all cases from `Security.master_url_denial` and
+  secret validation.
+- **Alternative considered but rejected: stopping the heartbeat loop.** While more drastic, stopping the
+  loop would prevent the application from starting any heartbeat when config is invalid. Using `log_error_once`
+  is consistent with other parts of the codebase (e.g., `process_snapshot.rb`, `storage/base_store.rb`)
+  that face similar persistent errors in repeated operations.
+- **Network errors still retry.** Transient failures (connection timeouts, DNS issues) continue to log
+  with `log_warn` on each attempt, allowing the operator to see retry activity while the master is temporarily
+  down.

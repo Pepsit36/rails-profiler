@@ -87,7 +87,8 @@ module Profiler
       def post(uri, body)
         Profiler.untracked_http do
           Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https",
-                                                  open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT) do |http|
+                                                  open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT,
+                                                  write_timeout: READ_TIMEOUT) do |http|
             http.post(uri.request_uri, body, request_headers)
           end
         end
@@ -135,10 +136,20 @@ module Profiler
         rescue => e
           @registered = false
           @failed = true
-          log_warn("communication with the master failed, will retry", e)
+          if configuration_error?(e)
+            Profiler.log_error_once(:cluster_config, "Cluster: communication with the master failed due to configuration", e)
+          else
+            log_warn("communication with the master failed, will retry", e)
+          end
         ensure
           sleep interval
         end
+      end
+
+      # True when the error is a permanent configuration problem that will not resolve by retrying.
+      def configuration_error?(error)
+        message = error.message.to_s
+        message.start_with?("master_url") || message.include?("secret")
       end
 
       def log_info(msg)
