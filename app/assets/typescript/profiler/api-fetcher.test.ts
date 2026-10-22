@@ -6,7 +6,7 @@ vi.mock('./cluster-context', () => ({
   getActiveSlavePrefix: mockGetActiveSlavePrefix,
 }))
 
-describe('apiFetch', () => {
+describe('apiFetch slave prefix behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     globalThis.fetch = vi.fn()
