@@ -87,7 +87,8 @@ module Profiler
       def post(uri, body)
         Profiler.untracked_http do
           Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https",
-                                                  open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT) do |http|
+                                                  open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT,
+                                                  write_timeout: READ_TIMEOUT) do |http|
             http.post(uri.request_uri, body, request_headers)
           end
         end
