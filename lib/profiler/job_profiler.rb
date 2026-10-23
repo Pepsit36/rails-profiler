@@ -86,7 +86,7 @@ module Profiler
       begin
         result = block.call
         result
-      rescue => e
+      rescue Exception => e
         job_status = "failed"
         error_message = "#{e.class}: #{e.message}"
         exception_collector&.capture(e)
