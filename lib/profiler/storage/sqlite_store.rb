@@ -51,7 +51,10 @@ module Profiler
       # in place.
       def discard_after_fork
         if @db.respond_to?(:discard)
-          @db.discard
+          # Already discarded by sqlite3's own Process._fork hook (SQLite3::ForkSafety) when the
+          # sqlite3 gem was required before the profiler: discarding twice is at best a spurious
+          # error here, at worst a NULL sqlite3* reaching the C layer.
+          @db.discard unless @db.closed?
         else
           (self.class.kept_alive_after_fork ||= []) << @db
         end

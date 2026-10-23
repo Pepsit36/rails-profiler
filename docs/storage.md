@@ -153,6 +153,12 @@ rebuild is not specific to SQLite: a worker using the memory store starts with a
 fork, losing whatever the parent recorded before forking (the file and Redis stores are shared
 state, so they are unaffected).
 
+With `sqlite3` older than 2.0, the inherited connection has no way to drop its OS resources
+without closing them: the profiler keeps the Ruby object alive for the life of the worker instead
+of closing it outright (closing it would be unsafe in WAL mode while the parent may still be using
+it), but it is still closed by Ruby's own finalizer when the worker process exits. Projects on
+that version should prefer a per-worker database path or upgrade the `sqlite3` gem.
+
 ## Files under `tmp_path`
 
 `config.tmp_path` (`tmp/rails-profiler` under the Rails root, or under the current directory

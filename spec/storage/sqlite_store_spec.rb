@@ -419,12 +419,19 @@ RSpec.describe Profiler::Storage::SqliteStore do
       token = profile.token
 
       fork do
+        # The inherited handle must have been discarded (sqlite3 >= 2.0) before Profiler.storage
+        # is even called again: otherwise this only proves a fresh connection was built, not that
+        # the old one was neutralized, which a worker reusing it would still hit "closed database"
+        # or worse through.
+        inherited_db = parent_store.instance_variable_get(:@db)
+        discarded = inherited_db.respond_to?(:closed?) ? inherited_db.closed? : true
+
         # Profiler.storage must have been cleared by the fork hook: this rebuilds it with a
         # fresh connection, distinct from the parent's, rather than reusing the inherited one.
         child_store = Profiler.storage
         reloaded = child_store.load(token)
 
-        if !child_store.equal?(parent_store) && reloaded && reloaded.token == token
+        if discarded && !child_store.equal?(parent_store) && reloaded && reloaded.token == token
           exit! 0
         else
           exit! 1
