@@ -136,11 +136,13 @@ module Profiler
 
         set_header(headers, TOKEN_HEADER, profile.token)
 
-        if html_response?(headers)
+        if html_response?(headers) && !attachment_response?(headers) && !encoded_response?(headers)
           nonce = env['action_dispatch.content_security_policy_nonce']
           injected = ToolbarInjector.new(body, profile.token, nonce).inject
           # A HEAD answer, or a page without </body>, keeps the length it announced.
           update_content_length(headers, injected) unless injected.equal?(body)
+          delete_header(headers, "ETag")
+          delete_header(headers, "Last-Modified")
           body = injected
         end
 
@@ -346,6 +348,15 @@ module Profiler
         content_type(headers).include?("text/html")
       end
 
+      def attachment_response?(headers)
+        disposition = header(headers, "content-disposition")
+        disposition&.start_with?("attachment")
+      end
+
+      def encoded_response?(headers)
+        header(headers, "content-encoding").present?
+      end
+
       def content_type(headers)
         header(headers, "content-type").to_s
       end
@@ -366,6 +377,11 @@ module Profiler
         existing = headers.keys.select { |key| key.to_s.casecmp?(name) }
         existing.each { |key| headers.delete(key) }
         headers[existing.first || name] = value
+      end
+
+      def delete_header(headers, name)
+        existing = headers.keys.select { |key| key.to_s.casecmp?(name) }
+        existing.each { |key| headers.delete(key) }
       end
 
       # Only a length the application announced is corrected: a chunked or unsized answer
