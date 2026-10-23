@@ -97,16 +97,16 @@ module Profiler
       delta = (b || 0) - (a || 0)
       delta_pct = (a && a != 0) ? (delta / a * 100).round(1) : nil
 
-      status = compute_status(delta, delta_pct, direction, threshold_pct, val_a: val_a)
+      status = compute_status(delta, delta_pct, direction, threshold_pct, val_a: val_a, val_b: val_b)
 
       { value_a: val_a, value_b: val_b, delta: delta.round(4), delta_pct: delta_pct, status: status }
     end
 
-    def compute_status(delta, delta_pct, direction, threshold_pct, val_a: nil)
+    def compute_status(delta, delta_pct, direction, threshold_pct, val_a: nil, val_b: nil)
       if delta == 0
         :neutral
-      elsif val_a.nil?
-        # Collector absent in baseline profile: no measurement to compare, stay neutral
+      elsif val_a.nil? || val_b.nil?
+        # Collector absent in one of the two profiles: no measurement to compare, stay neutral
         :neutral
       elsif delta_pct.nil?
         # Collector present but baseline is zero: apply direction logic directly without threshold

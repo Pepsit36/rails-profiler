@@ -180,6 +180,24 @@ RSpec.describe Profiler::ProfileDiff do
       expect(metric[:delta_pct]).to be_nil
       expect(metric[:status]).to eq(:neutral)
     end
+
+    it "stays neutral when collector is absent in the second profile, for a :lower-direction metric" do
+      a = build_profile(collectors_data: { "database" => { "total_queries" => 50 } })
+      b = build_profile(collectors_data: {})
+      metric = described_class.new(a, b).compute[:metrics][:db_queries]
+      expect(metric[:value_a]).to eq(50)
+      expect(metric[:value_b]).to be_nil
+      expect(metric[:status]).to eq(:neutral)
+    end
+
+    it "stays neutral when collector is absent in the second profile, for a :higher-direction metric" do
+      a = build_profile(collectors_data: { "cache" => { "hit_rate" => 80.0 } })
+      b = build_profile(collectors_data: {})
+      metric = described_class.new(a, b).compute[:metrics][:cache_hit_rate]
+      expect(metric[:value_a]).to eq(80.0)
+      expect(metric[:value_b]).to be_nil
+      expect(metric[:status]).to eq(:neutral)
+    end
   end
 
   describe "regression_cache_threshold configuration" do
