@@ -220,12 +220,8 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware do
       end
 
       it "keeps the response body unchanged" do
-        original_body = "<html><body>download</body></html>"
-        let(:inner_app) do
-          ->(env) { [200, { "Content-Type" => "text/html", "Content-Disposition" => "attachment; filename=file.html" }, [original_body]] }
-        end
         get "/download"
-        expect(last_response.body).to eq(original_body)
+        expect(last_response.body).to eq("<html><body>download</body></html>")
       end
     end
 
