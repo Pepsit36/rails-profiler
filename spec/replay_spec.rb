@@ -19,7 +19,7 @@ RSpec.describe Profiler::Replay do
     lambda do |env|
       seen << { method: env["REQUEST_METHOD"], path: env["PATH_INFO"], query: env["QUERY_STRING"],
                 host: env["HTTP_HOST"], body: env["rack.input"]&.read, cookie: env["HTTP_COOKIE"],
-                custom: env["HTTP_X_CUSTOM"] }
+                custom: env["HTTP_X_CUSTOM"], content_type: env["CONTENT_TYPE"] }
       [200, { "Content-Type" => "text/plain" }, ["ok"]]
     end
   end
@@ -565,6 +565,117 @@ RSpec.describe Profiler::Replay do
       response = Profiler::MCP::Tools::ReplayRequest.call("token" => source.token, "host" => "evil.example")
       expect(response).to be_error
       expect(a_request(:any, /evil/)).not_to have_been_made
+    end
+  end
+
+  describe "issue #64 fixes" do
+    describe "case 1: Content-Type header from captured request" do
+      it "includes Content-Type header when replaying JSON request" do
+        json_source = build_profile(path: "/api/data", method: "POST",
+                                    headers: { "Host" => "localhost:3000", "Content-Type" => "application/json" },
+                                    server_port: 3000, url_scheme: "http")
+        json_source.request_body = '{"key":"value"}'
+        json_source.request_body_encoding = "text"
+        storage.save(json_source.token, json_source)
+
+        replay({}, json_source.token)
+        expect(seen.last[:body]).to eq('{"key":"value"}')
+      end
+
+      it "replaces a captured multipart Content-Type when the stored body is dropped and params are given" do
+        multipart_source = build_profile(path: "/upload", method: "POST",
+                                         headers: { "Host" => "localhost:3000",
+                                                    "Content-Type" => "multipart/form-data; boundary=----abc" },
+                                         server_port: 3000, url_scheme: "http")
+        multipart_source.request_body = "[FILTERED: multipart/form-data body, 1234 bytes]"
+        multipart_source.request_body_encoding = "text"
+        storage.save(multipart_source.token, multipart_source)
+
+        replay({ params: { "a" => "1" } }, multipart_source.token)
+
+        expect(seen.last[:body]).to eq("a=1")
+        expect(seen.last[:content_type]).to eq("application/x-www-form-urlencoded")
+      end
+    end
+
+    describe "case 2: Reject masked/redacted bodies" do
+      it "does not send body containing [FILTERED] mask and notes it" do
+        masked_source = build_profile(path: "/orders", method: "POST",
+                                      headers: { "Host" => "localhost:3000" },
+                                      server_port: 3000, url_scheme: "http")
+        masked_source.request_body = "{\"password\":\"[FILTERED]\"}"
+        masked_source.request_body_encoding = "text"
+        storage.save(masked_source.token, masked_source)
+
+        result = replay({}, masked_source.token)
+        # Net::HTTP sends no body, so the stub builds an empty rack.input, not a nil one.
+        expect(seen.last[:body]).to be_empty
+        expect(result.notes.join).to match(/masked values/)
+      end
+
+      it "does not rebuild a body from the captured params when the stored body was dropped for masking" do
+        masked_source = build_profile(path: "/orders", method: "POST",
+                                      headers: { "Host" => "localhost:3000" },
+                                      params: { "a" => "1" },
+                                      server_port: 3000, url_scheme: "http")
+        masked_source.request_body = "{\"password\":\"[FILTERED]\"}"
+        masked_source.request_body_encoding = "text"
+        storage.save(masked_source.token, masked_source)
+
+        replay({}, masked_source.token)
+
+        # The note says the body "was not sent": it must not come back encoded from source.params.
+        expect(seen.last[:body]).to be_empty
+      end
+
+      it "does not send body containing [FILTERED: multipart marker and notes it" do
+        multipart_source = build_profile(path: "/upload", method: "POST",
+                                         headers: { "Host" => "localhost:3000" },
+                                         server_port: 3000, url_scheme: "http")
+        multipart_source.request_body = "[FILTERED: multipart/form-data body, 1234 bytes]"
+        multipart_source.request_body_encoding = "text"
+        storage.save(multipart_source.token, multipart_source)
+
+        result = replay({}, multipart_source.token)
+        expect(seen.last[:body]).to be_empty
+        expect(result.notes.join).to match(/masked values/)
+      end
+    end
+
+    describe "case 3: Validate headers parameter type" do
+      it "raises Invalid when headers is a string" do
+        expect { replay(headers: "invalid") }.to raise_error(described_class::Invalid, /headers must be a Hash/)
+        expect(seen).to be_empty
+      end
+
+      it "raises Invalid when headers is a number" do
+        expect { replay(headers: 123) }.to raise_error(described_class::Invalid, /headers must be a Hash/)
+        expect(seen).to be_empty
+      end
+
+      it "accepts headers as nil" do
+        expect { replay(headers: nil) }.not_to raise_error
+      end
+
+      it "accepts headers as an empty hash" do
+        expect { replay(headers: {}) }.not_to raise_error
+      end
+    end
+
+    describe "validates params and body parameter types the same way as headers" do
+      it "raises Invalid when params is a string" do
+        expect { replay(params: "invalid") }.to raise_error(described_class::Invalid, /params must be a Hash/)
+        expect(seen).to be_empty
+      end
+
+      it "raises Invalid when body is a hash" do
+        expect { replay(body: { "a" => "1" }) }.to raise_error(described_class::Invalid, /body must be a String/)
+        expect(seen).to be_empty
+      end
+
+      it "accepts params and body as nil" do
+        expect { replay(params: nil, body: nil) }.not_to raise_error
+      end
     end
   end
 end

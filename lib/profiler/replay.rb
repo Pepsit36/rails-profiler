@@ -242,8 +242,11 @@ module Profiler
         end
         notes << "Not sent, masked in the profile: #{redacted.join(", ")}." unless redacted.empty?
 
+        override_headers = options[:headers]
+        raise Invalid, "headers must be a Hash or nil" unless override_headers.nil? || override_headers.is_a?(Hash)
+
         ignored = []
-        (options[:headers] || {}).each do |name, value|
+        (override_headers || {}).each do |name, value|
           if FORBIDDEN_HEADERS.include?(name.to_s.downcase) || name.to_s.match?(/[\r\n:\s]/) || value.to_s.match?(/[\r\n]/)
             ignored << name.to_s
             next
@@ -268,22 +271,32 @@ module Profiler
       end
 
       def body_and_query(source, options, method, path_query, headers, notes)
+        raise Invalid, "params must be a Hash or nil" if options.key?(:params) && !options[:params].nil? && !options[:params].is_a?(Hash)
+        raise Invalid, "body must be a String or nil" if options.key?(:body) && !options[:body].nil? && !options[:body].is_a?(String)
+
         params = options.key?(:params) ? options[:params] : default_params(source, notes)
         query = options.key?(:query) ? encode_query(options[:query]) : path_query
         body = nil
 
+        masked_body_dropped = false
         if options.key?(:body)
           body = options[:body].to_s
-        elsif !options.key?(:params) && !BODYLESS_METHODS.include?(method) && (stored = stored_body(source, notes))
-          body = stored
+        elsif !options.key?(:params) && !BODYLESS_METHODS.include?(method)
+          body, masked_body_dropped = stored_body(source, notes)
         end
 
-        if params.is_a?(Hash) && !params.empty? && !options.key?(:query) && path_query.nil? && body.nil?
+        # A body dropped for masking must not be silently replaced by one rebuilt from params:
+        # the note says it "was not sent", not "was sent after all, reconstructed differently".
+        if !masked_body_dropped && params.is_a?(Hash) && !params.empty? && !options.key?(:query) && path_query.nil? && body.nil?
           if BODYLESS_METHODS.include?(method)
             query = encode_query(params)
           else
             body, content_type = encode_params_body(params, headers)
-            headers["Content-Type"] ||= content_type
+            user_content_type = (options[:headers] || {}).any? { |name, _| name.to_s.casecmp?("Content-Type") }
+            unless user_content_type
+              headers.delete_if { |existing, _| existing.casecmp?("Content-Type") }
+              headers["Content-Type"] = content_type
+            end
           end
         end
 
@@ -300,19 +313,30 @@ module Profiler
         params.reject { |_, value| value == Redaction::MASK }
       end
 
+      # Returns [body, masked]: masked is true only when a body existed and was dropped because
+      # it contains a redaction marker, so the caller can tell that case apart from "no body was
+      # ever captured", for which the default_params fallback remains appropriate.
       def stored_body(source, notes)
-        return nil if source.request_body.nil? || source.request_body.empty?
+        return [nil, false] if source.request_body.nil? || source.request_body.empty?
 
         if source.request_body_truncated
           notes << "The stored request body is truncated (max_captured_body_bytes): the replay sends what was kept."
         end
-        if source.request_body_encoding == "base64"
-          Base64.strict_decode64(source.request_body)
-        else
-          Models::Profile.decode_body(source.request_body, source.request_body_encoding).first
+
+        decoded = if source.request_body_encoding == "base64"
+                    Base64.strict_decode64(source.request_body)
+                  else
+                    Models::Profile.decode_body(source.request_body, source.request_body_encoding).first
+                  end
+
+        if decoded.include?(Redaction::MASK) || decoded.include?("[FILTERED:")
+          notes << "The stored request body contains masked values and was not sent."
+          return [nil, true]
         end
+
+        [decoded, false]
       rescue ArgumentError
-        nil
+        [nil, false]
       end
 
       def encode_query(value)

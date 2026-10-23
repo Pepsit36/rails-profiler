@@ -54,6 +54,10 @@ RSpec.describe Profiler::Models::Profile do
         expect(profile.headers).to include("Accept" => "text/html", "User-Agent" => "TestBrowser/1.0")
         expect(profile.headers).not_to have_key("X-Custom")
       end
+
+      it "extracts Content-Type from CONTENT_TYPE, Rack's non-HTTP_ env key" do
+        expect(profile.headers).to include("Content-Type" => "application/json")
+      end
     end
 
     context "without a request" do
