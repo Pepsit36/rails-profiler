@@ -170,6 +170,16 @@ RSpec.describe Profiler::ProfileDiff do
       expect(metric[:delta_pct]).to be_nil
       expect(metric[:status]).to eq(:regression)
     end
+
+    it "stays neutral when collector is absent in baseline (not present but zero)" do
+      a = build_profile(collectors_data: {})
+      b = build_profile(collectors_data: { "database" => { "total_queries" => 50 } })
+      metric = described_class.new(a, b).compute[:metrics][:db_queries]
+      expect(metric[:value_a]).to be_nil
+      expect(metric[:value_b]).to eq(50)
+      expect(metric[:delta_pct]).to be_nil
+      expect(metric[:status]).to eq(:neutral)
+    end
   end
 
   describe "regression_cache_threshold configuration" do

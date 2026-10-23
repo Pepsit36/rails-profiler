@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Compare:** metric diff now correctly distinguishes between absent collectors (no measurement to compare) and zero baselines (measured at zero), ensuring absent collectors remain neutral instead of incorrectly classified as improvements or regressions.
+
 ## [0.44.11] - 2026-10-22
 
 <!-- stamped -->
