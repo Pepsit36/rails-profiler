@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.14] - 2026-10-23
+
+<!-- stamped -->
+
+### Fixed
+
+- **SqliteStore:** discard the memoized storage instance after a fork so a fresh connection is built lazily on the next access, instead of reusing the parent's connection, which sqlite3 closes in the child (`preload_app!`, prefork scenarios).
+
 ## [0.44.13] - 2026-10-23
 
 <!-- stamped -->

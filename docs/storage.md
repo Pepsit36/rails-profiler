@@ -145,6 +145,20 @@ config.storage_options = {
 development database and a test one, or one database per parallel test worker) remove each other's
 blobs.
 
+With `preload_app!` (Puma) or a prefork server, a connection opened before the fork is unsafe to
+reuse in a worker: sqlite3 closes it in the child on load, and a save made through it before that
+point would otherwise never reach the worker. The profiler detects the fork and rebuilds its
+storage lazily on the next `Profiler.storage` call, so each worker opens its own connection. This
+rebuild is not specific to SQLite: a worker using the memory store starts with an empty one after a
+fork, losing whatever the parent recorded before forking (the file and Redis stores are shared
+state, so they are unaffected).
+
+With `sqlite3` older than 2.0, the inherited connection has no way to drop its OS resources
+without closing them: the profiler keeps the Ruby object alive for the life of the worker instead
+of closing it outright (closing it would be unsafe in WAL mode while the parent may still be using
+it), but it is still closed by Ruby's own finalizer when the worker process exits. Projects on
+that version should prefer a per-worker database path or upgrade the `sqlite3` gem.
+
 ## Files under `tmp_path`
 
 `config.tmp_path` (`tmp/rails-profiler` under the Rails root, or under the current directory

@@ -387,4 +387,63 @@ RSpec.describe Profiler::Storage::SqliteStore do
       expect(Profiler).to have_received(:log_error).with(/could not read the summary of #{profile.token}/, anything)
     end
   end
+
+  describe "fork handling" do
+    before { skip "on Ruby < 3.1" unless Process.respond_to?(:_fork) }
+
+    around do |example|
+      original_storage = Profiler.instance_variable_get(:@storage)
+      original_backend = Profiler.configuration.storage
+      original_options = Profiler.configuration.storage_options
+      example.run
+    ensure
+      Profiler.configure do |c|
+        c.storage = original_backend
+        c.storage_options = original_options
+      end
+      Profiler.instance_variable_set(:@storage, original_storage)
+    end
+
+    it "rebuilds Profiler.storage with a fresh connection in the child process after fork" do
+      fork_db_path = File.join(@dir, "fork_test.db")
+      fork_blob_path = File.join(@dir, "fork_test_blobs")
+      Profiler.configure do |c|
+        c.storage = :sqlite
+        c.storage_options = { database: fork_db_path, blob_path: fork_blob_path, max_profiles: nil }
+      end
+      Profiler.instance_variable_set(:@storage, nil)
+
+      parent_store = Profiler.storage
+      profile = profile_started(Time.now)
+      parent_store.save(profile.token, profile)
+      token = profile.token
+
+      fork do
+        # The inherited handle must have been discarded (sqlite3 >= 2.0) before Profiler.storage
+        # is even called again: otherwise this only proves a fresh connection was built, not that
+        # the old one was neutralized, which a worker reusing it would still hit "closed database"
+        # or worse through.
+        inherited_db = parent_store.instance_variable_get(:@db)
+        discarded = inherited_db.respond_to?(:closed?) ? inherited_db.closed? : true
+
+        # Profiler.storage must have been cleared by the fork hook: this rebuilds it with a
+        # fresh connection, distinct from the parent's, rather than reusing the inherited one.
+        child_store = Profiler.storage
+        reloaded = child_store.load(token)
+
+        if discarded && !child_store.equal?(parent_store) && reloaded && reloaded.token == token
+          exit! 0
+        else
+          exit! 1
+        end
+      rescue
+        exit! 2
+      end
+
+      Process.wait
+      child_exit_status = $?.exitstatus
+
+      expect(child_exit_status).to eq(0)
+    end
+  end
 end

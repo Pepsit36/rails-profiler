@@ -38,6 +38,32 @@ module Profiler
         migrate!
       end
 
+      # Called by Profiler.clear_storage_after_fork, on the parent's store, before the child
+      # drops its reference. sqlite3 >= 2.0 would otherwise print a warning (or, with WAL and
+      # sqlite3 < 2.0, let its finalizer close a handle the parent still owns) when this object
+      # is garbage-collected in the child. #discard only exists on sqlite3 >= 2.0. On an older
+      # gem the handle is kept alive instead, deferring the eventual close to process exit
+      # rather than an arbitrary GC pass while the worker is still using the database: Ruby still
+      # runs the finalizer on a live object at exit, so this delays the close, it does not avoid
+      # it. sqlite3 >= 2.0 also installs its own Process._fork hook (SQLite3::ForkSafety) that
+      # discards inherited connections on its own; depending on prepend order (whether sqlite3 or
+      # the profiler is required first) its warning may still appear once even with this method
+      # in place.
+      def discard_after_fork
+        if @db.respond_to?(:discard)
+          # Already discarded by sqlite3's own Process._fork hook (SQLite3::ForkSafety) when the
+          # sqlite3 gem was required before the profiler: discarding twice is at best a spurious
+          # error here, at worst a NULL sqlite3* reaching the C layer.
+          @db.discard unless @db.closed?
+        else
+          (self.class.kept_alive_after_fork ||= []) << @db
+        end
+      end
+
+      class << self
+        attr_accessor :kept_alive_after_fork
+      end
+
       def do_save(token, profile)
         data = profile.to_h
 

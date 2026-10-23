@@ -425,6 +425,13 @@ module Profiler
       @storage_backend || BACKEND_LOCK.synchronize { @storage_backend ||= build_storage_backend }
     end
 
+    # Called by Profiler.clear_storage_after_fork: @storage_backend is memoized here too, so
+    # clearing only Profiler's own @storage would hand the child back the very same (discarded)
+    # instance on its next Profiler.storage call.
+    def reset_storage_backend!
+      BACKEND_LOCK.synchronize { @storage_backend = nil }
+    end
+
     private
 
     def default_tmp_path
