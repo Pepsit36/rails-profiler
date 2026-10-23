@@ -613,6 +613,21 @@ RSpec.describe Profiler::Replay do
         expect(result.notes.join).to match(/masked values/)
       end
 
+      it "does not rebuild a body from the captured params when the stored body was dropped for masking" do
+        masked_source = build_profile(path: "/orders", method: "POST",
+                                      headers: { "Host" => "localhost:3000" },
+                                      params: { "a" => "1" },
+                                      server_port: 3000, url_scheme: "http")
+        masked_source.request_body = "{\"password\":\"[FILTERED]\"}"
+        masked_source.request_body_encoding = "text"
+        storage.save(masked_source.token, masked_source)
+
+        replay({}, masked_source.token)
+
+        # The note says the body "was not sent": it must not come back encoded from source.params.
+        expect(seen.last[:body]).to be_empty
+      end
+
       it "does not send body containing [FILTERED: multipart marker and notes it" do
         multipart_source = build_profile(path: "/upload", method: "POST",
                                          headers: { "Host" => "localhost:3000" },

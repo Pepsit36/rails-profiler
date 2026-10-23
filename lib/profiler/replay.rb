@@ -278,13 +278,16 @@ module Profiler
         query = options.key?(:query) ? encode_query(options[:query]) : path_query
         body = nil
 
+        masked_body_dropped = false
         if options.key?(:body)
           body = options[:body].to_s
-        elsif !options.key?(:params) && !BODYLESS_METHODS.include?(method) && (stored = stored_body(source, notes))
-          body = stored
+        elsif !options.key?(:params) && !BODYLESS_METHODS.include?(method)
+          body, masked_body_dropped = stored_body(source, notes)
         end
 
-        if params.is_a?(Hash) && !params.empty? && !options.key?(:query) && path_query.nil? && body.nil?
+        # A body dropped for masking must not be silently replaced by one rebuilt from params:
+        # the note says it "was not sent", not "was sent after all, reconstructed differently".
+        if !masked_body_dropped && params.is_a?(Hash) && !params.empty? && !options.key?(:query) && path_query.nil? && body.nil?
           if BODYLESS_METHODS.include?(method)
             query = encode_query(params)
           else
@@ -310,8 +313,11 @@ module Profiler
         params.reject { |_, value| value == Redaction::MASK }
       end
 
+      # Returns [body, masked]: masked is true only when a body existed and was dropped because
+      # it contains a redaction marker, so the caller can tell that case apart from "no body was
+      # ever captured", for which the default_params fallback remains appropriate.
       def stored_body(source, notes)
-        return nil if source.request_body.nil? || source.request_body.empty?
+        return [nil, false] if source.request_body.nil? || source.request_body.empty?
 
         if source.request_body_truncated
           notes << "The stored request body is truncated (max_captured_body_bytes): the replay sends what was kept."
@@ -325,12 +331,12 @@ module Profiler
 
         if decoded.include?(Redaction::MASK) || decoded.include?("[FILTERED:")
           notes << "The stored request body contains masked values and was not sent."
-          return nil
+          return [nil, true]
         end
 
-        decoded
+        [decoded, false]
       rescue ArgumentError
-        nil
+        [nil, false]
       end
 
       def encode_query(value)
