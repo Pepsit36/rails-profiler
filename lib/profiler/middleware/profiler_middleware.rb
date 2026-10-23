@@ -140,9 +140,11 @@ module Profiler
           nonce = env['action_dispatch.content_security_policy_nonce']
           injected = ToolbarInjector.new(body, profile.token, nonce).inject
           # A HEAD answer, or a page without </body>, keeps the length it announced.
-          update_content_length(headers, injected) unless injected.equal?(body)
-          delete_header(headers, "ETag")
-          delete_header(headers, "Last-Modified")
+          unless injected.equal?(body)
+            update_content_length(headers, injected)
+            delete_header(headers, "ETag")
+            delete_header(headers, "Last-Modified")
+          end
           body = injected
         end
 
@@ -350,7 +352,7 @@ module Profiler
 
       def attachment_response?(headers)
         disposition = header(headers, "content-disposition")
-        disposition&.start_with?("attachment")
+        disposition&.split(";", 2)&.first&.strip&.casecmp?("attachment")
       end
 
       def encoded_response?(headers)

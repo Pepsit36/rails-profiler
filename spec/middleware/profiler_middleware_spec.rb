@@ -214,9 +214,9 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware do
         expect(last_response.body).not_to include("profiler-toolbar")
       end
 
-      it "does not set token header" do
+      it "still sets the token header (the profile is saved even though the toolbar is not injected)" do
         get "/download"
-        expect(last_response.headers).not_to have_key("X-Profiler-Token")
+        expect(last_response.headers).to have_key("X-Profiler-Token")
       end
 
       it "keeps the response body unchanged" do
@@ -235,9 +235,9 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware do
         expect(last_response.body).not_to include("profiler-toolbar")
       end
 
-      it "does not set token header" do
+      it "still sets the token header (the profile is saved even though the toolbar is not injected)" do
         get "/compressed"
-        expect(last_response.headers).not_to have_key("X-Profiler-Token")
+        expect(last_response.headers).to have_key("X-Profiler-Token")
       end
     end
 
