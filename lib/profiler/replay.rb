@@ -286,7 +286,11 @@ module Profiler
             query = encode_query(params)
           else
             body, content_type = encode_params_body(params, headers)
-            headers["Content-Type"] ||= content_type
+            user_content_type = (options[:headers] || {}).any? { |name, _| name.to_s.casecmp?("Content-Type") }
+            unless user_content_type
+              headers.delete_if { |existing, _| existing.casecmp?("Content-Type") }
+              headers["Content-Type"] = content_type
+            end
           end
         end
 

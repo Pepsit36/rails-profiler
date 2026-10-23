@@ -19,7 +19,7 @@ RSpec.describe Profiler::Replay do
     lambda do |env|
       seen << { method: env["REQUEST_METHOD"], path: env["PATH_INFO"], query: env["QUERY_STRING"],
                 host: env["HTTP_HOST"], body: env["rack.input"]&.read, cookie: env["HTTP_COOKIE"],
-                custom: env["HTTP_X_CUSTOM"] }
+                custom: env["HTTP_X_CUSTOM"], content_type: env["CONTENT_TYPE"] }
       [200, { "Content-Type" => "text/plain" }, ["ok"]]
     end
   end
@@ -581,6 +581,21 @@ RSpec.describe Profiler::Replay do
         replay({}, json_source.token)
         expect(seen.last[:body]).to eq('{"key":"value"}')
       end
+
+      it "replaces a captured multipart Content-Type when the stored body is dropped and params are given" do
+        multipart_source = build_profile(path: "/upload", method: "POST",
+                                         headers: { "Host" => "localhost:3000",
+                                                    "Content-Type" => "multipart/form-data; boundary=----abc" },
+                                         server_port: 3000, url_scheme: "http")
+        multipart_source.request_body = "[FILTERED: multipart/form-data body, 1234 bytes]"
+        multipart_source.request_body_encoding = "text"
+        storage.save(multipart_source.token, multipart_source)
+
+        replay({ params: { "a" => "1" } }, multipart_source.token)
+
+        expect(seen.last[:body]).to eq("a=1")
+        expect(seen.last[:content_type]).to eq("application/x-www-form-urlencoded")
+      end
     end
 
     describe "case 2: Reject masked/redacted bodies" do
@@ -593,7 +608,8 @@ RSpec.describe Profiler::Replay do
         storage.save(masked_source.token, masked_source)
 
         result = replay({}, masked_source.token)
-        expect(seen.last[:body]).to be_nil
+        # Net::HTTP sends no body, so the stub builds an empty rack.input, not a nil one.
+        expect(seen.last[:body]).to be_empty
         expect(result.notes.join).to match(/masked values/)
       end
 
@@ -606,7 +622,7 @@ RSpec.describe Profiler::Replay do
         storage.save(multipart_source.token, multipart_source)
 
         result = replay({}, multipart_source.token)
-        expect(seen.last[:body]).to be_nil
+        expect(seen.last[:body]).to be_empty
         expect(result.notes.join).to match(/masked values/)
       end
     end
