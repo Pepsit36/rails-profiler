@@ -389,36 +389,48 @@ RSpec.describe Profiler::Storage::SqliteStore do
   end
 
   describe "fork handling" do
-    skip "on Ruby < 3.1" unless Process.respond_to?(:_fork)
+    before { skip "on Ruby < 3.1" unless Process.respond_to?(:_fork) }
 
-    it "can be reopened in the child process after fork" do
-      token = nil
-      child_exit_status = nil
+    around do |example|
+      original_storage = Profiler.instance_variable_get(:@storage)
+      original_backend = Profiler.configuration.storage
+      original_options = Profiler.configuration.storage_options
+      example.run
+    ensure
+      Profiler.configure do |c|
+        c.storage = original_backend
+        c.storage_options = original_options
+      end
+      Profiler.instance_variable_set(:@storage, original_storage)
+    end
 
-      # Create a database and a profile in the parent
+    it "rebuilds Profiler.storage with a fresh connection in the child process after fork" do
       fork_db_path = File.join(@dir, "fork_test.db")
       fork_blob_path = File.join(@dir, "fork_test_blobs")
-      parent_store = described_class.new(database: fork_db_path, blob_path: fork_blob_path, max_profiles: nil)
+      Profiler.configure do |c|
+        c.storage = :sqlite
+        c.storage_options = { database: fork_db_path, blob_path: fork_blob_path, max_profiles: nil }
+      end
+      Profiler.instance_variable_set(:@storage, nil)
 
+      parent_store = Profiler.storage
       profile = profile_started(Time.now)
       parent_store.save(profile.token, profile)
       token = profile.token
 
       fork do
-        begin
-          # In the child, create a NEW instance of SqliteStore using the same database
-          # sqlite3 will have closed the parent's inherited connection
-          child_store = described_class.new(database: fork_db_path, blob_path: fork_blob_path, max_profiles: nil)
-          reloaded = child_store.load(token)
+        # Profiler.storage must have been cleared by the fork hook: this rebuilds it with a
+        # fresh connection, distinct from the parent's, rather than reusing the inherited one.
+        child_store = Profiler.storage
+        reloaded = child_store.load(token)
 
-          if reloaded && reloaded.token == token
-            exit! 0
-          else
-            exit! 1
-          end
-        rescue => e
+        if !child_store.equal?(parent_store) && reloaded && reloaded.token == token
+          exit! 0
+        else
           exit! 1
         end
+      rescue
+        exit! 2
       end
 
       Process.wait
