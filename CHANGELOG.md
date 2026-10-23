@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.13] - 2026-10-23
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Compare:** a collector absent from the second profile being compared is now neutral too, like one absent from the first, instead of being classified as an improvement or a regression.
