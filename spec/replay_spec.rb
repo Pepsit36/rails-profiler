@@ -567,4 +567,68 @@ RSpec.describe Profiler::Replay do
       expect(a_request(:any, /evil/)).not_to have_been_made
     end
   end
+
+  describe "issue #64 fixes" do
+    describe "case 1: Content-Type header from captured request" do
+      it "includes Content-Type header when replaying JSON request" do
+        json_source = build_profile(path: "/api/data", method: "POST",
+                                    headers: { "Host" => "localhost:3000", "Content-Type" => "application/json" },
+                                    server_port: 3000, url_scheme: "http")
+        json_source.request_body = '{"key":"value"}'
+        json_source.request_body_encoding = "text"
+        storage.save(json_source.token, json_source)
+
+        replay({}, json_source.token)
+        expect(seen.last[:body]).to eq('{"key":"value"}')
+      end
+    end
+
+    describe "case 2: Reject masked/redacted bodies" do
+      it "does not send body containing [FILTERED] mask and notes it" do
+        masked_source = build_profile(path: "/orders", method: "POST",
+                                      headers: { "Host" => "localhost:3000" },
+                                      server_port: 3000, url_scheme: "http")
+        masked_source.request_body = "{\"password\":\"[FILTERED]\"}"
+        masked_source.request_body_encoding = "text"
+        storage.save(masked_source.token, masked_source)
+
+        result = replay({}, masked_source.token)
+        expect(seen.last[:body]).to be_nil
+        expect(result.notes.join).to match(/masked values/)
+      end
+
+      it "does not send body containing [FILTERED: multipart marker and notes it" do
+        multipart_source = build_profile(path: "/upload", method: "POST",
+                                         headers: { "Host" => "localhost:3000" },
+                                         server_port: 3000, url_scheme: "http")
+        multipart_source.request_body = "[FILTERED: multipart/form-data body, 1234 bytes]"
+        multipart_source.request_body_encoding = "text"
+        storage.save(multipart_source.token, multipart_source)
+
+        result = replay({}, multipart_source.token)
+        expect(seen.last[:body]).to be_nil
+        expect(result.notes.join).to match(/masked values/)
+      end
+    end
+
+    describe "case 3: Validate headers parameter type" do
+      it "raises Invalid when headers is a string" do
+        expect { replay(headers: "invalid") }.to raise_error(described_class::Invalid, /headers must be a Hash/)
+        expect(seen).to be_empty
+      end
+
+      it "raises Invalid when headers is a number" do
+        expect { replay(headers: 123) }.to raise_error(described_class::Invalid, /headers must be a Hash/)
+        expect(seen).to be_empty
+      end
+
+      it "accepts headers as nil" do
+        expect { replay(headers: nil) }.not_to raise_error
+      end
+
+      it "accepts headers as an empty hash" do
+        expect { replay(headers: {}) }.not_to raise_error
+      end
+    end
+  end
 end

@@ -19,6 +19,12 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Replay:** Include `Content-Type` header from captured request when replaying. Previously, only `HTTP_*` Rack env vars were captured, missing `CONTENT_TYPE` which is stored separately. Replayed JSON POST requests were incorrectly treated as form data. Refs #64
+- **Replay:** Reject stored request bodies containing redaction masks (`[FILTERED]` or `[FILTERED: ...]` markers) and note them in the result instead of sending them as real data. Refs #64
+- **Replay:** Validate that the `headers` override parameter is a Hash or nil; previously passing a string or other type caused `NoMethodError` resulting in a 500 error. Now raises `Replay::Invalid` with a clear message. Refs #64
+
 ## [0.44.14] - 2026-10-23
 
 <!-- stamped -->

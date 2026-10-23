@@ -428,10 +428,11 @@ module Profiler
       end
 
       def extract_headers(env)
-        env.select { |k, _| k.start_with?("HTTP_") }
-           .transform_keys { |k| k.sub(/^HTTP_/, "").split("_").map(&:capitalize).join("-") }
-           .select { |k, _| ALLOWED_HEADERS.include?(k) }
-           .then { |headers| Redaction.filter_headers(headers) }
+        headers = env.select { |k, _| k.start_with?("HTTP_") }
+                     .transform_keys { |k| k.sub(/^HTTP_/, "").split("_").map(&:capitalize).join("-") }
+        headers["Content-Type"] = env["CONTENT_TYPE"] if env["CONTENT_TYPE"]
+        headers.select { |k, _| ALLOWED_HEADERS.include?(k) }
+               .then { |h| Redaction.filter_headers(h) }
       end
     end
   end
