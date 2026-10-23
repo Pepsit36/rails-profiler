@@ -306,11 +306,19 @@ module Profiler
         if source.request_body_truncated
           notes << "The stored request body is truncated (max_captured_body_bytes): the replay sends what was kept."
         end
-        if source.request_body_encoding == "base64"
-          Base64.strict_decode64(source.request_body)
-        else
-          Models::Profile.decode_body(source.request_body, source.request_body_encoding).first
+
+        decoded = if source.request_body_encoding == "base64"
+                    Base64.strict_decode64(source.request_body)
+                  else
+                    Models::Profile.decode_body(source.request_body, source.request_body_encoding).first
+                  end
+
+        if decoded.include?(Redaction::MASK) || decoded.include?("[FILTERED:")
+          notes << "The stored request body contains masked values and was not sent."
+          return nil
         end
+
+        decoded
       rescue ArgumentError
         nil
       end
