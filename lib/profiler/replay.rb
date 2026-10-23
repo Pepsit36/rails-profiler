@@ -242,8 +242,11 @@ module Profiler
         end
         notes << "Not sent, masked in the profile: #{redacted.join(", ")}." unless redacted.empty?
 
+        override_headers = options[:headers]
+        raise Invalid, "headers must be a Hash or nil" unless override_headers.nil? || override_headers.is_a?(Hash)
+
         ignored = []
-        (options[:headers] || {}).each do |name, value|
+        (override_headers || {}).each do |name, value|
           if FORBIDDEN_HEADERS.include?(name.to_s.downcase) || name.to_s.match?(/[\r\n:\s]/) || value.to_s.match?(/[\r\n]/)
             ignored << name.to_s
             next
