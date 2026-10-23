@@ -146,6 +146,40 @@ RSpec.describe Profiler::JobProfiler do
       end
     end
 
+    context "when the job is interrupted with Interrupt" do
+      def run_interrupted_job
+        run_job { raise Interrupt }
+      rescue Interrupt
+        # expected
+      end
+
+      it "re-raises the Interrupt" do
+        expect { run_job { raise Interrupt } }.to raise_error(Interrupt)
+      end
+
+      it "still saves a profile" do
+        run_interrupted_job
+        expect(Profiler.storage.list.size).to eq(1)
+      end
+
+      it "marks the job as failed" do
+        run_interrupted_job
+        data = Profiler.storage.list.first.collector_data("job")
+        expect(data["status"]).to eq("failed")
+      end
+
+      it "sets status 500" do
+        run_interrupted_job
+        expect(Profiler.storage.list.first.status).to eq(500)
+      end
+
+      it "records the exception" do
+        run_interrupted_job
+        data = Profiler.storage.list.first.collector_data("job")
+        expect(data["error"]).to include("Interrupt")
+      end
+    end
+
     context "with the token of the request that enqueued it" do
       let(:parent) { SecureRandom.hex(16) }
 
