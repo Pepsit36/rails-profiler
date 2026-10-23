@@ -14,6 +14,16 @@ module Profiler
   # was parsing.
   LOG_ERROR_MESSAGE_LIMIT = 1000
 
+  # Detects process fork (Ruby 3.1+) and clears the storage instance in the child,
+  # so it is recreated with a fresh database connection.
+  module ForkHook
+    def _fork
+      pid = super
+      Profiler.clear_storage_after_fork if pid.zero?
+      pid
+    end
+  end
+
   class << self
     attr_writer :configuration
     attr_accessor :function_profiling_enabled
@@ -40,9 +50,27 @@ module Profiler
     # A store that cannot be created is said once (Storage::Unavailable) and tried again on the
     # next call.
     def storage
+      install_fork_hook!
       @storage || STORAGE_LOCK.synchronize { @storage ||= configuration.storage_backend }
     rescue StandardError => e
       Storage::Unavailable.for(e)
+    end
+
+    private
+
+    def install_fork_hook!
+      return if @fork_hook_installed || !Process.respond_to?(:_fork)
+
+      Process.singleton_class.prepend(ForkHook)
+      @fork_hook_installed = true
+    end
+
+    public
+
+    def clear_storage_after_fork
+      @storage = nil
+    rescue => e
+      log_warn("could not clear storage after fork", e)
     end
 
     # Saves a profile from a path of the application (a job, a console command, a test, an
@@ -251,6 +279,9 @@ module Profiler
   self.function_profiling_mode = "lite"
   self.function_profiling_clock = "wall"
   self.function_profiling_tracepoint_fallback = false
+
+  # Install fork hook as early as possible, so it's in place before any fork happens
+  install_fork_hook! if Process.respond_to?(:_fork)
 end
 
 # Require core components

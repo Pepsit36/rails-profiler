@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **SqliteStore:** Reopen database connection in child processes after fork to handle `preload_app!` and prefork scenarios
+
 ## [0.44.13] - 2026-10-23
 
 <!-- stamped -->

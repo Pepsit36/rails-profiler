@@ -387,4 +387,44 @@ RSpec.describe Profiler::Storage::SqliteStore do
       expect(Profiler).to have_received(:log_error).with(/could not read the summary of #{profile.token}/, anything)
     end
   end
+
+  describe "fork handling" do
+    skip "on Ruby < 3.1" unless Process.respond_to?(:_fork)
+
+    it "can be reopened in the child process after fork" do
+      token = nil
+      child_exit_status = nil
+
+      # Create a database and a profile in the parent
+      fork_db_path = File.join(@dir, "fork_test.db")
+      fork_blob_path = File.join(@dir, "fork_test_blobs")
+      parent_store = described_class.new(database: fork_db_path, blob_path: fork_blob_path, max_profiles: nil)
+
+      profile = profile_started(Time.now)
+      parent_store.save(profile.token, profile)
+      token = profile.token
+
+      fork do
+        begin
+          # In the child, create a NEW instance of SqliteStore using the same database
+          # sqlite3 will have closed the parent's inherited connection
+          child_store = described_class.new(database: fork_db_path, blob_path: fork_blob_path, max_profiles: nil)
+          reloaded = child_store.load(token)
+
+          if reloaded && reloaded.token == token
+            exit! 0
+          else
+            exit! 1
+          end
+        rescue => e
+          exit! 1
+        end
+      end
+
+      Process.wait
+      child_exit_status = $?.exitstatus
+
+      expect(child_exit_status).to eq(0)
+    end
+  end
 end
