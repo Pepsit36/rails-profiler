@@ -202,4 +202,89 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware do
       expect(last_response.headers).not_to have_key("X-Profiler-Token")
     end
   end
+
+  describe "toolbar injection guards" do
+    describe "when response has Content-Disposition: attachment" do
+      let(:inner_app) do
+        ->(env) { [200, { "Content-Type" => "text/html", "Content-Disposition" => "attachment; filename=file.html" }, ["<html><body>download</body></html>"]] }
+      end
+
+      it "does not inject toolbar" do
+        get "/download"
+        expect(last_response.body).not_to include("profiler-toolbar")
+      end
+
+      it "does not set token header" do
+        get "/download"
+        expect(last_response.headers).not_to have_key("X-Profiler-Token")
+      end
+
+      it "keeps the response body unchanged" do
+        original_body = "<html><body>download</body></html>"
+        let(:inner_app) do
+          ->(env) { [200, { "Content-Type" => "text/html", "Content-Disposition" => "attachment; filename=file.html" }, [original_body]] }
+        end
+        get "/download"
+        expect(last_response.body).to eq(original_body)
+      end
+    end
+
+    describe "when response has Content-Encoding" do
+      let(:inner_app) do
+        ->(env) { [200, { "Content-Type" => "text/html", "Content-Encoding" => "gzip" }, ["<html><body>compressed</body></html>"]] }
+      end
+
+      it "does not inject toolbar" do
+        get "/compressed"
+        expect(last_response.body).not_to include("profiler-toolbar")
+      end
+
+      it "does not set token header" do
+        get "/compressed"
+        expect(last_response.headers).not_to have_key("X-Profiler-Token")
+      end
+    end
+
+    describe "when response is normal HTML without guards" do
+      it "injects toolbar (regression test)" do
+        get "/users"
+        expect(last_response.body).to include("profiler-toolbar")
+      end
+
+      it "sets token header (regression test)" do
+        get "/users"
+        expect(last_response.headers["X-Profiler-Token"]).not_to be_nil
+      end
+    end
+
+    describe "when toolbar is injected, ETag and Last-Modified are removed" do
+      let(:inner_app) do
+        ->(env) do
+          headers = {
+            "Content-Type" => "text/html",
+            "ETag" => '"abc123"',
+            "Last-Modified" => "Mon, 23 Oct 2026 10:00:00 GMT"
+          }
+          [200, headers, ["<html><body>page</body></html>"]]
+        end
+      end
+
+      it "removes ETag header when toolbar is injected" do
+        get "/users"
+        expect(last_response.headers).not_to have_key("ETag")
+        expect(last_response.headers).not_to have_key("etag")
+      end
+
+      it "removes Last-Modified header when toolbar is injected" do
+        get "/users"
+        expect(last_response.headers).not_to have_key("Last-Modified")
+        expect(last_response.headers).not_to have_key("last-modified")
+      end
+
+      it "still injects toolbar" do
+        get "/users"
+        expect(last_response.body).to include("profiler-toolbar")
+      end
+    end
+  end
 end
