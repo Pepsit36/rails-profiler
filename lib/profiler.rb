@@ -70,6 +70,7 @@ module Profiler
     def clear_storage_after_fork
       old_storage = @storage
       @storage = nil
+      configuration.reset_storage_backend!
       old_storage.discard_after_fork if old_storage.respond_to?(:discard_after_fork)
     rescue => e
       log_warn("could not clear storage after fork", e)
