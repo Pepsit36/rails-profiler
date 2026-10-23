@@ -148,6 +148,7 @@ module Profiler
             @capture_logger = CaptureLogger.new(@logs)
             @broadcaster = Rails.logger
             @broadcaster.broadcast_to(@capture_logger)
+            @capture_logger.level = @broadcaster.level
           elsif defined?(ActiveSupport::Logger) && ActiveSupport::Logger.respond_to?(:broadcast)
             self.class.attach_legacy_broadcast(Rails.logger)
           end
