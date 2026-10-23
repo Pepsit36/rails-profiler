@@ -646,5 +646,21 @@ RSpec.describe Profiler::Replay do
         expect { replay(headers: {}) }.not_to raise_error
       end
     end
+
+    describe "validates params and body parameter types the same way as headers" do
+      it "raises Invalid when params is a string" do
+        expect { replay(params: "invalid") }.to raise_error(described_class::Invalid, /params must be a Hash/)
+        expect(seen).to be_empty
+      end
+
+      it "raises Invalid when body is a hash" do
+        expect { replay(body: { "a" => "1" }) }.to raise_error(described_class::Invalid, /body must be a String/)
+        expect(seen).to be_empty
+      end
+
+      it "accepts params and body as nil" do
+        expect { replay(params: nil, body: nil) }.not_to raise_error
+      end
+    end
   end
 end

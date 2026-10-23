@@ -271,6 +271,9 @@ module Profiler
       end
 
       def body_and_query(source, options, method, path_query, headers, notes)
+        raise Invalid, "params must be a Hash or nil" if options.key?(:params) && !options[:params].nil? && !options[:params].is_a?(Hash)
+        raise Invalid, "body must be a String or nil" if options.key?(:body) && !options[:body].nil? && !options[:body].is_a?(String)
+
         params = options.key?(:params) ? options[:params] : default_params(source, notes)
         query = options.key?(:query) ? encode_query(options[:query]) : path_query
         body = nil
