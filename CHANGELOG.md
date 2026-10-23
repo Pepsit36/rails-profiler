@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.15] - 2026-10-23
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Replay:** Include `Content-Type` header from captured request when replaying. Previously, only `HTTP_*` Rack env vars were captured, missing `CONTENT_TYPE` which is stored separately. Replayed JSON POST requests were incorrectly treated as form data. Refs #64
