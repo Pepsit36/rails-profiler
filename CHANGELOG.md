@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.16] - 2026-10-23
+
+<!-- stamped -->
+
 ### Fixed
 
 - **LogCollector:** Prevent `BroadcastLogger` level from forcing `DEBUG` globally across all threads during profiling.
