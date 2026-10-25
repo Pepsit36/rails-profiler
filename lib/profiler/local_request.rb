@@ -104,6 +104,15 @@ module Profiler
         allowed_host?(host_name(value))
       end
 
+      # The Host-header half of denial_reason (Host, X-Forwarded-Host and Forwarded), without the
+      # REMOTE_ADDR check: for authorization_mode :allow_authorized, whose authorize_with block
+      # may admit non-loopback clients on purpose, but which still needs the same DNS rebinding
+      # protection on the Host header (a rebound page reaches an allowed address under a Host
+      # name of the attacker's choosing).
+      def request_host_allowed?(request)
+        host_denial_reason(request).nil?
+      end
+
       private
 
       def host_denial_reason(request)
