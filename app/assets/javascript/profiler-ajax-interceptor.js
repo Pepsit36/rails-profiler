@@ -91,19 +91,19 @@
     }
   }
 
-  // Helper function to link child profile to parent
-  function linkChildProfile(childToken) {
+  // Helper function to link child profile to parent, with retry on 404
+  function linkChildProfile(childToken, attempt = 1) {
     const parentToken = currentParentToken();
     if (!childToken || !parentToken) return;
 
-    console.debug('[Profiler] Linking AJAX request:', { parent: parentToken, child: childToken });
-
-    // Post to the link API endpoint
+    const maxAttempts = 3;
     const linkUrl = '/_profiler/api/ajax/link';
     const body = JSON.stringify({
       parent_token: parentToken,
       child_token: childToken
     });
+
+    console.debug('[Profiler] Linking AJAX request:', { parent: parentToken, child: childToken, attempt });
 
     // Use original fetch to avoid infinite loop
     originalFetch.call(window, linkUrl, {
@@ -122,6 +122,16 @@
             window.__PROFILER_REFRESH_TOOLBAR__();
           }
         }, 100);
+      } else if (response.status === 404 && attempt < maxAttempts) {
+        // Profile not yet persisted (streaming response case): retry with exponential backoff
+        const backoffMs = 100 * Math.pow(2, attempt - 1); // 100ms, 200ms, 400ms
+        console.debug('[Profiler] Profile not found (404), retrying in', backoffMs, 'ms');
+        setTimeout(() => {
+          linkChildProfile(childToken, attempt + 1);
+        }, backoffMs);
+      } else if (response.status === 404) {
+        // Exhausted retries
+        console.debug('[Profiler] Profile not found after', maxAttempts, 'retries, giving up');
       }
     }).catch(err => {
       // Fail silently - don't break the page if profiler API fails

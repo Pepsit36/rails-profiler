@@ -8,9 +8,10 @@ import vm from 'node:vm'
 
 const SOURCE = readFileSync(new URL('../../app/assets/javascript/profiler-ajax-interceptor.js', import.meta.url), 'utf8')
 
-function load({ parentToken = 'page-1' } = {}) {
+function load({ parentToken = 'page-1', linkResponses } = {}) {
   const links = []
   const responses = new Map()
+  let linkAttemptCount = 0
   const window = new EventTarget()
   const document = new EventTarget()
   // The toolbar element exists on a profiled page only.
@@ -22,6 +23,12 @@ function load({ parentToken = 'page-1' } = {}) {
     const url = new URL(input instanceof Request ? input.url : String(input), 'http://localhost')
     if (url.pathname === '/_profiler/api/ajax/link') {
       links.push(JSON.parse(init.body))
+      // Support configurable response statuses for testing retry logic
+      if (linkResponses && linkResponses.length > 0) {
+        const status = linkResponses[linkAttemptCount] || 200
+        linkAttemptCount++
+        return new Response('{}', { status })
+      }
       return new Response('{}', { status: 200 })
     }
     const { token, contentType = 'text/html; charset=utf-8' } = responses.get(url.pathname)
@@ -128,4 +135,37 @@ test('links to the token of the page a Drive visit renders, not the first one', 
   await t.window.fetch('/api/users')
   await t.settled()
   assert.deepEqual(t.links, [{ parent_token: 'page-2', child_token: 'json-1' }])
+})
+
+test('retries on 404 and succeeds on retry', async () => {
+  const t = load({ linkResponses: [404, 200] })
+  t.responses.set('/api/users', { token: 'json-1' })
+  await t.window.fetch('/api/users')
+  // First attempt fails with 404, retry scheduled. Wait for the retry to complete.
+  await new Promise(resolve => setTimeout(resolve, 150)) // 100ms backoff + margin
+  // Should have 2 link attempts: first returns 404, second returns 200. Both are recorded in links.
+  assert.equal(t.links.length, 2)
+  assert.deepEqual(t.links[0], { parent_token: 'page-1', child_token: 'json-1' })
+  assert.deepEqual(t.links[1], { parent_token: 'page-1', child_token: 'json-1' })
+})
+
+test('exhausts retries on repeated 404s', async () => {
+  const t = load({ linkResponses: [404, 404, 404, 404] }) // More than 3 attempts to ensure we stop
+  t.responses.set('/api/users', { token: 'json-1' })
+  await t.window.fetch('/api/users')
+  // All 3 retries will be attempted. Wait for all backoff periods: 100ms + 200ms + 400ms + margin.
+  await new Promise(resolve => setTimeout(resolve, 750))
+  // Should have made exactly 3 attempts (initial + 2 retries = 3 total)
+  assert.equal(t.links.length, 3)
+  assert.deepEqual(t.links[0], { parent_token: 'page-1', child_token: 'json-1' })
+  assert.deepEqual(t.links[1], { parent_token: 'page-1', child_token: 'json-1' })
+  assert.deepEqual(t.links[2], { parent_token: 'page-1', child_token: 'json-1' })
+})
+
+test('succeeds immediately on 200 (regression test)', async () => {
+  const t = load({ linkResponses: [200] })
+  t.responses.set('/api/users', { token: 'json-1' })
+  await t.window.fetch('/api/users')
+  await t.settled()
+  assert.deepEqual(t.links, [{ parent_token: 'page-1', child_token: 'json-1' }])
 })

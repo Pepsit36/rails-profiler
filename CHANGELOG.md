@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **AJAX interceptor:** Retry `/_profiler/api/ajax/link` with exponential backoff (100ms, 200ms, 400ms) on 404 errors, bounded to 3 attempts, to handle streaming response profiles not yet persisted when the client attachment request arrives. Refs #70
+
 ## [0.44.17] - 2026-10-25
 
 <!-- stamped -->
