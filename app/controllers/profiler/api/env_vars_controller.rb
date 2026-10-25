@@ -70,14 +70,22 @@ module Profiler
           return
         end
 
-        # The key must be allowed to reset, just as it must be allowed to set. This prevents
-        # bypassing EnvKeyPolicy restrictions by resetting to persisted overrides.
-        if (reason = Profiler::EnvKeyPolicy.rejection(key))
-          render json: { error: "#{reason}; #{key} was left unchanged" }, status: :unprocessable_entity
+        # EnvOverrideStore#reset already drops a blocked key from the overrides file instead of
+        # restoring it (see EnvKeyPolicy), so this removes a stale entry left by an older version
+        # the same way reset_all and the MCP reset_env_var tool do, rather than leaving it stuck
+        # until a full reset_all. An invalid or reserved name is a different, pre-existing case
+        # (cleaning up garbage left in the file): it is removed the same way, without an error.
+        Profiler.env_override_store.reset(key)
+
+        # code_loading? also answers true for an invalid name (by design, for the test runner):
+        # excluded here, since an invalid name is cleaned up without an error, not "protected".
+        if Profiler::EnvKeyPolicy.valid_name?(key) &&
+           (Profiler::EnvKeyPolicy.protected?(key) || Profiler::EnvKeyPolicy.code_loading?(key))
+          render json: { error: "#{key} is protected; it was removed from the overrides but not restored" },
+                 status: :unprocessable_entity
           return
         end
 
-        Profiler.env_override_store.reset(key)
         render json: { key: key, value: redacted_value(key), reset: true }
       end
 
