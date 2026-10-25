@@ -33,10 +33,15 @@ module Profiler
             return [{ type: "text", text: "Set #{key}=#{value} on slave '#{params["slave"]}'" }]
           end
 
-          Profiler.env_override_store.set(key, value)
-          ENV[key] = value
-
-          [{ type: "text", text: "Set #{key}=#{value}" }]
+          if value.empty?
+            Profiler.env_override_store.delete(key)
+            ENV.delete(key)
+            [{ type: "text", text: "Deleted #{key}" }]
+          else
+            Profiler.env_override_store.set(key, value)
+            ENV[key] = value
+            [{ type: "text", text: "Set #{key}=#{value}" }]
+          end
         rescue Profiler::EnvOverrideStore::Error => e
           ::MCP::Tool::Response.new([{ type: "text", text: "Error: #{e.message}; #{key} was left unchanged." }], error: true)
         end
