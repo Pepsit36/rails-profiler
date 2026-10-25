@@ -403,6 +403,17 @@ module Profiler
         LocalRequest.warn_once(reason)
         false
       when :allow_authorized
+        # DNS rebinding protection: validate the Host header even when using a custom
+        # authorization block. The block may rely on REMOTE_ADDR (e.g., docker.include?(REMOTE_ADDR)),
+        # which is not enough: an attacker can reach an allowed address with a Host header under
+        # their control, bypassing the block's intent. A deployment that is reached under a
+        # non-loopback name (a reverse proxy, a Docker network alias) must list it in config.hosts
+        # or config.mcp_allowed_hosts, same as the MCP HTTP transport already requires.
+        if (denial = authorized_host_denial_reason(request))
+          warn_once_authorized_host(denial)
+          return false
+        end
+
         run_authorize_block(request)
       else
         false
@@ -498,6 +509,47 @@ module Profiler
     rescue RegexpError => e
       raise ArgumentError, "config.mcp_allowed_hosts: #{pattern.inspect} cannot be matched against the whole " \
                            "host name (#{e.message})"
+    end
+
+    # The DNS rebinding check for :allow_authorized: nil when the Host and X-Forwarded-Host
+    # headers are allowed, otherwise a sentence naming the cause. A host is allowed when it is
+    # local, listed in config.hosts, or listed in config.mcp_allowed_hosts: the same rule the MCP
+    # HTTP transport already applies (Profiler::MCP::HttpGuard.allowed_host?), so a deployment
+    # that already lists its host for MCP does not have to list it twice.
+    def authorized_host_denial_reason(request)
+      require_relative "mcp/http_guard"
+
+      # An empty Host header, like a missing one, does not come from a browser (HTTP/1.1
+      # requires it): HttpGuard.allowed_host? only treats nil that way, so blank is checked here.
+      raw_host = request.get_header("HTTP_HOST").to_s
+      unless raw_host.empty? || MCP::HttpGuard.allowed_host?(raw_host, self)
+        return "the Host header #{raw_host.inspect} is not allowed: list it in config.hosts or " \
+               "config.mcp_allowed_hosts"
+      end
+
+      forwarded_hosts = request.get_header("HTTP_X_FORWARDED_HOST").to_s.split(",")
+      remote = forwarded_hosts.find { |h| !MCP::HttpGuard.allowed_host?(h, self) }
+      return "the X-Forwarded-Host header #{remote.inspect} is not allowed: list it in config.hosts or " \
+             "config.mcp_allowed_hosts" if remote
+
+      nil
+    end
+
+    # Logged once per process, like LocalRequest.warn_once for :allow_local: an operator seeing
+    # the profiler go dark under :allow_authorized needs to know the Host check is the cause, not
+    # a silently rejecting authorize_with block.
+    def warn_once_authorized_host(reason)
+      @warn_authorized_host_mutex ||= Mutex.new
+      @warn_authorized_host_mutex.synchronize do
+        return if @warned_authorized_host
+
+        @warned_authorized_host = true
+      end
+
+      Profiler.log_warn(
+        "Request refused by authorization_mode :allow_authorized before the authorize_with " \
+        "block ran: #{reason}. This message is logged once per process."
+      )
     end
 
     # An exception in the application's own authorization code is a denial, never an error

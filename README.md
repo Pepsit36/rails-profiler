@@ -357,7 +357,9 @@ Profiler.configure do |config|
 end
 ```
 
-Read `REMOTE_ADDR` there, not `request.remote_ip`, which trusts `X-Forwarded-For`. The modes, the
+Read `REMOTE_ADDR` there, not `request.remote_ip`, which trusts `X-Forwarded-For`. `:allow_authorized`
+also checks the Host header before running `authorize_with`; if your browser reaches the
+application under a non-local name, list it in `config.mcp_allowed_hosts` too. The modes, the
 forgery protection, CORS and framing are detailed in
 [docs/security.md](docs/security.md#access-control).
 

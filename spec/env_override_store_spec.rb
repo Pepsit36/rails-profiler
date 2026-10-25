@@ -408,4 +408,86 @@ RSpec.describe Profiler::EnvOverrideStore do
       expect(ENV["PROFILER_UNIT_PROBE"]).to be_nil
     end
   end
+
+  describe "EnvKeyPolicy enforcement" do
+    context "when a persisted override contains a protected key" do
+      before do
+        Profiler.configure do |c|
+          c.enabled = true
+          c.tmp_path = Pathname.new(tmp_dir)
+        end
+        # Simulate a legacy override file with a protected key like DATABASE_URL
+        File.write(
+          File.join(tmp_dir, "env_overrides.json"),
+          JSON.generate("DATABASE_URL" => { "value" => "postgres://attacker", "original" => "postgres://trusted" })
+        )
+      end
+
+      after do
+        ENV.delete("DATABASE_URL")
+        Profiler.instance_variable_set(:@env_override_store, nil)
+        FileUtils.rm_rf(tmp_dir)
+      end
+
+      it "#apply! does not restore protected keys" do
+        stub_rails_env("development")
+        store.apply!
+        expect(ENV["DATABASE_URL"]).to be_nil
+      end
+
+      it "#reset removes protected keys from the file instead of keeping a RESTORE entry" do
+        stub_rails_env("development")
+        store.apply!  # Apply first to populate process originals
+        store.reset("DATABASE_URL")
+
+        # Verify the key was removed from the file, not left as RESTORE
+        overrides = store.all_overrides
+        expect(overrides).not_to have_key("DATABASE_URL")
+      end
+
+      it "#reset_all removes protected keys from the file entirely" do
+        stub_rails_env("development")
+        store.apply!
+        store.reset_all
+
+        # Verify protected keys are not in the file
+        overrides = store.all_overrides
+        expect(overrides).not_to have_key("DATABASE_URL")
+      end
+    end
+
+    context "when restore_env is called with a protected key" do
+      before do
+        Profiler.configure do |c|
+          c.enabled = true
+          c.tmp_path = Pathname.new(tmp_dir)
+        end
+      end
+
+      around do |example|
+        inherited = ENV["RUBYOPT"]
+        ENV.delete("RUBYOPT")
+        example.run
+      ensure
+        inherited.nil? ? ENV.delete("RUBYOPT") : ENV["RUBYOPT"] = inherited
+      end
+
+      after do
+        Profiler.instance_variable_set(:@env_override_store, nil)
+        FileUtils.rm_rf(tmp_dir)
+      end
+
+      it "does not restore protected keys to ENV even if they are in the file" do
+        stub_rails_env("development")
+        # Create an override entry for a protected key
+        File.write(
+          File.join(tmp_dir, "env_overrides.json"),
+          JSON.generate("RUBYOPT" => { "value" => "-w", "original" => "-Werror" })
+        )
+
+        store.apply!
+        expect(ENV["RUBYOPT"]).to be_nil
+      end
+    end
+  end
 end

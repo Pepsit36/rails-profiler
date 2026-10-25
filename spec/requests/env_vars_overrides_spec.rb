@@ -69,4 +69,27 @@ RSpec.describe "Env overrides through the profiler API", type: :request do
       expect(Profiler.env_override_store.all_overrides).not_to have_key("PROFILER_SPEC_DEPLOYED")
     end
   end
+
+  context "resetting a key EnvKeyPolicy protects" do
+    before do
+      File.write(
+        File.join(tmp_dir, "env_overrides.json"),
+        JSON.generate(
+          "PROFILER_SPEC_DEPLOYED" => { "value" => "dev-override", "original" => "dev-machine-value" },
+          "DATABASE_URL" => { "value" => "postgres://attacker", "original" => "postgres://trusted" }
+        )
+      )
+      Profiler.instance_variable_set(:@env_override_store, nil)
+    end
+
+    after { ENV.delete("DATABASE_URL") }
+
+    it "removes the stale entry from the file but answers 422 rather than restoring it" do
+      delete "/_profiler/api/env_vars/reset?key=DATABASE_URL", {}, writing
+
+      expect(last_response.status).to eq(422)
+      expect(ENV["DATABASE_URL"]).to be_nil
+      expect(Profiler.env_override_store.all_overrides).not_to have_key("DATABASE_URL")
+    end
+  end
 end
