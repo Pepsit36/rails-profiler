@@ -70,6 +70,13 @@ module Profiler
           return
         end
 
+        # The key must be allowed to reset, just as it must be allowed to set. This prevents
+        # bypassing EnvKeyPolicy restrictions by resetting to persisted overrides.
+        if (reason = Profiler::EnvKeyPolicy.rejection(key))
+          render json: { error: "#{reason}; #{key} was left unchanged" }, status: :unprocessable_entity
+          return
+        end
+
         Profiler.env_override_store.reset(key)
         render json: { key: key, value: redacted_value(key), reset: true }
       end

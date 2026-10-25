@@ -81,8 +81,13 @@ module Profiler
       surfacing("reset #{key}") do
         update_overrides do |overrides|
           entry = overrides[key]
-          # Keep a RESTORE entry so Sidekiq workers pick it up on next job
-          overrides[key] = restore_entry(entry["original"]) if entry
+          # Keep a RESTORE entry so Sidekiq workers pick it up on next job, but remove the key
+          # entirely if it is blocked by EnvKeyPolicy: refusing to restore protected keys
+          # applies even when reading from persisted overrides.
+          if entry
+            overrides[key] = EnvKeyPolicy.allowed?(key) ? restore_entry(entry["original"]) : nil
+            overrides.delete(key) if overrides[key].nil?
+          end
         end
       end
 
@@ -97,6 +102,14 @@ module Profiler
           overrides.each do |key, entry|
             # Already reset: its reset_at stays, so that it still expires.
             next if restore_entry?(entry)
+
+            # Remove keys blocked by EnvKeyPolicy entirely instead of leaving a RESTORE sentinel,
+            # preventing persisted overrides from restoring protected variables.
+            unless EnvKeyPolicy.allowed?(key)
+              originals[key] = nil
+              overrides.delete(key)
+              next
+            end
 
             originals[key] = entry.is_a?(Hash) ? entry["original"] : nil
             # Leave a RESTORE sentinel for Sidekiq workers to pick up
@@ -289,6 +302,10 @@ module Profiler
       # entry is reset in the file, and there is nothing to put back here.
       return false unless EnvKeyPolicy.valid_name?(key)
       return false if EnvKeyPolicy.value_rejection(key, original)
+      # Do not restore environment variables blocked by EnvKeyPolicy: refusal to restore a
+      # protected key (DATABASE_URL, RUBYOPT, etc.) applies even when reloading persisted
+      # overrides from file, preventing bypasses through legacy override files.
+      return false unless EnvKeyPolicy.allowed?(key)
 
       original.nil? ? ENV.delete(key) : ENV[key] = original
       true
