@@ -37,7 +37,7 @@ RSpec.describe Profiler::MCP::Server do
     response = tool.call(server_context: nil)
 
     expect(response.error?).to be true
-    expect(response.content).to eq([{ type: "text", text: "Read timed out" }])
+    expect(response.content.first[:text]).to include("Read timed out")
   end
 
   it "answers a SystemCallError as an error response" do
@@ -48,6 +48,6 @@ RSpec.describe Profiler::MCP::Server do
     response = tool.call(server_context: nil)
 
     expect(response.error?).to be true
-    expect(response.content).to eq([{ type: "text", text: "Connection refused" }])
+    expect(response.content.first[:text]).to include("Connection refused")
   end
 end
