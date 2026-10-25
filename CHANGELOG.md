@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.22] - 2026-10-25
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Test Runner:** test output now streams to the browser in real time instead of waiting for 256 bytes to accumulate.
