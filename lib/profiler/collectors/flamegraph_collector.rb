@@ -11,6 +11,7 @@ module Profiler
         @events = []
         @subscriptions = []
         @mutex = Mutex.new
+        @released_at = nil
       end
 
       def icon
@@ -152,6 +153,7 @@ module Profiler
       def unsubscribe
         unsubscribe_notifications(@subscriptions)
         restore_thread_slots
+        @released_at = Time.now
       end
 
       def toolbar_summary
@@ -162,6 +164,13 @@ module Profiler
       end
 
       private
+
+      def add_event_allowed?
+        return true unless @released_at
+
+        grace_period = 0.5
+        (Time.now - @released_at) <= grace_period && @events.size < 100
+      end
 
       def build_hierarchy(events)
         return [] if events.empty?
@@ -193,7 +202,9 @@ module Profiler
       end
 
       def add_event(event)
-        @mutex.synchronize { @events << event }
+        @mutex.synchronize do
+          @events << event if add_event_allowed?
+        end
       end
 
       def short_identifier(identifier)

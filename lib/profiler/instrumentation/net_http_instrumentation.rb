@@ -65,39 +65,42 @@ module Profiler
 
           response = super
 
-          duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round(2)
-          # read_body with a block hands each chunk to the block and keeps none: the response then
-          # holds a Net::ReadAdapter, whose to_s is an inspect and whose bytes are gone.
-          streamed = NetHttpInstrumentation.streamed_body?(response)
-          resp_body_raw = streamed ? "" : response.body.to_s
-          resp_content_encoding = response["content-encoding"].to_s.strip.downcase
-          resp_body = NetHttpInstrumentation.decompress_body(resp_body_raw, resp_content_encoding, limit)
-          resp_truncated = limit ? resp_body.bytesize > limit : false
-          resp_body = Redaction.cut_bytes(resp_body, limit) if resp_truncated
-          resp_content_type = response["content-type"].to_s
-          processed_resp = NetHttpInstrumentation.process_body(resp_body, resp_content_type)
+          # Only record response details if the collector accepted the request
+          if entry
+            duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round(2)
+            # read_body with a block hands each chunk to the block and keeps none: the response then
+            # holds a Net::ReadAdapter, whose to_s is an inspect and whose bytes are gone.
+            streamed = NetHttpInstrumentation.streamed_body?(response)
+            resp_body_raw = streamed ? "" : response.body.to_s
+            resp_content_encoding = response["content-encoding"].to_s.strip.downcase
+            resp_body = NetHttpInstrumentation.decompress_body(resp_body_raw, resp_content_encoding, limit)
+            resp_truncated = limit ? resp_body.bytesize > limit : false
+            resp_body = Redaction.cut_bytes(resp_body, limit) if resp_truncated
+            resp_content_type = response["content-type"].to_s
+            processed_resp = NetHttpInstrumentation.process_body(resp_body, resp_content_type)
 
-          t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-          collector.complete_request(
-            entry,
-            status: response.code.to_i,
-            duration: duration,
-            response_headers: Redaction.filter_headers(response.to_hash.transform_values { |v| v.join(", ") }),
-            response_body: processed_resp[:body],
-            response_body_encoding: processed_resp[:encoding],
-            response_size: streamed ? (declared_length(response) || 0) : resp_body_raw.bytesize,
-            response_body_truncated: resp_truncated,
-            response_body_not_captured: streamed
-          )
+            collector.complete_request(
+              entry,
+              status: response.code.to_i,
+              duration: duration,
+              response_headers: Redaction.filter_headers(response.to_hash.transform_values { |v| v.join(", ") }),
+              response_body: processed_resp[:body],
+              response_body_encoding: processed_resp[:encoding],
+              response_size: streamed ? (declared_length(response) || 0) : resp_body_raw.bytesize,
+              response_body_truncated: resp_truncated,
+              response_body_not_captured: streamed
+            )
 
-          fg = Thread.current[:profiler_flamegraph_collector]
-          fg&.record_http_event(started_at: t0, finished_at: t1, url: url, method: req.method, status: response.code.to_i)
+            fg = Thread.current[:profiler_flamegraph_collector]
+            fg&.record_http_event(started_at: t0, finished_at: t1, url: url, method: req.method, status: response.code.to_i)
+          end
 
           response
         rescue => e
           duration = defined?(t0) && t0 ? ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round(2) : 0.0
-          if defined?(entry) && entry
+          if defined?(entry) && entry && defined?(collector) && collector
             collector.fail_request(entry, error: e.message, duration: duration)
           end
           raise

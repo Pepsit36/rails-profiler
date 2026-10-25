@@ -232,6 +232,88 @@ RSpec.describe Profiler::Collectors::HttpCollector do
     end
   end
 
+  # ─── released collector behavior ────────────────────────────────────────────
+
+  describe "released collector behavior" do
+    it "returns nil when collector is released and cap is exceeded" do
+      # Register 100 requests to hit the cap
+      100.times do |i|
+        entry = collector.register_pending(**pending_payload(url: "https://api.example.com/#{i}"))
+        expect(entry).not_to be_nil
+      end
+
+      # Release the collector (simulate unsubscribe after collect)
+      collector.unsubscribe
+
+      # Next request should return nil (cap exceeded)
+      entry = collector.register_pending(**pending_payload(url: "https://api.example.com/101"))
+      expect(entry).to be_nil
+    end
+
+    it "returns nil after grace period expires" do
+      # Register one request before release
+      collector.register_pending(**pending_payload(url: "https://api.example.com/"))
+
+      # Release the collector
+      collector.unsubscribe
+
+      # Requests within grace period should still be registered
+      entry = collector.register_pending(**pending_payload(url: "https://api.example.com/2"))
+      expect(entry).not_to be_nil
+
+      # Sleep past grace period (0.5 seconds)
+      sleep 0.6
+
+      # Now it should be refused
+      entry = collector.register_pending(**pending_payload(url: "https://api.example.com/3"))
+      expect(entry).to be_nil
+    end
+
+    it "does not modify profile when fire-and-forget thread calls HTTP after collect" do
+      Thread.current[:profiler_http_collector] = collector
+
+      # Simulate: fire-and-forget thread starts BEFORE collect
+      fire_and_forget = Thread.new do
+        # Register one request before parent collects
+        entry = collector.register_pending(**pending_payload(url: "https://ff.example.com/data"))
+        expect(entry).not_to be_nil
+
+        sleep 0.02 # simulate network delay, collect() runs while this sleeps
+
+        # Try to complete after collect (should be no-op since entry is nil)
+        if entry
+          collector.complete_request(entry,
+            status: 200, duration: 20.0,
+            response_headers: {}, response_body: "done",
+            response_body_encoding: "text", response_size: 4)
+        end
+
+        # Try to register another request after grace period - should be refused
+        sleep 0.6
+        later_entry = collector.register_pending(**pending_payload(url: "https://ff.example.com/later"))
+        expect(later_entry).to be_nil
+      end
+
+      # collect() runs while the thread is still in-flight
+      sleep 0.005
+      collector.collect
+      Profiler.storage.save(profile.token, profile)
+
+      # At this point: profile in storage has one in_flight entry
+      initial_count = Profiler.storage.load(profile.token).collector_data("http")["total_requests"]
+      expect(initial_count).to eq(1)
+
+      # Wait for fire-and-forget to complete
+      fire_and_forget.join
+
+      # Profile should still have the same count (no new requests added)
+      final_count = Profiler.storage.load(profile.token).collector_data("http")["total_requests"]
+      expect(final_count).to eq(initial_count)
+    ensure
+      Thread.current[:profiler_http_collector] = nil
+    end
+  end
+
   # ─── thread propagation ─────────────────────────────────────────────────────
 
   describe "thread propagation" do
