@@ -88,6 +88,14 @@ Read `REMOTE_ADDR` there, not `request.remote_ip`, which trusts `X-Forwarded-For
 back to `config.authorization_mode = :allow_all`, the default before 0.30.6, which lets anybody who
 can reach the application read and change everything the profiler exposes.
 
+`:allow_authorized` still checks the Host header before running `authorize_with`, the same DNS
+rebinding defense as `:allow_local`: a page rebound to your Docker or VM address under an
+attacker's domain name must not pass `docker.include?(REMOTE_ADDR)` just because the address is
+right. If your browser reaches the application under a name that is neither local nor in
+`config.hosts` (an internal domain, a Docker network alias), list it in
+`config.mcp_allowed_hosts` too, or this check refuses every request before `authorize_with` ever
+runs, with the cause logged once per process.
+
 A cluster master and its slaves do not need this: they authenticate each other with
 `cluster_secret` (see [Cluster](cluster.md)).
 
