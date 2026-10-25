@@ -104,10 +104,7 @@ CONVENTIONAL_SUBJECT = /\A(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<bang>!)?:\s+
 # since a publication cannot be taken back. The body is only read for the
 # breaking footer, in both spellings the specification allows: `BREAKING CHANGE:`
 # and `BREAKING-CHANGE:`.
-BREAKING_SUBJECT = /\A[a-z]+(?:\(.+\))?!:/
 BREAKING_FOOTER = /^BREAKING[ -]CHANGE:/
-FEATURE_SUBJECT = /\Afeat(?:\(.+\))?:/
-FIX_SUBJECT = /\Afix(?:\(.+\))?:/
 
 # The release commit of a version belongs to the interval of its own tag, since
 # the tag is placed on it, and the job that writes it cannot cite its own sha
@@ -240,9 +237,19 @@ module Versioning
 
   def level(commit)
     subject = commit.subject.to_s.strip
-    return :major if subject.match?(BREAKING_SUBJECT) || commit.body.to_s.match?(BREAKING_FOOTER)
-    return :minor if subject.match?(FEATURE_SUBJECT)
-    return :patch if subject.match?(FIX_SUBJECT)
+
+    # Check for breaking change (either bang in subject or footer in body)
+    match = CONVENTIONAL_SUBJECT.match(subject)
+    if match && match[:bang] == "!"
+      return :major
+    end
+    return :major if commit.body.to_s.match?(BREAKING_FOOTER)
+
+    # Check type from CONVENTIONAL_SUBJECT
+    if match
+      return :minor if match[:type] == "feat"
+      return :patch if match[:type] == "fix"
+    end
 
     nil
   end
