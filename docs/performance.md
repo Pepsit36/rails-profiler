@@ -46,7 +46,7 @@ What the profiler costs a request, what it records and from which threads, and i
   | A fiber the request creates | yes | no | no | no |
   | A task posted to a concurrent-ruby executor | yes | yes | no | no |
   | A thread of a pool created before the request (the application's own queue, Sidekiq) | no | no | no | no |
-  | A thread started during the request, after the request has ended | no | yes, added to the finished profile | no | no |
+  | A thread started during the request, after the request has ended | no | yes, for up to 0.5s or 100 entries after the request's collectors are released | no | no |
 
   `Thread.start` and `Thread.fork` do not run the `Thread#initialize` the profiler patches, and a
   fiber has its own thread-local values: both get the notification scope, which Ruby hands to new

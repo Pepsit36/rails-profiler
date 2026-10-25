@@ -11,6 +11,7 @@ module Profiler
         @requests = []
         @mutex = Mutex.new
         @collected = false
+        @released_at = nil
       end
 
       def icon
@@ -48,6 +49,7 @@ module Profiler
       # records nothing when no collector holds the thread-local slot.
       def unsubscribe
         restore_thread_slots
+        @released_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
 
       def collect
@@ -62,11 +64,23 @@ module Profiler
 
       # Called from NetHttpInstrumentation before the actual HTTP call.
       # Returns the mutable entry so the caller can update it on completion.
+      # Returns nil if the collector has been released and the grace period or entry cap is exceeded,
+      # to prevent fire-and-forget threads from indefinitely polluting the profile after the request ends.
       def register_pending(payload)
         entry = payload.merge(in_flight: true, status: 0, duration: nil,
                               response_headers: {}, response_body: nil,
                               response_body_encoding: "text", response_size: 0)
-        @mutex.synchronize { @requests << entry }
+
+        @mutex.synchronize do
+          # Refuse new entries if released and (grace period expired OR cap exceeded). Checked
+          # and appended under the same lock, so concurrent fire-and-forget threads cannot all
+          # pass the cap together.
+          if @released_at
+            grace_period = 0.5
+            return nil if (Process.clock_gettime(Process::CLOCK_MONOTONIC) - @released_at) > grace_period || @requests.size >= 100
+          end
+          @requests << entry
+        end
         save_if_collected
         entry
       end

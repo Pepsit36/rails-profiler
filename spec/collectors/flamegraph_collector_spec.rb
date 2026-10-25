@@ -355,4 +355,125 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
       expect(collector.toolbar_summary[:color]).to eq("blue")
     end
   end
+
+  describe "released collector behavior" do
+    it "rejects events when collector is released and cap is exceeded" do
+      # Add 100 events to hit the cap
+      100.times do |i|
+        event = make_event(
+          name: "Event #{i}",
+          started_at: 100.0 + i,
+          finished_at: 100.1 + i,
+          category: "custom"
+        )
+        collector.send(:add_event, event)
+      end
+
+      # Release the collector (simulate unsubscribe after collect)
+      collector.unsubscribe
+
+      # Next event should be rejected (cap exceeded)
+      initial_count = collector.instance_variable_get(:@events).size
+      event = make_event(
+        name: "Event 101",
+        started_at: 200.0,
+        finished_at: 200.1,
+        category: "custom"
+      )
+      collector.send(:add_event, event)
+
+      final_count = collector.instance_variable_get(:@events).size
+      expect(final_count).to eq(initial_count) # Event was not added
+    end
+
+    it "rejects events after grace period expires" do
+      # Add one event before release
+      event = make_event(
+        name: "Event 1",
+        started_at: 100.0,
+        finished_at: 100.1,
+        category: "custom"
+      )
+      collector.send(:add_event, event)
+
+      # Release the collector
+      collector.unsubscribe
+
+      # Events within grace period should still be accepted
+      event2 = make_event(
+        name: "Event 2",
+        started_at: 100.2,
+        finished_at: 100.3,
+        category: "custom"
+      )
+      collector.send(:add_event, event2)
+      expect(collector.instance_variable_get(:@events).size).to eq(2)
+
+      # Sleep past grace period (0.5 seconds)
+      sleep 0.6
+
+      # Now events should be rejected
+      initial_count = collector.instance_variable_get(:@events).size
+      event3 = make_event(
+        name: "Event 3",
+        started_at: 100.4,
+        finished_at: 100.5,
+        category: "custom"
+      )
+      collector.send(:add_event, event3)
+      final_count = collector.instance_variable_get(:@events).size
+      expect(final_count).to eq(initial_count) # Event was not added
+    end
+
+    it "does not modify profile when fire-and-forget thread records events after collect" do
+      collector.subscribe
+
+      # Fire-and-forget thread that records events
+      fire_and_forget = Thread.new do
+        # Record one event before parent collects
+        collector.record_custom_event(
+          label: "ff_event",
+          started_at: 100.0,
+          finished_at: 100.1,
+          metadata: { fired: true }
+        )
+
+        sleep 0.02 # simulate work, collect() runs while this sleeps
+
+        # Try to record more events after collect
+        # Within grace period - should be accepted
+        collector.record_custom_event(
+          label: "ff_event2",
+          started_at: 100.2,
+          finished_at: 100.3
+        )
+
+        # Sleep past grace period
+        sleep 0.6
+
+        # This should be rejected
+        collector.record_custom_event(
+          label: "ff_event3",
+          started_at: 100.4,
+          finished_at: 100.5
+        )
+      end
+
+      # collect() runs while the thread is still in-flight
+      sleep 0.005
+      collector.collect
+      Profiler.storage.save(profile.token, profile)
+
+      # Get initial event count
+      initial = Profiler.storage.load(profile.token).collector_data("flamegraph")["total_events"]
+      expect(initial).to be > 0
+
+      # Wait for fire-and-forget to complete
+      fire_and_forget.join
+
+      # Profile should have at most initial + 1 event (one accepted within grace period)
+      final = Profiler.storage.load(profile.token).collector_data("flamegraph")["total_events"]
+      expect(final).to be <= initial + 1
+    end
+  end
 end
