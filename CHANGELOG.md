@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.17] - 2026-10-25
+
+<!-- stamped -->
+
 ### Security
 
 - **EnvOverrides:** the profiler now refuses to restore environment variables blocked by `EnvKeyPolicy` when a reset is requested, closing a bypass where protected keys (DATABASE_URL, RUBYOPT, etc.) could be restored from persisted overrides.
