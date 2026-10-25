@@ -63,7 +63,7 @@ redact() { sed -e 's#://[^/@[:space:]]*@#://***@#g'; }
 # author stamped and the number published can never come from two rules.
 compute_new_version() {
   local out rc
-  LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
+  LAST_TAG="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo "")"
 
   set +e
   out="$(ruby bin/changelog version --since "$LAST_TAG")"
