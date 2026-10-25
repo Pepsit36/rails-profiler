@@ -59,7 +59,7 @@ module Profiler
         result = block.call
         console_collector.set_return_value(result)
         result
-      rescue => e
+      rescue Exception => e # rubocop:disable Lint/RescueException
         console_status = "failed"
         exception_collector&.capture(e)
         raise

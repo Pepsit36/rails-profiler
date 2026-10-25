@@ -19,6 +19,17 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.16] - 2026-10-23
+
+<!-- stamped -->
+
+### Fixed
+
+- **LogCollector:** Prevent `BroadcastLogger` level from forcing `DEBUG` globally across all threads during profiling.
+- **Middleware:** Skip toolbar injection for HTML downloads (`Content-Disposition: attachment`) and compressed responses (`Content-Encoding` present) to prevent file corruption.
+- **Middleware:** Remove `ETag` and `Last-Modified` headers when toolbar is injected to prevent stale cached responses on 304 Not Modified.
+- **Profiler:** Catch `Exception` (not just `StandardError`) to properly handle `Interrupt`, `SignalException`, and `Sidekiq::Shutdown`, marking profiles as failed instead of completed.
+
 ## [0.44.15] - 2026-10-23
 
 <!-- stamped -->

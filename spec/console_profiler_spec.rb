@@ -134,5 +134,34 @@ RSpec.describe Profiler::ConsoleProfiler do
         expect(data["exception_class"]).to include("ZeroDivisionError")
       end
     end
+
+    context "when the console expression is interrupted with Interrupt" do
+      def run_interrupted_console
+        run_console(expression: "sleep(10)") { raise Interrupt }
+      rescue Interrupt
+        # expected
+      end
+
+      it "re-raises the Interrupt" do
+        expect { run_console { raise Interrupt } }.to raise_error(Interrupt)
+      end
+
+      it "still saves a profile" do
+        run_interrupted_console
+        expect(Profiler.storage.list.size).to eq(1)
+      end
+
+      it "sets status 500" do
+        run_interrupted_console
+        expect(Profiler.storage.list.first.status).to eq(500)
+      end
+
+      it "captures the exception" do
+        run_interrupted_console
+        data = Profiler.storage.list.first.collector_data("exception")
+        expect(data).not_to be_nil
+        expect(data["exception_class"]).to include("Interrupt")
+      end
+    end
   end
 end
