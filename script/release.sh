@@ -81,23 +81,24 @@ tag_exists_on_remote() {
   git ls-remote --tags origin 2>/dev/null | grep -q "refs/tags/$1$"
 }
 
-tag_already_exists() {
+check_tag_conflict() {
   local tag="$1"
-  local tag_commit tag_sha current_sha
+  local tag_commit current_sha
 
   tag_commit=$(git rev-list -n 1 "$tag" 2>/dev/null || true)
   if [ -z "$tag_commit" ]; then
-    return 1
+    # Tag doesn't exist, no conflict
+    return 0
   fi
 
   current_sha=$(git rev-parse HEAD 2>/dev/null)
   if [ "$tag_commit" = "$current_sha" ]; then
+    # Tag already on HEAD from a previous run
     return 0
   fi
 
-  # Tag exists but on a different commit
-  printf 'ERROR: tag %s already exists on commit %s, not on HEAD (%s).\n' "$tag" "${tag_commit:0:7}" "${current_sha:0:7}" >&2
-  exit 1
+  # Tag exists but on a different commit - this is a conflict
+  die "tag ${tag} already exists on commit ${tag_commit:0:7}, not on HEAD (${current_sha:0:7})."
 }
 
 # --- registry probes -------------------------------------------------------
@@ -338,7 +339,7 @@ publish_release() {
   configure_git
 
   log "Tagging $(git rev-parse --short HEAD) as ${tag}."
-  tag_already_exists "$tag"
+  check_tag_conflict "$tag"
   git tag "$tag"
   push_tag "$tag"
 
