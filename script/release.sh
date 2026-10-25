@@ -277,7 +277,7 @@ configure_git() {
 # stamped in the branch.
 file_version() {
   ruby -e '
-    Encoding.default_external = Encoding::UTF_8
+    Encoding.default_external = Encoding.find("UTF-8")
     text = File.read(ARGV[0])
     match = text[/^##\s*\[(\d+\.\d+\.\d+)\]/, 1]
     abort "no released section found in #{ARGV[0]}" if match.nil?
@@ -288,7 +288,7 @@ file_version() {
 # Versions stamped in the file, below the top section, that carry no tag yet.
 pending_versions() {
   ruby -e '
-    Encoding.default_external = Encoding::UTF_8
+    Encoding.default_external = Encoding.find("UTF-8")
     text = File.read(ARGV[0])
     sections = text.scan(/^##\s*\[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^##\s|\z)/m)
     sections.drop(1).each do |version, body|

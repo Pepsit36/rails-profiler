@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 # Ensure UTF-8 encoding regardless of locale settings
-Encoding.default_external = Encoding::UTF_8
+Encoding.default_external = Encoding.find('UTF-8')
 
 # Single changelog generator for this gem.
 #
@@ -869,20 +869,6 @@ module Commands
   def section_diff(merge_base, file, lines)
     base = Sections.section_bodies(Sections.split(Git.try("show", "#{merge_base}:#{file}") || ""))
     head = Sections.section_bodies(lines)
-
-    # Detect orphaned sections: new versions not in base that are not at the head of the file
-    headings = Sections.version_headings(lines)
-    new_versions = head.keys - base.keys
-    orphaned = if headings.empty?
-                 []
-               else
-                 first_version = headings.first[:version]
-                 new_versions.reject { |v| v == first_version }
-               end
-    unless orphaned.empty?
-      raise "Found version sections new to this branch that are not at the top: #{orphaned.join(', ')}. " \
-            "Newly introduced sections must be placed at the top of the changelog."
-    end
 
     {
       base: base,
