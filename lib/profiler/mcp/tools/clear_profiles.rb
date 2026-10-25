@@ -10,7 +10,10 @@ module Profiler
           type = params["type"]
 
           if type && !%w[http job test console].include?(type)
-            return [{ type: "text", text: "Error: type must be 'http', 'job', 'test', or 'console'" }]
+            return ::MCP::Tool::Response.new(
+              [{ type: "text", text: "Error: type must be 'http', 'job', 'test', or 'console'" }],
+              error: true
+            )
           end
 
           if (proxy = MCP::SlaveSupport.with_slave_proxy(params))

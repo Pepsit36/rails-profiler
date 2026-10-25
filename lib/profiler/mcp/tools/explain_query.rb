@@ -13,17 +13,28 @@ module Profiler
           query_index = params["query_index"]
 
           unless token
-            return [{ type: "text", text: "Error: token parameter is required" }]
+            return ::MCP::Tool::Response.new(
+              [{ type: "text", text: "Error: token parameter is required" }],
+              error: true
+            )
           end
 
           if query_index.nil?
-            return [{ type: "text", text: "Error: query_index parameter is required" }]
+            return ::MCP::Tool::Response.new(
+              [{ type: "text", text: "Error: query_index parameter is required" }],
+              error: true
+            )
           end
 
           if (proxy = MCP::SlaveSupport.with_slave_proxy(params))
             result = proxy.post_json("/_profiler/api/explain", { token: token, query_index: query_index.to_i })
-            text = result["error"] ? "Error: #{result["error"]}" : result.inspect
-            return [{ type: "text", text: text }]
+            if result["error"]
+              return ::MCP::Tool::Response.new(
+                [{ type: "text", text: "Error: #{result["error"]}" }],
+                error: true
+              )
+            end
+            return [{ type: "text", text: result.inspect }]
           end
 
           storage = MCP::SlaveSupport.resolve_storage(params)
@@ -35,7 +46,10 @@ module Profiler
           end
 
           if (reason = Profiler::ExplainRunner.refusal)
-            return [{ type: "text", text: "Error: #{reason}" }]
+            return ::MCP::Tool::Response.new(
+              [{ type: "text", text: "Error: #{reason}" }],
+              error: true
+            )
           end
 
           data = Profiler::ExplainRunner.run(resolved_token, query_index.to_i)
@@ -56,10 +70,16 @@ module Profiler
 
           [{ type: "text", text: lines.join("\n") }]
         rescue Profiler::ExplainRunner::RefusedError => e
-          [{ type: "text", text: "Error: #{e.message}" }]
+          ::MCP::Tool::Response.new(
+            [{ type: "text", text: "Error: #{e.message}" }],
+            error: true
+          )
         rescue Profiler::Error => e
           # The profiler's own refusals (unknown, offline or refused slave) carry a message made for the caller.
-          [{ type: "text", text: "Error: #{e.message}" }]
+          ::MCP::Tool::Response.new(
+            [{ type: "text", text: "Error: #{e.message}" }],
+            error: true
+          )
         rescue StandardError => e
           # The database's message carries the SQL, and sometimes a path: the log only.
           Profiler.log_error("MCP explain_query: failed for query #{query_index.to_i} of profile #{token.to_s.inspect}", e)
