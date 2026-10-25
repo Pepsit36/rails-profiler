@@ -81,6 +81,25 @@ tag_exists_on_remote() {
   git ls-remote --tags origin 2>/dev/null | grep -q "refs/tags/$1$"
 }
 
+tag_already_exists() {
+  local tag="$1"
+  local tag_commit tag_sha current_sha
+
+  tag_commit=$(git rev-list -n 1 "$tag" 2>/dev/null || true)
+  if [ -z "$tag_commit" ]; then
+    return 1
+  fi
+
+  current_sha=$(git rev-parse HEAD 2>/dev/null)
+  if [ "$tag_commit" = "$current_sha" ]; then
+    return 0
+  fi
+
+  # Tag exists but on a different commit
+  printf 'ERROR: tag %s already exists on commit %s, not on HEAD (%s).\n' "$tag" "${tag_commit:0:7}" "${current_sha:0:7}" >&2
+  exit 1
+}
+
 # --- registry probes -------------------------------------------------------
 #
 # rubygems.org is probed through its public API: no credential involved.
@@ -317,6 +336,7 @@ publish_release() {
   configure_git
 
   log "Tagging $(git rev-parse --short HEAD) as ${tag}."
+  tag_already_exists "$tag"
   git tag "$tag"
   push_tag "$tag"
 
