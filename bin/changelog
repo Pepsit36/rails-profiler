@@ -541,7 +541,14 @@ module Sections
 
   # Ordered map of version to section body, newest first as the file is.
   def section_bodies(lines)
-    version_headings(lines).to_h do |heading|
+    headings = version_headings(lines)
+    versions = headings.map { |h| h[:version] }
+    duplicates = versions.select { |v| versions.count(v) > 1 }.uniq
+    unless duplicates.empty?
+      raise "Duplicate version sections found: #{duplicates.join(', ')}. " \
+            "Resolve conflicts by keeping only one instance of each version."
+    end
+    headings.to_h do |heading|
       [heading[:version], lines[(heading[:index] + 1)...section_end(lines, heading[:index])].join("\n")]
     end
   end
@@ -852,6 +859,20 @@ module Commands
   def section_diff(merge_base, file, lines)
     base = Sections.section_bodies(Sections.split(Git.try("show", "#{merge_base}:#{file}") || ""))
     head = Sections.section_bodies(lines)
+
+    # Detect orphaned sections: new versions not in base that are not at the head of the file
+    headings = Sections.version_headings(lines)
+    new_versions = head.keys - base.keys
+    orphaned = if headings.empty?
+                 []
+               else
+                 first_version = headings.first[:version]
+                 new_versions.reject { |v| v == first_version }
+               end
+    unless orphaned.empty?
+      raise "Found version sections new to this branch that are not at the top: #{orphaned.join(', ')}. " \
+            "Newly introduced sections must be placed at the top of the changelog."
+    end
 
     {
       base: base,
