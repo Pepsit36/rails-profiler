@@ -165,11 +165,11 @@ module Profiler
           Profiler::TestRunner.run_store.update(run.id, pid: io.pid)
 
           begin
-            while (chunk = io.read(256))
-              break if chunk.empty?
-
+            while (chunk = io.readpartial(4096))
               Profiler::TestRunner.run_store.append_output(run.id, chunk)
             end
+          rescue EOFError
+            # End of stream reached
           ensure
             # The process printed everything, killed or not: what was held back can be shown.
             Profiler::TestRunner.run_store.finish_output(run.id)
