@@ -79,7 +79,7 @@ module Profiler
           lines += section_logs(profile, params)          if want.("logs")
           lines += section_env(profile, params)           if want.("env")
           lines += section_i18n(profile)                  if want.("i18n")
-          lines += section_related_jobs(profile)          if want.("related_jobs")
+          lines += section_related_jobs(profile, params)  if want.("related_jobs")
           lines.join("\n")
         end
 
@@ -622,12 +622,13 @@ module Profiler
           lines
         end
 
-        def self.section_related_jobs(profile)
+        def self.section_related_jobs(profile, params = {})
+          storage = MCP::SlaveSupport.resolve_storage(params)
           lines = []
 
           # Parent info
           if profile.parent_token
-            parent = Profiler.storage.load(profile.parent_token)
+            parent = storage.load(profile.parent_token)
             if parent
               lines << "## Triggered By"
               if parent.profile_type == "job"
@@ -649,7 +650,7 @@ module Profiler
           end
 
           # Child jobs
-          child_jobs = Profiler.storage.find_by_parent(profile.token).select { |p| p.profile_type == "job" }
+          child_jobs = storage.find_by_parent(profile.token).select { |p| p.profile_type == "job" }
           return lines if child_jobs.empty?
 
           lines << "## Child Jobs (#{child_jobs.size})"
