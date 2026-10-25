@@ -19,9 +19,13 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.23] - 2026-10-25
+
+<!-- stamped -->
+
 ### Fixed
 
-- **MCP:** `get_profile` and `get_profile_http` tools no longer crash when rendering in-flight HTTP requests with `nil` duration, safely converting to 0.0ms for comparison and display.
+- **MCP:** `get_profile` and `get_profile_http` tools no longer crash when rendering in-flight HTTP requests with `nil` duration, safely converting to 0.0ms for comparison and display, and a `nil` status is shown as an error.
 - **Cluster:** `SlaveProxy#request` now catches `SocketError`, `SystemCallError`, `Net::OpenTimeout`, `Net::ReadTimeout`, `OpenSSL::SSL::SSLError` and `IOError` and re-raises a `Profiler::Error` naming the slave, so a tool reading from an unreachable slave gets a normal error response instead of an internal `json-rpc` failure (matching `Peers::PeerProxy#get_json`).
 - **Tasks:** `rake profiler:mcp` now defaults to `:stdio` transport instead of configuration-dependent behavior, aligning with the documented interface; `MCP_TRANSPORT` environment variable still overrides.
 
