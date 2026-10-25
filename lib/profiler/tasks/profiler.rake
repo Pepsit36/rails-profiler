@@ -86,7 +86,7 @@ namespace :profiler do
   task mcp: :environment do
     require_relative "../mcp/server"
 
-    transport = ENV["MCP_TRANSPORT"]&.to_sym || Profiler.configuration.mcp_transport
+    transport = ENV["MCP_TRANSPORT"]&.to_sym || :stdio
     $stderr.puts "Starting Profiler MCP server (#{transport} transport)..."
 
     server = Profiler::MCP::Server.new

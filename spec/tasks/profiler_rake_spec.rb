@@ -12,14 +12,16 @@ RSpec.describe "profiler rake tasks" do
     Rake::Task.define_task(:environment)
     load File.expand_path("../../lib/profiler/tasks/profiler.rake", __dir__)
     allow(Profiler).to receive(:storage).and_return(storage)
-    @saved_env = ENV.to_h.slice("OLDER_THAN", "LIMIT")
+    @saved_env = ENV.to_h.slice("OLDER_THAN", "LIMIT", "MCP_TRANSPORT")
     ENV.delete("OLDER_THAN")
     ENV.delete("LIMIT")
+    ENV.delete("MCP_TRANSPORT")
   end
 
   after do
     ENV.delete("OLDER_THAN")
     ENV.delete("LIMIT")
+    ENV.delete("MCP_TRANSPORT")
     ENV.update(@saved_env)
     Rake.application = @previous_rake
   end
@@ -79,6 +81,25 @@ RSpec.describe "profiler rake tasks" do
           .and output(/LIMIT must be a whole number of profiles/).to_stderr
         expect(storage).not_to have_received(:list)
       end
+    end
+  end
+
+  describe "profiler:mcp" do
+    it "starts the MCP server with :stdio transport by default" do
+      server_double = instance_double(Profiler::MCP::Server, start: nil)
+      allow(Profiler::MCP::Server).to receive(:new).and_return(server_double)
+
+      expect { run_task("profiler:mcp") }.to output(/stdio transport/).to_stderr
+      expect(server_double).to have_received(:start).with(transport: :stdio)
+    end
+
+    it "uses MCP_TRANSPORT environment variable to override the default" do
+      server_double = instance_double(Profiler::MCP::Server, start: nil)
+      allow(Profiler::MCP::Server).to receive(:new).and_return(server_double)
+      ENV["MCP_TRANSPORT"] = "http"
+
+      expect { run_task("profiler:mcp") }.to output(/http transport/).to_stderr
+      expect(server_double).to have_received(:start).with(transport: :http)
     end
   end
 end
