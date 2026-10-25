@@ -947,3 +947,18 @@ since `memory` is deprecated in the profile model.
 - **Network errors still retry.** Transient failures (connection timeouts, DNS issues) continue to log
   with `log_warn` on each attempt, allowing the operator to see retry activity while the master is temporarily
   down.
+
+## AJAX attachment 404 on a streaming response (gem #70)
+
+- **Strategy: retry client-side with a bounded exponential backoff.** `X-Profiler-Token` leaves
+  with the response headers before a streamed body closes and the profile is actually saved, so
+  the interceptor's immediate attachment request can race the save and get a 404. Retrying
+  `linkChildProfile` up to 3 times (100ms, 200ms, 400ms) covers that race without any server
+  change.
+- **Alternative considered but rejected: have the server hold pending attachments.** Queuing an
+  attachment request server-side until the profile is saved would also work, but changes the
+  server's request shape for a timing gap that is normally a few hundred milliseconds; the
+  client-side retry is simpler and keeps the fix contained to the interceptor.
+- **After 3 failed attempts, the attachment is silently dropped**, consistent with the
+  interceptor's existing fail-silently behavior for a profiler API failure: a missed attachment
+  never breaks the page.
