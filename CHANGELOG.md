@@ -19,7 +19,16 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
-## [0.45.0] - 2026-10-25
+### Fixed
+
+- **Changelog:** Detect and reject duplicate version sections that can result from poorly-resolved merge conflicts on `CHANGELOG.md`.
+- **Changelog:** Reject version sections that are new to a branch unless positioned at the top of the file, preventing orphaned sections from being published.
+- **Release:** Verify that version tags do not already exist before creating them; exit with a clear error if a tag exists on a different commit, improving diagnostics for out-of-order pipelines.
+- **Changelog:** Fix commit-type regex patterns to use non-greedy scope matching (`[^)]*` instead of `.+`), preventing parentheses in commit descriptions from being misparsed as scope delimiters.
+- **Release:** Ensure UTF-8 encoding in all release scripts (bin/changelog, script/release.sh, script/canary-version) to prevent "invalid byte sequence" errors when running under `LANG=C` or non-UTF-8 locales.
+- **Release:** Filter version tags by pattern (`v[0-9]*`) to prevent non-version tags (e.g., `staging-2026`) from interfering with version computation and release workflow.
+
+## [0.44.16] - 2026-10-23
 
 ## [0.44.18] - 2026-10-25
 
@@ -48,12 +57,6 @@ every commit of every tag interval is accounted for one way or the other.
 - **Middleware:** Skip toolbar injection for HTML downloads (`Content-Disposition: attachment`) and compressed responses (`Content-Encoding` present) to prevent file corruption.
 - **Middleware:** Remove `ETag` and `Last-Modified` headers when toolbar is injected to prevent stale cached responses on 304 Not Modified.
 - **Profiler:** Catch `Exception` (not just `StandardError`) to properly handle `Interrupt`, `SignalException`, and `Sidekiq::Shutdown`, marking profiles as failed instead of completed.
-- **Changelog:** Detect and reject duplicate version sections that can result from poorly-resolved merge conflicts on `CHANGELOG.md`.
-- **Changelog:** Reject version sections that are new to a branch unless positioned at the top of the file, preventing orphaned sections from being published.
-- **Release:** Verify that version tags do not already exist before creating them; exit with a clear error if a tag exists on a different commit, improving diagnostics for out-of-order pipelines.
-- **Changelog:** Fix commit-type regex patterns to use non-greedy scope matching (`[^)]*` instead of `.+`), preventing parentheses in commit descriptions from being misparsed as scope delimiters.
-- **Release:** Ensure UTF-8 encoding in all release scripts (bin/changelog, script/release.sh, script/canary-version) to prevent "invalid byte sequence" errors when running under `LANG=C` or non-UTF-8 locales.
-- **Release:** Filter version tags by pattern (`v[0-9]*`) to prevent non-version tags (e.g., `staging-2026`) from interfering with version computation and release workflow.
 
 ## [0.44.15] - 2026-10-23
 
