@@ -153,7 +153,7 @@ module Profiler
       def unsubscribe
         unsubscribe_notifications(@subscriptions)
         restore_thread_slots
-        @released_at = Time.now
+        @released_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
 
       def toolbar_summary
@@ -169,7 +169,7 @@ module Profiler
         return true unless @released_at
 
         grace_period = 0.5
-        (Time.now - @released_at) <= grace_period && @events.size < 100
+        (Process.clock_gettime(Process::CLOCK_MONOTONIC) - @released_at) <= grace_period && @events.size < 100
       end
 
       def build_hierarchy(events)

@@ -49,7 +49,7 @@ module Profiler
       # records nothing when no collector holds the thread-local slot.
       def unsubscribe
         restore_thread_slots
-        @released_at = Time.now
+        @released_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
 
       def collect
@@ -77,7 +77,7 @@ module Profiler
           # pass the cap together.
           if @released_at
             grace_period = 0.5
-            return nil if (Time.now - @released_at) > grace_period || @requests.size >= 100
+            return nil if (Process.clock_gettime(Process::CLOCK_MONOTONIC) - @released_at) > grace_period || @requests.size >= 100
           end
           @requests << entry
         end
