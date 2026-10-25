@@ -366,7 +366,7 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
           finished_at: 100.1 + i,
           category: "custom"
         )
-        collector.add_event(event)
+        collector.send(:add_event, event)
       end
 
       # Release the collector (simulate unsubscribe after collect)
@@ -380,7 +380,7 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
         finished_at: 200.1,
         category: "custom"
       )
-      collector.add_event(event)
+      collector.send(:add_event, event)
 
       final_count = collector.instance_variable_get(:@events).size
       expect(final_count).to eq(initial_count) # Event was not added
@@ -394,7 +394,7 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
         finished_at: 100.1,
         category: "custom"
       )
-      collector.add_event(event)
+      collector.send(:add_event, event)
 
       # Release the collector
       collector.unsubscribe
@@ -406,7 +406,7 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
         finished_at: 100.3,
         category: "custom"
       )
-      collector.add_event(event2)
+      collector.send(:add_event, event2)
       expect(collector.instance_variable_get(:@events).size).to eq(2)
 
       # Sleep past grace period (0.5 seconds)
@@ -420,7 +420,7 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
         finished_at: 100.5,
         category: "custom"
       )
-      collector.add_event(event3)
+      collector.send(:add_event, event3)
       final_count = collector.instance_variable_get(:@events).size
       expect(final_count).to eq(initial_count) # Event was not added
     end
@@ -465,14 +465,14 @@ RSpec.describe Profiler::Collectors::FlameGraphCollector do
       Profiler.storage.save(profile.token, profile)
 
       # Get initial event count
-      initial = Profiler.storage.load(profile.token).collector_data("flamegraph")[:total_events]
+      initial = Profiler.storage.load(profile.token).collector_data("flamegraph")["total_events"]
       expect(initial).to be > 0
 
       # Wait for fire-and-forget to complete
       fire_and_forget.join
 
       # Profile should have at most initial + 1 event (one accepted within grace period)
-      final = Profiler.storage.load(profile.token).collector_data("flamegraph")[:total_events]
+      final = Profiler.storage.load(profile.token).collector_data("flamegraph")["total_events"]
       expect(final).to be <= initial + 1
     end
   end
