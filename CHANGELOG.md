@@ -22,13 +22,10 @@ every commit of every tag interval is accounted for one way or the other.
 ### Fixed
 
 - **Changelog:** Detect and reject duplicate version sections that can result from poorly-resolved merge conflicts on `CHANGELOG.md`.
-- **Changelog:** Reject version sections that are new to a branch unless positioned at the top of the file, preventing orphaned sections from being published.
 - **Release:** Verify that version tags do not already exist before creating them; exit with a clear error if a tag exists on a different commit, improving diagnostics for out-of-order pipelines.
 - **Changelog:** Fix commit-type regex patterns to use non-greedy scope matching (`[^)]*` instead of `.+`), preventing parentheses in commit descriptions from being misparsed as scope delimiters.
 - **Release:** Ensure UTF-8 encoding in all release scripts (bin/changelog, script/release.sh, script/canary-version) to prevent "invalid byte sequence" errors when running under `LANG=C` or non-UTF-8 locales.
 - **Release:** Filter version tags by pattern (`v[0-9]*`) to prevent non-version tags (e.g., `staging-2026`) from interfering with version computation and release workflow.
-
-## [0.44.16] - 2026-10-23
 
 ## [0.44.18] - 2026-10-25
 
