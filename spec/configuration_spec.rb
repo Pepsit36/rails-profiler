@@ -139,4 +139,77 @@ RSpec.describe Profiler::Configuration do
       expect { config.editor_path_map = 3 }.to raise_error(ArgumentError, /editor_path_map/)
     end
   end
+
+  describe "#authorized?" do
+    let(:request) { double("request", get_header: nil) }
+
+    describe ":allow_authorized mode with Host validation" do
+      before do
+        config.authorization_mode = :allow_authorized
+        config.authorize_with { |_request| true }
+      end
+
+      it "denies requests with a non-local Host header even if the authorize block returns true" do
+        allow(request).to receive(:get_header) do |header|
+          case header
+          when "HTTP_HOST"
+            "attacker.com"
+          when "HTTP_X_FORWARDED_HOST"
+            ""
+          when "HTTP_FORWARDED"
+            ""
+          end
+        end
+
+        expect(config.authorized?(request)).to be(false)
+      end
+
+      it "allows requests with localhost in the Host header when the authorize block returns true" do
+        allow(request).to receive(:get_header) do |header|
+          case header
+          when "HTTP_HOST"
+            "localhost:3000"
+          else
+            ""
+          end
+        end
+
+        expect(config.authorized?(request)).to be(true)
+      end
+
+      it "allows requests with 127.0.0.1 in the Host header when the authorize block returns true" do
+        allow(request).to receive(:get_header) do |header|
+          case header
+          when "HTTP_HOST"
+            "127.0.0.1:3000"
+          else
+            ""
+          end
+        end
+
+        expect(config.authorized?(request)).to be(true)
+      end
+
+      it "denies requests with a non-local Host in X-Forwarded-Host header" do
+        allow(request).to receive(:get_header) do |header|
+          case header
+          when "HTTP_HOST"
+            "localhost"
+          when "HTTP_X_FORWARDED_HOST"
+            "attacker.com"
+          else
+            ""
+          end
+        end
+
+        expect(config.authorized?(request)).to be(false)
+      end
+
+      it "allows requests with no Host header (not a browser, cannot be DNS rebound)" do
+        allow(request).to receive(:get_header).and_return("")
+
+        expect(config.authorized?(request)).to be(true)
+      end
+    end
+  end
 end

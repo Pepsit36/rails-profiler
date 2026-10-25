@@ -403,6 +403,12 @@ module Profiler
         LocalRequest.warn_once(reason)
         false
       when :allow_authorized
+        # DNS rebinding protection: validate the Host header even when using a custom
+        # authorization block. The block may rely on REMOTE_ADDR (e.g., docker.include?(REMOTE_ADDR)),
+        # which is not enough: an attacker can reach 127.0.0.1 with a Host header under their
+        # control, bypassing the block's intent.
+        return false unless host_allowed?(request)
+
         run_authorize_block(request)
       else
         false
@@ -498,6 +504,25 @@ module Profiler
     rescue RegexpError => e
       raise ArgumentError, "config.mcp_allowed_hosts: #{pattern.inspect} cannot be matched against the whole " \
                            "host name (#{e.message})"
+    end
+
+    # Whether the request's Host header and forwarding headers pass DNS rebinding checks: returns
+    # true if all hosts are local (localhost, 127.0.0.1, ::1), in config.hosts, or test allowed
+    # hosts. Returns true if no Host header is set (not a browser). Checks Host, X-Forwarded-Host
+    # and Forwarded (RFC 7239) headers, mirroring LocalRequest's host validation without checking
+    # REMOTE_ADDR (needed since allow_authorized may be used with non-loopback addresses).
+    def host_allowed?(request)
+      raw_host = request.get_header("HTTP_HOST").to_s
+      # No Host header: not a browser, not vulnerable to DNS rebinding.
+      return true if raw_host.empty?
+
+      return false unless LocalRequest.host_allowed?(raw_host)
+
+      # Check X-Forwarded-Host if present.
+      forwarded_hosts = request.get_header("HTTP_X_FORWARDED_HOST").to_s.split(",")
+      return false if forwarded_hosts.any? { |h| !LocalRequest.host_allowed?(h) }
+
+      true
     end
 
     # An exception in the application's own authorization code is a denial, never an error

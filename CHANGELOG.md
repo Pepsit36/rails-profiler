@@ -19,6 +19,11 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Security
+
+- **EnvOverrides:** the profiler now refuses to restore environment variables blocked by `EnvKeyPolicy` when a reset is requested, closing a bypass where protected keys (DATABASE_URL, RUBYOPT, etc.) could be restored from persisted overrides.
+- **Authorization:** the profiler now validates the Host header against local names, `config.hosts` and `config.mcp_allowed_hosts` in all authorization modes, including `:allow_authorized`, preventing DNS rebinding attacks when using custom authorization blocks.
+
 ## [0.44.16] - 2026-10-23
 
 <!-- stamped -->
