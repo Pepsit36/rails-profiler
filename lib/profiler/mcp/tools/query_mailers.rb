@@ -10,7 +10,7 @@ module Profiler
 
         class << self
           def call(params)
-            limit = params["limit"]&.to_i || 20
+            limit = [[params["limit"]&.to_i || 20, 1].max, 500].min
             fetch_size = [limit * 10, 1000].min
             storage = MCP::SlaveSupport.resolve_storage(params)
             profiles = storage.list(limit: fetch_size)
