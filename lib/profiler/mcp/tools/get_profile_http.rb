@@ -76,7 +76,7 @@ module Profiler
           if requests && !requests.empty?
             lines << "## Request Details"
             requests.each_with_index do |req, i|
-              slow_flag = req["duration"] >= threshold ? " [SLOW]" : ""
+              slow_flag = (req["duration"] || 0).to_f >= threshold ? " [SLOW]" : ""
               err_flag = req["status"] >= 400 || req["status"] == 0 ? " [ERROR]" : ""
               lines << "\n### Request #{i + 1}#{slow_flag}#{err_flag}"
               lines << "- **ID:** #{req['id']}" if req["id"]
@@ -84,7 +84,7 @@ module Profiler
               lines << "- **Method:** #{req['method']}"
               lines << "- **URL:** #{req['url']}"
               lines << "- **Status:** #{req['status'] == 0 ? 'connection error' : req['status']}"
-              lines << "- **Duration:** #{req['duration'].round(2)} ms"
+              lines << "- **Duration:** #{(req['duration'] || 0).to_f.round(2)} ms"
               lines << "- **Request Size:** #{req['request_size'].nil? ? 'unknown' : "#{'at least ' if req['request_size_is_minimum']}#{req['request_size']} bytes"}"
               lines << "- **Response Size:** #{req['response_size']} bytes"
               if req["request_body_not_captured"]
