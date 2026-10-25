@@ -1,6 +1,9 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+# Ensure UTF-8 encoding regardless of locale settings
+Encoding.default_external = Encoding.find('UTF-8')
+
 # Prints the version of a `canary` prerelease: the version the branch is about to
 # publish, followed by `.pre.<short sha>`.
 #

@@ -63,7 +63,7 @@ redact() { sed -e 's#://[^/@[:space:]]*@#://***@#g'; }
 # author stamped and the number published can never come from two rules.
 compute_new_version() {
   local out rc
-  LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
+  LAST_TAG="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo "")"
 
   set +e
   out="$(ruby bin/changelog version --since "$LAST_TAG")"
@@ -79,6 +79,26 @@ compute_new_version() {
 
 tag_exists_on_remote() {
   git ls-remote --tags origin 2>/dev/null | grep -q "refs/tags/$1$"
+}
+
+check_tag_conflict() {
+  local tag="$1"
+  local tag_commit current_sha
+
+  tag_commit=$(git rev-list -n 1 "$tag" 2>/dev/null || true)
+  if [ -z "$tag_commit" ]; then
+    # Tag doesn't exist, no conflict
+    return 0
+  fi
+
+  current_sha=$(git rev-parse HEAD 2>/dev/null)
+  if [ "$tag_commit" = "$current_sha" ]; then
+    # Tag already on HEAD from a previous run
+    return 0
+  fi
+
+  # Tag exists but on a different commit - this is a conflict
+  die "tag ${tag} already exists on commit ${tag_commit:0:7}, not on HEAD (${current_sha:0:7})."
 }
 
 # --- registry probes -------------------------------------------------------
@@ -258,6 +278,7 @@ configure_git() {
 # stamped in the branch.
 file_version() {
   ruby -e '
+    Encoding.default_external = Encoding.find("UTF-8")
     text = File.read(ARGV[0])
     match = text[/^##\s*\[(\d+\.\d+\.\d+)\]/, 1]
     abort "no released section found in #{ARGV[0]}" if match.nil?
@@ -268,6 +289,7 @@ file_version() {
 # Versions stamped in the file, below the top section, that carry no tag yet.
 pending_versions() {
   ruby -e '
+    Encoding.default_external = Encoding.find("UTF-8")
     text = File.read(ARGV[0])
     sections = text.scan(/^##\s*\[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^##\s|\z)/m)
     sections.drop(1).each do |version, body|
@@ -317,6 +339,7 @@ publish_release() {
   configure_git
 
   log "Tagging $(git rev-parse --short HEAD) as ${tag}."
+  check_tag_conflict "$tag"
   git tag "$tag"
   push_tag "$tag"
 
