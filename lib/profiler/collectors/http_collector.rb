@@ -67,16 +67,20 @@ module Profiler
       # Returns nil if the collector has been released and the grace period or entry cap is exceeded,
       # to prevent fire-and-forget threads from indefinitely polluting the profile after the request ends.
       def register_pending(payload)
-        # Refuse new entries if released and (grace period expired OR cap exceeded)
-        if @released_at
-          grace_period = 0.5
-          return nil if (Time.now - @released_at) > grace_period || @requests.size >= 100
-        end
-
         entry = payload.merge(in_flight: true, status: 0, duration: nil,
                               response_headers: {}, response_body: nil,
                               response_body_encoding: "text", response_size: 0)
-        @mutex.synchronize { @requests << entry }
+
+        @mutex.synchronize do
+          # Refuse new entries if released and (grace period expired OR cap exceeded). Checked
+          # and appended under the same lock, so concurrent fire-and-forget threads cannot all
+          # pass the cap together.
+          if @released_at
+            grace_period = 0.5
+            return nil if (Time.now - @released_at) > grace_period || @requests.size >= 100
+          end
+          @requests << entry
+        end
         save_if_collected
         entry
       end
