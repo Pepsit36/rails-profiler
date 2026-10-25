@@ -26,11 +26,19 @@ module Profiler
             return [{ type: "text", text: text }]
           end
 
+          storage = MCP::SlaveSupport.resolve_storage(params)
+          resolved_token = if token == "latest"
+            latest = storage.list(limit: 1).first
+            latest ? latest.token : token
+          else
+            token
+          end
+
           if (reason = Profiler::ExplainRunner.refusal)
             return [{ type: "text", text: "Error: #{reason}" }]
           end
 
-          data = Profiler::ExplainRunner.run(token, query_index.to_i)
+          data = Profiler::ExplainRunner.run(resolved_token, query_index.to_i)
 
           lines = []
           lines << "# EXPLAIN ANALYZE - Query ##{query_index}"

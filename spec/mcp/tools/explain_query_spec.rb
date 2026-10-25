@@ -73,6 +73,18 @@ RSpec.describe Profiler::MCP::Tools::ExplainQuery do
     expect(text("token" => "abc", "query_index" => 0)).to eq("EXPLAIN failed (the application log has the details)")
   end
 
+  it "resolves 'latest' token to the most recent profile" do
+    profile = build_profile(path: "/latest", collectors_data: { "database" => { "queries" => [] } })
+    Profiler.storage.save(profile.token, profile)
+    allow(Profiler::ExplainRunner).to receive(:run).with(profile.token, 0)
+      .and_return(adapter: "postgresql", format: "text", result: "SCAN users")
+
+    output = text("token" => "latest", "query_index" => 0)
+
+    expect(output).to include("Adapter: `postgresql`")
+    expect(output).to include("SCAN users")
+  end
+
   context "on a slave" do
     let(:proxy) { instance_double("Profiler::Cluster::SlaveProxy") }
 
