@@ -16,7 +16,8 @@ RSpec.describe Profiler::MCP::Tools::ExplainQuery do
   end
 
   def text(params)
-    described_class.call(params).first[:text]
+    result = described_class.call(params)
+    (result.respond_to?(:content) ? result.content : result).first[:text]
   end
 
   it "declares a required token string, a required integer query_index and an optional slave" do

@@ -123,10 +123,10 @@ RSpec.describe Profiler::MCP::Tools::QueryTestProfiles do
       end
 
       it "clamps limit above 500 to 500" do
-        20.times { |i| store_test_profile(test_name: "Test#{i}", started_at: Time.now - i.seconds) }
+        20.times { |i| store_test_profile(test_name: "Test#{i}", started_at: Time.now - i) }
         result = call("limit" => 600)
         text = result.first[:text]
-        expect(text).to include("Found 20 tests")
+        expect(text.scan(/\| Test\d+ \|/).size).to eq(20)
       end
 
       it "clamps zero limit to 1" do
