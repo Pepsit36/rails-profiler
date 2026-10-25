@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.21] - 2026-10-25
+
+<!-- stamped -->
+
 ### Fixed
 
 - **HTTP and Flame Graph collectors:** threads spawned during a profiled request but surviving
