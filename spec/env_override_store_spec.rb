@@ -464,8 +464,15 @@ RSpec.describe Profiler::EnvOverrideStore do
         end
       end
 
-      after do
+      around do |example|
+        inherited = ENV["RUBYOPT"]
         ENV.delete("RUBYOPT")
+        example.run
+      ensure
+        inherited.nil? ? ENV.delete("RUBYOPT") : ENV["RUBYOPT"] = inherited
+      end
+
+      after do
         Profiler.instance_variable_set(:@env_override_store, nil)
         FileUtils.rm_rf(tmp_dir)
       end
