@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **HTTP and Flame Graph collectors:** threads spawned during a profiled request but surviving
+  afterwards (a `Timeout.timeout` watcher, a Honeybadger or Bugsnag worker,
+  a `Concurrent::ScheduledTask`) no longer indefinitely pollute the profile with unbounded
+  entries and repeated re-saves. Collectors now refuse new entries after a grace period
+  (0.5 seconds) or when entry count exceeds 100, whichever comes first.
+
 ## [0.44.20] - 2026-10-25
 
 <!-- stamped -->
