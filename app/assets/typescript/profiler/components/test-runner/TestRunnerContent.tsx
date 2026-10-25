@@ -66,8 +66,16 @@ export function TestRunnerContent() {
       if (es.readyState !== EventSource.CLOSED) return
       // Fall back to one final poll to get the terminal state
       fetch(`${BASE}/api/test_runner/runs/${currentRun.id}`)
-        .then(r => r.json())
-        .then((data: TestRun) => { setCurrentRun(data); setIsRunning(false) })
+        .then(r => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`)
+          return r.json()
+        })
+        .then((data: TestRun) => {
+          if (data && Array.isArray(data.files)) {
+            setCurrentRun(data)
+          }
+          setIsRunning(false)
+        })
         .catch(() => setIsRunning(false))
     }
 
