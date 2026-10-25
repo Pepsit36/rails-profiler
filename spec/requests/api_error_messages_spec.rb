@@ -95,7 +95,7 @@ RSpec.describe "Internal error messages", type: :request do
     it "answers the dedicated message, not the generic one" do
       Profiler.instance_variable_set(:@slave_registry, Profiler::Cluster::SlaveRegistry.new)
 
-      text = Profiler::MCP::Tools::ExplainQuery.call("token" => "abc", "query_index" => 0, "slave" => "ghost").first[:text]
+      text = Profiler::MCP::Tools::ExplainQuery.call("token" => "abc", "query_index" => 0, "slave" => "ghost").content.first[:text]
 
       expect(text).to eq("Error: Unknown slave profiler: ghost")
       expect(text).not_to include("EXPLAIN failed")

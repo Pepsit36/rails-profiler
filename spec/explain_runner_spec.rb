@@ -375,7 +375,7 @@ RSpec.describe Profiler::ExplainRunner do
 
       text = Profiler::MCP::Tools::ExplainQuery.call(
         "token" => store_query("DELETE FROM widgets WHERE id = $1", [1]), "query_index" => 0
-      ).first[:text]
+      ).content.first[:text]
 
       expect(text).to start_with("Error:")
       expect(text).to include("read-only")

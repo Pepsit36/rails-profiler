@@ -19,6 +19,19 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.20] - 2026-10-25
+
+<!-- stamped -->
+
+### Fixed
+
+- **MCP:** Clamp negative, zero, and oversized `limit` parameters in `query_profiles`, `query_jobs`, `query_mailers`, `query_console_profiles`, and `query_test_profiles` tools to the valid range `[1, 500]` to prevent invalid queries and unexpected behavior.
+- **MCP:** Implement `'latest'` token support in `explain_query` tool, matching the behavior of `analyze_queries` and `get_profile` tools.
+- **MCP:** Fix `related_jobs` section in `get_profile_detail` to read parent and child jobs from the correct storage (slave or local) instead of always reading from master storage.
+- **MCP:** Return JSON-RPC error -32002 for unknown resource URIs instead of returning a success response with "Resource not found" text.
+- **MCP:** Add `error: true` flag consistently to all validation error responses in `clear_profiles`, `explain_query`, and other tools for proper error handling by clients.
+- **MCP:** Align `set_env_var` empty value handling with `EnvVarsController#update`: empty values now delete the environment variable and override, consistent between local and slave operations.
+
 ## [0.44.19] - 2026-10-25
 
 <!-- stamped -->

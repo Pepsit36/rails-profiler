@@ -1,0 +1,29 @@
+{
+  "global": {
+    "forge": "gitlab",
+    "host": "git.duplessy.eu",
+    "repos": [
+      {
+        "name": "rails-profiler-gem",
+        "path": ".",
+        "issues": true
+      }
+    ],
+    "default_branch": "master",
+    "enabled_skills": ["dev"]
+  },
+  "plugins": {
+    "dev": {
+      "auto_check_issues": false,
+      "doc_update": {
+        "enabled": false,
+        "files": []
+      },
+      "investigate_resources": ["Code source"],
+      "check_commands": [
+        "CI=1 bundle exec rspec",
+        "rubocop"
+      ]
+    }
+  }
+}

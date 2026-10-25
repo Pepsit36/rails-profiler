@@ -54,7 +54,7 @@ module Profiler
         @server.resources_read_handler do |params|
           uri = params[:uri]
           handler = @resource_handlers[uri]
-          next [{ uri: uri, mimeType: "application/json", text: "Resource not found: #{uri}" }] unless handler
+          next nil unless handler
 
           begin
             result = handler.call

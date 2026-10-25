@@ -11,7 +11,8 @@ RSpec.describe Profiler::MCP::Tools::ClearProfiles do
   after { Profiler.instance_variable_set(:@storage, nil) }
 
   def text(params = {})
-    described_class.call(params).first[:text]
+    result = described_class.call(params)
+    (result.respond_to?(:content) ? result.content : result).first[:text]
   end
 
   def save(**attrs)

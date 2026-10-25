@@ -9,7 +9,7 @@ module Profiler
         ALL_FIELDS = %w[time expression return_value status duration queries token].freeze
 
         def self.call(params)
-          limit = params["limit"]&.to_i || 20
+          limit = [[params["limit"]&.to_i || 20, 1].max, 500].min
           fetch_size = [limit * 5, 500].min
           storage = MCP::SlaveSupport.resolve_storage(params)
           profiles = storage.list(limit: fetch_size, type: "console")

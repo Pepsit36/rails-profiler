@@ -16,7 +16,8 @@ RSpec.describe Profiler::MCP::Tools::ExplainQuery do
   end
 
   def text(params)
-    described_class.call(params).first[:text]
+    result = described_class.call(params)
+    (result.respond_to?(:content) ? result.content : result).first[:text]
   end
 
   it "declares a required token string, a required integer query_index and an optional slave" do
@@ -71,6 +72,18 @@ RSpec.describe Profiler::MCP::Tools::ExplainQuery do
     expect(Profiler).to receive(:log_error).with(a_string_including("explain_query"), an_instance_of(RuntimeError))
 
     expect(text("token" => "abc", "query_index" => 0)).to eq("EXPLAIN failed (the application log has the details)")
+  end
+
+  it "resolves 'latest' token to the most recent profile" do
+    profile = build_profile(path: "/latest", collectors_data: { "database" => { "queries" => [] } })
+    Profiler.storage.save(profile.token, profile)
+    allow(Profiler::ExplainRunner).to receive(:run).with(profile.token, 0)
+      .and_return(adapter: "postgresql", format: "text", result: "SCAN users")
+
+    output = text("token" => "latest", "query_index" => 0)
+
+    expect(output).to include("Adapter: `postgresql`")
+    expect(output).to include("SCAN users")
   end
 
   context "on a slave" do

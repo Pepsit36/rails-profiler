@@ -113,7 +113,7 @@ RSpec.describe "Explain outside development and test" do
     it "the MCP tool answers an error and runs nothing" do
       expect(Profiler::ExplainRunner).not_to receive(:open_probe_connection)
 
-      text = Profiler::MCP::Tools::ExplainQuery.call("token" => store_select, "query_index" => 0).first[:text]
+      text = Profiler::MCP::Tools::ExplainQuery.call("token" => store_select, "query_index" => 0).content.first[:text]
 
       expect(text).to eq("Error: #{Profiler::ExplainRunner::OUTSIDE_DEVELOPMENT}")
     end

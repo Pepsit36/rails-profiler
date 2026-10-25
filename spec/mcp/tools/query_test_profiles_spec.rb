@@ -115,6 +115,25 @@ RSpec.describe Profiler::MCP::Tools::QueryTestProfiles do
         text = result.first[:text]
         expect(text).to include("cursor")
       end
+
+      it "clamps negative limit to 1" do
+        result = call("limit" => -5)
+        text = result.first[:text]
+        expect(text).to include("Found 1 test")
+      end
+
+      it "clamps limit above 500 to 500" do
+        20.times { |i| store_test_profile(test_name: "Test#{i}", started_at: Time.now - i) }
+        result = call("limit" => 600)
+        text = result.first[:text]
+        expect(text.scan(/\| Test\d+ \|/).size).to eq(20)
+      end
+
+      it "clamps zero limit to 1" do
+        result = call("limit" => 0)
+        text = result.first[:text]
+        expect(text).to include("Found 1 test")
+      end
     end
   end
 
