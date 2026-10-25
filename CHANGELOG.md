@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.20] - 2026-10-25
+
+<!-- stamped -->
+
 ### Fixed
 
 - **MCP:** Clamp negative, zero, and oversized `limit` parameters in `query_profiles`, `query_jobs`, `query_mailers`, `query_console_profiles`, and `query_test_profiles` tools to the valid range `[1, 500]` to prevent invalid queries and unexpected behavior.
