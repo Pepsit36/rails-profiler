@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.19] - 2026-10-25
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Changelog:** Detect and reject duplicate version sections that can result from poorly-resolved merge conflicts on `CHANGELOG.md`.
