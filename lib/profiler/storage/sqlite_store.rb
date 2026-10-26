@@ -73,10 +73,10 @@ module Profiler
           next unless collector_data.is_a?(Hash)
 
           if collector_name.to_s == "http"
-            requests = collector_data["requests"]
+            requests = collector_data["requests"] || collector_data[:requests]
             if requests
               stripped, bodies_saved = save_http_response_bodies(token, requests)
-              collectors_meta[collector_name] = collector_data.merge("requests" => stripped)
+              collectors_meta[collector_name] = collector_data.reject { |key, _| key.to_s == "requests" }.merge("requests" => stripped)
             else
               collectors_meta[collector_name] = collector_data
             end

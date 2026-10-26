@@ -28,8 +28,16 @@ class FakeRedis
     nx ? true : "OK"
   end
 
-  # The only script the store sends: delete KEYS[1] if it still holds ARGV[1].
+  # The scripts the store sends: the oldest tokens in excess of a target (zcard and zrange), and
+  # delete KEYS[1] if it still holds ARGV[1].
   def eval(script, keys: [], argv: [])
+    if script.include?("zcard") && script.include?("zrange")
+      excess = zcard(keys.first) - argv[0].to_i
+      return [] if excess <= 0
+
+      return zrange(keys.first, 0, [excess, argv[1].to_i].min - 1)
+    end
+
     raise ArgumentError, "unknown script" unless script.include?("get") && script.include?("del")
 
     @strings[keys.first] == argv.first.to_s ? (@strings.delete(keys.first) ? 1 : 0) : 0

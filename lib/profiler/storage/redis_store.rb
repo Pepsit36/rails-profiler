@@ -38,6 +38,19 @@ module Profiler
         return 0
       LUA
 
+      # Atomically retrieves tokens to evict: returns the first N tokens from the sorted set
+      # where N is the minimum of (zcard - target) and batch_size, or 0 if already below target.
+      GET_EXCESS_TOKENS = <<~LUA
+        local key = KEYS[1]
+        local target = tonumber(ARGV[1])
+        local batch_size = tonumber(ARGV[2])
+        local card = redis.call("zcard", key)
+        local excess = card - target
+        if excess <= 0 then return {} end
+        local count = math.min(excess, batch_size)
+        return redis.call("zrange", key, 0, count - 1)
+      LUA
+
       attr_reader :redis
 
       def initialize(options = {})
@@ -256,20 +269,24 @@ module Profiler
         return if excess <= @max_profiles - target
 
         if excess <= EVICT_BATCH
-          remove_tokens(@redis.zrange(saved_key, 0, excess - 1) - [keep])
+          tokens = @redis.eval(GET_EXCESS_TOKENS, keys: [saved_key], argv: [target, EVICT_BATCH])
+          remove_tokens(tokens - [keep]) if tokens.any?
         else
           evicted_all = with_lock(evict_lock_key, EVICT_LOCK_SECONDS) do
             loop do
-              excess = @redis.zcard(saved_key) - target
-              break if excess <= 0
+              tokens = @redis.eval(GET_EXCESS_TOKENS, keys: [saved_key], argv: [target, INDEX_BATCH])
+              break if tokens.empty?
 
-              batch = @redis.zrange(saved_key, 0, [excess, INDEX_BATCH].min - 1) - [keep]
+              batch = tokens - [keep]
               break if batch.empty?
 
               remove_tokens(batch)
             end
           end
-          remove_tokens(@redis.zrange(saved_key, 0, EVICT_BATCH - 1) - [keep]) unless evicted_all
+          unless evicted_all
+            tokens = @redis.eval(GET_EXCESS_TOKENS, keys: [saved_key], argv: [target, EVICT_BATCH])
+            remove_tokens(tokens - [keep]) if tokens.any?
+          end
         end
       end
 
