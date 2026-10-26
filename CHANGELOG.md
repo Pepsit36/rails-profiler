@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.28] - 2026-10-26
+
+<!-- stamped -->
+
 ### Fixed
 
 - **TokenCache:** Delete expired entries in `fetch()` instead of leaving them in memory, and once the cache holds 1000 entries, sweep the expired ones and then evict the oldest so it stays bounded. Refs #72
