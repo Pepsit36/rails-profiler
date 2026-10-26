@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
+require "fileutils"
 require "support/mcp_tool_schema"
 require "profiler/mcp/tools/query_profiles"
 
@@ -81,8 +83,42 @@ RSpec.describe Profiler::MCP::Tools::QueryProfiles do
     cursor = first_page[/Next cursor: (\S+)\*/, 1]
 
     expect(rows(first_page)).to eq(["| /p2 |", "| /p1 |"])
-    expect(cursor).to eq((base_time + 1).iso8601)
+    expect(cursor).to eq((base_time + 1).iso8601(6))
     expect(rows(text("limit" => 2, "fields" => %w[path], "cursor" => cursor))).to eq(["| /p0 |"])
+  end
+
+  it "does not lose a profile to another one started within the same second" do
+    save(0, path: "/same-second-0")
+    build_profile(started_at: base_time + 0.5, path: "/same-second-1").tap { |p| store.save(p.token, p) }
+    build_profile(started_at: base_time + 0.9, path: "/same-second-2").tap { |p| store.save(p.token, p) }
+
+    first_page = text("limit" => 2, "fields" => %w[path])
+    cursor = first_page[/Next cursor: (\S+)\*/, 1]
+
+    expect(rows(first_page)).to eq(["| /same-second-2 |", "| /same-second-1 |"])
+    expect(rows(text("limit" => 2, "fields" => %w[path], "cursor" => cursor))).to eq(["| /same-second-0 |"])
+  end
+
+  context "on the SQLite store" do
+    let(:dir) { Dir.mktmpdir }
+    let(:store) do
+      require "profiler/storage/sqlite_store"
+      Profiler::Storage::SqliteStore.new(database: File.join(dir, "p.db"), blob_path: File.join(dir, "blobs"), max_profiles: nil)
+    end
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "does not lose a profile to another one started within the same second" do
+      save(0, path: "/same-second-0")
+      build_profile(started_at: base_time + 0.5, path: "/same-second-1").tap { |p| store.save(p.token, p) }
+      build_profile(started_at: base_time + 0.9, path: "/same-second-2").tap { |p| store.save(p.token, p) }
+
+      first_page = text("limit" => 2, "fields" => %w[path])
+      cursor = first_page[/Next cursor: (\S+)\*/, 1]
+
+      expect(rows(first_page)).to eq(["| /same-second-2 |", "| /same-second-1 |"])
+      expect(rows(text("limit" => 2, "fields" => %w[path], "cursor" => cursor))).to eq(["| /same-second-0 |"])
+    end
   end
 
   it "ignores a cursor that is not a time" do

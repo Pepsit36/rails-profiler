@@ -90,7 +90,7 @@ module Profiler
 
           if tests.size == limit
             lines << ""
-            lines << "*Next cursor: #{tests.last.started_at.iso8601}*"
+            lines << "*Next cursor: #{tests.last.started_at.iso8601(6)}*"
           end
 
           lines.join("\n")
