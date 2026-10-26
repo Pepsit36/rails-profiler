@@ -243,6 +243,17 @@ RSpec.describe Profiler::Cluster::Security do
       expect(described_class.valid_secret?(Profiler.configuration.cluster_secret)).to be(false)
       expect(described_class.secret_problem).to match(/No config.cluster_secret/)
     end
+
+    it "refuses a secret surrounded by spaces or newlines" do
+      configure(cluster_secret: " #{"k" * 32} ")
+      expect(described_class.configured_secret?).to be(false)
+      expect(described_class.outgoing_headers).to eq({})
+      expect(described_class.secret_problem).to match(/surrounded by spaces or newlines/)
+
+      configure(cluster_secret: "\n#{"k" * 32}\n")
+      expect(described_class.configured_secret?).to be(false)
+      expect(described_class.secret_problem).to match(/surrounded by spaces or newlines/)
+    end
   end
 
   describe ".warn_about_configuration" do

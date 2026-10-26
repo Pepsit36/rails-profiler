@@ -87,6 +87,16 @@ RSpec.describe Profiler::Peers do
       expect(described_class.token_problem).to be_nil
     end
 
+    it "is a problem when surrounded by spaces or newlines" do
+      configure(peers: [], token: " #{"k" * 32} ")
+      expect(described_class.configured_token?).to be(false)
+      expect(described_class.token_problem).to match(/surrounded by spaces or newlines/)
+
+      configure(peers: [], token: "\n#{"k" * 32}\n")
+      expect(described_class.configured_token?).to be(false)
+      expect(described_class.token_problem).to match(/surrounded by spaces or newlines/)
+    end
+
     it "is compared in constant time and never accepted when unconfigured" do
       configure(peers: [])
       expect(described_class.valid_token?(token)).to be true

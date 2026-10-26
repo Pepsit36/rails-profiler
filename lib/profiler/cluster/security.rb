@@ -31,6 +31,7 @@ module Profiler
         def secret_problem
           secret = Profiler.configuration.cluster_secret.to_s
           return "No config.cluster_secret is configured" if secret.strip.empty?
+          return "config.cluster_secret is surrounded by spaces or newlines, which breaks HTTP requests" if secret != secret.strip
           return nil if secret.strip.length >= MIN_SECRET_LENGTH
 
           "config.cluster_secret is shorter than #{MIN_SECRET_LENGTH} characters, so it is ignored " \
