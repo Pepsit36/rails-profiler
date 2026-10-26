@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.31] - 2026-10-26
+
+<!-- stamped -->
+
 ### Fixed
 
 - **run_tests(max_output):** Reject non-positive max_output values; invalid values fall back to default. Refs #73
