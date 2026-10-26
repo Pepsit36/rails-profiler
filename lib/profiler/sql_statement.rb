@@ -17,6 +17,9 @@ module Profiler
     # named `updated_at` is fine and an unquoted column named `share` is refused.
     WRITE_KEYWORDS = %w[INSERT UPDATE DELETE MERGE TRUNCATE DROP ALTER CREATE INTO LOCK SHARE].freeze
 
+    # MariaDB executable and version-specific comments.
+    MARIADB_COMMENT = /\/\*[M!]/.freeze
+
     Token = Struct.new(:type, :text)
 
     # 'it''s' everywhere; 'it\'s' too where a backslash escapes. An unterminated
@@ -45,6 +48,11 @@ module Profiler
       return refusal("it is empty") if first.nil?
 
       verb = first.text.upcase
+      # SET TRANSACTION READ ONLY and similar SET commands are read-only
+      if first.type == :word && verb == "SET"
+        return nil if tokens.any? { |t| t.type == :word && t.text.upcase == "READ" } &&
+                      tokens.any? { |t| t.type == :word && t.text.upcase == "ONLY" }
+      end
       return refusal("it starts with #{verb}") unless first.type == :word && READ_ONLY_VERBS.include?(verb)
 
       tokens.each_with_index do |token, i|

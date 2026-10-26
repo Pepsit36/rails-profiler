@@ -173,7 +173,9 @@ RSpec.describe Profiler::ExplainRunner do
       "keywords in backticks"        => "SELECT `update`, `delete` FROM widgets",
       "DELETE in a # comment"        => "SELECT 1 # DELETE",
       "DELETE after an escaped quote" => "SELECT 'it\\' DELETE' FROM widgets",
-      "an optimizer hint"            => "SELECT /*+ MAX_EXECUTION_TIME(1000) */ * FROM widgets"
+      "an optimizer hint"            => "SELECT /*+ MAX_EXECUTION_TIME(1000) */ * FROM widgets",
+      "SET TRANSACTION READ ONLY"    => "SET TRANSACTION READ ONLY",
+      "a MariaDB version comment"    => "SELECT /*M! 100310 something */ * FROM widgets"
     },
     "SQLite" => {
       "keywords in backticks" => "SELECT `update`, `delete` FROM widgets"
