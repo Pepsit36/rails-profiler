@@ -19,6 +19,18 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.30] - 2026-10-26
+
+<!-- stamped -->
+
+### Fixed
+
+- **Flamegraph:** Switching the theme now re-renders the flamegraph, the `profiler:theme-change` event being listened to on `window`. Refs #75
+- **Flamegraph:** `Ctrl+F` / `Cmd+F` falls back to the browser find when the tab has no search field, instead of being swallowed. Refs #75
+- **Flamegraph:** Zero-duration frames are drawn at a minimum width of 1px and can be hovered and clicked. Refs #75
+- **Flamegraph:** Profiles with more than about 150,000 frames no longer overflow the stack when computing the time range. Refs #75
+- **Flamegraph:** A drag to pan no longer triggers a click-zoom on the frame under the cursor when it ends. Refs #75
+
 ## [0.44.29] - 2026-10-26
 
 <!-- stamped -->

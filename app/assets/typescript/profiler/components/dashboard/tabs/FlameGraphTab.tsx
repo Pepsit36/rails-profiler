@@ -157,14 +157,14 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
     window.addEventListener('resize', handleResize)
 
     const handleTheme = () => renderer.render()
-    document.addEventListener('profiler:theme-change', handleTheme)
+    window.addEventListener('profiler:theme-change', handleTheme)
 
     return () => {
       renderer.destroy()
       tooltip.destroy()
       breadcrumbs.destroy()
       window.removeEventListener('resize', handleResize)
-      document.removeEventListener('profiler:theme-change', handleTheme)
+      window.removeEventListener('profiler:theme-change', handleTheme)
       rendererRef.current = null
       tooltipRef.current = null
       breadcrumbsRef.current = null
@@ -183,9 +183,9 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
   // Ctrl+F / Cmd+F focuses the search input
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && searchInputRef.current) {
         e.preventDefault()
-        searchInputRef.current?.focus()
+        searchInputRef.current.focus()
       }
     }
     document.addEventListener('keydown', onKeyDown, { capture: true })
@@ -757,14 +757,14 @@ function FunctionFlameGraph({ rootCalls, onFrameSelect, rendererRef: externalRen
     const handleResize = () => renderer.resizeCanvas()
     window.addEventListener('resize', handleResize)
     const handleTheme = () => renderer.render()
-    document.addEventListener('profiler:theme-change', handleTheme)
+    window.addEventListener('profiler:theme-change', handleTheme)
 
     return () => {
       renderer.destroy()
       tooltip.destroy()
       breadcrumbs.destroy()
       window.removeEventListener('resize', handleResize)
-      document.removeEventListener('profiler:theme-change', handleTheme)
+      window.removeEventListener('profiler:theme-change', handleTheme)
       rendererRef.current = null
       if (externalRendererRef) externalRendererRef.current = null
     }
