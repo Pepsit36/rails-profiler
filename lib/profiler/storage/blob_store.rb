@@ -72,6 +72,8 @@ module Profiler
           dir = token_dir(name)
           stat = File.lstat(dir)
           FileUtils.rm_rf(dir) if stat.directory? && stat.mtime < cutoff
+        rescue Errno::ENOENT
+          # Normal race between concurrent workers
         rescue SystemCallError => e
           Profiler.log_error("BlobStore: could not prune #{name}", e)
         end
