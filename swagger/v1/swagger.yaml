@@ -1038,8 +1038,8 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/ComparisonData"
-        '400':
-          description: invalid request (missing required parameters)
+        '422':
+          description: invalid request (missing required parameters, or comparing a profile with itself)
           content:
             application/json:
               schema:
