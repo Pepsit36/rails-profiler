@@ -52,6 +52,10 @@ RSpec.describe "Profiler.storage when the store cannot be created" do
     expect(Profiler.storage.load(profile.token)&.token).to eq(profile.token)
   end
 
+  it "raises when calling find_by_trace on unavailable storage" do
+    expect { Profiler.storage.find_by_trace("trace-id") }.to raise_error(Profiler::Storage::Unavailable::Error)
+  end
+
   def capture_stderr
     original = $stderr
     $stderr = StringIO.new
