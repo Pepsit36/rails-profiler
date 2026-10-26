@@ -66,6 +66,7 @@ module Profiler
         @collectors = collectors
         @on_finish = on_finish
         @context = Fiber.current
+        @trace_flags = CurrentContext.trace_flags
         @started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         @mutex = Mutex.new
         @released = false
@@ -115,8 +116,12 @@ module Profiler
       def enter
         token = CurrentContext.token
         trace_id = CurrentContext.trace_id
+        span_id = CurrentContext.span_id
+        trace_flags = CurrentContext.trace_flags
         CurrentContext.token = @profile.token
         CurrentContext.trace_id = @profile.trace_id
+        CurrentContext.span_id = @profile.span_id
+        CurrentContext.trace_flags = @trace_flags
         lent = @mutex.synchronize do
           next [] if @released
 
@@ -124,14 +129,16 @@ module Profiler
             [collector, collector.lend_thread_slots] if collector.respond_to?(:lend_thread_slots)
           end
         end
-        [token, lent, trace_id]
+        [token, lent, trace_id, span_id, trace_flags]
       end
 
       def leave(state)
-        token, lent, trace_id = state
+        token, lent, trace_id, span_id, trace_flags = state
         lent.reverse_each { |collector, previous| collector.return_thread_slots(previous) }
         CurrentContext.token = token
         CurrentContext.trace_id = trace_id
+        CurrentContext.span_id = span_id
+        CurrentContext.trace_flags = trace_flags
       end
     end
   end

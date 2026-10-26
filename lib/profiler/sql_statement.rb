@@ -17,6 +17,9 @@ module Profiler
     # named `updated_at` is fine and an unquoted column named `share` is refused.
     WRITE_KEYWORDS = %w[INSERT UPDATE DELETE MERGE TRUNCATE DROP ALTER CREATE INTO LOCK SHARE].freeze
 
+    # MariaDB executable and version-specific comments.
+    MARIADB_COMMENT = /\A\/\*M?!/.freeze
+
     Token = Struct.new(:type, :text)
 
     # 'it''s' everywhere; 'it\'s' too where a backslash escapes. An unterminated
@@ -36,8 +39,8 @@ module Profiler
     # @return [String, nil] why the statement must not be explained, or nil when it reads only
     def self.read_only_refusal(sql, dialect:)
       all = tokenize(sql, dialect)
-      if dialect == :mysql && all.any? { |t| t.type == :comment && t.text.start_with?("/*!") }
-        return refusal("it holds a MySQL executable comment (/*! ... */)")
+      if dialect == :mysql && all.any? { |t| t.type == :comment && t.text.match?(MARIADB_COMMENT) }
+        return refusal("it holds a MySQL or MariaDB executable comment (/*! ... */ or /*M! ... */)")
       end
 
       tokens = all.reject { |t| %i[space comment].include?(t.type) }

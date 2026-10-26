@@ -60,9 +60,29 @@ RSpec.describe Profiler::Models::SqlQuery do
       expect(q.transaction?).to be_truthy
     end
 
+    it "returns truthy for SAVEPOINT" do
+      q = described_class.new(sql: "SAVEPOINT sp1", duration: 0.1)
+      expect(q.transaction?).to be_truthy
+    end
+
+    it "returns truthy for RELEASE" do
+      q = described_class.new(sql: "RELEASE SAVEPOINT sp1", duration: 0.1)
+      expect(q.transaction?).to be_truthy
+    end
+
     it "is case-insensitive" do
       q = described_class.new(sql: "begin", duration: 0.1)
       expect(q.transaction?).to be_truthy
+    end
+
+    it "handles leading whitespace" do
+      q = described_class.new(sql: "  \n  COMMIT", duration: 0.1)
+      expect(q.transaction?).to be_truthy
+    end
+
+    it "does not match transaction keywords in the middle of a query" do
+      q = described_class.new(sql: "SELECT * FROM commits WHERE id = 1", duration: 0.1)
+      expect(q.transaction?).to be_nil
     end
 
     it "returns nil for normal queries" do

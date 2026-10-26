@@ -3,6 +3,8 @@
 module Profiler
   module Models
     class SqlQuery
+      TRANSACTION_REGEX = /\A\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i.freeze
+
       attr_reader :sql, :duration, :binds, :name, :connection, :backtrace, :started_at
 
       def initialize(sql:, duration:, binds: [], name: nil, connection: nil, backtrace: [], started_at: nil)
@@ -24,7 +26,7 @@ module Profiler
       end
 
       def transaction?
-        @sql =~ /^(BEGIN|COMMIT|ROLLBACK)/i
+        @sql =~ TRANSACTION_REGEX
       end
 
       def to_h

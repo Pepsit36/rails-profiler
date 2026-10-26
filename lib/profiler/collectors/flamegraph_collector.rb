@@ -2,6 +2,7 @@
 
 require_relative "base_collector"
 require_relative "../models/timeline_event"
+require_relative "../models/sql_query"
 
 module Profiler
   module Collectors
@@ -83,7 +84,7 @@ module Profiler
         # SQL queries
         @subscriptions << subscribe_notification("sql.active_record") do |_name, started, finished, _unique_id, payload|
           next if payload[:name] == "SCHEMA"
-          next if payload[:sql] =~ /\A\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i
+          next if payload[:sql] =~ Models::SqlQuery::TRANSACTION_REGEX
 
           sql = payload[:sql].to_s
           add_event Models::TimelineEvent.new(

@@ -138,15 +138,17 @@ module Profiler
       end
 
       # Adds a traceparent to a call made while a profiled request runs on this thread: the trace
-      # id of that request and a span id of its own. A traceparent the application set is kept,
-      # and a host excluded from the instrumentation gets none.
+      # id of that request and the current span as parent. A traceparent the application set is
+      # kept, and a host excluded from the instrumentation gets none.
       def self.inject_trace_context(req, host, port)
         trace_id = CurrentContext.trace_id
         return unless trace_id
         return if req[TraceContext::HEADER]
         return if skip_host?(host, port)
 
-        req[TraceContext::HEADER] = TraceContext.format(trace_id, TraceContext.new_span_id)
+        parent_span_id = CurrentContext.span_id || TraceContext.new_span_id
+        trace_flags = CurrentContext.trace_flags || "01"
+        req[TraceContext::HEADER] = TraceContext.format(trace_id, parent_span_id, trace_flags)
       rescue => e
         Profiler.log_error("NetHttpInstrumentation: could not add the traceparent header", e)
       end
