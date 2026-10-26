@@ -19,6 +19,13 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Storage:** Added missing `find_by_trace` method to `Unavailable` storage class, returning 503 instead of 500 for trace queries when storage is unavailable.
+- **Storage:** SqliteStore now stores the HTTP response bodies of live profiles in the blob store; the symbol-keyed `requests` of the HTTP collector were left inline in the profile row. Saving a hash holding both `:requests` and `"requests"` no longer writes a duplicate key.
+- **Storage:** BlobStore gracefully handles `Errno::ENOENT` race condition during concurrent pruning operations.
+- **Storage:** RedisStore computes the tokens to evict atomically with a Lua script, reducing over-eviction under concurrent saves.
+
 ## [0.44.31] - 2026-10-26
 
 <!-- stamped -->
