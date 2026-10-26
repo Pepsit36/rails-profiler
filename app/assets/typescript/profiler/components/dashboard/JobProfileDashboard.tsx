@@ -71,7 +71,7 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
         </div>
         {profile.gem_version && profile.gem_version !== getGemVersion() && (
           <div class="profiler-version-mismatch">
-            ⚠️ Profil capturé avec la version <strong>{profile.gem_version}</strong> - version actuelle : <strong>{getGemVersion()}</strong>
+            ⚠️ Profile captured with version <strong>{profile.gem_version}</strong> – current version: <strong>{getGemVersion()}</strong>
           </div>
         )}
         {parent && (
