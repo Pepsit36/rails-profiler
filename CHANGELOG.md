@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.32] - 2026-10-26
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Storage:** Added missing `find_by_trace` method to `Unavailable` storage class, returning 503 instead of 500 for trace queries when storage is unavailable.
