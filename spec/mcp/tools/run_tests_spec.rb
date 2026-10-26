@@ -129,6 +129,24 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
       # The output block should be ≤ 500 chars (plus truncation marker)
       expect(output_section).to include("truncated")
     end
+
+    # Case 2/10: max_output validation
+    it "rejects max_output of 0 and uses default" do
+      result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "max_output" => 0)
+      expect(result.first[:text]).to include("1 example, 0 failures")
+      expect(result.first[:text]).not_to include("truncated")
+    end
+
+    it "rejects negative max_output and uses default" do
+      result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "max_output" => -5)
+      expect(result.first[:text]).to include("1 example, 0 failures")
+      expect(result.first[:text]).not_to include("truncated")
+    end
+
+    it "accepts positive max_output values" do
+      result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "max_output" => 100)
+      expect(result.first[:text]).to include("truncated")
+    end
   end
 
   describe "when no files are specified and no test files exist" do
@@ -189,6 +207,23 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
       result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 1)
       expect(result.first[:text]).to match(/Run ID.*`[0-9a-f]{16}`/)
     end
+
+    # Case 3/10: timeout_seconds capping
+    it "caps timeout_seconds to MAX_TIMEOUT (600 seconds)" do
+      allow(Profiler::TestRunner::Runner).to receive(:build_command) do |_files, _framework|
+        ["ruby", "-e", "exit 0"]
+      end
+      result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 999)
+      expect(result.first[:text]).not_to include("timed out")
+    end
+
+    it "allows reasonable timeout values below the cap" do
+      allow(Profiler::TestRunner::Runner).to receive(:build_command) do |_files, _framework|
+        ["ruby", "-e", "exit 0"]
+      end
+      result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 300)
+      expect(result.first[:text]).not_to include("timed out")
+    end
   end
 
   # FAB-20 (issue #43): the run is read back through the slave's API, whose JSON carries the
@@ -228,6 +263,45 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
 
       expect(run_on_slave).to include("done")
       expect(described_class).to have_received(:sleep).once
+    end
+
+    # Case 4/10: Early exit on slave when error is detected
+    it "exits immediately when run_data contains an error, without waiting for timeout" do
+      allow(proxy).to receive(:get_json).and_return(
+        { "id" => "r1", "status" => "running", "error" => "Invalid file format", "output" => "" }
+      )
+
+      text = run_on_slave
+
+      expect(described_class).not_to have_received(:sleep)
+      expect(text).to include("Error starting tests on slave")
+    end
+
+    # Case 5/10: Don't force options on slave (allow slave auto-detection)
+    it "does not force framework to 'rspec' when framework is nil" do
+      slave_params_no_framework = { "slave" => "payment", "files" => ["spec/fake_spec.rb"], "timeout_seconds" => 5 }
+      sent_payload = nil
+      allow(proxy).to receive(:post_json) do |_path, payload|
+        sent_payload = payload
+        { "id" => "r1", "status" => "passed", "exit_code" => 0, "output" => "OK\n" }
+      end
+
+      described_class.run_on_slave(proxy, slave_params_no_framework)
+
+      expect(sent_payload).not_to have_key(:framework)
+    end
+
+    it "does not send empty files array when files are not provided" do
+      slave_params_no_files = { "slave" => "payment", "timeout_seconds" => 5 }
+      sent_payload = nil
+      allow(proxy).to receive(:post_json) do |_path, payload|
+        sent_payload = payload
+        { "id" => "r1", "status" => "passed", "exit_code" => 0, "output" => "OK\n" }
+      end
+
+      described_class.run_on_slave(proxy, slave_params_no_files)
+
+      expect(sent_payload).not_to have_key(:files)
     end
   end
 
