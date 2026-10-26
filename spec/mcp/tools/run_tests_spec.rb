@@ -212,21 +212,36 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
       expect(result.first[:text]).to match(/Run ID.*`[0-9a-f]{16}`/)
     end
 
-    # Case 3/10: timeout_seconds capping
-    it "caps timeout_seconds to MAX_TIMEOUT (600 seconds)" do
-      allow(Profiler::TestRunner::Runner).to receive(:build_command) do |_files, _framework|
-        ["ruby", "-e", "exit 0"]
-      end
-      result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 999)
-      expect(result.first[:text]).not_to include("timed out")
-    end
+    # Case 3/10: timeout_seconds capping. A fake clock moves forward by whatever the code waits,
+    # so the total time waited before giving up is exactly the effective timeout.
+    context "with a fake clock" do
+      let(:clock_start) { Time.now }
+      let(:waited) { [0] }
 
-    it "allows reasonable timeout values below the cap" do
-      allow(Profiler::TestRunner::Runner).to receive(:build_command) do |_files, _framework|
-        ["ruby", "-e", "exit 0"]
+      before do
+        start = clock_start
+        elapsed = waited
+        allow(Time).to receive(:now) { start + elapsed.first }
+        allow(Profiler::TestRunner::Runner).to receive(:spawn_async)
+        allow(Profiler::TestRunner.run_store).to receive(:wait_for_output) do |_id, timeout:, **|
+          elapsed[0] += timeout
+          { position: 0, finished: false }
+        end
       end
-      result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 300)
-      expect(result.first[:text]).not_to include("timed out")
+
+      it "caps timeout_seconds to MAX_TIMEOUT (600 seconds)" do
+        result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 999)
+
+        expect(result.first[:text]).to include("timed out")
+        expect(waited.first).to eq(described_class::MAX_TIMEOUT)
+      end
+
+      it "allows reasonable timeout values below the cap" do
+        result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 300)
+
+        expect(result.first[:text]).to include("timed out")
+        expect(waited.first).to eq(300)
+      end
     end
   end
 
@@ -267,6 +282,20 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
 
       expect(run_on_slave).to include("done")
       expect(described_class).to have_received(:sleep).once
+    end
+
+    # Case 3/10 on the slave path: sleep moves a fake clock, the run never finishes.
+    it "caps timeout_seconds to MAX_TIMEOUT (600 seconds)" do
+      start = Time.now
+      slept = 0
+      allow(Time).to receive(:now) { start + slept }
+      allow(described_class).to receive(:sleep) { |secs| slept += secs }
+      allow(proxy).to receive(:get_json).and_return("id" => "r1", "status" => "running", "output" => "")
+
+      text = described_class.run_on_slave(proxy, slave_params.merge("timeout_seconds" => 999)).first[:text]
+
+      expect(text).to include("timed out")
+      expect(slept).to be_between(described_class::MAX_TIMEOUT, described_class::MAX_TIMEOUT + 2)
     end
 
     # Case 4/10: Early exit on slave when error is detected
