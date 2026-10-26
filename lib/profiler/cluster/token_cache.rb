@@ -13,17 +13,28 @@ module Profiler
 
       def fetch(token)
         entry = @cache[token]
-        return nil if entry.nil? || Time.now > entry[:expires_at]
+        if entry.nil? || Time.now > entry[:expires_at]
+          @cache.delete(token)
+          return nil
+        end
 
         entry[:slave_name]
       end
 
       def store(token, slave_name)
+        cleanup_expired if @cache.size > 1000
         @cache[token] = { slave_name: slave_name, expires_at: Time.now + TTL }
       end
 
       def invalidate(token)
         @cache.delete(token)
+      end
+
+      private
+
+      def cleanup_expired
+        now = Time.now
+        @cache.delete_if { |_, entry| now > entry[:expires_at] }
       end
     end
   end
