@@ -39,8 +39,8 @@ module Profiler
     # @return [String, nil] why the statement must not be explained, or nil when it reads only
     def self.read_only_refusal(sql, dialect:)
       all = tokenize(sql, dialect)
-      if dialect == :mysql && all.any? { |t| t.type == :comment && t.text.start_with?("/*!") }
-        return refusal("it holds a MySQL executable comment (/*! ... */)")
+      if dialect == :mysql && all.any? { |t| t.type == :comment && t.text.match?(MARIADB_COMMENT) }
+        return refusal("it holds a MySQL or MariaDB executable comment (/*! ... */ or /*M! ... */)")
       end
 
       tokens = all.reject { |t| %i[space comment].include?(t.type) }

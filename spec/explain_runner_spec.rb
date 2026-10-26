@@ -156,6 +156,7 @@ RSpec.describe Profiler::ExplainRunner do
       "FOR UPDATE after --1, which is not a comment" => "SELECT 1--1 FROM widgets FOR UPDATE",
       "FOR UPDATE after an escaped quote"           => "SELECT 'it\\'s' FROM widgets FOR UPDATE",
       "an executable comment"                       => "SELECT * FROM widgets /*! INTO OUTFILE '/tmp/w' */",
+      "a MariaDB version-specific comment"          => "SELECT * FROM widgets /*M!100101 INTO OUTFILE '/tmp/w' */",
       "FOR UPDATE after a non-nesting comment"      => "SELECT 1 /* a /* b */ FROM widgets FOR UPDATE"
     },
     "SQLite" => {
@@ -231,7 +232,8 @@ RSpec.describe Profiler::ExplainRunner do
       expect(conn.extended).to eq(["EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM widgets WHERE id = 7"])
     end
 
-    it "on MySQL, runs the plain EXPLAIN on its own connection, in a transaction rolled back even on success" do
+    it "on MySQL, runs the plain EXPLAIN on its own connection, time-limited, " \
+       "in a transaction rolled back even on success" do
       conn = FakeExplainConnection.new("Mysql2")
       use_connection(conn)
 
@@ -240,6 +242,7 @@ RSpec.describe Profiler::ExplainRunner do
       expect(conn.log).to eq([
         "CONNECT",
         "BEGIN",
+        "SET SESSION MAX_EXECUTION_TIME=30000",
         "EXPLAIN FORMAT=JSON SELECT * FROM widgets WHERE id = 7",
         "ROLLBACK",
         "DISCONNECT"
