@@ -255,7 +255,7 @@ export function ProfileList() {
     setSection(s)
     const url = new URL(window.location.href)
     url.searchParams.set('section', s)
-    history.pushState(null, '', url.toString())
+    history.replaceState(null, '', url.toString())
     // Reset all filters
     setHttpSearch(''); setHttpMethod(''); setHttpStatus(''); setHttpDuration('')
     setHttpPreset(''); setHttpSort({ col: null, dir: 'asc' })

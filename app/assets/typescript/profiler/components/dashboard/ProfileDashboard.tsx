@@ -44,7 +44,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
     setActiveTab(tab)
     const url = new URL(window.location.href)
     url.searchParams.set('tab', tab)
-    history.pushState(null, '', url.toString())
+    history.replaceState(null, '', url.toString())
   }
 
   const tabClass = (key: TabKey) => `tab${activeTab === key ? ' active' : ''}`
