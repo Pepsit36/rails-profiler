@@ -55,7 +55,11 @@ module Profiler
         @server.resources_read_handler do |params|
           uri = params[:uri]
           handler = @resource_handlers[uri]
-          next nil unless handler
+          unless handler
+            next nil unless defined?(::MCP::Server::ResourceNotFoundError)
+
+            raise ::MCP::Server::ResourceNotFoundError.new(uri, params)
+          end
 
           begin
             result = handler.call
