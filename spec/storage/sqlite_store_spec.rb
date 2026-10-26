@@ -269,6 +269,22 @@ RSpec.describe Profiler::Storage::SqliteStore do
       expect(data["db"]).to eq("queries" => [])
     end
 
+    it "moves the response bodies of symbol-keyed HTTP requests to the blob store" do
+      profile = profile_started(Time.now)
+      # The HTTP collector emits :requests as a symbol, with string keys inside each request.
+      profile.instance_variable_get(:@collectors_data)["http"] =
+        { requests: [{ "url" => "https://api.test/", "status" => 200, "response_body" => "BODY-LIVE" }] }
+      token = store.save(profile.token, profile)
+
+      row = store.instance_variable_get(:@db).execute("SELECT collectors_meta FROM profiler_profiles WHERE token = ?", [token]).first
+      expect(row["collectors_meta"]).not_to include("BODY-LIVE")
+      expect(row["collectors_meta"].scan('"requests"').size).to eq(1)
+      expect(store.instance_variable_get(:@blob_store).exists?(token, described_class::HTTP_BODIES)).to be(true)
+
+      request = store.load(token).collectors_data["http"]["requests"].first
+      expect(request).to include("url" => "https://api.test/", "status" => 200, "response_body" => "BODY-LIVE")
+    end
+
     it "answers nil for an unknown token and for one that is not a token" do
       expect(store.load("f" * 32)).to be_nil
       expect(store.load("../etc/passwd")).to be_nil
