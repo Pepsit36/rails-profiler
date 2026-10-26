@@ -11,7 +11,7 @@ import {
 } from '../generated/api'
 import { copyText } from '../clipboard'
 import type { Profile, HttpRequest, ProfilesResponse } from '../dashboard/types'
-import { getGemVersion, allocatedObjects, formatAllocations, ALLOCATIONS_HINT } from '../dashboard/utils'
+import { getGemVersion, allocatedObjects, formatAllocations, ALLOCATIONS_HINT, deduplicateByToken } from '../dashboard/utils'
 import { HttpRequestDetail } from './dashboard/tabs/HttpTab'
 import { EnvTab } from './dashboard/tabs/EnvTab'
 import { TestRunnerContent } from './test-runner/TestRunnerContent'
@@ -131,10 +131,10 @@ export function ProfileList() {
   const { mutateAsync: deleteTestMutation }    = useDeleteTest()
   const { mutateAsync: clearTestsMutation }    = useClearTests()
 
-  const profiles        = (httpQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? []
-  const jobs            = (jobsQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? []
-  const consoles        = (consolesQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? []
-  const tests           = (testsQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? []
+  const profiles        = deduplicateByToken((httpQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? [])
+  const jobs            = deduplicateByToken((jobsQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? [])
+  const consoles        = deduplicateByToken((consolesQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? [])
+  const tests           = deduplicateByToken((testsQuery.data as InfiniteData<ProfilesResponse> | undefined)?.pages.flatMap(p => p.profiles) ?? [])
   const outboundRequests = (outboundQuery.data ?? []) as OutboundRequest[]
   const envData         = envQuery.data
 
