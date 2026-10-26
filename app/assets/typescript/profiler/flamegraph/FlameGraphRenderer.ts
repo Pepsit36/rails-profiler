@@ -101,8 +101,14 @@ export class FlameGraphRenderer {
       this.globalEnd = 1
       return
     }
-    this.globalStart = Math.min(...this.frames.map(f => f.absStart))
-    this.globalEnd = Math.max(...this.frames.map(f => f.absEnd))
+    let min = Infinity
+    let max = -Infinity
+    for (const f of this.frames) {
+      if (f.absStart < min) min = f.absStart
+      if (f.absEnd > max) max = f.absEnd
+    }
+    this.globalStart = min === Infinity ? 0 : min
+    this.globalEnd = max === -Infinity ? 1 : max
     if (this.globalEnd <= this.globalStart) this.globalEnd = this.globalStart + 1
   }
 
