@@ -133,14 +133,18 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
     # Case 2/10: max_output validation
     it "rejects max_output of 0 and uses default" do
       result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "max_output" => 0)
-      expect(result.first[:text]).to include("1 example, 0 failures")
-      expect(result.first[:text]).not_to include("truncated")
+      text = result.first[:text]
+      expect(text).to include("(truncated)")
+      expect(text).to include("x" * described_class::DEFAULT_MAX_OUTPUT)
+      expect(text).not_to include("x" * (described_class::DEFAULT_MAX_OUTPUT + 1))
     end
 
     it "rejects negative max_output and uses default" do
       result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "max_output" => -5)
-      expect(result.first[:text]).to include("1 example, 0 failures")
-      expect(result.first[:text]).not_to include("truncated")
+      text = result.first[:text]
+      expect(text).to include("(truncated)")
+      expect(text).to include("x" * described_class::DEFAULT_MAX_OUTPUT)
+      expect(text).not_to include("x" * (described_class::DEFAULT_MAX_OUTPUT + 1))
     end
 
     it "accepts positive max_output values" do
@@ -274,7 +278,7 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
       text = run_on_slave
 
       expect(described_class).not_to have_received(:sleep)
-      expect(text).to include("Error starting tests on slave")
+      expect(text).to include("Error reading test run r1 on slave", "Invalid file format")
     end
 
     # Case 5/10: Don't force options on slave (allow slave auto-detection)
@@ -285,6 +289,7 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
         sent_payload = payload
         { "id" => "r1", "status" => "passed", "exit_code" => 0, "output" => "OK\n" }
       end
+      allow(proxy).to receive(:get_json).and_return("id" => "r1", "status" => "passed", "exit_code" => 0, "output" => "OK\n")
 
       described_class.run_on_slave(proxy, slave_params_no_framework)
 
@@ -298,6 +303,7 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
         sent_payload = payload
         { "id" => "r1", "status" => "passed", "exit_code" => 0, "output" => "OK\n" }
       end
+      allow(proxy).to receive(:get_json).and_return("id" => "r1", "status" => "passed", "exit_code" => 0, "output" => "OK\n")
 
       described_class.run_on_slave(proxy, slave_params_no_files)
 

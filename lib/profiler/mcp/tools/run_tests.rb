@@ -107,7 +107,9 @@ module Profiler
               break
             end
             run_data = proxy.get_json("/_profiler/api/test_runner/runs/#{run_id}")
-            break if run_data["error"]
+            if run_data["error"]
+              return [{ type: "text", text: "Error reading test run #{run_id} on slave: #{run_data["error"]}" }]
+            end
             break if Profiler::TestRunner::RunStore::TERMINAL_STATUSES.include?(run_data["status"])
             sleep 2
           end
