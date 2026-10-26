@@ -110,4 +110,40 @@ describe('apiFetch slave prefix behavior', () => {
     const callUrl = (globalThis.fetch as any).mock.calls[0][0]
     expect(callUrl).toBe('/_profiler/api/profile/abc123')
   })
+
+  it('handles error response with non-JSON body gracefully', async () => {
+    mockGetActiveSlavePrefix.mockReturnValue('')
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 502,
+        json: () => Promise.reject(new SyntaxError("Unexpected token '<'")),
+      } as any),
+    )
+
+    await expect(
+      apiFetch({
+        url: '/_profiler/api/profile/abc123',
+        method: 'GET',
+      }),
+    ).rejects.toThrow('HTTP 502')
+  })
+
+  it('includes error message from JSON response when available', async () => {
+    mockGetActiveSlavePrefix.mockReturnValue('')
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 400,
+        json: () => Promise.resolve({ error: 'Invalid request' }),
+      } as any),
+    )
+
+    await expect(
+      apiFetch({
+        url: '/_profiler/api/profile/abc123',
+        method: 'GET',
+      }),
+    ).rejects.toThrow('Invalid request')
+  })
 })
