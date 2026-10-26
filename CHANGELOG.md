@@ -19,6 +19,13 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **run_tests(max_output):** Reject non-positive max_output values; invalid values fall back to default. Refs #73
+- **run_tests(timeout_seconds):** Cap timeout_seconds to 600 seconds to prevent indefinite blocking of Puma threads. Refs #73
+- **run_tests on slave:** Exit immediately when run error is detected, instead of waiting for timeout. Refs #73
+- **run_tests on slave:** Stop forcing the rspec framework and an empty file list in the request, so the slave detects the framework itself. Refs #73
+
 ## [0.44.30] - 2026-10-26
 
 <!-- stamped -->
