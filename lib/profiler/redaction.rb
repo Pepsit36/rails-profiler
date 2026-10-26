@@ -5,6 +5,7 @@ require "set"
 require "rack/utils"
 require "active_support/parameter_filter"
 require_relative "cluster/security"
+require_relative "peers"
 
 module Profiler
   # The single filter applied to everything the profiler captures: request
@@ -292,10 +293,12 @@ module Profiler
       # Only a secret the cluster would use (Cluster::Security.secret_problem
       # nil: 32 characters or more): a shorter one is ignored by the cluster,
       # and masking "true" or "/" everywhere would hide the very data profiled.
+      # Also includes the peer token if one is configured.
       def credential_values
-        return [] unless Cluster::Security.configured_secret?
-
-        [Profiler.configuration.cluster_secret.to_s.strip]
+        credentials = []
+        credentials << Profiler.configuration.cluster_secret.to_s.strip if Cluster::Security.configured_secret?
+        credentials << Profiler.configuration.peer_token.to_s.strip if Peers.configured_token?
+        credentials
       end
 
       def hide_in(value, credentials)
