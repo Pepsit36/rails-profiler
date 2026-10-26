@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.30] - 2026-10-26
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Flamegraph:** Switching the theme now re-renders the flamegraph, the `profiler:theme-change` event being listened to on `window`. Refs #75
