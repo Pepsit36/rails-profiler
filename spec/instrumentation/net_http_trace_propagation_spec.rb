@@ -46,12 +46,41 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "trace propaga
     expect(header("traceparent")).to match(/\A00-#{trace_id}-\h{16}-01\z/)
   end
 
-  it "uses a new span id for each call" do
+  it "reuses the span id from CurrentContext" do
+    span_id = "c9c7ff12d331cce1"
+    Profiler::CurrentContext.trace_id = trace_id
+    Profiler::CurrentContext.span_id = span_id
+    Net::HTTP.get(URI("http://127.0.0.1:#{@port}/x"))
+
+    expect(header("traceparent")).to eq("00-#{trace_id}-#{span_id}-01")
+  end
+
+  it "uses a new span id for each call when span_id is not set" do
     Profiler::CurrentContext.trace_id = trace_id
     2.times { Net::HTTP.get(URI("http://127.0.0.1:#{@port}/x")) }
 
     spans = @heads.map { |h| h[/^traceparent: *\S+-(\h{16})-01/i, 1] }
     expect(spans.uniq.size).to eq(2)
+  end
+
+  it "propagates incoming trace flags" do
+    span_id = "c9c7ff12d331cce1"
+    Profiler::CurrentContext.trace_id = trace_id
+    Profiler::CurrentContext.span_id = span_id
+    Profiler::CurrentContext.trace_flags = "00"
+    Net::HTTP.get(URI("http://127.0.0.1:#{@port}/x"))
+
+    expect(header("traceparent")).to eq("00-#{trace_id}-#{span_id}-00")
+  end
+
+  it "defaults to sampling flag 01 when no trace_flags are set" do
+    span_id = "c9c7ff12d331cce1"
+    Profiler::CurrentContext.trace_id = trace_id
+    Profiler::CurrentContext.span_id = span_id
+    Profiler::CurrentContext.trace_flags = nil
+    Net::HTTP.get(URI("http://127.0.0.1:#{@port}/x"))
+
+    expect(header("traceparent")).to eq("00-#{trace_id}-#{span_id}-01")
   end
 
   it "never overwrites a traceparent the application set" do

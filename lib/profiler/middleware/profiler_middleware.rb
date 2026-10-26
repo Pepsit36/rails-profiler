@@ -90,6 +90,8 @@ module Profiler
         profile.parent_span_id = incoming&.parent_id
         profile.span_id = TraceContext.new_span_id
         Profiler::CurrentContext.trace_id = profile.trace_id
+        Profiler::CurrentContext.span_id = profile.span_id
+        Profiler::CurrentContext.trace_flags = incoming&.flags || "01"
       end
 
       # Read after the application has run, so after the routing: the route parameters are there,
