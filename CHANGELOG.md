@@ -19,6 +19,13 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **TokenCache:** Delete expired entries in `fetch()` instead of leaving them in memory, and once the cache holds 1000 entries, sweep the expired ones and then evict the oldest so it stays bounded. Refs #72
+- **NetHttpInstrumentation:** Reuse the current request's span ID in outgoing `traceparent` headers instead of generating a random one, and propagate incoming trace flags (also while a streamed body is iterated) to maintain consistency across the distributed trace. Refs #72
+- **SqlStatement:** Refuse MariaDB executable comments (`/*M! ... */`) for EXPLAIN like the MySQL ones (`/*! ... */`). Refs #72
+- **SqlQuery:** Fix transaction detection regex to properly anchor at the start of the statement and handle leading whitespace, and extract a shared `TRANSACTION_REGEX` constant used across collectors and the query model to prevent drift. Also recognize `SAVEPOINT` and `RELEASE` as transaction statements. Refs #72
+
 ## [0.44.27] - 2026-10-26
 
 <!-- stamped -->
