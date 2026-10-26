@@ -179,3 +179,22 @@ test('handles null URL in XMLHttpRequest.open() without throwing', async () => {
     xhr.open('GET', null)
   })
 })
+
+test('does not duplicate load event listeners on reused XHR', async () => {
+  const t = load()
+  t.responses.set('/api/users', { token: 'xhr-1' })
+  const xhr = new t.XMLHttpRequest()
+  // Reuse the same XHR object for multiple sends
+  xhr.open('GET', '/api/users')
+  xhr.send()
+  await t.settled()
+
+  // Reuse the same xhr for a second send with a different URL
+  t.responses.set('/api/posts', { token: 'xhr-2' })
+  xhr.open('GET', '/api/posts')
+  xhr.send()
+  await t.settled()
+
+  // Should have 2 links, one per send (no duplication)
+  assert.equal(t.links.length, 2, 'each send should link once, even on reused XHR')
+})
