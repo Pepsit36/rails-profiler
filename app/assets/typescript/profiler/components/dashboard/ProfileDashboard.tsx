@@ -20,6 +20,8 @@ import { getGemVersion, allocatedObjects, formatAllocations, ALLOCATIONS_HINT } 
 
 type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception' | 'routes' | 'i18n' | 'jobs' | 'env' | 'mailer' | 'trace'
 
+const VALID_TABS: TabKey[] = ['request', 'dump', 'database', 'ajax', 'http', 'timeline', 'views', 'cache', 'logs', 'exception', 'routes', 'i18n', 'jobs', 'env', 'mailer', 'trace']
+
 interface Props {
   profile: Profile
   initialTab: TabKey
@@ -40,7 +42,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
   const urlParams = new URLSearchParams(window.location.search)
   const tabFromUrl = urlParams.get('tab')
   const [activeTab, setActiveTab] = useState<TabKey>(
-    tabFromUrl ? (tabFromUrl as TabKey) : (hasException ? 'exception' : initialTab)
+    tabFromUrl && VALID_TABS.includes(tabFromUrl as TabKey) ? (tabFromUrl as TabKey) : (hasException ? 'exception' : initialTab)
   )
 
   const handleTabClick = (tab: TabKey) => (e: MouseEvent) => {
@@ -71,7 +73,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
         </div>
         {profile.gem_version && profile.gem_version !== getGemVersion() && (
           <div class="profiler-version-mismatch">
-            ⚠️ Profile captured with version <strong>{profile.gem_version}</strong> – current version: <strong>{getGemVersion()}</strong>
+            ⚠️ Profile captured with version <strong>{profile.gem_version}</strong>, current version: <strong>{getGemVersion()}</strong>
           </div>
         )}
       </div>

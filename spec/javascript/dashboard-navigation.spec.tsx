@@ -40,7 +40,7 @@ describe('Dashboard Navigation', () => {
       const code = require('fs').readFileSync('/workspace/app/assets/typescript/profiler/components/dashboard/ProfileDashboard.tsx', 'utf-8')
       expect(code).toContain('const urlParams = new URLSearchParams(window.location.search)')
       expect(code).toContain('const tabFromUrl = urlParams.get(\'tab\')')
-      expect(code).toContain('tabFromUrl ? (tabFromUrl as TabKey) : (hasException ? \'exception\' : initialTab)')
+      expect(code).toContain('VALID_TABS.includes(tabFromUrl as TabKey) ? (tabFromUrl as TabKey) : (hasException ? \'exception\' : initialTab)')
     })
 
     it('JobProfileDashboard.tsx – reads tab from URL', () => {
