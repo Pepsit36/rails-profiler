@@ -72,7 +72,12 @@ RSpec.describe "The names the env tools may set or delete", type: :request do
     "PRYRC" => "/tmp/evil.rb",
     "LESSOPEN" => "|/tmp/evil %s",
     "JAVA_TOOL_OPTIONS" => "-javaagent:/tmp/evil.jar",
-    "PROFILER_MCP_READ_ONLY" => "0"
+    "PROFILER_MCP_READ_ONLY" => "0",
+    "LOCALDOMAIN" => "evil.example",
+    "RES_OPTIONS" => "options debug",
+    "HOSTALIASES" => "/tmp/evil",
+    "NODE_EXTRA_CA_CERTS" => "/tmp/evil.pem",
+    "TMPDIR" => "/tmp/evil"
   }
 
   describe Profiler::EnvKeyPolicy do

@@ -5,6 +5,7 @@ require "set"
 require "rack/utils"
 require "active_support/parameter_filter"
 require_relative "cluster/security"
+require_relative "peers"
 
 module Profiler
   # The single filter applied to everything the profiler captures: request
@@ -289,13 +290,16 @@ module Profiler
 
       private
 
-      # Only a secret the cluster would use (Cluster::Security.secret_problem
-      # nil: 32 characters or more): a shorter one is ignored by the cluster,
-      # and masking "true" or "/" everywhere would hide the very data profiled.
+      # Only secrets the cluster or peers would use (long enough once stripped): a
+      # shorter one is ignored, and masking "true" or "/" everywhere would hide the
+      # very data profiled. Padded values are refused for requests but stay masked.
       def credential_values
-        return [] unless Cluster::Security.configured_secret?
-
-        [Profiler.configuration.cluster_secret.to_s.strip]
+        secret = Profiler.configuration.cluster_secret.to_s.strip
+        token = Profiler.configuration.peer_token.to_s.strip
+        credentials = []
+        credentials << secret if secret.length >= Cluster::Security::MIN_SECRET_LENGTH
+        credentials << token if token.length >= Peers::MIN_TOKEN_LENGTH
+        credentials
       end
 
       def hide_in(value, credentials)

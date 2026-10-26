@@ -20,7 +20,14 @@ module Profiler
         # and no cluster_secret, the behaviour of 0.30.6.
         def secret_required?
           config = Profiler.configuration
-          config.cluster_require_secret || configured_secret?
+          config.cluster_require_secret || configured_secret? || padded_secret?
+        end
+
+        # A secret that was meant to be set but is padded (a trailing newline from a file) stays
+        # required: dropping it would turn a configured secret into no authentication at all.
+        def padded_secret?
+          secret = Profiler.configuration.cluster_secret.to_s
+          !secret.strip.empty? && secret != secret.strip
         end
 
         def configured_secret?
@@ -31,6 +38,7 @@ module Profiler
         def secret_problem
           secret = Profiler.configuration.cluster_secret.to_s
           return "No config.cluster_secret is configured" if secret.strip.empty?
+          return "config.cluster_secret is surrounded by spaces or newlines, which breaks HTTP requests" if secret != secret.strip
           return nil if secret.strip.length >= MIN_SECRET_LENGTH
 
           "config.cluster_secret is shorter than #{MIN_SECRET_LENGTH} characters, so it is ignored " \

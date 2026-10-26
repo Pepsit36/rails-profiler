@@ -56,6 +56,7 @@ module Profiler
       def token_problem
         token = Profiler.configuration.peer_token.to_s
         return "No config.peer_token is configured" if token.strip.empty?
+        return "config.peer_token is surrounded by spaces or newlines, which breaks HTTP requests" if token != token.strip
         return nil if token.strip.length >= MIN_TOKEN_LENGTH
 
         "config.peer_token is shorter than #{MIN_TOKEN_LENGTH} characters, so it is ignored as if none were configured"
