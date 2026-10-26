@@ -123,6 +123,13 @@ module Profiler
       end
     end
 
+    initializer "profiler.warn_cors_configuration", after: :load_config_initializers do
+      next unless Profiler.configuration.enabled
+
+      require_relative "middleware/cors_policy"
+      Profiler::Middleware::CorsPolicy.warn_about_configuration(Rails.logger)
+    end
+
     initializer "profiler.start_cluster_client" do
       # Check slave? inside on_load, the app's own initializers (config/initializers/profiler.rb)
       # set master_url AFTER railtie initializers run, so the check must happen after_initialize.
