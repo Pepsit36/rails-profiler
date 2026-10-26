@@ -183,9 +183,9 @@ export function FlameGraphTab({ flamegraphData, perfData, functionProfileData }:
   // Ctrl+F / Cmd+F focuses the search input
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && searchInputRef.current) {
         e.preventDefault()
-        searchInputRef.current?.focus()
+        searchInputRef.current.focus()
       }
     }
     document.addEventListener('keydown', onKeyDown, { capture: true })
