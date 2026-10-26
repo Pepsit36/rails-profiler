@@ -129,6 +129,28 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
       # The output block should be ≤ 500 chars (plus truncation marker)
       expect(output_section).to include("truncated")
     end
+
+    # Case 2/10: max_output validation
+    it "rejects max_output of 0 and uses default" do
+      result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "max_output" => 0)
+      text = result.first[:text]
+      expect(text).to include("(truncated)")
+      expect(text).to include("x" * described_class::DEFAULT_MAX_OUTPUT)
+      expect(text).not_to include("x" * (described_class::DEFAULT_MAX_OUTPUT + 1))
+    end
+
+    it "rejects negative max_output and uses default" do
+      result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "max_output" => -5)
+      text = result.first[:text]
+      expect(text).to include("(truncated)")
+      expect(text).to include("x" * described_class::DEFAULT_MAX_OUTPUT)
+      expect(text).not_to include("x" * (described_class::DEFAULT_MAX_OUTPUT + 1))
+    end
+
+    it "accepts positive max_output values" do
+      result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "max_output" => 100)
+      expect(result.first[:text]).to include("truncated")
+    end
   end
 
   describe "when no files are specified and no test files exist" do
@@ -189,6 +211,38 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
       result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 1)
       expect(result.first[:text]).to match(/Run ID.*`[0-9a-f]{16}`/)
     end
+
+    # Case 3/10: timeout_seconds capping. A fake clock moves forward by whatever the code waits,
+    # so the total time waited before giving up is exactly the effective timeout.
+    context "with a fake clock" do
+      let(:clock_start) { Time.now }
+      let(:waited) { [0] }
+
+      before do
+        start = clock_start
+        elapsed = waited
+        allow(Time).to receive(:now) { start + elapsed.first }
+        allow(Profiler::TestRunner::Runner).to receive(:spawn_async)
+        allow(Profiler::TestRunner.run_store).to receive(:wait_for_output) do |_id, timeout:, **|
+          elapsed[0] += timeout
+          { position: 0, finished: false }
+        end
+      end
+
+      it "caps timeout_seconds to MAX_TIMEOUT (600 seconds)" do
+        result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 999)
+
+        expect(result.first[:text]).to include("timed out")
+        expect(waited.first).to eq(described_class::MAX_TIMEOUT)
+      end
+
+      it "allows reasonable timeout values below the cap" do
+        result = call("files" => ["spec/fake_spec.rb"], "framework" => "rspec", "timeout_seconds" => 300)
+
+        expect(result.first[:text]).to include("timed out")
+        expect(waited.first).to eq(300)
+      end
+    end
   end
 
   # FAB-20 (issue #43): the run is read back through the slave's API, whose JSON carries the
@@ -228,6 +282,61 @@ RSpec.describe Profiler::MCP::Tools::RunTests do
 
       expect(run_on_slave).to include("done")
       expect(described_class).to have_received(:sleep).once
+    end
+
+    # Case 3/10 on the slave path: sleep moves a fake clock, the run never finishes.
+    it "caps timeout_seconds to MAX_TIMEOUT (600 seconds)" do
+      start = Time.now
+      slept = 0
+      allow(Time).to receive(:now) { start + slept }
+      allow(described_class).to receive(:sleep) { |secs| slept += secs }
+      allow(proxy).to receive(:get_json).and_return("id" => "r1", "status" => "running", "output" => "")
+
+      text = described_class.run_on_slave(proxy, slave_params.merge("timeout_seconds" => 999)).first[:text]
+
+      expect(text).to include("timed out")
+      expect(slept).to be_between(described_class::MAX_TIMEOUT, described_class::MAX_TIMEOUT + 2)
+    end
+
+    # Case 4/10: Early exit on slave when error is detected
+    it "exits immediately when run_data contains an error, without waiting for timeout" do
+      allow(proxy).to receive(:get_json).and_return(
+        { "id" => "r1", "status" => "running", "error" => "Invalid file format", "output" => "" }
+      )
+
+      text = run_on_slave
+
+      expect(described_class).not_to have_received(:sleep)
+      expect(text).to include("Error reading test run r1 on slave", "Invalid file format")
+    end
+
+    # Case 5/10: Don't force options on slave (allow slave auto-detection)
+    it "does not force framework to 'rspec' when framework is nil" do
+      slave_params_no_framework = { "slave" => "payment", "files" => ["spec/fake_spec.rb"], "timeout_seconds" => 5 }
+      sent_payload = nil
+      allow(proxy).to receive(:post_json) do |_path, payload|
+        sent_payload = payload
+        { "id" => "r1", "status" => "passed", "exit_code" => 0, "output" => "OK\n" }
+      end
+      allow(proxy).to receive(:get_json).and_return("id" => "r1", "status" => "passed", "exit_code" => 0, "output" => "OK\n")
+
+      described_class.run_on_slave(proxy, slave_params_no_framework)
+
+      expect(sent_payload).not_to have_key(:framework)
+    end
+
+    it "does not send empty files array when files are not provided" do
+      slave_params_no_files = { "slave" => "payment", "timeout_seconds" => 5 }
+      sent_payload = nil
+      allow(proxy).to receive(:post_json) do |_path, payload|
+        sent_payload = payload
+        { "id" => "r1", "status" => "passed", "exit_code" => 0, "output" => "OK\n" }
+      end
+      allow(proxy).to receive(:get_json).and_return("id" => "r1", "status" => "passed", "exit_code" => 0, "output" => "OK\n")
+
+      described_class.run_on_slave(proxy, slave_params_no_files)
+
+      expect(sent_payload).not_to have_key(:files)
     end
   end
 

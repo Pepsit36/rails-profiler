@@ -14,6 +14,7 @@ module Profiler
       class RunTests
         DEFAULT_TIMEOUT    = 120
         DEFAULT_MAX_OUTPUT = 4000
+        MAX_TIMEOUT        = 600 # seconds, cap to prevent blocking Puma threads
         POLL_TIMEOUT       = 10 # seconds per wait_for_output call
 
         def self.call(params)
@@ -24,7 +25,9 @@ module Profiler
           files          = Array(params["files"])
           framework      = params["framework"]&.to_s
           timeout_secs   = (params["timeout_seconds"] || DEFAULT_TIMEOUT).to_i
+          timeout_secs   = [timeout_secs, MAX_TIMEOUT].min
           max_output     = (params["max_output"] || DEFAULT_MAX_OUTPUT).to_i
+          max_output     = DEFAULT_MAX_OUTPUT if max_output <= 0
 
           # Auto-detect framework if not provided
           framework ||= begin
@@ -81,9 +84,14 @@ module Profiler
           files        = Array(params["files"])
           framework    = params["framework"].to_s
           timeout_secs = (params["timeout_seconds"] || DEFAULT_TIMEOUT).to_i
+          timeout_secs = [timeout_secs, MAX_TIMEOUT].min
           max_output   = (params["max_output"] || DEFAULT_MAX_OUTPUT).to_i
+          max_output   = DEFAULT_MAX_OUTPUT if max_output <= 0
 
-          run_data = proxy.post_json("/_profiler/api/test_runner/runs", { files: files, framework: framework.presence || "rspec" })
+          payload = {}
+          payload[:files] = files if files.any?
+          payload[:framework] = framework if framework.present?
+          run_data = proxy.post_json("/_profiler/api/test_runner/runs", payload)
 
           if run_data["error"]
             return [{ type: "text", text: "Error starting tests on slave: #{run_data["error"]}" }]
@@ -99,6 +107,9 @@ module Profiler
               break
             end
             run_data = proxy.get_json("/_profiler/api/test_runner/runs/#{run_id}")
+            if run_data["error"]
+              return [{ type: "text", text: "Error reading test run #{run_id} on slave: #{run_data["error"]}" }]
+            end
             break if Profiler::TestRunner::RunStore::TERMINAL_STATUSES.include?(run_data["status"])
             sleep 2
           end
