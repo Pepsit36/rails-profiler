@@ -32,7 +32,11 @@ export function JobProfileDashboard({ profile, initialTab, embedded }: Props) {
 
   const validTabs: JobTabKey[] = ['job', 'database', 'cache', 'http', 'jobs', 'dump', 'logs', 'exception', 'env', 'timeline', 'mailer']
   const defaultTab: JobTabKey = validTabs.includes(initialTab as JobTabKey) ? (initialTab as JobTabKey) : 'job'
-  const [activeTab, setActiveTab] = useState<JobTabKey>(hasException ? 'exception' : defaultTab)
+  const urlParams = new URLSearchParams(window.location.search)
+  const tabFromUrl = urlParams.get('tab')
+  const [activeTab, setActiveTab] = useState<JobTabKey>(
+    tabFromUrl && validTabs.includes(tabFromUrl as JobTabKey) ? (tabFromUrl as JobTabKey) : (hasException ? 'exception' : defaultTab)
+  )
   const jobData = cd['job'] as any
   const isFailed = jobData?.status === 'failed'
   const isRunning = jobData?.status === 'running'

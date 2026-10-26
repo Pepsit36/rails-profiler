@@ -37,7 +37,11 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
   const hasJobs = (profile.child_jobs?.length ?? 0) > 0
   const hasMailers = (cd.mailer?.total ?? 0) > 0
 
-  const [activeTab, setActiveTab] = useState<TabKey>(hasException ? 'exception' : initialTab)
+  const urlParams = new URLSearchParams(window.location.search)
+  const tabFromUrl = urlParams.get('tab')
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    tabFromUrl ? (tabFromUrl as TabKey) : (hasException ? 'exception' : initialTab)
+  )
 
   const handleTabClick = (tab: TabKey) => (e: MouseEvent) => {
     e.preventDefault()
