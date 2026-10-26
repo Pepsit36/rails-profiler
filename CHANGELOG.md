@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.27] - 2026-10-26
+
+<!-- stamped -->
+
 ### Fixed
 
 - **MCP tools:** cursor pagination now uses microsecond precision timestamps, so profiles started within the same second are no longer lost between pages. The SQLite store keeps its times with microseconds too (existing rows are padded once on open), and the `query_mailers` cursor carries the position of the last delivery shown so that the deliveries of one request are not dropped at a page boundary.
