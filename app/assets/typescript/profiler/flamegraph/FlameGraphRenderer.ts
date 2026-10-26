@@ -14,6 +14,7 @@ const CATEGORY_COLORS: Record<FlameGraphCategory, string> = {
 const FRAME_HEIGHT = 24
 const FRAME_GAP = 1
 const ROW_HEIGHT = FRAME_HEIGHT + FRAME_GAP
+const MIN_FRAME_WIDTH = 1
 const MIN_TEXT_WIDTH = 60
 const ZOOM_ANIM_MS = 300
 
@@ -146,6 +147,12 @@ export class FlameGraphRenderer {
     window.addEventListener('mouseup', this.boundHandlers.mouseup)
   }
 
+  // Pixel width of a frame: zero-duration frames are widened so they stay visible and hoverable
+  private frameWidth(frame: FlatFrame, vpRange: number, canvasWidth: number): number {
+    if (frame.absEnd === frame.absStart) return MIN_FRAME_WIDTH
+    return ((frame.absEnd - frame.absStart) / vpRange) * canvasWidth
+  }
+
   private hitTest(clientX: number, clientY: number): FlatFrame | null {
     const rect = this.canvas.getBoundingClientRect()
     const mx = clientX - rect.left
@@ -156,7 +163,7 @@ export class FlameGraphRenderer {
     for (let i = this.frames.length - 1; i >= 0; i--) {
       const f = this.frames[i]
       const x = ((f.absStart - this.viewport.start) / vpRange) * w
-      const fw = ((f.absEnd - f.absStart) / vpRange) * w
+      const fw = this.frameWidth(f, vpRange, w)
       const y = f.depth * ROW_HEIGHT
 
       if (mx >= x && mx <= x + fw && my >= y && my <= y + FRAME_HEIGHT) {
@@ -367,10 +374,10 @@ export class FlameGraphRenderer {
 
     for (const frame of this.frames) {
       const x = ((frame.absStart - this.viewport.start) / vpRange) * w
-      const fw = ((frame.absEnd - frame.absStart) / vpRange) * w
+      const fw = this.frameWidth(frame, vpRange, w)
       const y = frame.depth * ROW_HEIGHT
 
-      // Skip invisible frames
+      // Skip invisible frames (zero-duration frames get a minimum width and are kept)
       if (x + fw < 0 || x > w || fw < 0.5) continue
 
       const color = CATEGORY_COLORS[frame.node.category as FlameGraphCategory] || '#a78bfa'
