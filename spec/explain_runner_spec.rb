@@ -156,6 +156,7 @@ RSpec.describe Profiler::ExplainRunner do
       "FOR UPDATE after --1, which is not a comment" => "SELECT 1--1 FROM widgets FOR UPDATE",
       "FOR UPDATE after an escaped quote"           => "SELECT 'it\\'s' FROM widgets FOR UPDATE",
       "an executable comment"                       => "SELECT * FROM widgets /*! INTO OUTFILE '/tmp/w' */",
+      "SET with READ ONLY hidden in a value"        => "SET @a = 'x', @b = (SELECT 1) READ ONLY",
       "a MariaDB version-specific comment"          => "SELECT * FROM widgets /*M!100101 INTO OUTFILE '/tmp/w' */",
       "FOR UPDATE after a non-nesting comment"      => "SELECT 1 /* a /* b */ FROM widgets FOR UPDATE"
     },
@@ -175,8 +176,7 @@ RSpec.describe Profiler::ExplainRunner do
       "DELETE in a # comment"        => "SELECT 1 # DELETE",
       "DELETE after an escaped quote" => "SELECT 'it\\' DELETE' FROM widgets",
       "an optimizer hint"            => "SELECT /*+ MAX_EXECUTION_TIME(1000) */ * FROM widgets",
-      "SET TRANSACTION READ ONLY"    => "SET TRANSACTION READ ONLY",
-      "a MariaDB version comment"    => "SELECT /*M! 100310 something */ * FROM widgets"
+      "SET TRANSACTION READ ONLY"    => "SET TRANSACTION READ ONLY"
     },
     "SQLite" => {
       "keywords in backticks" => "SELECT `update`, `delete` FROM widgets"

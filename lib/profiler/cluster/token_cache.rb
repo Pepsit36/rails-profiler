@@ -6,6 +6,7 @@ module Profiler
   module Cluster
     class TokenCache
       TTL = 600 # 10 minutes
+      MAX_ENTRIES = 1000
 
       def initialize
         @cache = Concurrent::Map.new
@@ -22,7 +23,7 @@ module Profiler
       end
 
       def store(token, slave_name)
-        cleanup_expired if @cache.size > 1000
+        cleanup_expired if @cache.size >= MAX_ENTRIES
         @cache[token] = { slave_name: slave_name, expires_at: Time.now + TTL }
       end
 
@@ -34,7 +35,7 @@ module Profiler
 
       def cleanup_expired
         now = Time.now
-        @cache.delete_if { |_, entry| now > entry[:expires_at] }
+        @cache.each_pair { |token, entry| @cache.delete(token) if now > entry[:expires_at] }
       end
     end
   end

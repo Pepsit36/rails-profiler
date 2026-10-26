@@ -28,7 +28,7 @@ RSpec.describe Profiler::Cluster::TokenCache do
       entry = cache.instance_variable_get(:@cache)["tok5"]
       entry[:expires_at] = Time.now - 1
       cache.fetch("tok5")
-      expect(cache.instance_variable_get(:@cache)).not_to have_key("tok5")
+      expect(cache.instance_variable_get(:@cache).key?("tok5")).to be(false)
     end
   end
 
