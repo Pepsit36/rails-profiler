@@ -32,6 +32,14 @@ module Profiler
 
         value = params[:value]
 
+        # A structured value (JSON array or object) has no ENV representation. Scalars (numbers,
+        # booleans) are still coerced with to_s, as before.
+        if value.is_a?(Array) || value.is_a?(Hash) || value.respond_to?(:to_unsafe_h)
+          render json: { error: "Value must be a scalar, not an array or an object; #{key} was left unchanged" },
+                 status: :unprocessable_entity
+          return
+        end
+
         # A value ENV cannot hold is refused before the store is written, like a refused key.
         if (reason = Profiler::EnvKeyPolicy.value_rejection(key, value))
           render json: { error: "#{reason}; #{key} was left unchanged" }, status: :unprocessable_entity
