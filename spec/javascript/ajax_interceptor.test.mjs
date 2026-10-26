@@ -169,3 +169,13 @@ test('succeeds immediately on 200 (regression test)', async () => {
   await t.settled()
   assert.deepEqual(t.links, [{ parent_token: 'page-1', child_token: 'json-1' }])
 })
+
+test('handles null URL in XMLHttpRequest.open() without throwing', async () => {
+  const t = load()
+  t.responses.set('null', { token: 'xhr-1' })
+  const xhr = new t.XMLHttpRequest()
+  // Should not throw when url is null; String(null) converts to 'null'
+  assert.doesNotThrow(() => {
+    xhr.open('GET', null)
+  })
+})

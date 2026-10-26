@@ -175,7 +175,7 @@
 
   // Override XMLHttpRequest.open()
   XMLHttpRequest.prototype.open = function(method, url, ...args) {
-    const urlString = typeof url === 'string' ? url : url.toString();
+    const urlString = typeof url === 'string' ? url : String(url);
 
     // Store request metadata
     pendingXHRRequests.set(this, {
