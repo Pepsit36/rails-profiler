@@ -171,6 +171,49 @@ RSpec.describe Profiler::Storage::RedisStore do
       expect(capped.load(profile.token)).not_to be_nil
     end
 
+    describe "the eviction script" do
+      let(:script) { described_class::GET_EXCESS_TOKENS }
+      let(:key) { "test_profiler:saved" }
+
+      before { 5.times { |i| redis.zadd(key, i, "t#{i}") } }
+
+      it "answers nothing while the set is at or under the target" do
+        expect(redis.eval(script, keys: [key], argv: [5, 10])).to eq([])
+        expect(redis.eval(script, keys: [key], argv: [9, 10])).to eq([])
+      end
+
+      it "answers the oldest tokens in excess of the target, capped by the batch size" do
+        expect(redis.eval(script, keys: [key], argv: [2, 10])).to eq(%w[t0 t1 t2])
+        expect(redis.eval(script, keys: [key], argv: [2, 2])).to eq(%w[t0 t1])
+      end
+    end
+
+    it "does not evict below the target when another save evicted after this one counted the set" do
+      opts = { redis: redis, ttl: 3600, key_prefix: "test_profiler", max_profiles: 10 }
+      capped = described_class.new(**opts)
+      other = described_class.new(**opts)
+      10.times { |i| p = build_profile(started_at: Time.now - 20 + i); capped.save(p.token, p) }
+
+      # The first count is taken, then another process evicts down to the target before the
+      # tokens to evict are read: they must be computed from the current count, not the stale one.
+      raced = false
+      real_zcard = redis.method(:zcard)
+      allow(redis).to receive(:zcard) do |key|
+        count = real_zcard.call(key)
+        unless raced
+          raced = true
+          other.send(:evict_first_saved, "none")
+        end
+        count
+      end
+
+      newest = build_profile(started_at: Time.now)
+      capped.save(newest.token, newest)
+
+      expect(real_zcard.call("test_profiler:saved")).to eq(8)
+      expect(capped.load(newest.token)).not_to be_nil
+    end
+
     # R-b: a lock that expired and was taken by another process is not this one's to release.
     it "releases the indexing lock only while it still holds it" do
       old = build_profile
