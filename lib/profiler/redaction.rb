@@ -290,14 +290,15 @@ module Profiler
 
       private
 
-      # Only a secret the cluster would use (Cluster::Security.secret_problem
-      # nil: 32 characters or more): a shorter one is ignored by the cluster,
-      # and masking "true" or "/" everywhere would hide the very data profiled.
-      # Also includes the peer token if one is configured.
+      # Only secrets the cluster or peers would use (long enough once stripped): a
+      # shorter one is ignored, and masking "true" or "/" everywhere would hide the
+      # very data profiled. Padded values are refused for requests but stay masked.
       def credential_values
+        secret = Profiler.configuration.cluster_secret.to_s.strip
+        token = Profiler.configuration.peer_token.to_s.strip
         credentials = []
-        credentials << Profiler.configuration.cluster_secret.to_s.strip if Cluster::Security.configured_secret?
-        credentials << Profiler.configuration.peer_token.to_s.strip if Peers.configured_token?
+        credentials << secret if secret.length >= Cluster::Security::MIN_SECRET_LENGTH
+        credentials << token if token.length >= Peers::MIN_TOKEN_LENGTH
         credentials
       end
 
