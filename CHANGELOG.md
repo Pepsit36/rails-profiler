@@ -19,6 +19,13 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Security
+
+- **Secrets:** Refuse cluster secrets and peer tokens surrounded by spaces or newlines at boot, which break HTTP requests. `trailing` newlines cause `ArgumentError` in `Net::HTTP` and trailing spaces cause systematic 403 errors. Refs #74
+- **Redaction:** Mask `peer_token` by value in captured data (headers, bodies, params) alongside `cluster_secret`, preventing credential leakage across profiles and logs. Refs #74
+- **Environment:** Protect additional environment variables from override via the Env tab and MCP tools: `LOCALDOMAIN`, `RES_OPTIONS`, `HOSTALIASES`, `NODE_EXTRA_CA_CERTS` and `TMPDIR`. These variables control hostname resolution and certificate store location. Refs #74
+- **CORS:** Warn at boot when `cors_allowed_origins` contains wildcard `"*"`, which allows any website to access the profiler if a visitor browses it. Recommend using specific origins instead. Refs #74
+
 ## [0.44.23] - 2026-10-25
 
 <!-- stamped -->
