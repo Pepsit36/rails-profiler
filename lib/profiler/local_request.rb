@@ -104,6 +104,12 @@ module Profiler
         allowed_host?(host_name(value))
       end
 
+      # Hosts named by the host= parameter of a Forwarded header (RFC 7239), for callers that
+      # apply their own host policy (Configuration under :allow_authorized).
+      def forwarded_hosts(request)
+        forwarded_param(request.get_header("HTTP_FORWARDED").to_s, "host")
+      end
+
       private
 
       def host_denial_reason(request)

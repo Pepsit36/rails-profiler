@@ -205,6 +205,21 @@ RSpec.describe Profiler::Configuration do
         expect(config.authorized?(request)).to be(false)
       end
 
+      it "denies requests with a non-local host in the Forwarded header" do
+        allow(request).to receive(:get_header) do |header|
+          case header
+          when "HTTP_HOST"
+            "localhost"
+          when "HTTP_FORWARDED"
+            'for=10.0.0.1;host="attacker.com"'
+          else
+            ""
+          end
+        end
+
+        expect(config.authorized?(request)).to be(false)
+      end
+
       it "allows requests with no Host header (not a browser, cannot be DNS rebound)" do
         allow(request).to receive(:get_header).and_return("")
 

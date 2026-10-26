@@ -511,8 +511,8 @@ module Profiler
                            "host name (#{e.message})"
     end
 
-    # The DNS rebinding check for :allow_authorized: nil when the Host and X-Forwarded-Host
-    # headers are allowed, otherwise a sentence naming the cause. A host is allowed when it is
+    # The DNS rebinding check for :allow_authorized: nil when the Host, X-Forwarded-Host and Forwarded host=
+    # values are allowed, otherwise a sentence naming the cause. A host is allowed when it is
     # local, listed in config.hosts, or listed in config.mcp_allowed_hosts: the same rule the MCP
     # HTTP transport already applies (Profiler::MCP::HttpGuard.allowed_host?), so a deployment
     # that already lists its host for MCP does not have to list it twice.
@@ -531,6 +531,10 @@ module Profiler
       remote = forwarded_hosts.find { |h| !MCP::HttpGuard.allowed_host?(h, self) }
       return "the X-Forwarded-Host header #{remote.inspect} is not allowed: list it in config.hosts or " \
              "config.mcp_allowed_hosts" if remote
+
+      forwarded = LocalRequest.forwarded_hosts(request).find { |h| !MCP::HttpGuard.allowed_host?(h, self) }
+      return "the Forwarded header host #{forwarded.inspect} is not allowed: list it in config.hosts or " \
+             "config.mcp_allowed_hosts" if forwarded
 
       nil
     end

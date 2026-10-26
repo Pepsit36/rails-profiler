@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.25] - 2026-10-26
+
+<!-- stamped -->
+
+### Security
+
+- **Authorization:** under `authorization_mode = :allow_authorized`, the `host=` parameter of the `Forwarded` header (RFC 7239) is now checked against the allowed hosts like `Host` and `X-Forwarded-Host`, closing a DNS rebinding bypass through that header.
+
 ## [0.44.24] - 2026-10-26
 
 <!-- stamped -->
