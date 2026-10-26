@@ -313,6 +313,13 @@ RSpec.describe Profiler::Cluster::Security do
       expect(described_class.secret_required?).to be(true)
     end
 
+    it "stays true when the configured secret is padded, even with cluster_require_secret = false" do
+      configure(cluster_require_secret: false, cluster_secret: "#{'k' * 32}\n")
+      expect(described_class.secret_required?).to be(true)
+      expect(described_class.valid_secret?("k" * 32)).to be(false)
+      expect(described_class.valid_secret?("#{'k' * 32}\n")).to be(false)
+    end
+
     it "is false only with cluster_require_secret = false and no secret" do
       configure(cluster_require_secret: false)
       expect(described_class.secret_required?).to be(false)
