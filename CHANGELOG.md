@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **MCP:** Reading an unknown resource URI now raises `MCP::Server::ResourceNotFoundError` (JSON-RPC error) instead of returning a success response with nil contents. Refs #73
+
 ## [0.44.25] - 2026-10-26
 
 <!-- stamped -->
