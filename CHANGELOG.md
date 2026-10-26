@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.29] - 2026-10-26
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Profiles:** Validate that `filter` parameter is a Hash before attempting to access its keys; previously passing a string or other type caused `NoMethodError` resulting in a 500 error. Now returns 422 with a clear error message. Refs #74
