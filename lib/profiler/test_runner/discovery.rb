@@ -15,6 +15,12 @@ module Profiler
 
       def self.files(framework: nil)
         root = defined?(Rails) ? Rails.root.to_s : Dir.pwd
+
+        # Validate framework is a String or Symbol if provided
+        if !framework.nil? && !framework.is_a?(String) && !framework.is_a?(Symbol)
+          raise ArgumentError, "framework must be a String or Symbol"
+        end
+
         result = {}
 
         globs = case framework&.to_sym
