@@ -29,7 +29,10 @@ export function ConsoleProfileDashboard({ profile, initialTab, embedded }: Props
 
   const validTabs: ConsoleTabKey[] = ['console', 'database', 'cache', 'http', 'dump', 'logs', 'exception', 'env', 'timeline']
   const defaultTab: ConsoleTabKey = validTabs.includes(initialTab as ConsoleTabKey) ? (initialTab as ConsoleTabKey) : 'console'
-  const [activeTab, setActiveTab] = useState<ConsoleTabKey>(hasException ? 'exception' : defaultTab)
+  const tabFromUrl = new URLSearchParams(window.location.search).get('tab')
+  const [activeTab, setActiveTab] = useState<ConsoleTabKey>(
+    tabFromUrl && validTabs.includes(tabFromUrl as ConsoleTabKey) ? (tabFromUrl as ConsoleTabKey) : (hasException ? 'exception' : defaultTab)
+  )
   const isFailed = profile.status === 500
 
   const handleTabClick = (tab: ConsoleTabKey) => (e: MouseEvent) => {
@@ -37,7 +40,7 @@ export function ConsoleProfileDashboard({ profile, initialTab, embedded }: Props
     setActiveTab(tab)
     const url = new URL(window.location.href)
     url.searchParams.set('tab', tab)
-    history.pushState(null, '', url.toString())
+    history.replaceState(null, '', url.toString())
   }
 
   const tabClass = (key: ConsoleTabKey) => `tab${activeTab === key ? ' active' : ''}`

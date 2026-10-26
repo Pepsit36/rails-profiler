@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { deduplicateByToken } from '../../app/assets/typescript/profiler/dashboard/utils'
 import { ProfileDashboard } from '../../app/assets/typescript/profiler/components/dashboard/ProfileDashboard'
 import { JobProfileDashboard } from '../../app/assets/typescript/profiler/components/dashboard/JobProfileDashboard'
+import { ConsoleProfileDashboard } from '../../app/assets/typescript/profiler/components/dashboard/ConsoleProfileDashboard'
+import { TestProfileDashboard } from '../../app/assets/typescript/profiler/components/dashboard/TestProfileDashboard'
 
 let host: HTMLElement
 beforeEach(() => {
@@ -55,9 +57,11 @@ describe('deduplicateByToken', () => {
 })
 
 describe.each([
-  ['ProfileDashboard', (p: any) => <ProfileDashboard profile={p} initialTab="request" embedded={false} />, 'Request', 'Request'],
-  ['JobProfileDashboard', (p: any) => <JobProfileDashboard profile={p} initialTab="job" embedded={false} />, 'Job', 'Job'],
-])('%s', (_name, view, defaultLabel) => {
+  ['ProfileDashboard', (p: any) => <ProfileDashboard profile={p} initialTab={new URLSearchParams(window.location.search).get('tab') || 'request'} embedded={false} />, 'Request', true],
+  ['JobProfileDashboard', (p: any) => <JobProfileDashboard profile={p} initialTab="job" embedded={false} />, 'Job', true],
+  ['ConsoleProfileDashboard', (p: any) => <ConsoleProfileDashboard profile={p} initialTab="console" embedded={false} />, 'Console', false],
+  ['TestProfileDashboard', (p: any) => <TestProfileDashboard profile={p} initialTab="test" embedded={false} />, 'Test', false],
+])('%s', (_name, view, defaultLabel, hasVersionBanner) => {
   const mount = async (profile: any) => { await act(() => render(<QueryClientProvider client={new QueryClient()}>{view(profile)}</QueryClientProvider>, host)) }
   const tabByText = (re: RegExp) =>
     Array.from(host.querySelectorAll<HTMLAnchorElement>('.tabs a')).find(a => re.test(a.textContent ?? ''))!
@@ -96,7 +100,7 @@ describe.each([
     expect(activeTab()).toBe('Database')
   })
 
-  it('shows the version mismatch banner in English', async () => {
+  it.runIf(hasVersionBanner)('shows the version mismatch banner in English', async () => {
     const meta = document.createElement('meta')
     meta.name = 'profiler-version'
     meta.content = '2.0.0'
