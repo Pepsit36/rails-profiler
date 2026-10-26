@@ -400,9 +400,10 @@ module Profiler
           if http_data["requests"] && !http_data["requests"].empty?
             lines << "### Request List"
             http_data["requests"].each_with_index do |req, index|
-              flag = req["duration"] >= threshold ? " [SLOW]" : ""
-              err = req["status"] >= 400 || req["status"] == 0 ? " [ERROR]" : ""
-              lines << "\n**#{index + 1}. #{req['method']} #{req['url']}** - #{req['status'] == 0 ? 'error' : req['status']} - #{req['duration'].round(2)} ms#{flag}#{err}"
+              flag = (req["duration"] || 0).to_f >= threshold ? " [SLOW]" : ""
+              status = req["status"].to_i
+              err = status >= 400 || status == 0 ? " [ERROR]" : ""
+              lines << "\n**#{index + 1}. #{req['method']} #{req['url']}** - #{status == 0 ? 'error' : status} - #{(req['duration'] || 0).to_f.round(2)} ms#{flag}#{err}"
 
               if req["request_body"] && !req["request_body"].empty?
                 lines << "**Request Body:**"

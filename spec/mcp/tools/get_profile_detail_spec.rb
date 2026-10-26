@@ -335,6 +335,21 @@ RSpec.describe Profiler::MCP::Tools::GetProfileDetail do
     expect(text).to include("**2. GET https://api.test/b** #{dash} error #{dash} 50.0 ms [ERROR]")
   end
 
+  it "handles in-flight HTTP calls with nil duration" do
+    Profiler.configure { |c| c.slow_http_threshold = 100 }
+    profile = save(collectors_data: { "http" => {
+      "total_requests" => 2, "total_duration" => 250.0, "slow_requests" => 1, "error_requests" => 0,
+      "requests" => [
+        { "method" => "POST", "url" => "https://api.test/a", "status" => nil, "duration" => 200.0 },
+        { "method" => "GET", "url" => "https://api.test/b", "status" => 200, "duration" => nil }
+      ]
+    } })
+
+    text = detail(profile, "http")
+    expect(text).to include("**1. POST https://api.test/a** #{dash} error #{dash} 200.0 ms [SLOW]")
+    expect(text).to include("**2. GET https://api.test/b** #{dash} 200 #{dash} 0.0 ms")
+  end
+
   it "lists the mailers, their loop warnings and delivery errors" do
     profile = save(collectors_data: { "mailer" => {
       "total" => 2, "deliver_now" => 1, "deliver_later" => 1, "failed" => 1, "multi_part_count" => 0,

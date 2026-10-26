@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "mcp"
+require "net/http"
 require_relative "http_guard"
 
 module Profiler
@@ -467,7 +468,7 @@ module Profiler
         ::MCP::Tool.define(name: name, description: description, input_schema: input_schema) do |server_context: nil, **args|
           result = handler.call(args.transform_keys(&:to_s))
           result.is_a?(::MCP::Tool::Response) ? result : ::MCP::Tool::Response.new(result)
-        rescue Profiler::Storage::Unavailable::Error, Profiler::Error => e
+        rescue Profiler::Storage::Unavailable::Error, Profiler::Error, SystemCallError, Net::OpenTimeout, Net::ReadTimeout => e
           ::MCP::Tool::Response.new([{ type: "text", text: e.message }], error: true)
         end
       end

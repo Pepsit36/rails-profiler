@@ -145,6 +145,17 @@ RSpec.describe Profiler::MCP::Tools::GetProfileHttp do
     expect(text("token" => "latest")).to include("https://newer.example.com/")
   end
 
+  it "handles in-flight requests with nil duration" do
+    in_flight = request("method" => "GET", "url" => "https://api.example.com/pending", "status" => nil, "duration" => nil)
+    profile = save([in_flight])
+
+    output = text("token" => profile.token)
+
+    expect(output).to include("### Request 1 [ERROR]")
+    expect(output).to include("- **Status:** connection error")
+    expect(output).to include("- **Duration:** 0.0 ms")
+  end
+
   it "keeps only the requests whose host matches the domain filter, without the breakdowns" do
     profile = save([request, request("url" => "https://other.example.net/x"), request("url" => "http://[bad")])
 
