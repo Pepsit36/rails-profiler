@@ -102,6 +102,19 @@ RSpec.describe Profiler::TestRunner::Runner do
       end
     end
 
+    it "streams output as it is written, without buffering until a fixed chunk size" do
+      stub_command("STDOUT.sync = true; puts 'first'; sleep 1.5; puts 'second'; exit 0")
+      run = described_class.start(files: ["spec/fake_spec.rb"], framework: "rspec")
+      # Ruby start-up time varies: wait for the first line, which must show up well before the
+      # second one is even written.
+      deadline = Time.now + 1.2
+      sleep 0.02 until run.output_lines.join.include?("first") || Time.now > deadline
+      expect(run.output_lines.join).to include("first")
+      expect(run.output_lines.join).not_to include("second")
+      wait_for_terminal(run)
+      expect(run.output_lines.join).to include("second")
+    end
+
     it "records the pid while running" do
       stub_command("sleep 0.1")
       run = described_class.start(files: ["spec/fake_spec.rb"], framework: "rspec")
