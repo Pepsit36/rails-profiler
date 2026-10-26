@@ -58,7 +58,7 @@ module Profiler
 
           # Skip schema queries and internal Rails queries
           next if payload[:name] == "SCHEMA"
-          next if payload[:sql] =~ /\A\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i
+          next if payload[:sql] =~ Models::SqlQuery::TRANSACTION_REGEX
 
           query = Models::SqlQuery.new(
             sql: payload[:sql],
