@@ -22,8 +22,9 @@ module Profiler
               next unless mailer_data
 
               all_emails = Array(mailer_data["emails"]) + Array(mailer_data["errors"])
-              all_emails.each do |email|
-                entry = email.merge("profile_token" => profile.token, "profile_started_at" => profile.started_at)
+              all_emails.each_with_index do |email, index|
+                entry = email.merge("profile_token" => profile.token, "profile_started_at" => profile.started_at,
+                                    "profile_index" => index)
 
                 if params["mailer_class"]
                   next unless entry["mailer_class"].to_s.downcase.include?(params["mailer_class"].downcase)
@@ -49,15 +50,23 @@ module Profiler
             end
 
             if params["cursor"]
+              # "<time>|<n>": the n-th delivery of the profile started at <time> was the last one
+              # shown, so the others of that profile (same start time) still come after it.
+              time_part, index_part = params["cursor"].to_s.split("|", 2)
               cutoff = begin
-                Time.parse(params["cursor"])
+                Time.parse(time_part)
               rescue ArgumentError, TypeError
                 nil # a cursor that is not a time is ignored, as before
               end
+              last_index = Integer(index_part, exception: false) if index_part
               if cutoff
+                cutoff_key = cutoff.getutc.iso8601(6)
                 emails = emails.select do |e|
                   started = e["profile_started_at"]
-                  started && started < cutoff
+                  next false unless started
+
+                  started < cutoff ||
+                    (last_index && started.getutc.iso8601(6) == cutoff_key && e["profile_index"] > last_index)
                 end
               end
             end
@@ -109,7 +118,7 @@ module Profiler
             if emails.size == limit
               last_started = emails.last["profile_started_at"]
               lines << ""
-              lines << "*Next cursor: #{last_started.iso8601}*" if last_started
+              lines << "*Next cursor: #{last_started.iso8601(6)}|#{emails.last["profile_index"]}*" if last_started
             end
 
             lines.join("\n")

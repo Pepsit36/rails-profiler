@@ -83,7 +83,7 @@ module Profiler
 
           if jobs.size == limit
             lines << ""
-            lines << "*Next cursor: #{jobs.last.started_at.iso8601}*"
+            lines << "*Next cursor: #{jobs.last.started_at.iso8601(6)}*"
           end
 
           lines.join("\n")

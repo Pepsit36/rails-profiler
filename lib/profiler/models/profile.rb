@@ -149,7 +149,7 @@ module Profiler
           duration: @duration,
           allocated_objects: @allocated_objects,
           memory: memory,
-          started_at: @started_at&.iso8601,
+          started_at: @started_at&.iso8601(6),
           finished_at: @finished_at&.iso8601,
           params: @params,
           params_truncated: @params_truncated,

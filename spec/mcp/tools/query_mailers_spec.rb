@@ -92,8 +92,20 @@ RSpec.describe Profiler::MCP::Tools::QueryMailers do
     cursor = first_page[/Next cursor: (\S+)\*/, 1]
 
     expect(rows(first_page)).to eq(["| mail 2 |", "| mail 1 |"])
-    expect(cursor).to eq((base_time + 1).iso8601)
+    expect(cursor).to eq("#{(base_time + 1).iso8601(6)}|0")
     expect(rows(text("limit" => 2, "fields" => %w[subject], "cursor" => cursor))).to eq(["| mail 0 |"])
+  end
+
+  it "does not drop the deliveries of one request that a page boundary splits" do
+    save(0, emails: [email("subject" => "old")])
+    save(1, emails: [email("subject" => "a"), email("subject" => "b"), email("subject" => "c")])
+
+    first_page = text("limit" => 2, "fields" => %w[subject])
+    cursor = first_page[/Next cursor: (\S+)\*/, 1]
+    second_page = text("limit" => 2, "fields" => %w[subject], "cursor" => cursor)
+
+    expect(rows(first_page)).to eq(["| a |", "| b |"])
+    expect(rows(second_page)).to eq(["| c |", "| old |"])
   end
 
   it "ignores a cursor that is not a time" do

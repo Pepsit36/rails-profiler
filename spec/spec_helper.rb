@@ -69,7 +69,7 @@ def build_profile(attrs = {})
       status: attrs[:status] || 200,
       duration: attrs[:duration] || 10.0,
       memory: attrs[:memory],
-      started_at: (attrs[:started_at] || Time.now).iso8601,
+      started_at: (attrs[:started_at] || Time.now).iso8601(6),
       finished_at: (attrs[:finished_at] || Time.now + 0.01).iso8601,
       params: attrs[:params] || {},
       headers: attrs[:headers] || {},

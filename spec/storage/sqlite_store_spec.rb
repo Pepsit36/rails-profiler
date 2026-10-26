@@ -77,13 +77,21 @@ RSpec.describe Profiler::Storage::SqliteStore do
       expect(store.find_by_parent("f" * 32).map(&:token)).to eq([earlier.token, later.token])
     end
 
+    it "keeps the order and the fractions of profiles started within the same second" do
+      base = Time.at(Time.now.to_i)
+      tokens = [0, 0.5, 0.9].map { |offset| save(profile_started(base + offset)).token }
+
+      expect(store.list(limit: 10).map(&:token)).to eq(tokens.reverse)
+      expect(store.load(tokens[1]).started_at.iso8601(6)).to eq((base + 0.5).iso8601(6))
+    end
+
     it "stores them in UTC and reads them back in local time, the same instants" do
       started_at = Time.at(Time.now.to_i).getlocal("+09:00")
       profile = save(profile_started(started_at))
 
       row = db.get_first_row("SELECT started_at, finished_at FROM profiler_profiles")
-      expect(row["started_at"]).to eq(started_at.utc.iso8601)
-      expect(row["finished_at"]).to eq((started_at + 1).utc.iso8601)
+      expect(row["started_at"]).to eq(started_at.utc.iso8601(6))
+      expect(row["finished_at"]).to eq((started_at + 1).utc.iso8601(6))
 
       loaded = store.load(profile.token)
       expect(loaded.started_at).to eq(started_at)
@@ -118,13 +126,37 @@ RSpec.describe Profiler::Storage::SqliteStore do
       reopened = build_store
       rows = reopened.instance_variable_get(:@db).execute("SELECT token, started_at FROM profiler_profiles ORDER BY token")
       expect(rows.map { |r| r["started_at"] }).to eq(
-        [(now - 3 * 3600).utc.iso8601, (now - 1800).utc.iso8601, "not a time"]
+        [(now - 3 * 3600).utc.iso8601(6), (now - 1800).utc.iso8601(6), "not a time"]
       )
-      expect(reopened.instance_variable_get(:@db).get_first_value("PRAGMA user_version")).to eq(1)
+      expect(reopened.instance_variable_get(:@db).get_first_value("PRAGMA user_version")).to eq(2)
 
       reopened.cleanup(older_than: 3600)
       expect(reopened.load(old_token)).to be_nil
       expect(reopened.load(recent_token)).not_to be_nil
+    end
+  end
+
+  describe "a database whose times were stored without a fraction" do
+    it "pads them so that they still sort before the profiles saved afterwards in the same second" do
+      path = File.join(@dir, "profiler.db")
+      build_store.instance_variable_get(:@db).close
+      base = Time.at(Time.now.to_i)
+      legacy = SQLite3::Database.new(path)
+      legacy.execute(<<~SQL, ["d" * 32, base.utc.iso8601, base.utc.iso8601])
+        INSERT INTO profiler_profiles (token, path, method, status, duration, started_at, finished_at,
+                                       tabs, params, headers, response_headers, collectors_meta)
+        VALUES (?, '/', 'GET', 200, 1.0, ?, ?, '[]', '{}', '{}', '{}', '{}')
+      SQL
+      legacy.execute("PRAGMA user_version = 1")
+      legacy.close
+
+      reopened = build_store
+      newer = profile_started(base + 0.5)
+      reopened.save(newer.token, newer)
+
+      expect(reopened.list(limit: 10).map(&:token).first).to eq(newer.token)
+      expect(reopened.instance_variable_get(:@db).get_first_value("SELECT started_at FROM profiler_profiles WHERE token = '#{"d" * 32}'"))
+        .to eq(base.utc.iso8601(6))
     end
   end
 

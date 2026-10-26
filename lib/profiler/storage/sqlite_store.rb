@@ -196,7 +196,7 @@ module Profiler
       end
 
       def cleanup(older_than: 24 * 60 * 60)
-        cutoff = (Time.now - older_than).utc.iso8601
+        cutoff = (Time.now - older_than).utc.iso8601(6)
         tokens = @db.execute(
           "SELECT token FROM profiler_profiles WHERE started_at < :cutoff", cutoff: cutoff
         ).map { |r| r["token"] }
@@ -323,6 +323,7 @@ module Profiler
 
         @db.execute("CREATE INDEX IF NOT EXISTS idx_profiler_trace_id ON profiler_profiles(trace_id)")
         migrate_times_to_utc
+        migrate_times_to_microseconds
       end
 
       # Version 1 stores the times in UTC. The rows written before it carry the local offset of
@@ -340,6 +341,23 @@ module Profiler
             SQL
           end
           @db.execute("PRAGMA user_version = 1")
+        end
+      end
+
+      # Version 2 stores the times with microseconds. As text, "...:00Z" sorts after "...:00.5Z"
+      # ('.' < 'Z'), so the rows written without a fraction are padded to the same width.
+      def migrate_times_to_microseconds
+        return if @db.get_first_value("PRAGMA user_version").to_i >= 2
+
+        @db.transaction do
+          %w[started_at finished_at].each do |column|
+            @db.execute(<<~SQL)
+              UPDATE profiler_profiles
+                 SET #{column} = substr(#{column}, 1, length(#{column}) - 1) || '.000000Z'
+               WHERE #{column} LIKE '____-__-__T__:__:__Z'
+            SQL
+          end
+          @db.execute("PRAGMA user_version = 2")
         end
       end
 
@@ -396,12 +414,13 @@ module Profiler
         nil
       end
 
-      # The times are stored in UTC, all in the same form, for the cleanup and the lists to compare
-      # them as text; a profile gives them with the offset of the process that recorded it.
+      # The times are stored in UTC, all in the same fixed-width form (microseconds, so profiles
+      # started within the same second keep their order and their MCP cursor), for the cleanup and
+      # the lists to compare them as text; a profile gives them with the offset of the process that recorded it.
       def utc_iso8601(value)
         return value if value.nil?
 
-        Time.iso8601(value.to_s).utc.iso8601
+        Time.iso8601(value.to_s).utc.iso8601(6)
       rescue ArgumentError
         value
       end
@@ -410,7 +429,7 @@ module Profiler
       def local_iso8601(value)
         return value if value.nil?
 
-        Time.iso8601(value).localtime.iso8601
+        Time.iso8601(value).localtime.iso8601(6)
       rescue ArgumentError
         value
       end
