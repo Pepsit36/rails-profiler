@@ -57,6 +57,7 @@ export class FlameGraphRenderer {
   private isPanning = false
   private panStartX = 0
   private panStartViewport: Viewport = { start: 0, end: 0 }
+  private panDistance = 0
   private boundHandlers: Record<string, any> = {}
 
   constructor(canvas: HTMLCanvasElement, rootEvents: FlameGraphNode[], callbacks: FlameGraphCallbacks) {
@@ -176,7 +177,7 @@ export class FlameGraphRenderer {
   }
 
   private onClickEvent(e: MouseEvent) {
-    if (this.isPanning) return
+    if (this.isPanning || this.panDistance > 3) return
     const frame = this.hitTest(e.clientX, e.clientY)
     if (frame) {
       this.callbacks.onClick(frame)
@@ -217,12 +218,14 @@ export class FlameGraphRenderer {
     this.isPanning = true
     this.panStartX = e.clientX
     this.panStartViewport = { ...this.viewport }
+    this.panDistance = 0
     this.canvas.style.cursor = 'grabbing'
   }
 
   private onMouseUpOrMove(e: MouseEvent) {
     if (!this.isPanning) return
     const dx = e.clientX - this.panStartX
+    this.panDistance = Math.max(this.panDistance, Math.abs(dx))
     const rect = this.canvas.getBoundingClientRect()
     const vpRange = this.panStartViewport.end - this.panStartViewport.start
     const shift = -(dx / rect.width) * vpRange
