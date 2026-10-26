@@ -18,9 +18,7 @@ module Profiler
     WRITE_KEYWORDS = %w[INSERT UPDATE DELETE MERGE TRUNCATE DROP ALTER CREATE INTO LOCK SHARE].freeze
 
     # MariaDB executable and version-specific comments.
-    MARIADB_COMMENT = /\A\/\*(?:M)?!/.freeze
-
-    SET_READ_ONLY = /\ASET (?:(?:SESSION|GLOBAL) )?TRANSACTION READ ONLY\z/.freeze
+    MARIADB_COMMENT = /\A\/\*M?!/.freeze
 
     Token = Struct.new(:type, :text)
 
@@ -50,12 +48,6 @@ module Profiler
       return refusal("it is empty") if first.nil?
 
       verb = first.text.upcase
-      # SET [SESSION|GLOBAL] TRANSACTION READ ONLY, and nothing else, is read-only.
-      if first.type == :word && verb == "SET" &&
-         tokens.all? { |t| t.type == :word } &&
-         tokens.map { |t| t.text.upcase }.join(" ").match?(SET_READ_ONLY)
-        return nil
-      end
       return refusal("it starts with #{verb}") unless first.type == :word && READ_ONLY_VERBS.include?(verb)
 
       tokens.each_with_index do |token, i|

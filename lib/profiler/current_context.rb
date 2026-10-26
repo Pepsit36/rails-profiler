@@ -30,7 +30,7 @@ module Profiler
 
     # The trace flags from the incoming request (if any) to propagate outward.
     def self.trace_flags
-      Thread.current[:profiler_trace_flags] ||= "01"
+      Thread.current[:profiler_trace_flags]
     end
 
     def self.trace_flags=(value)

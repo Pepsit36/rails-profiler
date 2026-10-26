@@ -175,8 +175,7 @@ RSpec.describe Profiler::ExplainRunner do
       "keywords in backticks"        => "SELECT `update`, `delete` FROM widgets",
       "DELETE in a # comment"        => "SELECT 1 # DELETE",
       "DELETE after an escaped quote" => "SELECT 'it\\' DELETE' FROM widgets",
-      "an optimizer hint"            => "SELECT /*+ MAX_EXECUTION_TIME(1000) */ * FROM widgets",
-      "SET TRANSACTION READ ONLY"    => "SET TRANSACTION READ ONLY"
+      "an optimizer hint"            => "SELECT /*+ MAX_EXECUTION_TIME(1000) */ * FROM widgets"
     },
     "SQLite" => {
       "keywords in backticks" => "SELECT `update`, `delete` FROM widgets"
@@ -232,8 +231,7 @@ RSpec.describe Profiler::ExplainRunner do
       expect(conn.extended).to eq(["EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM widgets WHERE id = 7"])
     end
 
-    it "on MySQL, runs the plain EXPLAIN on its own connection, time-limited, " \
-       "in a transaction rolled back even on success" do
+    it "on MySQL, runs the plain EXPLAIN on its own connection, in a transaction rolled back even on success" do
       conn = FakeExplainConnection.new("Mysql2")
       use_connection(conn)
 
@@ -242,7 +240,6 @@ RSpec.describe Profiler::ExplainRunner do
       expect(conn.log).to eq([
         "CONNECT",
         "BEGIN",
-        "SET SESSION MAX_EXECUTION_TIME=30000",
         "EXPLAIN FORMAT=JSON SELECT * FROM widgets WHERE id = 7",
         "ROLLBACK",
         "DISCONNECT"

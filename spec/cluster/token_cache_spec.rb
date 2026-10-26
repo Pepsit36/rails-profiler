@@ -60,5 +60,11 @@ RSpec.describe Profiler::Cluster::TokenCache do
       expect(cache.fetch("tok_fresh")).to eq("slave-fresh")
       expect(cache.instance_variable_get(:@cache).size).to be < 100
     end
+
+    it "stays bounded by MAX_ENTRIES when every entry is still live" do
+      (described_class::MAX_ENTRIES + 50).times { |i| cache.store("live_#{i}", "slave") }
+      expect(cache.instance_variable_get(:@cache).size).to be <= described_class::MAX_ENTRIES
+      expect(cache.fetch("live_#{described_class::MAX_ENTRIES + 49}")).to eq("slave")
+    end
   end
 end

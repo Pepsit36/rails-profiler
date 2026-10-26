@@ -175,4 +175,24 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "execution context of a
       expect(profile.to_h[:collectors_released_after_seconds]).to eq(0)
     end
   end
+
+  it "keeps the span id and the trace flags of the request while its body is iterated" do
+    seen = []
+    body = Object.new
+    body.define_singleton_method(:each) do |&blk|
+      seen << [Profiler::CurrentContext.span_id, Profiler::CurrentContext.trace_flags]
+      blk.call("x")
+    end
+    trace_env = Rack::MockRequest.env_for(
+      "http://localhost/stream", "REMOTE_ADDR" => "127.0.0.1",
+      "HTTP_TRACEPARENT" => "00-#{'a' * 32}-#{'b' * 16}-00"
+    )
+
+    _status, headers, wrapped = middleware(body).call(trace_env)
+    serve(wrapped)
+
+    profile = Profiler.storage.load(headers["X-Profiler-Token"])
+    expect(seen).to eq([[profile.span_id, "00"]])
+    expect(Profiler::CurrentContext.span_id).to be_nil
+  end
 end
