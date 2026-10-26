@@ -47,7 +47,7 @@ same check decides which requests the profiler captures.
 - If a forwarding header is present (`X-Forwarded-For`, `X-Real-IP`, `Forwarded`), every address
   in it is a loopback address too. This refuses a remote client relayed by a reverse proxy running
   on the same machine, where `REMOTE_ADDR` is always `127.0.0.1`.
-- The `Host` header (and `X-Forwarded-Host`, when present) is `localhost`, a `*.localhost` name, a
+- The `Host` header (and `X-Forwarded-Host` or the `host=` parameter of `Forwarded`, when present) is `localhost`, a `*.localhost` name, a
   loopback IP, or a host your application lists in `config.hosts`. This defeats DNS rebinding, where
   a page from another site reaches `127.0.0.1` under its own domain name. Rails already refuses
   such hosts in development through `config.hosts`; the profiler checks them itself because
