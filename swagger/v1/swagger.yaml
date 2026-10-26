@@ -999,6 +999,111 @@ paths:
                 properties:
                   error:
                     type: string
+  "/_profiler/api/compare":
+    get:
+      summary: Compare two profiles
+      description: Returns a detailed comparison between two profiles including metrics, SQL queries, and collector data
+      operationId: compareProfiles
+      tags:
+      - Compare
+      parameters:
+      - name: a
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Token of the first profile
+      - name: b
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Token of the second profile
+      - name: node_a
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Node name for the first profile (in clustered setups)
+      - name: node_b
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Node name for the second profile (in clustered setups)
+      responses:
+        '200':
+          description: profiles comparison
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ComparisonData"
+        '400':
+          description: invalid request (missing required parameters)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: string
+        '404':
+          description: one or both profiles not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: string
+        '502':
+          description: a peer node could not be reached
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: string
+  "/_profiler/api/compare/nodes":
+    get:
+      summary: Get list of available nodes
+      description: Returns the list of nodes available in a clustered profiler setup
+      operationId: getCompareNodes
+      tags:
+      - Compare
+      responses:
+        '200':
+          description: list of available nodes
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - nodes
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      type: string
+                    description: List of node names (at least 'local')
+        '422':
+          description: the node list could not be built
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: string
 components:
   schemas:
     ProfilesResponse:
@@ -2198,6 +2303,55 @@ components:
           format: int64
           description: Version of the profile's last save when this data was read, to ask
             GET /_profiler/api/events/{token}?since= whether it was saved again since.
+    ComparisonData:
+      type: object
+      required:
+      - profile_a
+      - profile_b
+      - same_endpoint
+      - sql
+      - metrics
+      - collectors
+      properties:
+        profile_a:
+          type: object
+          description: Summary of the first profile
+        profile_b:
+          type: object
+          description: Summary of the second profile
+        same_endpoint:
+          type: boolean
+          description: Whether both profiles are from the same endpoint
+        sql:
+          type: object
+          properties:
+            new:
+              type: array
+              items:
+                type: object
+            gone:
+              type: array
+              items:
+                type: object
+            slower:
+              type: array
+              items:
+                type: object
+        metrics:
+          type: object
+          additionalProperties:
+            type: object
+        collectors:
+          type: object
+          properties:
+            database:
+              type: object
+            cache:
+              type: object
+            views:
+              type: object
+            http:
+              type: object
     EditorConfig:
       type: object
       required:
