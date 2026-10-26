@@ -19,6 +19,17 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.29] - 2026-10-26
+
+<!-- stamped -->
+
+### Fixed
+
+- **Profiles:** Validate that `filter` parameter is a Hash before attempting to access its keys; previously passing a string or other type caused `NoMethodError` resulting in a 500 error. Now returns 422 with a clear error message. Refs #74
+- **Profiles:** Clamp `limit` and `offset` to non-negative values using the existing `page_params` helper; a negative limit previously raised `ArgumentError` from `Array#first`, resulting in a 500 error. Refs #74
+- **EnvVars:** Refuse an array or object `value` with 422 instead of storing its inspect string; nil, strings and JSON scalars (numbers, booleans) are still accepted and coerced with `to_s`. Refs #74
+- **TestRunner:** Answer 422 when the `framework` parameter of `POST test_runner/runs` or `GET test_runner/files` is not a string, instead of a 500 from `NoMethodError`; `Runner.start` and `Discovery.files` raise `ArgumentError` for a framework that is neither a String nor a Symbol. Refs #74
+
 ## [0.44.28] - 2026-10-26
 
 <!-- stamped -->

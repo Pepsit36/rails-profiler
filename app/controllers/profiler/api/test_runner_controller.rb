@@ -16,6 +16,8 @@ module Profiler
 
       def files
         framework = params[:framework]
+        return render_invalid_framework unless framework.nil? || framework.is_a?(String)
+
         tree = Profiler::TestRunner::Discovery.files(framework: framework)
         frameworks = Profiler::TestRunner::Discovery.frameworks
 
@@ -28,6 +30,7 @@ module Profiler
       def create
         files     = Array(params[:files])
         framework = params[:framework] || detect_framework
+        return render_invalid_framework unless framework.is_a?(String)
 
         if files.empty?
           return render json: { error: "No files selected" }, status: :unprocessable_entity
@@ -87,6 +90,10 @@ module Profiler
       end
 
       private
+
+      def render_invalid_framework
+        render json: { error: "framework must be a String" }, status: :unprocessable_entity
+      end
 
       def detect_framework
         if Profiler::TestRunner::Discovery.rspec_available?

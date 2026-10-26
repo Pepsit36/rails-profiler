@@ -5,8 +5,13 @@ require_relative "../../../lib/profiler/cluster/slave_proxy"
 module Profiler
   class ProfilesController < ApplicationController
     def index
-      limit = params[:limit]&.to_i || 50
-      offset = params[:offset]&.to_i || 0
+      limit, offset = page_params
+
+      # Validate filter parameter is a Hash if present
+      if params[:filter].present? && !params[:filter].respond_to?(:to_unsafe_h) && !params[:filter].is_a?(Hash)
+        render json: { error: "filter must be a hash" }, status: :unprocessable_entity
+        return
+      end
 
       @profiles = Profiler.storage.list(limit: limit, offset: offset)
       @profiles = filter_profiles(@profiles) if params[:filter].present?

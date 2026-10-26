@@ -24,6 +24,12 @@ module Profiler
       # Raises TooManyRunsError when config.test_runner_max_active_runs runs still have their
       # test process.
       def self.start(files:, framework:)
+        unless framework.is_a?(String) || framework.is_a?(Symbol)
+          raise ArgumentError, "framework must be a String or Symbol"
+        end
+
+        framework = framework.to_s
+
         validate_files!(files, framework)
         config = Profiler.configuration
         run = Profiler::TestRunner.run_store.create(
