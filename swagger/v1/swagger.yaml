@@ -8,28 +8,13 @@ paths:
   "/_profiler/api/ajax/link":
     post:
       summary: Link an AJAX profile to the page profile that triggered it
-      description: Called by the script injected in the host page (profiler-ajax-interceptor.js),
-        not by the dashboard. Marks the child profile as an AJAX request and stores the parent
-        token in it, so the AJAX tab of the parent lists it.
       operationId: linkAjaxProfile
+      description: Called by the script injected in the host page (profiler-ajax-interceptor.js),
+        not by the dashboard. Marks the child profile as an AJAX request and stores
+        the parent token in it, so the AJAX tab of the parent lists it.
       tags:
       - AJAX
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-              - parent_token
-              - child_token
-              properties:
-                parent_token:
-                  type: string
-                  description: Token of the page profile. A value the gem never issues is refused.
-                child_token:
-                  type: string
-                  description: Token of the AJAX request profile, which must already be stored
+      parameters: []
       responses:
         '200':
           description: profiles linked
@@ -41,7 +26,8 @@ paths:
                   success:
                     type: boolean
         '400':
-          description: parent_token or child_token missing, or parent_token is not a valid token
+          description: parent_token or child_token missing, or parent_token is not
+            a valid token
           content:
             application/json:
               schema:
@@ -59,8 +45,8 @@ paths:
                   error:
                     type: string
         '500':
-          description: the link could not be saved; the error is the generic "Could not link
-            the Ajax request", the cause goes to the application log
+          description: the link could not be saved; the error is the generic "Could
+            not link the Ajax request", the cause goes to the application log
           content:
             application/json:
               schema:
@@ -68,76 +54,36 @@ paths:
                 properties:
                   error:
                     type: string
-  "/_profiler/api/cluster/heartbeat":
-    post:
-      summary: Refresh a slave's heartbeat
-      description: "Routed only on a node with cluster_master set. When a cluster secret is required, the request carries it in the X-Profiler-Cluster-Secret header instead of passing the access guard and the forgery header. Keeps a registered slave online. A slave the master does not know (restarted master) gets a 404 and must register again."
-      operationId: clusterHeartbeat
-      tags:
-      - Cluster
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
               required:
-              - name
+              - parent_token
+              - child_token
               properties:
-                name:
+                parent_token:
                   type: string
-                  description: Name the slave registered under
-      responses:
-        '200':
-          description: heartbeat recorded
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-        '403':
-          description: access refused (missing or invalid cluster secret, or not authorized)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-        '404':
-          description: unknown slave, register again
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
+                  description: Token of the page profile. A value the gem never issues
+                    is refused.
+                child_token:
+                  type: string
+                  description: Token of the AJAX request profile, which must already
+                    be stored
+        required: true
   "/_profiler/api/cluster/register":
     post:
       summary: Register a slave profiler with the master
-      description: "Routed only on a node with cluster_master set. When a cluster secret is required, the request carries it in the X-Profiler-Cluster-Secret header instead of passing the access guard and the forgery header. Registers a slave, or updates the URL and heartbeat of one already registered under the same name. The URL is checked against the cluster SSRF rules and stored normalized."
       operationId: clusterRegister
+      description: Routed only on a node with cluster_master set. When a cluster secret
+        is required, the request carries it in the X-Profiler-Cluster-Secret header
+        instead of passing the access guard and the forgery header. Registers a slave,
+        or updates the URL and heartbeat of one already registered under the same
+        name. The URL is checked against the cluster SSRF rules and stored normalized.
       tags:
       - Cluster
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-              - name
-              - url
-              properties:
-                name:
-                  type: string
-                  description: Slave name, used in the proxy path
-                url:
-                  type: string
-                  description: Base URL of the slave, reachable from the master
+      parameters: []
       responses:
         '200':
           description: slave registered
@@ -168,11 +114,80 @@ paths:
                 properties:
                   error:
                     type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - url
+              properties:
+                name:
+                  type: string
+                  description: Slave name, used in the proxy path
+                url:
+                  type: string
+                  description: Base URL of the slave, reachable from the master
+        required: true
+  "/_profiler/api/cluster/heartbeat":
+    post:
+      summary: Refresh a slave's heartbeat
+      operationId: clusterHeartbeat
+      description: Routed only on a node with cluster_master set. When a cluster secret
+        is required, the request carries it in the X-Profiler-Cluster-Secret header
+        instead of passing the access guard and the forgery header. Keeps a registered
+        slave online. A slave the master does not know (restarted master) gets a 404
+        and must register again.
+      tags:
+      - Cluster
+      parameters: []
+      responses:
+        '200':
+          description: heartbeat recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '403':
+          description: access refused (missing or invalid cluster secret, or not authorized)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: unknown slave, register again
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              properties:
+                name:
+                  type: string
+                  description: Name the slave registered under
+        required: true
   "/_profiler/api/cluster/slaves":
     get:
       summary: List registered slave profilers
-      description: "Routed only on a node with cluster_master set. Used by the dashboard profiler selector."
       operationId: listClusterSlaves
+      description: Routed only on a node with cluster_master set. Used by the dashboard
+        profiler selector.
       tags:
       - Cluster
       responses:
@@ -219,13 +234,143 @@ paths:
                 properties:
                   error:
                     type: string
+  "/_profiler/api/compare":
+    get:
+      summary: Compare two profiles
+      operationId: compareProfiles
+      description: Returns a detailed comparison between two profiles including metrics,
+        SQL queries, and collector data
+      tags:
+      - Compare
+      parameters:
+      - name: a
+        in: query
+        required: true
+        description: Token of the first profile
+        schema:
+          type: string
+      - name: b
+        in: query
+        required: true
+        description: Token of the second profile
+        schema:
+          type: string
+      - name: node_a
+        in: query
+        required: false
+        description: 'Node name for the first profile: "local" or a name from config.peers'
+        schema:
+          type: string
+      - name: node_b
+        in: query
+        required: false
+        description: 'Node name for the second profile: "local" or a name from config.peers'
+        schema:
+          type: string
+      responses:
+        '200':
+          description: profiles comparison
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ComparisonData"
+        '422':
+          description: invalid request (missing required parameters, or comparing
+            a profile with itself)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - errors
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: string
+        '404':
+          description: one or both profiles not found
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - errors
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: string
+        '502':
+          description: a peer node could not be reached
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - errors
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: string
+  "/_profiler/api/compare/nodes":
+    get:
+      summary: Get list of available nodes
+      operationId: getCompareNodes
+      description: 'Returns the nodes a profile can be read from: this instance, then
+        the names of config.peers'
+      tags:
+      - Compare
+      responses:
+        '200':
+          description: list of available nodes
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - nodes
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      type: string
+                    description: List of node names, starting with 'local'
+        '422':
+          description: the node list could not be built
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - errors
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: string
+  "/_profiler/api/config":
+    get:
+      summary: Read the settings the source links use
+      operationId: getEditorConfig
+      tags:
+      - Config
+      responses:
+        '200':
+          description: editor settings
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EditorConfig"
   "/_profiler/api/console":
     get:
       summary: List console profiles
-      description: Newest first, filtered and paged by the storage, has_more right at any offset.
-        Each profile is a summary - no params, headers, bodies or tabs, and only the scalar values
-        of each collector - the full profile is at the show endpoint.
       operationId: listConsoles
+      description: Newest first, filtered and paged by the storage, has_more right
+        at any offset. Each profile is a summary - no params, headers, bodies or tabs,
+        and only the scalar values of each collector - the full profile is at the
+        show endpoint.
       tags:
       - Console
       parameters:
@@ -400,10 +545,10 @@ paths:
         type: string
     get:
       summary: Check whether a profile was saved again
-      description: A plain JSON poll, answered at once, not a stream. The toolbar and the dashboard
-        ask again later with the cursor they hold. Without a numeric since, the caller gets the
-        current cursor and updated false.
       operationId: getProfileEvents
+      description: A plain JSON poll, answered at once, not a stream. The toolbar
+        and the dashboard ask again later with the cursor they hold. Without a numeric
+        since, the caller gets the current cursor and updated false.
       tags:
       - Events
       parameters:
@@ -428,7 +573,8 @@ paths:
                     type: integer
                   updated:
                     type: boolean
-                    description: true when the profile was saved again since the given cursor
+                    description: true when the profile was saved again since the given
+                      cursor
   "/_profiler/api/explain":
     post:
       summary: Run EXPLAIN ANALYZE on a stored query
@@ -454,8 +600,8 @@ paths:
                   error:
                     type: string
         '403':
-          description: the profiler is disabled, or the application runs outside the development
-            and test environments without allow_explain_outside_development
+          description: the profiler is disabled, or the application runs outside the
+            development and test environments without allow_explain_outside_development
           content:
             application/json:
               schema:
@@ -464,8 +610,8 @@ paths:
                   error:
                     type: string
         '500':
-          description: the database failed to explain the query; the error is the generic "Explain
-            failed", the cause goes to the application log
+          description: the database failed to explain the query; the error is the
+            generic "Explain failed", the cause goes to the application log
           content:
             application/json:
               schema:
@@ -488,19 +634,6 @@ paths:
                 query_index:
                   type: integer
                   description: Index of the query in collectors_data.database.queries
-  "/_profiler/api/config":
-    get:
-      summary: Read the settings the source links use
-      operationId: getEditorConfig
-      tags:
-      - Config
-      responses:
-        '200':
-          description: editor settings
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/EditorConfig"
   "/_profiler/api/function_profiling":
     get:
       summary: Get function profiling configuration
@@ -551,10 +684,11 @@ paths:
   "/_profiler/api/jobs":
     get:
       summary: List job profiles
-      description: Newest first, filtered and paged by the storage, has_more right at any offset.
-        Each profile is a summary - no params, headers, bodies or tabs, and only the scalar values
-        of each collector - the full profile is at the show endpoint.
       operationId: listJobs
+      description: Newest first, filtered and paged by the storage, has_more right
+        at any offset. Each profile is a summary - no params, headers, bodies or tabs,
+        and only the scalar values of each collector - the full profile is at the
+        show endpoint.
       tags:
       - Jobs
       parameters:
@@ -638,10 +772,11 @@ paths:
   "/_profiler/api/profiles":
     get:
       summary: List HTTP profiles
-      description: Newest first, filtered and paged by the storage, has_more right at any offset.
-        Each profile is a summary - no params, headers, bodies or tabs, and only the scalar values
-        of each collector - the full profile is at the show endpoint.
       operationId: listProfiles
+      description: Newest first, filtered and paged by the storage, has_more right
+        at any offset. Each profile is a summary - no params, headers, bodies or tabs,
+        and only the scalar values of each collector - the full profile is at the
+        show endpoint.
       tags:
       - Profiles
       parameters:
@@ -658,9 +793,9 @@ paths:
       - name: trace_id
         in: query
         required: false
-        description: Lists the profiles sharing this W3C trace id (32 lowercase hex characters),
-          newest first, instead of the default list. A value that is not a trace id gives an
-          empty list.
+        description: Lists the profiles sharing this W3C trace id (32 lowercase hex
+          characters), newest first, instead of the default list. A value that is
+          not a trace id gives an empty list.
         schema:
           type: string
       responses:
@@ -706,6 +841,15 @@ paths:
       responses:
         '204':
           description: profile deleted
+  "/_profiler/api/profiles/clear":
+    delete:
+      summary: Clear all HTTP profiles
+      operationId: clearProfiles
+      tags:
+      - Profiles
+      responses:
+        '204':
+          description: profiles cleared
   "/_profiler/api/profiles/{id}/replay":
     parameters:
     - name: id
@@ -715,43 +859,13 @@ paths:
         type: string
     post:
       summary: Replay a profiled request against the application's own host
-      description: Sends the request again for real, to the host and port the original request was
-        made to. No option can change that target. Disabled unless config.replay_enabled is true.
-        The client is responsible for asking the user to confirm first.
       operationId: replayProfile
+      description: Sends the request again for real, to the host and port the original
+        request was made to. No option can change that target. Disabled unless config.replay_enabled
+        is true. The client is responsible for asking the user to confirm first.
       tags:
       - Profiles
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                count:
-                  type: integer
-                  description: Number of replays in a row (at most config.replay_max_count)
-                method:
-                  type: string
-                path:
-                  type: string
-                query:
-                  type: object
-                  additionalProperties: true
-                params:
-                  type: object
-                  additionalProperties: true
-                body:
-                  type: string
-                headers:
-                  type: object
-                  additionalProperties:
-                    type: string
-                cookies:
-                  type: object
-                  additionalProperties:
-                    type: string
-                timeout:
-                  type: number
+      parameters: []
       responses:
         '200':
           description: replays done
@@ -786,15 +900,37 @@ paths:
                 properties:
                   error:
                     type: string
-  "/_profiler/api/profiles/clear":
-    delete:
-      summary: Clear all HTTP profiles
-      operationId: clearProfiles
-      tags:
-      - Profiles
-      responses:
-        '204':
-          description: profiles cleared
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                count:
+                  type: integer
+                  description: Number of replays in a row (at most config.replay_max_count)
+                method:
+                  type: string
+                path:
+                  type: string
+                query:
+                  type: object
+                  additionalProperties: true
+                params:
+                  type: object
+                  additionalProperties: true
+                body:
+                  type: string
+                headers:
+                  type: object
+                  additionalProperties:
+                    type: string
+                cookies:
+                  type: object
+                  additionalProperties:
+                    type: string
+                timeout:
+                  type: number
   "/_profiler/api/test_runner/files":
     get:
       summary: List test files and frameworks
@@ -829,7 +965,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/TestRun"
         '422':
-          description: no files selected, or a file that is not a discovered test file
+          description: no files selected, or a file that is not a discovered test
+            file
           content:
             application/json:
               schema:
@@ -838,8 +975,8 @@ paths:
                   error:
                     type: string
         '429':
-          description: as many runs as config.test_runner_max_active_runs allows still have their
-            test process
+          description: as many runs as config.test_runner_max_active_runs allows still
+            have their test process
           content:
             application/json:
               schema:
@@ -902,10 +1039,11 @@ paths:
   "/_profiler/api/tests":
     get:
       summary: List test profiles
-      description: Newest first, filtered and paged by the storage, has_more right at any offset.
-        Each profile is a summary - no params, headers, bodies or tabs, and only the scalar values
-        of each collector - the full profile is at the show endpoint.
       operationId: listTests
+      description: Newest first, filtered and paged by the storage, has_more right
+        at any offset. Each profile is a summary - no params, headers, bodies or tabs,
+        and only the scalar values of each collector - the full profile is at the
+        show endpoint.
       tags:
       - Tests
       parameters:
@@ -999,122 +1137,6 @@ paths:
                 properties:
                   error:
                     type: string
-  "/_profiler/api/compare":
-    get:
-      summary: Compare two profiles
-      operationId: compareProfiles
-      description: Returns a detailed comparison between two profiles including metrics,
-        SQL queries, and collector data
-      tags:
-      - Compare
-      parameters:
-      - name: a
-        in: query
-        required: true
-        description: Token of the first profile
-        schema:
-          type: string
-      - name: b
-        in: query
-        required: true
-        description: Token of the second profile
-        schema:
-          type: string
-      - name: node_a
-        in: query
-        required: false
-        description: 'Node name for the first profile: "local" or a name from config.peers'
-        schema:
-          type: string
-      - name: node_b
-        in: query
-        required: false
-        description: 'Node name for the second profile: "local" or a name from config.peers'
-        schema:
-          type: string
-      responses:
-        '200':
-          description: profiles comparison
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/ComparisonData"
-        '422':
-          description: invalid request (missing required parameters, or comparing
-            a profile with itself)
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                - errors
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: string
-        '404':
-          description: one or both profiles not found
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                - errors
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: string
-        '502':
-          description: a peer node could not be reached
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                - errors
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: string
-  "/_profiler/api/compare/nodes":
-    get:
-      summary: Get list of available nodes
-      operationId: getCompareNodes
-      description: 'Returns the nodes a profile can be read from: this instance, then
-        the names of config.peers'
-      tags:
-      - Compare
-      responses:
-        '200':
-          description: list of available nodes
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                - nodes
-                properties:
-                  nodes:
-                    type: array
-                    items:
-                      type: string
-                    description: List of node names, starting with 'local'
-        '422':
-          description: the node list could not be built
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                - errors
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: string
 components:
   schemas:
     ProfilesResponse:
@@ -1135,40 +1157,6 @@ components:
           type: integer
         has_more:
           type: boolean
-    ReplayResult:
-      type: object
-      required:
-      - source_token
-      - target
-      - replays
-      properties:
-        source_token:
-          type: string
-        target:
-          type: string
-          description: Origin the requests were sent to (the host of the original request)
-        notes:
-          type: array
-          items:
-            type: string
-        replays:
-          type: array
-          items:
-            type: object
-            properties:
-              index:
-                type: integer
-              status:
-                type: integer
-                nullable: true
-              token:
-                type: string
-                nullable: true
-                description: Token of the new profile
-              duration_ms:
-                type: number
-              error:
-                type: string
     Profile:
       type: object
       required:
@@ -1193,15 +1181,15 @@ components:
         allocated_objects:
           type: integer
           nullable: true
-          description: Objects allocated during the request, job, command or test. The counter
-            is the process's, so on a multi-threaded server it includes what other threads
-            allocated meanwhile.
+          description: Objects allocated during the request, job, command or test.
+            The counter is the process's, so on a multi-threaded server it includes
+            what other threads allocated meanwhile.
         memory:
           type: integer
           nullable: true
           deprecated: true
-          description: allocated_objects times 40. Never a measured byte count; kept for older
-            readers, use allocated_objects.
+          description: allocated_objects times 40. Never a measured byte count; kept
+            for older readers, use allocated_objects.
         started_at:
           type: string
           format: date-time
@@ -1211,6 +1199,7 @@ components:
           - http
           - job
           - test
+          - console
           nullable: true
         gem_version:
           type: string
@@ -1221,7 +1210,8 @@ components:
         trace_id:
           type: string
           nullable: true
-          description: W3C trace id (32 hex), taken from an incoming traceparent header or generated.
+          description: W3C trace id (32 hex), taken from an incoming traceparent header
+            or generated.
         span_id:
           type: string
           nullable: true
@@ -1229,7 +1219,8 @@ components:
         parent_span_id:
           type: string
           nullable: true
-          description: The parent-id of the incoming traceparent header, null when this profile started the trace.
+          description: The parent-id of the incoming traceparent header, null when
+            this profile started the trace.
         replay_of:
           type: string
           nullable: true
@@ -1249,7 +1240,8 @@ components:
         params_truncated:
           type: boolean
           nullable: true
-          description: Whether params were cut at max_captured_body_bytes (they then hold a "[profiler]" key saying so).
+          description: Whether params were cut at max_captured_body_bytes (they then
+            hold a "[profiler]" key saying so).
         headers:
           type: object
           additionalProperties: true
@@ -1268,7 +1260,9 @@ components:
           - base64
           - gzip+base64
           nullable: true
-          description: "gzip+base64 (a text body larger than compress_body_threshold, compressed by compress_bodies) only in the toolbar response, which shows no body; the other responses give it as text."
+          description: gzip+base64 (a text body larger than compress_body_threshold,
+            compressed by compress_bodies) only in the toolbar response, which shows
+            no body; the other responses give it as text.
         response_body:
           type: string
           nullable: true
@@ -1279,15 +1273,19 @@ components:
           - base64
           - gzip+base64
           nullable: true
-          description: "gzip+base64 (a text body larger than compress_body_threshold, compressed by compress_bodies) only in the toolbar response, which shows no body; the other responses give it as text."
+          description: gzip+base64 (a text body larger than compress_body_threshold,
+            compressed by compress_bodies) only in the toolbar response, which shows
+            no body; the other responses give it as text.
         request_body_size:
           type: integer
           nullable: true
-          description: Size in bytes of the whole request body, when it was cut at max_captured_body_bytes.
+          description: Size in bytes of the whole request body, when it was cut at
+            max_captured_body_bytes.
         request_body_truncated:
           type: boolean
           nullable: true
-          description: Whether only the first max_captured_body_bytes of the request body were kept.
+          description: Whether only the first max_captured_body_bytes of the request
+            body were kept.
         request_body_size_is_minimum:
           type: boolean
           nullable: true
@@ -1299,17 +1297,19 @@ components:
         response_body_size_is_minimum:
           type: boolean
           nullable: true
-          description: Whether response_body_size is only a minimum (a stream that stopped before its end).
+          description: Whether response_body_size is only a minimum (a stream that
+            stopped before its end).
         collectors_released_after_seconds:
           type: integer
           nullable: true
-          description: Set when the collectors of a streamed response were released this many
-            seconds after the application returned, before the server closed the body; what the
-            stream did after that is missing from the profile.
+          description: Set when the collectors of a streamed response were released
+            this many seconds after the application returned, before the server closed
+            the body; what the stream did after that is missing from the profile.
         response_body_truncated:
           type: boolean
           nullable: true
-          description: Whether only the first max_captured_body_bytes of the response body were kept.
+          description: Whether only the first max_captured_body_bytes of the response
+            body were kept.
         collectors_data:
           "$ref": "#/components/schemas/CollectorsData"
           nullable: true
@@ -1521,7 +1521,9 @@ components:
           - base64
           - gzip+base64
           nullable: true
-          description: "gzip+base64 for a text body larger than compress_body_threshold, compressed by compress_bodies: the request collector keeps the bodies as stored."
+          description: 'gzip+base64 for a text body larger than compress_body_threshold,
+            compressed by compress_bodies: the request collector keeps the bodies
+            as stored.'
         response_body:
           type: string
           nullable: true
@@ -1532,15 +1534,19 @@ components:
           - base64
           - gzip+base64
           nullable: true
-          description: "gzip+base64 for a text body larger than compress_body_threshold, compressed by compress_bodies: the request collector keeps the bodies as stored."
+          description: 'gzip+base64 for a text body larger than compress_body_threshold,
+            compressed by compress_bodies: the request collector keeps the bodies
+            as stored.'
         request_body_size:
           type: integer
           nullable: true
-          description: Size in bytes of the whole request body, when it was cut at max_captured_body_bytes.
+          description: Size in bytes of the whole request body, when it was cut at
+            max_captured_body_bytes.
         request_body_truncated:
           type: boolean
           nullable: true
-          description: Whether only the first max_captured_body_bytes of the request body were kept.
+          description: Whether only the first max_captured_body_bytes of the request
+            body were kept.
         request_body_size_is_minimum:
           type: boolean
           nullable: true
@@ -1552,17 +1558,19 @@ components:
         response_body_size_is_minimum:
           type: boolean
           nullable: true
-          description: Whether response_body_size is only a minimum (a stream that stopped before its end).
+          description: Whether response_body_size is only a minimum (a stream that
+            stopped before its end).
         collectors_released_after_seconds:
           type: integer
           nullable: true
-          description: Set when the collectors of a streamed response were released this many
-            seconds after the application returned, before the server closed the body; what the
-            stream did after that is missing from the profile.
+          description: Set when the collectors of a streamed response were released
+            this many seconds after the application returned, before the server closed
+            the body; what the stream did after that is missing from the profile.
         response_body_truncated:
           type: boolean
           nullable: true
-          description: Whether only the first max_captured_body_bytes of the response body were kept.
+          description: Whether only the first max_captured_body_bytes of the response
+            body were kept.
         route_name:
           type: string
           nullable: true
@@ -1698,8 +1706,9 @@ components:
           - frame
           - stream
           nullable: true
-          description: frame for a Turbo Frame request (Turbo-Frame header), stream for a response
-            in text/vnd.turbo-stream.html, null for any other fetch or XHR
+          description: frame for a Turbo Frame request (Turbo-Frame header), stream
+            for a response in text/vnd.turbo-stream.html, null for any other fetch
+            or XHR
     HttpData:
       type: object
       required:
@@ -1774,20 +1783,23 @@ components:
         request_size:
           type: integer
           nullable: true
-          description: Size in bytes of the whole request body; null for a body_stream that was not read and
-            announced no Content-Length.
+          description: Size in bytes of the whole request body; null for a body_stream
+            that was not read and announced no Content-Length.
         request_body_truncated:
           type: boolean
           nullable: true
-          description: Whether only the first max_captured_body_bytes of the request body were kept.
+          description: Whether only the first max_captured_body_bytes of the request
+            body were kept.
         request_body_not_captured:
           type: boolean
           nullable: true
-          description: Whether the request body was a stream that cannot be rewound, sent without being read.
+          description: Whether the request body was a stream that cannot be rewound,
+            sent without being read.
         request_size_is_minimum:
           type: boolean
           nullable: true
-          description: Whether request_size is only a minimum (a stream without Content-Length or known size).
+          description: Whether request_size is only a minimum (a stream without Content-Length
+            or known size).
         response_headers:
           type: object
           additionalProperties:
@@ -1806,7 +1818,8 @@ components:
         response_body_truncated:
           type: boolean
           nullable: true
-          description: Whether only the first max_captured_body_bytes of the response body were kept.
+          description: Whether only the first max_captured_body_bytes of the response
+            body were kept.
         backtrace:
           type: array
           items:
@@ -1820,7 +1833,6 @@ components:
       - job_class
       - job_id
       - queue
-      - arguments
       - executions
       - status
       properties:
@@ -1869,7 +1881,8 @@ components:
         dropped:
           type: integer
           nullable: true
-          description: How many log lines were left out at max_captured_log_bytes (the last entry says so).
+          description: How many log lines were left out at max_captured_log_bytes
+            (the last entry says so).
     LogEntry:
       type: object
       required:
@@ -2312,8 +2325,101 @@ components:
         events_cursor:
           type: integer
           format: int64
-          description: Version of the profile's last save when this data was read, to ask
-            GET /_profiler/api/events/{token}?since= whether it was saved again since.
+          description: Version of the profile's last save when this data was read,
+            to ask GET /_profiler/api/events/{token}?since= whether it was saved again
+            since.
+    EditorConfig:
+      type: object
+      required:
+      - editor_url_scheme
+      - editor_path_map
+      properties:
+        editor_url_scheme:
+          type: string
+          nullable: true
+          enum:
+          - vscode
+          - idea
+          - cursor
+          description: Editor the file:line links open; null when the configured scheme
+            is not allowed
+        editor_path_map:
+          type: object
+          additionalProperties:
+            type: string
+          description: Container path prefix to host path prefix
+    ReplayResult:
+      type: object
+      required:
+      - source_token
+      - target
+      - replays
+      properties:
+        source_token:
+          type: string
+        target:
+          type: string
+          description: Origin the requests were sent to (the host of the original
+            request)
+        notes:
+          type: array
+          items:
+            type: string
+        replays:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              status:
+                type: integer
+                nullable: true
+              token:
+                type: string
+                nullable: true
+                description: Token of the new profile
+              duration_ms:
+                type: number
+              error:
+                type: string
+    FunctionProfilingConfig:
+      type: object
+      required:
+      - enabled
+      - max_frames
+      - mode
+      - clock
+      properties:
+        enabled:
+          type: boolean
+        max_frames:
+          type: integer
+        mode:
+          type: string
+          enum:
+          - full
+          - lite
+        clock:
+          type: string
+          enum:
+          - wall
+          - cpu
+          - object
+    ExplainResult:
+      type: object
+      required:
+      - format
+      - adapter
+      properties:
+        result: {}
+        format:
+          type: string
+          enum:
+          - json
+          - text
+        adapter:
+          type: string
     ComparisonData:
       type: object
       required:
@@ -2366,62 +2472,6 @@ components:
               type: object
             http:
               type: object
-    EditorConfig:
-      type: object
-      required:
-      - editor_url_scheme
-      - editor_path_map
-      properties:
-        editor_url_scheme:
-          type: string
-          nullable: true
-          enum:
-          - vscode
-          - idea
-          - cursor
-          description: Editor the file:line links open; null when the configured scheme is not allowed
-        editor_path_map:
-          type: object
-          additionalProperties:
-            type: string
-          description: Container path prefix to host path prefix
-    FunctionProfilingConfig:
-      type: object
-      required:
-      - enabled
-      - max_frames
-      - mode
-      - clock
-      properties:
-        enabled:
-          type: boolean
-        max_frames:
-          type: integer
-        mode:
-          type: string
-          enum:
-          - full
-          - lite
-        clock:
-          type: string
-          enum:
-          - wall
-          - cpu
-          - object
-    ExplainResult:
-      type: object
-      required:
-      - format
-      - adapter
-      properties:
-        result: {}
-        format:
-          type: string
-          enum:
-          - json
-          - text
-        adapter:
-          type: string
     TestRun:
       type: object
       required:
@@ -2462,7 +2512,8 @@ components:
         signal:
           type: string
           nullable: true
-          description: the signal that ended the test process (SIGKILL), null when it exited
+          description: the signal that ended the test process (SIGKILL), null when
+            it exited
         files:
           type: array
           items:
@@ -2549,20 +2600,23 @@ components:
         request_size:
           type: integer
           nullable: true
-          description: Size in bytes of the whole request body; null for a body_stream that was not read and
-            announced no Content-Length.
+          description: Size in bytes of the whole request body; null for a body_stream
+            that was not read and announced no Content-Length.
         request_body_truncated:
           type: boolean
           nullable: true
-          description: Whether only the first max_captured_body_bytes of the request body were kept.
+          description: Whether only the first max_captured_body_bytes of the request
+            body were kept.
         request_body_not_captured:
           type: boolean
           nullable: true
-          description: Whether the request body was a stream that cannot be rewound, sent without being read.
+          description: Whether the request body was a stream that cannot be rewound,
+            sent without being read.
         request_size_is_minimum:
           type: boolean
           nullable: true
-          description: Whether request_size is only a minimum (a stream without Content-Length or known size).
+          description: Whether request_size is only a minimum (a stream without Content-Length
+            or known size).
         response_headers:
           type: object
           additionalProperties:
@@ -2578,7 +2632,8 @@ components:
         response_body_truncated:
           type: boolean
           nullable: true
-          description: Whether only the first max_captured_body_bytes of the response body were kept.
+          description: Whether only the first max_captured_body_bytes of the response
+            body were kept.
         backtrace:
           type: array
           items:
