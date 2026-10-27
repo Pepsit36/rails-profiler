@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="Rails Profiler logo" width="96" height="96">
+  <img src="docs/logo.svg" alt="Rails Profiler logo" width="96" height="77">
 </p>
 
 # Rails Profiler

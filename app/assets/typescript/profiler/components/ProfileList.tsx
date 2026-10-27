@@ -486,9 +486,8 @@ export function ProfileList() {
     <div class="container">
       <div class="header">
         <h1>
-          <svg class="h1-logo" viewBox="8 8 112 112" width="28" height="28" aria-hidden="true" focusable="false">
-            <rect x="8" y="8" width="112" height="112" rx="20" fill="#132020" />
-            <g fill="#E8A33D">
+          <svg class="h1-logo" viewBox="24 32 80 64" width="28" height="22" aria-hidden="true" focusable="false">
+            <g fill="currentColor">
               <rect x="24" y="32" width="80" height="16" />
               <rect x="32" y="56" width="40" height="16" />
               <rect x="48" y="80" width="48" height="16" />
