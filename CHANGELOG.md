@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Outbound HTTP:** The body of a request sent through a `body_stream` that cannot be rewound (RestClient's payload, a pipe) is now captured, redacted and cut at `max_captured_body_bytes` like any other, instead of showing "Request body not captured". The profiler copies the bytes Net::HTTP reads and leaves the stream and what the server receives untouched.
+
 ## [0.45.2] - 2026-10-27
 
 <!-- stamped -->
