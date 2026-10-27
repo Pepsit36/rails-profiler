@@ -231,7 +231,7 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
       expect(entry["request_size"]).to eq(10_000)
     end
 
-    it "never reads a body_stream that cannot be rewound, and leaves it to Net::HTTP" do
+    it "captures a body_stream that cannot be rewound as Net::HTTP sends it, and sends all of it" do
       payload = "c" * 5_000
       reader, writer = IO.pipe
       writer.write(payload)
@@ -240,7 +240,6 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
       req["Content-Type"] = "text/plain"
       req["Content-Length"] = payload.bytesize.to_s
       req.body_stream = reader
-      # Earlier versions read the pipe whole, then sent nothing: the server waited for the body.
       http = Net::HTTP.new("127.0.0.1", @port)
       http.read_timeout = 3
       http.request(req)
@@ -248,8 +247,132 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
       entry = entries.first
       expect(req.body_stream).to equal(reader)
       expect(@received.first).to eq(payload)
-      expect(entry["request_body"]).to be_nil
-      expect(entry["request_body_not_captured"]).to be(true)
+      expect(entry["request_body"]).to eq("c" * 1024)
+      expect(entry["request_body_truncated"]).to be(true)
+      expect(entry["request_body_not_captured"]).to be(false)
+      expect(entry["request_size"]).to eq(5_000)
+    end
+
+    # A stream like RestClient::Payload::Base: read(len = nil), no pos, no rewind, no to_io.
+    let(:payload_class) do
+      Class.new do
+        def initialize(data)
+          @io = StringIO.new(data)
+          @size = data.bytesize
+        end
+        attr_reader :size
+
+        def read(*args)
+          @io.read(*args)
+        end
+
+        def close; end
+      end
+    end
+
+    it "captures a non-rewindable payload object in full when it fits, and sends identical bytes" do
+      json = JSON.generate(name: "x" * 100, password: "hunter2")
+      req = Net::HTTP::Post.new("/api")
+      req["Content-Type"] = "application/json"
+      req["Content-Length"] = json.bytesize.to_s
+      stream = payload_class.new(json)
+      req.body_stream = stream
+      Net::HTTP.new("127.0.0.1", @port).request(req)
+
+      entry = entries.first
+      expect(@received.first).to eq(json)
+      expect(entry["request_body"]).to include('"name"')
+      expect(entry["request_body"]).not_to include("hunter2")
+      expect(entry["request_body_truncated"]).to be(false)
+      expect(entry["request_body_not_captured"]).to be(false)
+      expect(entry["request_size"]).to eq(json.bytesize)
+      expect(req.body_stream).to equal(stream)
+    end
+
+    it "captures up to the limit of a large non-rewindable stream and still sends every byte" do
+      data = (0...50_000).map { |i| ("a".ord + (i % 26)).chr }.join
+      req = Net::HTTP::Post.new("/api")
+      req["Content-Type"] = "text/plain"
+      req["Content-Length"] = data.bytesize.to_s
+      req.body_stream = payload_class.new(data)
+      Net::HTTP.new("127.0.0.1", @port).request(req)
+
+      entry = entries.first
+      expect(@received.first).to eq(data)
+      expect(entry["request_body"]).to eq(data[0, 1024])
+      expect(entry["request_body_truncated"]).to be(true)
+      expect(entry["request_size"]).to eq(50_000)
+    end
+
+    it "captures a JSON POST sent through RestClient, redacted, and sends identical bytes" do
+      require "rest-client"
+      json = JSON.generate(name: "n", password: "hunter2")
+      RestClient::Request.execute(method: :post, url: "http://127.0.0.1:#{@port}/json", payload: json,
+                                  headers: { content_type: :json })
+
+      entry = entries.first
+      expect(@received.first).to eq(json)
+      expect(entry["request_body_not_captured"]).to be(false)
+      expect(entry["request_body"]).to include('"name"')
+      expect(entry["request_body"]).not_to include("hunter2")
+      expect(entry["request_body_truncated"]).to be(false)
+      expect(entry["request_size"]).to eq(json.bytesize)
+    end
+
+    it "cuts a large RestClient payload at the limit and keeps its size" do
+      require "rest-client"
+      text = "line of text\n" * 400
+      RestClient::Request.execute(method: :post, url: "http://127.0.0.1:#{@port}/text", payload: text,
+                                  headers: { content_type: "text/plain" })
+
+      entry = entries.first
+      expect(@received.first).to eq(text)
+      expect(entry["request_body"]).to eq(text.byteslice(0, 1024))
+      expect(entry["request_body_truncated"]).to be(true)
+      expect(entry["request_size"]).to eq(text.bytesize)
+    end
+
+    it "marks a large RestClient JSON payload as truncated without the unparseable label" do
+      require "rest-client"
+      json = JSON.generate(items: Array.new(400) { |i| { id: i, password: "hunter2" } })
+      RestClient::Request.execute(method: :post, url: "http://127.0.0.1:#{@port}/json", payload: json,
+                                  headers: { content_type: :json })
+
+      entry = entries.first
+      expect(@received.first).to eq(json)
+      expect(entry["request_body"]).not_to include("hunter2")
+      expect(entry["request_body"]).not_to include("unparseable")
+      expect(entry["request_body_truncated"]).to be(true)
+      expect(entry["request_size"]).to eq(json.bytesize)
+    end
+
+    it "leaves plain Net::HTTP bodies as they were" do
+      req = Net::HTTP::Post.new("/plain")
+      req["Content-Type"] = "text/plain"
+      req.body = "hello"
+      Net::HTTP.new("127.0.0.1", @port).request(req)
+      req2 = Net::HTTP::Post.new("/stream")
+      req2["Content-Type"] = "text/plain"
+      req2["Content-Length"] = "5"
+      req2.body_stream = StringIO.new("world")
+      Net::HTTP.new("127.0.0.1", @port).request(req2)
+
+      expect(@received).to eq(%w[hello world])
+      expect(entries.map { |e| e["request_body"] }).to eq(%w[hello world])
+    end
+
+    it "does not break the request when recording the captured body fails" do
+      allow(Profiler::Instrumentation::NetHttpInstrumentation).to receive(:process_body).and_call_original
+      allow(Profiler::Instrumentation::NetHttpInstrumentation).to receive(:process_body)
+        .with(satisfy { |b| b.start_with?("zz") }, anything).and_raise("boom")
+      req = Net::HTTP::Post.new("/api")
+      req["Content-Type"] = "text/plain"
+      req["Content-Length"] = "4"
+      req.body_stream = payload_class.new("zzzz")
+      response = Net::HTTP.new("127.0.0.1", @port).request(req)
+
+      expect(response.code).to eq("200")
+      expect(@received.first).to eq("zzzz")
     end
 
     it "keeps only the first max_captured_body_bytes of a large response, and says so", server: { response_body: "r" * 50_000 } do

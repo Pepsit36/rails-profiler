@@ -10,6 +10,7 @@ require_relative "../body_content"
 require_relative "../configuration"
 require_relative "../current_context"
 require_relative "../trace_context"
+require_relative "capturing_stream"
 
 module Profiler
   module Instrumentation
@@ -34,6 +35,7 @@ module Profiler
           url = Redaction.filter_url(build_url(host, port, req.path, use_ssl?))
           limit = Profiler.configuration.max_captured_body_bytes
           captured = NetHttpInstrumentation.capture_request_body(req, body, limit)
+          tee = captured[:tee]
           req_headers = Redaction.filter_headers(req.to_hash.transform_values { |v| v.join(", ") })
           req_content_type = req["content-type"].to_s
           req_body = captured[:content]
@@ -118,6 +120,7 @@ module Profiler
           raise
         ensure
           Thread.current[:profiler_http_recording] = false
+          NetHttpInstrumentation.finish_stream_capture(req, tee, entry, collector) if defined?(tee) && tee
         end
 
         private
@@ -222,7 +225,9 @@ module Profiler
         declared = req["content-length"].to_s
         declared = declared.match?(/\A\d+\z/) ? declared.to_i : nil
         unless rewindable?(stream)
-          return { content: nil, size: declared, size_is_minimum: false, truncated: false, not_captured: true }
+          # Read as Net::HTTP sends it, by a stand-in that copies what passes (see finish_stream_capture).
+          tee = tee_stream(req, stream, limit)
+          return { content: nil, size: declared, size_is_minimum: false, truncated: false, not_captured: true, tee: tee }
         end
 
         position = stream.pos
@@ -244,6 +249,48 @@ module Profiler
       rescue IOError, SystemCallError => e
         Profiler.log_error_once(:net_http_body_stream, "NetHttpInstrumentation: could not read a request body_stream", e)
         { content: nil, size: declared, size_is_minimum: false, truncated: false, not_captured: true }
+      end
+
+      # Puts a CapturingStream in place of +stream+ on the request; nil (the request untouched) when
+      # the stream cannot be read or the stand-in cannot be installed.
+      def self.tee_stream(req, stream, limit)
+        return nil unless stream.respond_to?(:read)
+
+        # A JSON, NDJSON or form body is redacted whole before it is cut, so more of it is copied.
+        mime = req["content-type"].to_s.split(";").first.to_s.strip.downcase
+        copy = limit && mime.match?(%r{json|x-www-form-urlencoded}) ? Redaction::MAX_REDACTABLE_BODY_BYTES : limit
+        tee = CapturingStream.new(stream, copy)
+        req.body_stream = tee
+        tee
+      rescue StandardError => e
+        Profiler.log_error_once(:net_http_body_stream_tee, "NetHttpInstrumentation: could not capture a request body_stream", e)
+        nil
+      end
+
+      # Once the request has been sent (or has failed): the original stream goes back on the
+      # request, and the entry gets the body that passed, redacted like any other. An entry whose
+      # stream was never read stays "not captured".
+      def self.finish_stream_capture(req, tee, entry, collector)
+        req.body_stream = tee.original if req.body_stream.equal?(tee)
+        return unless entry && tee.total_read.positive?
+
+        limit = Profiler.configuration.max_captured_body_bytes
+        declared = req["content-length"].to_s
+        declared = declared.match?(/\A\d+\z/) ? declared.to_i : nil
+        raw = tee.captured
+        size = declared || tee.total_read
+        cut = limit && raw.bytesize > limit
+        processed = process_body(raw.force_encoding(Encoding::UTF_8), req["content-type"].to_s,
+                                 limit: (limit if cut), size: size)
+        kept = cut ? limit : raw.bytesize
+        collector.update_request(
+          entry,
+          request_body: processed[:body], request_body_encoding: processed[:encoding],
+          request_size: size, request_size_is_minimum: declared.nil? && !tee.finished?,
+          request_body_truncated: kept < size, request_body_not_captured: false
+        )
+      rescue StandardError => e
+        Profiler.log_error_once(:net_http_body_stream_tee, "NetHttpInstrumentation: could not record a request body_stream", e)
       end
 
       # What is left to read of a stream that knows its size (a StringIO, a file), else nil.

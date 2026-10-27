@@ -91,6 +91,12 @@ module Profiler
         save_if_collected
       end
 
+      # Called from NetHttpInstrumentation to add what is only known once the request is sent.
+      def update_request(entry, **data)
+        @mutex.synchronize { entry.merge!(data) }
+        save_if_collected
+      end
+
       # Called from NetHttpInstrumentation when the HTTP call raises.
       def fail_request(entry, error:, duration:)
         @mutex.synchronize { entry.merge!(in_flight: false, status: 0, duration: duration, error: error) }
