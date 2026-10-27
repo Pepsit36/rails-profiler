@@ -28,3 +28,14 @@ export function formatAllocations(count: number | null | undefined): string {
 
 export const ALLOCATIONS_HINT =
   'Objects allocated by the whole process while this ran: on a multi-threaded server, it includes what other threads allocated meanwhile.'
+
+// Offset pagination can return the same row twice when new profiles are inserted at the
+// head between two page fetches; keep the first occurrence of each token.
+export function deduplicateByToken<T extends { token: string }>(items: T[]): T[] {
+  const seen = new Set<string>()
+  return items.filter(item => {
+    if (seen.has(item.token)) return false
+    seen.add(item.token)
+    return true
+  })
+}

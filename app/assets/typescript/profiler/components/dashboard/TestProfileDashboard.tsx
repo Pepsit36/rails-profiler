@@ -27,7 +27,10 @@ export function TestProfileDashboard({ profile, initialTab, embedded }: Props) {
 
   const validTabs: TestTabKey[] = ['test', 'database', 'cache', 'dump', 'logs', 'exception', 'env', 'timeline']
   const defaultTab: TestTabKey = validTabs.includes(initialTab as TestTabKey) ? (initialTab as TestTabKey) : 'test'
-  const [activeTab, setActiveTab] = useState<TestTabKey>(hasException ? 'exception' : defaultTab)
+  const tabFromUrl = new URLSearchParams(window.location.search).get('tab')
+  const [activeTab, setActiveTab] = useState<TestTabKey>(
+    tabFromUrl && validTabs.includes(tabFromUrl as TestTabKey) ? (tabFromUrl as TestTabKey) : (hasException ? 'exception' : defaultTab)
+  )
 
   const isFailed = profile.status === 500
   const testStatus = testData?.status || (isFailed ? 'failed' : 'passed')
@@ -37,7 +40,7 @@ export function TestProfileDashboard({ profile, initialTab, embedded }: Props) {
     setActiveTab(tab)
     const url = new URL(window.location.href)
     url.searchParams.set('tab', tab)
-    history.pushState(null, '', url.toString())
+    history.replaceState(null, '', url.toString())
   }
 
   const tabClass = (key: TestTabKey) => `tab${activeTab === key ? ' active' : ''}`

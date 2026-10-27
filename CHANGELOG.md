@@ -19,6 +19,17 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.33] - 2026-10-26
+
+<!-- stamped -->
+
+### Fixed
+
+- **Dashboard:** Use `replaceState` instead of `pushState` for navigation history updates to avoid creating history entries without a popstate listener. Refs #75
+- **Dashboard:** Deduplicate profile items by token in infinite "load more" pagination to prevent duplicates when data changes between page requests. Refs #75
+- **Dashboard:** Respect the `?tab=` URL parameter when loading a profile, even when an exception is present. Refs #75
+- **Dashboard:** Translate version mismatch banner from French to English for consistency with the rest of the interface. Refs #75
+
 ## [0.44.32] - 2026-10-26
 
 <!-- stamped -->

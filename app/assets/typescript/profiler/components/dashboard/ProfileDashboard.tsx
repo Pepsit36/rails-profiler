@@ -20,6 +20,8 @@ import { getGemVersion, allocatedObjects, formatAllocations, ALLOCATIONS_HINT } 
 
 type TabKey = 'request' | 'dump' | 'database' | 'ajax' | 'http' | 'timeline' | 'views' | 'cache' | 'logs' | 'exception' | 'routes' | 'i18n' | 'jobs' | 'env' | 'mailer' | 'trace'
 
+const VALID_TABS: TabKey[] = ['request', 'dump', 'database', 'ajax', 'http', 'timeline', 'views', 'cache', 'logs', 'exception', 'routes', 'i18n', 'jobs', 'env', 'mailer', 'trace']
+
 interface Props {
   profile: Profile
   initialTab: TabKey
@@ -37,14 +39,19 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
   const hasJobs = (profile.child_jobs?.length ?? 0) > 0
   const hasMailers = (cd.mailer?.total ?? 0) > 0
 
-  const [activeTab, setActiveTab] = useState<TabKey>(hasException ? 'exception' : initialTab)
+  const defaultTab: TabKey = VALID_TABS.includes(initialTab) ? initialTab : 'request'
+  const urlParams = new URLSearchParams(window.location.search)
+  const tabFromUrl = urlParams.get('tab')
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    tabFromUrl && VALID_TABS.includes(tabFromUrl as TabKey) ? (tabFromUrl as TabKey) : (hasException ? 'exception' : defaultTab)
+  )
 
   const handleTabClick = (tab: TabKey) => (e: MouseEvent) => {
     e.preventDefault()
     setActiveTab(tab)
     const url = new URL(window.location.href)
     url.searchParams.set('tab', tab)
-    history.pushState(null, '', url.toString())
+    history.replaceState(null, '', url.toString())
   }
 
   const tabClass = (key: TabKey) => `tab${activeTab === key ? ' active' : ''}`
@@ -67,7 +74,7 @@ export function ProfileDashboard({ profile, initialTab, embedded }: Props) {
         </div>
         {profile.gem_version && profile.gem_version !== getGemVersion() && (
           <div class="profiler-version-mismatch">
-            ⚠️ Profil capturé avec la version <strong>{profile.gem_version}</strong> - version actuelle : <strong>{getGemVersion()}</strong>
+            ⚠️ Profile captured with version <strong>{profile.gem_version}</strong>, current version: <strong>{getGemVersion()}</strong>
           </div>
         )}
       </div>
