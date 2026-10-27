@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.34] - 2026-10-26
+
+<!-- stamped -->
+
 ### Fixed
 
 - **AJAX Interceptor:** Prevent duplicate load event listeners when an XMLHttpRequest is reused by removing the previous listener before adding a new one.
