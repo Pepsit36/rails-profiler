@@ -256,7 +256,10 @@ module Profiler
       def self.tee_stream(req, stream, limit)
         return nil unless stream.respond_to?(:read)
 
-        tee = CapturingStream.new(stream, limit)
+        # A JSON, NDJSON or form body is redacted whole before it is cut, so more of it is copied.
+        mime = req["content-type"].to_s.split(";").first.to_s.strip.downcase
+        copy = limit && mime.match?(%r{json|x-www-form-urlencoded}) ? Redaction::MAX_REDACTABLE_BODY_BYTES : limit
+        tee = CapturingStream.new(stream, copy)
         req.body_stream = tee
         tee
       rescue StandardError => e
@@ -275,14 +278,16 @@ module Profiler
         declared = req["content-length"].to_s
         declared = declared.match?(/\A\d+\z/) ? declared.to_i : nil
         raw = tee.captured
-        raw = Redaction.cut_bytes(raw, limit) if limit
         size = declared || tee.total_read
-        processed = process_body(raw.force_encoding(Encoding::UTF_8), req["content-type"].to_s)
+        cut = limit && raw.bytesize > limit
+        processed = process_body(raw.force_encoding(Encoding::UTF_8), req["content-type"].to_s,
+                                 limit: (limit if cut), size: size)
+        kept = cut ? limit : raw.bytesize
         collector.update_request(
           entry,
           request_body: processed[:body], request_body_encoding: processed[:encoding],
           request_size: size, request_size_is_minimum: declared.nil? && !tee.finished?,
-          request_body_truncated: raw.bytesize < size, request_body_not_captured: false
+          request_body_truncated: kept < size, request_body_not_captured: false
         )
       rescue StandardError => e
         Profiler.log_error_once(:net_http_body_stream_tee, "NetHttpInstrumentation: could not record a request body_stream", e)

@@ -332,6 +332,20 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
       expect(entry["request_size"]).to eq(text.bytesize)
     end
 
+    it "marks a large RestClient JSON payload as truncated without the unparseable label" do
+      require "rest-client"
+      json = JSON.generate(items: Array.new(400) { |i| { id: i, password: "hunter2" } })
+      RestClient::Request.execute(method: :post, url: "http://127.0.0.1:#{@port}/json", payload: json,
+                                  headers: { content_type: :json })
+
+      entry = entries.first
+      expect(@received.first).to eq(json)
+      expect(entry["request_body"]).not_to include("hunter2")
+      expect(entry["request_body"]).not_to include("unparseable")
+      expect(entry["request_body_truncated"]).to be(true)
+      expect(entry["request_size"]).to eq(json.bytesize)
+    end
+
     it "leaves plain Net::HTTP bodies as they were" do
       req = Net::HTTP::Post.new("/plain")
       req["Content-Type"] = "text/plain"
