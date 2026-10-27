@@ -28,7 +28,7 @@ timeline with function profiling, and an MCP server for AI-assisted debugging.
 - **Log Capture**: Rails logger output per request with level filtering
 - **I18n Tracking**: translation lookups and missing key detection
 - **Background Jobs**: Sidekiq and ActiveJob profiling
-- **Console Profiling**: every expression evaluated in `rails console`
+- **Console Profiling**: every expression evaluated in `rails console`, under IRB or Pry
 - **Environment Overrides**: change `ENV` from the dashboard or MCP, without a restart
 - **Test Profiling**: per-test SQL, cache and exception capture for RSpec and Minitest, and a test
   runner in the dashboard

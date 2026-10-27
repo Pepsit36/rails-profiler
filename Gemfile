@@ -15,6 +15,9 @@ gem "simplecov", "~> 0.22", require: false
 gem "redis", "~> 5.0", require: false
 gem "rack-test", "~> 2.0", require: false
 
+# The Pry console (pry-rails): the specs for the Pry instrumentation run against the real Pry#evaluate_ruby.
+gem "pry", "~> 0.15", require: false
+
 # A real multi-threaded server for the specs that measure what a request holds a thread for.
 gem "puma", ">= 6.0", require: false
 

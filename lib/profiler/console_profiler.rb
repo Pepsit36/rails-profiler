@@ -25,10 +25,21 @@ module Profiler
       Collectors::FlameGraphCollector
     ].freeze
 
+    RECORDING_KEY = :profiler_console_recording
+
     def self.profile(expression:, &block)
       return block.call unless Profiler.enabled? && Profiler.configuration.track_console
 
-      new(expression: expression).run(&block)
+      # IRB and Pry can both be loaded and both evaluate the same expression: only the
+      # outermost one records it.
+      return block.call if Thread.current[RECORDING_KEY]
+
+      begin
+        Thread.current[RECORDING_KEY] = true
+        new(expression: expression).run(&block)
+      ensure
+        Thread.current[RECORDING_KEY] = nil
+      end
     end
 
     def initialize(expression:)

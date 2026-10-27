@@ -169,8 +169,17 @@ module Profiler
       next unless Profiler.configuration.enabled && Profiler.configuration.track_console
 
       require_relative "console_profiler"
-      require_relative "instrumentation/irb_instrumentation"
-      IRB::Context.prepend(Profiler::Instrumentation::IrbInstrumentation)
+
+      # A console is IRB or Pry (pry-rails): instrument whichever is loaded, never assume IRB.
+      if defined?(IRB::Context)
+        require_relative "instrumentation/irb_instrumentation"
+        IRB::Context.prepend(Profiler::Instrumentation::IrbInstrumentation)
+      end
+
+      if defined?(Pry)
+        require_relative "instrumentation/pry_instrumentation"
+        Pry.prepend(Profiler::Instrumentation::PryInstrumentation)
+      end
     end
 
     rake_tasks do
