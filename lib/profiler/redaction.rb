@@ -255,6 +255,16 @@ module Profiler
         "[FILTERED: truncated body that could not be filtered, #{raw.bytesize} bytes]"
       end
 
+      # How many bytes of a body to copy so that it can be redacted whole before it is cut: a JSON,
+      # NDJSON or form body is copied up to MAX_REDACTABLE_BODY_BYTES, any other type (and a nil
+      # limit) up to +limit+.
+      def capture_limit(limit, content_type)
+        return limit if limit.nil? || limit >= MAX_REDACTABLE_BODY_BYTES
+
+        mime = content_type.to_s.split(";").first.to_s.strip.downcase
+        structured_type?(mime) ? MAX_REDACTABLE_BODY_BYTES : limit
+      end
+
       # Masks the filtered values of a query string, pair by pair, leaving the
       # rest of the string exactly as it was.
       def filter_query(query)

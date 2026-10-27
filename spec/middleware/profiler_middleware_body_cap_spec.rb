@@ -103,6 +103,76 @@ RSpec.describe Profiler::Middleware::ProfilerMiddleware, "captured body size" do
       Profiler.configure { |c| c.cluster_secret = nil }
     end
 
+    describe "a JSON body longer than the cap" do
+      let(:json) { JSON.generate(items: Array.new(300) { |i| { id: i, password: "hunter2" } }) }
+      let(:json_headers) { Rack::Headers["content-type" => "application/json"] }
+
+      def post_json(body)
+        Rack::MockRequest.env_for("http://localhost/api", method: "POST", input: body,
+                                  "CONTENT_TYPE" => "application/json", "REMOTE_ADDR" => "127.0.0.1")
+      end
+
+      def expect_readable_and_redacted(text)
+        expect(text.bytesize).to be <= cap
+        expect(text).to start_with('{"items":[')
+        expect(text).not_to include("hunter2")
+        expect(text).not_to include("unparseable")
+      end
+
+      it "keeps a redacted beginning of the request body, not an unparseable mask" do
+        seen = nil
+        app = lambda do |env|
+          seen = env["rack.input"].read
+          [200, json_headers, ["{}"]]
+        end
+
+        _status, headers, body = described_class.new(app).call(post_json(json))
+        serve(body)
+
+        expect(seen).to eq(json)
+        profile = Profiler.storage.load(headers["X-Profiler-Token"])
+        expect_readable_and_redacted(profile.request_body)
+        request = profile.collector_data("request")
+        expect(request["request_body_truncated"]).to be(true)
+        expect(request["request_body_size"]).to eq(json.bytesize)
+      end
+
+      it "keeps a redacted beginning of a buffered response body" do
+        app = ->(_env) { [200, json_headers, [json]] }
+
+        _status, headers, body = described_class.new(app).call(post_env(""))
+        expect(serve(body)).to eq(json)
+
+        profile = Profiler.storage.load(headers["X-Profiler-Token"])
+        expect_readable_and_redacted(profile.response_body)
+        expect(profile.collector_data("request")["response_body_size"]).to eq(json.bytesize)
+      end
+
+      it "keeps a redacted beginning of a streamed response body" do
+        chunks = json.scan(/.{1,500}/m)
+        app = ->(_env) { [200, json_headers, chunks.each] }
+
+        _status, headers, body = described_class.new(app).call(post_env(""))
+        expect(serve(body)).to eq(json)
+
+        profile = Profiler.storage.load(headers["X-Profiler-Token"])
+        expect_readable_and_redacted(profile.response_body)
+        expect(profile.collector_data("request")["response_body_truncated"]).to be(true)
+      end
+
+      it "still masks invalid JSON as unparseable" do
+        broken = "{\"password\": \"hunter2\", " + ("x" * (cap * 3))
+        app = ->(_env) { [200, json_headers, [broken]] }
+
+        _status, headers, body = described_class.new(app).call(post_env(""))
+        serve(body)
+
+        profile = Profiler.storage.load(headers["X-Profiler-Token"])
+        expect(profile.response_body).to include("unparseable")
+        expect(profile.response_body).not_to include("hunter2")
+      end
+    end
+
     it "does not flag a body under the cap" do
       app = ->(_env) { [200, Rack::Headers["content-type" => "text/plain"], ["small"]] }
       _status, headers, body = described_class.new(app).call(post_env("tiny"))

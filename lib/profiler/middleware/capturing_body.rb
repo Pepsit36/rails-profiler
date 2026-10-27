@@ -98,14 +98,13 @@ module Profiler
         chunk = chunk.to_s
         @encoding ||= chunk.encoding
         @size += chunk.bytesize
-        # One byte past the limit, so that Redaction.cut_bytes knows the body goes on.
+        # One byte past the limit, so that the profile knows the body goes on.
         room = @limit ? @limit + 1 - @captured.bytesize : chunk.bytesize
         @captured << chunk.byteslice(0, room).b if room.positive?
       end
 
       def captured
-        text = @captured.dup.force_encoding(@encoding || Encoding::UTF_8)
-        @limit ? Redaction.cut_bytes(text, @limit) : text
+        @captured.dup.force_encoding(@encoding || Encoding::UTF_8)
       end
     end
   end

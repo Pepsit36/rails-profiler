@@ -58,14 +58,15 @@ module Profiler
       def set_bodies(request_body:, response_body:, req_content_type:, resp_content_type:,
                      request_body_size: nil, response_body_size: nil,
                      request_body_size_is_minimum: false, response_body_size_is_minimum: false)
-        req  = process_body(request_body, req_content_type)
-        resp = process_body(response_body, resp_content_type)
+        limit = Profiler.configuration.max_captured_body_bytes
+        req  = process_body(request_body, req_content_type, limit, body_whole_size(request_body, request_body_size, request_body_size_is_minimum, limit))
+        resp = process_body(response_body, resp_content_type, limit, body_whole_size(response_body, response_body_size, response_body_size_is_minimum, limit))
         @request_body          = req[:body]
         @request_body_encoding = req[:encoding]
         @response_body         = resp[:body]
         @response_body_encoding = resp[:encoding]
-        @request_body_size, @request_body_truncated = body_size(request_body, request_body_size)
-        @response_body_size, @response_body_truncated = body_size(response_body, response_body_size)
+        @request_body_size, @request_body_truncated = body_size(request_body, request_body_size, limit)
+        @response_body_size, @response_body_truncated = body_size(response_body, response_body_size, limit)
         @request_body_size_is_minimum = request_body_size_is_minimum ? true : false
         @response_body_size_is_minimum = response_body_size_is_minimum ? true : false
       end
@@ -268,15 +269,22 @@ module Profiler
 
       private
 
-      def process_body(raw, content_type)
+      # +limit+ is max_captured_body_bytes: a body longer than it is redacted whole and the result
+      # cut (Redaction.filter_truncated_body), so a cut JSON text is never what the filter sees.
+      # +size+ is the length of the whole body, to tell a body held whole from a beginning.
+      def process_body(raw, content_type, limit = nil, size = nil)
         return { body: nil, encoding: "text" } if raw.nil? || raw.empty?
 
         if BodyContent.binary?(raw, content_type)
           # Masked on the raw bytes, before the encoding hides them from any later search. A
-          # compressed format (zip, png, gzip...) does not hold the secret as it is.
-          { body: Base64.strict_encode64(Redaction.hide_credentials(raw.b)), encoding: "base64" }
+          # compressed format (zip, png, gzip...) does not hold the secret as it is, and a
+          # credential cut in two would escape the masking, hence the cut after it.
+          masked = Redaction.hide_credentials(raw.b)
+          masked = Redaction.cut_bytes(masked, limit) if limit
+          { body: Base64.strict_encode64(masked), encoding: "base64" }
         else
-          text = utf8_text(Redaction.filter_body(raw, content_type), content_type)
+          filtered = limit ? Redaction.filter_truncated_body(raw, content_type, limit, size) : Redaction.filter_body(raw, content_type)
+          text = utf8_text(filtered, content_type)
           if compress_body?(text)
             # The fastest level: paid on the request, a quarter larger than the default level.
             { body: Base64.strict_encode64(Zlib::Deflate.deflate(text, Zlib::BEST_SPEED)), encoding: "gzip+base64" }
@@ -319,10 +327,20 @@ module Profiler
         end
       end
 
-      def body_size(captured, total)
+      def body_size(captured, total, limit = nil)
         captured_size = captured.to_s.bytesize
-        total ||= captured_size
+        captured_size = limit if limit && captured_size > limit
+        total ||= captured.to_s.bytesize
         [total, total > captured_size]
+      end
+
+      # The length of the whole body as far as it is known; one more than what was seen when
+      # the total is only a minimum and the body is longer than the limit, so that it counts as a beginning.
+      def body_whole_size(captured, total, minimum, limit)
+        seen = captured.to_s.bytesize
+        return seen + 1 if minimum && limit && seen > limit
+
+        total || seen
       end
 
       def compress_body?(text)
