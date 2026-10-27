@@ -22,6 +22,7 @@
   const originalXHROpen = XMLHttpRequest.prototype.open;
   const originalXHRSend = XMLHttpRequest.prototype.send;
   const pendingXHRRequests = new WeakMap();
+  const xhrLoadListeners = new WeakMap();
   // The fetches Turbo makes, by the AbortSignal it hands to fetch(): { frame: true } when the
   // request loads a <turbo-frame>.
   const turboRequests = new WeakMap();
@@ -175,7 +176,7 @@
 
   // Override XMLHttpRequest.open()
   XMLHttpRequest.prototype.open = function(method, url, ...args) {
-    const urlString = typeof url === 'string' ? url : url.toString();
+    const urlString = typeof url === 'string' ? url : String(url);
 
     // Store request metadata
     pendingXHRRequests.set(this, {
@@ -196,14 +197,22 @@
       return originalXHRSend.apply(this, args);
     }
 
+    // Remove any previous load listener to avoid duplicates on reused XHR instances
+    const previousListener = xhrLoadListeners.get(this);
+    if (previousListener) {
+      this.removeEventListener('load', previousListener);
+    }
+
     // Add load event listener to capture response
-    this.addEventListener('load', function() {
+    const handleLoad = function() {
       const profilerToken = this.getResponseHeader('X-Profiler-Token');
 
       if (profilerToken && requestData) {
         linkChildProfile(profilerToken);
       }
-    });
+    };
+    this.addEventListener('load', handleLoad);
+    xhrLoadListeners.set(this, handleLoad);
 
     return originalXHRSend.apply(this, args);
   };

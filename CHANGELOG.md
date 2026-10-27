@@ -19,6 +19,17 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.34] - 2026-10-26
+
+<!-- stamped -->
+
+### Fixed
+
+- **AJAX Interceptor:** Prevent duplicate load event listeners when an XMLHttpRequest is reused by removing the previous listener before adding a new one.
+- **AJAX Interceptor:** Use `String(url)` instead of `url.toString()` in XMLHttpRequest.open() to handle `null` URLs without throwing an error.
+- **API Fetcher:** Check `response.ok` before calling `response.json()` to provide proper HTTP error messages instead of `SyntaxError` when error responses contain HTML bodies.
+- **Swagger:** Add `/api/compare` and `/api/compare/nodes` endpoint definitions to the API specification, including their 404, 422 and 502 error responses (`{ errors: string[] }`).
+
 ## [0.44.33] - 2026-10-26
 
 <!-- stamped -->

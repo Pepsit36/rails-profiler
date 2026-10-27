@@ -44,11 +44,16 @@ export async function apiFetch<T>(config: {
 
   if (res.status === 204) return {} as T
 
-  const json = await res.json()
-
   if (!res.ok) {
+    let json: any
+    try {
+      json = await res.json()
+    } catch {
+      json = {}
+    }
     throw Object.assign(new Error(json?.error ?? `HTTP ${res.status}`), { status: res.status, data: json })
   }
 
+  const json = await res.json()
   return json
 }
