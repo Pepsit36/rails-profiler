@@ -37,7 +37,15 @@ module Profiler
           req_headers = Redaction.filter_headers(req.to_hash.transform_values { |v| v.join(", ") })
           req_content_type = req["content-type"].to_s
           req_body = captured[:content]
-          processed_req = req_body.nil? || req_body.empty? ? { body: nil, encoding: "text" } : NetHttpInstrumentation.process_body(req_body, req_content_type)
+          processed_req = if req_body.nil? || req_body.empty?
+                            { body: nil, encoding: "text" }
+                          else
+                            NetHttpInstrumentation.process_body(
+                              req_body, req_content_type,
+                              limit: captured[:truncated] ? limit : nil,
+                              size: captured[:size_is_minimum] ? nil : captured[:size]
+                            )
+                          end
 
           request_id = SecureRandom.hex(8)
           started_at = Time.now.iso8601(3)
@@ -75,9 +83,13 @@ module Profiler
             resp_content_encoding = response["content-encoding"].to_s.strip.downcase
             resp_body = NetHttpInstrumentation.decompress_body(resp_body_raw, resp_content_encoding, limit)
             resp_truncated = limit ? resp_body.bytesize > limit : false
-            resp_body = Redaction.cut_bytes(resp_body, limit) if resp_truncated
             resp_content_type = response["content-type"].to_s
-            processed_resp = NetHttpInstrumentation.process_body(resp_body, resp_content_type)
+            # Cut after the redaction, not before: a cut JSON text cannot be parsed. Only an
+            # inflation stopped at the limit leaves a beginning with no known whole size.
+            resp_whole_size = !resp_truncated || resp_body.equal?(resp_body_raw) ? resp_body.bytesize : nil
+            processed_resp = NetHttpInstrumentation.process_body(
+              resp_body, resp_content_type, limit: resp_truncated ? limit : nil, size: resp_whole_size
+            )
 
             t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -200,8 +212,8 @@ module Profiler
         unless content.nil? || content.to_s.empty?
           content = content.to_s
           truncated = limit ? content.bytesize > limit : false
-          return { content: truncated ? Redaction.cut_bytes(content, limit) : content,
-                   size: content.bytesize, size_is_minimum: false, truncated: truncated, not_captured: false }
+          # Kept whole: process_body redacts it, then cuts the result.
+          return { content: content, size: content.bytesize, size_is_minimum: false, truncated: truncated, not_captured: false }
         end
 
         stream = req.body_stream
@@ -295,18 +307,24 @@ module Profiler
         defined?(Net::ReadAdapter) && response.body.is_a?(Net::ReadAdapter)
       end
 
-      def self.process_body(body, content_type)
+      # +limit+ is set when the body is kept only in part: it is then redacted whole and the result
+      # cut to +limit+ bytes (Redaction.filter_truncated_body). +size+ is the length of the whole
+      # body, nil when it is not known.
+      def self.process_body(body, content_type, limit: nil, size: body&.bytesize)
         return { body: nil, encoding: "text" } if body.nil? || body.empty?
 
         if BodyContent.binary?(body, content_type)
-          # Masked on the raw bytes, before the encoding hides them from any later search.
-          { body: Base64.strict_encode64(Redaction.hide_credentials(body.b)), encoding: "base64" }
+          # Masked on the raw bytes, before the encoding hides them from any later search, and
+          # cut after the masking: a credential cut in two would escape it.
+          masked = Redaction.hide_credentials(body.b)
+          masked = Redaction.cut_bytes(masked, limit) if limit
+          { body: Base64.strict_encode64(masked), encoding: "base64" }
         else
           # Bytes are read as UTF-8, as a text body on the wire is; what is not valid UTF-8 shows
           # as "?".
           body = body.dup.force_encoding(Encoding::UTF_8) if body.encoding == Encoding::BINARY
-          text = Redaction.filter_body(body, content_type)
-                          .encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")
+          filtered = limit ? Redaction.filter_truncated_body(body, content_type, limit, size) : Redaction.filter_body(body, content_type)
+          text = filtered.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")
           text = text.scrub("?") unless text.valid_encoding?
           { body: text, encoding: "text" }
         end
