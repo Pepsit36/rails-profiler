@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.44.33] - 2026-10-26
+
+<!-- stamped -->
+
 ### Fixed
 
 - **Dashboard:** Use `replaceState` instead of `pushState` for navigation history updates to avoid creating history entries without a popstate listener. Refs #75
