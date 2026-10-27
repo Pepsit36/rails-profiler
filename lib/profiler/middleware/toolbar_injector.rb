@@ -333,7 +333,11 @@ module Profiler
             color: var(--pf-amber);
             font-weight: 600;
             letter-spacing: .02em;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
           }
+          #profiler-toolbar .profiler-toolbar-logo-mark { flex: none; display: block; }
           #profiler-toolbar .profiler-toolbar-logo:hover { color: var(--pf-amber-h); }
 
           /* Error state: the profile could not be loaded, or a component failed. */
