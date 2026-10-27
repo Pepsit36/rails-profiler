@@ -1002,35 +1002,36 @@ paths:
   "/_profiler/api/compare":
     get:
       summary: Compare two profiles
-      description: Returns a detailed comparison between two profiles including metrics, SQL queries, and collector data
       operationId: compareProfiles
+      description: Returns a detailed comparison between two profiles including metrics,
+        SQL queries, and collector data
       tags:
       - Compare
       parameters:
       - name: a
         in: query
         required: true
+        description: Token of the first profile
         schema:
           type: string
-        description: Token of the first profile
       - name: b
         in: query
         required: true
+        description: Token of the second profile
         schema:
           type: string
-        description: Token of the second profile
       - name: node_a
         in: query
         required: false
+        description: 'Node name for the first profile: "local" or a name from config.peers'
         schema:
           type: string
-        description: Node name for the first profile (in clustered setups)
       - name: node_b
         in: query
         required: false
+        description: 'Node name for the second profile: "local" or a name from config.peers'
         schema:
           type: string
-        description: Node name for the second profile (in clustered setups)
       responses:
         '200':
           description: profiles comparison
@@ -1039,11 +1040,14 @@ paths:
               schema:
                 "$ref": "#/components/schemas/ComparisonData"
         '422':
-          description: invalid request (missing required parameters, or comparing a profile with itself)
+          description: invalid request (missing required parameters, or comparing
+            a profile with itself)
           content:
             application/json:
               schema:
                 type: object
+                required:
+                - errors
                 properties:
                   errors:
                     type: array
@@ -1055,6 +1059,8 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                - errors
                 properties:
                   errors:
                     type: array
@@ -1066,6 +1072,8 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                - errors
                 properties:
                   errors:
                     type: array
@@ -1074,8 +1082,9 @@ paths:
   "/_profiler/api/compare/nodes":
     get:
       summary: Get list of available nodes
-      description: Returns the list of nodes available in a clustered profiler setup
       operationId: getCompareNodes
+      description: 'Returns the nodes a profile can be read from: this instance, then
+        the names of config.peers'
       tags:
       - Compare
       responses:
@@ -1092,13 +1101,15 @@ paths:
                     type: array
                     items:
                       type: string
-                    description: List of node names (at least 'local')
+                    description: List of node names, starting with 'local'
         '422':
           description: the node list could not be built
           content:
             application/json:
               schema:
                 type: object
+                required:
+                - errors
                 properties:
                   errors:
                     type: array
@@ -2339,8 +2350,11 @@ components:
                 type: object
         metrics:
           type: object
+          description: Metric diffs by name; a metric neither profile recorded is
+            null
           additionalProperties:
             type: object
+            nullable: true
         collectors:
           type: object
           properties:
