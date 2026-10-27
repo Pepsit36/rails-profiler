@@ -37,3 +37,6 @@ gem "opentelemetry-exporter-otlp-metrics", "= 0.14.0", require: false
 # A real database for the ExplainRunner specs (EXPLAIN QUERY PLAN, rolled-back probe).
 # gemfiles/rails_7_1.gemfile sets PROFILER_SQLITE3 to "~> 1.4": the ActiveRecord 7.1 adapter refuses 2.x.
 gem "sqlite3", ENV.fetch("PROFILER_SQLITE3", ">= 1.4"), require: false
+
+# A client that sends its payload through Net::HTTP's body_stream, for the specs of the outgoing body capture.
+gem "rest-client", "~> 2.1", require: false
