@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Changed
+
+- The project logo now replaces the text glyph in the toolbar and the emoji in the dashboard header, and tops the README.
+
 ## [0.44.34] - 2026-10-26
 
 <!-- stamped -->

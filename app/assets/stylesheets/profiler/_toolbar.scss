@@ -141,6 +141,14 @@ a.profiler-toolbar-item {
 // Logo link, no auto-margin, just its natural place
 .profiler-toolbar-logo {
   border-right: 1px solid var(--profiler-border) !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.profiler-toolbar-logo-mark {
+  flex: none;
+  display: block;
 }
 
 // ============================================================================

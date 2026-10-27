@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Ink tile inside the 112x112 safe zone (8 px transparent margin). -->
+  <rect x="8" y="8" width="112" height="112" rx="20" fill="#132020"/>
+  <!-- Flame graph: three stacked, offset bars. Every edge sits on a multiple of 8 units so
+       the bars stay crisp at 16 px (1 px = 8 units). -->
+  <rect x="24" y="32" width="80" height="16" fill="#E8A33D"/>
+  <rect x="32" y="56" width="40" height="16" fill="#E8A33D"/>
+  <rect x="48" y="80" width="48" height="16" fill="#E8A33D"/>
+</svg>

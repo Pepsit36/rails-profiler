@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.svg" alt="Rails Profiler logo" width="96" height="96">
+</p>
+
 # Rails Profiler
 
 A Rails profiler with a debug toolbar on every page, a dashboard to inspect past requests, jobs,
