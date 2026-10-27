@@ -309,8 +309,7 @@ export function ToolbarApp({ profile, token }: Props) {
 
       <a href="/_profiler/health" class="profiler-toolbar-item">Health</a>
       <a href="/_profiler" class="profiler-toolbar-item profiler-toolbar-logo">
-        <svg class="profiler-toolbar-logo-mark" viewBox="8 8 112 112" width="15" height="15" aria-hidden="true" focusable="false">
-          <rect x="8" y="8" width="112" height="112" rx="20" fill="#132020" />
+        <svg class="profiler-toolbar-logo-mark" viewBox="24 32 80 64" width="16" height="13" aria-hidden="true" focusable="false">
           <g fill="currentColor">
             <rect x="24" y="32" width="80" height="16" />
             <rect x="32" y="56" width="40" height="16" />
