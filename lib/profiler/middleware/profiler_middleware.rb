@@ -194,7 +194,7 @@ module Profiler
           finish_streamed(env, streamed, collectors, request_body, allocations_before, status, profiled_headers,
                           captured, size, complete, error)
         end
-        limit = Profiler.configuration.max_captured_body_bytes
+        limit = Redaction.capture_limit(Profiler.configuration.max_captured_body_bytes, content_type(headers))
         streamed.body = CapturingBody.new(body, limit: limit, context: streamed) do |captured, size, complete, error|
           streamed.finish(captured, size, complete, error)
         end
@@ -248,9 +248,6 @@ module Profiler
 
       # +complete+: whether +size+ is the whole body's, or only what was seen before it stopped.
       def record_response(env, profile, request_body, status, headers, content, size, complete)
-        limit = Profiler.configuration.max_captured_body_bytes
-        content = Redaction.cut_bytes(content, limit) if limit
-
         profile.finish(status, headers)
         profile.set_bodies(
           request_body: request_body[:content],
@@ -475,7 +472,7 @@ module Profiler
         input = env["rack.input"]
         return { content: "", size: nil } unless input.respond_to?(:rewind)
 
-        limit = Profiler.configuration.max_captured_body_bytes
+        limit = Redaction.capture_limit(Profiler.configuration.max_captured_body_bytes, env["CONTENT_TYPE"])
         begin
           input.rewind
           content = (limit ? input.read(limit + 1) : input.read).to_s
@@ -488,7 +485,6 @@ module Profiler
         # Without a Content-Length, the size of a cut body is only known to exceed the limit.
         size = known ? declared.to_i : content.bytesize
         size_is_minimum = !known && limit && content.bytesize > limit
-        content = Redaction.cut_bytes(content, limit) if limit
         { content: content, size: size, size_is_minimum: size_is_minimum || false }
       rescue => e
         Profiler.log_error("ProfilerMiddleware: could not read the request body", e)

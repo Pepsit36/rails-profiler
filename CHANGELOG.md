@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- A JSON, NDJSON or form request or response body longer than `max_captured_body_bytes` is no longer masked as `[FILTERED: unparseable ...]` in a profile captured by the Rack middleware. The body is redacted whole, then cut, as Net::HTTP bodies already are.
+
 ## [0.45.3] - 2026-10-27
 
 <!-- stamped -->
