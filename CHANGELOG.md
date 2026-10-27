@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.45.2] - 2026-10-27
+
+<!-- stamped -->
+
+### Fixed
+
+- **HTTP capture:** A JSON, NDJSON or form body longer than `max_captured_body_bytes` is now redacted whole and the result cut to the limit, so a large response or request shows its first bytes with sensitive values masked instead of a single `[FILTERED: unparseable ... body]` mask. A body whose whole text is not available (inflation stopped at the limit, a partly read `body_stream`) or that exceeds 8 MiB is masked with a `[FILTERED: truncated ... body, kept N of M bytes, ...]` label that says it was truncated, and only a genuinely invalid JSON keeps the `unparseable` label.
+
 ## [0.45.1] - 2026-10-27
 
 <!-- stamped -->

@@ -36,6 +36,11 @@ module Profiler
     FORM_TYPE = "application/x-www-form-urlencoded"
     MULTIPART_TYPE = %r{\Amultipart/}i
 
+    # The largest body filter_truncated_body parses to redact it whole. A bigger JSON, NDJSON or
+    # form body is not parsed (a parse costs several times its size in memory) and is masked with
+    # a label instead, never passed through unredacted.
+    MAX_REDACTABLE_BODY_BYTES = 8 * 1024 * 1024
+
     # The characters outside ASCII whose case folding yields ASCII letters
     # (Unicode CaseFolding.txt): with any of them, a case-insensitive regexp
     # can match an ASCII filter where a plain ASCII search cannot.
@@ -52,7 +57,7 @@ module Profiler
     # profile can be read on any node. Wraps every public filter, so that each
     # capture point gets it.
     module CredentialMasking
-      %i[filter_hash filter_value filter_named filter_headers filter_body filter_query filter_url
+      %i[filter_hash filter_value filter_named filter_headers filter_body filter_truncated_body filter_query filter_url
          env_snapshot env_value env_overrides].each do |name|
         define_method(name) { |*args| hide_credentials(super(*args)) }
       end
@@ -219,6 +224,35 @@ module Profiler
       rescue StandardError => e
         report(e, "filtering a #{mime} body")
         "[FILTERED: #{mime} body that could not be filtered, #{raw.bytesize} bytes]"
+      end
+
+      # The part of a body a profile keeps when it is longer than +limit+ bytes, redacted. The body
+      # is redacted whole first and the result is cut after, so the part kept is redaction output
+      # and never shows a value the filter masks. +size+ is the length of the whole body when
+      # known; the body is whole when +raw+ has that length, and only a beginning otherwise
+      # (an inflation stopped at the limit, a body_stream read in part).
+      #
+      # A JSON, NDJSON or form body that cannot be redacted whole (only its beginning is known, or
+      # it is over MAX_REDACTABLE_BODY_BYTES) is masked entirely with a label that says it was
+      # truncated: a cut JSON text cannot be parsed and a text search would miss keys. Other types
+      # are cut first, as filter_body leaves them as they are or masks them whole anyway. A whole
+      # body that is not valid JSON keeps the "unparseable" label of filter_body.
+      def filter_truncated_body(raw, content_type, limit, size = raw.is_a?(String) ? raw.bytesize : nil)
+        return raw unless raw.is_a?(String) && !raw.empty?
+        return filter_body(raw, content_type) if limit.nil? || (size == raw.bytesize && raw.bytesize <= limit)
+        return cut_bytes(raw, limit) unless enabled?
+
+        mime = content_type.to_s.split(";").first.to_s.strip.downcase
+        return filter_body(cut_bytes(raw, limit), content_type) unless structured_type?(mime)
+
+        whole = size == raw.bytesize
+        return cut_bytes(filter_body(raw, content_type), limit) if whole && raw.bytesize <= MAX_REDACTABLE_BODY_BYTES
+
+        reason = whole ? "too large to redact" : "only its beginning is known, it cannot be redacted"
+        "[FILTERED: truncated #{mime} body, kept #{limit} of #{size || "more than #{limit}"} bytes, #{reason}]"
+      rescue StandardError => e
+        report(e, "filtering a truncated body")
+        "[FILTERED: truncated body that could not be filtered, #{raw.bytesize} bytes]"
       end
 
       # Masks the filtered values of a query string, pair by pair, leaving the
@@ -479,6 +513,10 @@ module Profiler
 
         utf8 = string.dup.force_encoding(Encoding::UTF_8)
         utf8.valid_encoding? ? utf8 : string.b
+      end
+
+      def structured_type?(mime)
+        mime.match?(JSON_TYPES) || mime.match?(NDJSON_TYPES) || mime == FORM_TYPE
       end
 
       def filter_json(text, mime)

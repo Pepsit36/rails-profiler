@@ -30,8 +30,9 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
         else
           received << client.read(head[/content-length: *(\d+)/i, 1].to_i)
         end
-        extra = headers.map { |name, value| "#{name}: #{value}\r\n" }.join
-        client.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\n#{extra}" \
+        content_type = headers.fetch("Content-Type", "text/plain; charset=utf-8")
+        extra = headers.except("Content-Type").map { |name, value| "#{name}: #{value}\r\n" }.join
+        client.write("HTTP/1.1 200 OK\r\nContent-Type: #{content_type}\r\n#{extra}" \
                      "Content-Length: #{response_body.bytesize}\r\nConnection: close\r\n\r\n")
         client.write(response_body)
         client.close
@@ -365,6 +366,84 @@ RSpec.describe Profiler::Instrumentation::NetHttpInstrumentation, "capture" do
 
       entry = entries.first
       expect(entry["response_body"].bytesize).to eq(5_000)
+      expect(entry["response_body_truncated"]).to be(false)
+    end
+  end
+
+  describe "a JSON body longer than max_captured_body_bytes" do
+    let(:mask) { Profiler::Redaction::MASK }
+    big_json = %({"token":"first-secret-value","items":[#{(1..40_000).map { |i| %({"id":#{i}}) }.join(",")}],"nested":{"token":"last-secret-value"}})
+
+    before do
+      Profiler.configuration.max_captured_body_bytes = 256 * 1024
+      Profiler.configuration.http_skip_hosts = []
+      allow(described_class).to receive(:skip_host?).and_return(false)
+    end
+
+    it "keeps the beginning, readable, with its sensitive values masked",
+       server: { response_body: big_json, headers: { "Content-Type" => "application/json" } } do
+      Net::HTTP.get_response(URI("http://127.0.0.1:#{@port}/big"))
+
+      entry = entries.first
+      expect(big_json.bytesize).to be > 300_000
+      expect(entry["response_body_truncated"]).to be(true)
+      expect(entry["response_body"].bytesize).to be_between(256 * 1024 - 8, 256 * 1024)
+      expect(entry["response_body"]).to start_with(%({"token":"#{mask}","items":[{"id":1}))
+      expect(entry["response_body"]).not_to include("unparseable")
+      expect(entry["response_body"]).not_to include("secret-value")
+      expect(entry["response_size"]).to eq(big_json.bytesize)
+    end
+
+    it "masks a sensitive value that sits in the visible part of a request body" do
+      Net::HTTP.new("127.0.0.1", @port).post("/upload", big_json, "Content-Type" => "application/json")
+
+      entry = entries.first
+      expect(entry["request_body_truncated"]).to be(true)
+      expect(entry["request_body"]).to start_with(%({"token":"#{mask}","items":[{"id":1}))
+      expect(entry["request_body"]).not_to include("secret-value")
+    end
+
+    it "keeps a form body readable and masked past the limit" do
+      form = "token=form-secret&#{(1..30_000).map { |i| "k#{i}=v#{i}" }.join("&")}"
+      Net::HTTP.new("127.0.0.1", @port).post("/upload", form, "Content-Type" => "application/x-www-form-urlencoded")
+
+      entry = entries.first
+      expect(entry["request_body"]).to start_with("token=#{mask}&k1=v1")
+      expect(entry["request_body"].bytesize).to be <= 256 * 1024
+    end
+
+    it "masks an invalid JSON with the unparseable label, not the truncated one" do
+      Net::HTTP.new("127.0.0.1", @port).post("/upload", %({"token": "t", "a": #{"x" * 300_000}), "Content-Type" => "application/json")
+
+      expect(entries.first["request_body"]).to match(/\A\[FILTERED: unparseable application\/json body, \d+ bytes\]\z/)
+    end
+
+    it "says the body is truncated, not unparseable, when only its beginning is known",
+       server: { response_body: Zlib.gzip(%({"token":"first-secret-value","pad":"#{"p" * 400_000}"})), headers: { "Content-Type" => "application/json", "Content-Encoding" => "gzip" } } do
+      req = Net::HTTP::Get.new("/zip")
+      req["Accept-Encoding"] = "gzip"
+      Net::HTTP.new("127.0.0.1", @port).request(req)
+
+      body = entries.first["response_body"]
+      expect(body).to eq("[FILTERED: truncated application/json body, kept #{256 * 1024} of more than #{256 * 1024} bytes, " \
+                         "only its beginning is known, it cannot be redacted]")
+    end
+
+    it "masks a body over the redaction ceiling with a clear label instead of passing it through" do
+      stub_const("Profiler::Redaction::MAX_REDACTABLE_BODY_BYTES", 300_000)
+      Net::HTTP.new("127.0.0.1", @port).post("/upload", %({"token":"first-secret-value","pad":"#{"p" * 400_000}"}), "Content-Type" => "application/json")
+
+      body = entries.first["request_body"]
+      expect(body).to start_with("[FILTERED: truncated application/json body, kept #{256 * 1024} of 4")
+      expect(body).to end_with("bytes, too large to redact]")
+      expect(body).not_to include("first-secret-value")
+    end
+
+    it "leaves a JSON body under the limit as it was", server: { response_body: %({"token":"abc","id":7}), headers: { "Content-Type" => "application/json" } } do
+      Net::HTTP.get_response(URI("http://127.0.0.1:#{@port}/small"))
+
+      entry = entries.first
+      expect(entry["response_body"]).to eq(%({"token":"#{mask}","id":7}))
       expect(entry["response_body_truncated"]).to be(false)
     end
   end
