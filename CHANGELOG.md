@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Console:** `rails console` no longer crashes at start with `uninitialized constant Profiler::Railtie::IRB` when the application uses Pry (`pry-rails`), and expressions evaluated in Pry are now profiled like those evaluated in IRB. When both are loaded, each expression is recorded once.
+
 ## [0.45.0] - 2026-10-27
 
 <!-- stamped -->

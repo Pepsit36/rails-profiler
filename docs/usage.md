@@ -135,6 +135,9 @@ User.where(active: true).count
 Post.includes(:comments).limit(10).to_a
 ```
 
+Both IRB and Pry (for example through `pry-rails`) are supported. Under Pry, the Ruby expressions
+are profiled; Pry commands such as `ls` or `cd` are not.
+
 Results appear in the **Console** tab at `/_profiler`. Each entry shows the expression, duration, SQL query count, and whether it raised an error.
 
 Env overrides set via the profiler UI or MCP tools are applied before each console evaluation, so there is no need to restart the console to pick up changes. They follow the rules of [Environment variable overrides](#environment-variable-overrides): never in production, and not while the profiler is disabled.
