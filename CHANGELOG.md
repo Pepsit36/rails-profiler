@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Added
+
+- RSpec and Minitest are hooked automatically when `track_tests` is on and the framework is loaded: no `RSpecSupport.install` or `MinitestSupport.install` in the app. Installing by hand as well no longer doubles the profiles.
+
 ## [0.45.4] - 2026-10-27
 
 <!-- stamped -->

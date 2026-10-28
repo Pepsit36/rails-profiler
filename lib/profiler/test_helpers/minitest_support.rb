@@ -12,8 +12,15 @@ module Profiler
     #   require 'profiler/test_helpers/minitest_support'
     #   Profiler::TestHelpers::MinitestSupport.install
     module MinitestSupport
+      def self.installed?
+        !!@installed
+      end
+
       def self.install
         require "minitest"
+        return if installed?
+
+        @installed = true
 
         Minitest::Test.prepend(RunWrapper)
 

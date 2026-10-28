@@ -167,4 +167,63 @@ RSpec.describe Profiler::TestHelpers::RSpecSupport do
     expect(test_profiles("nested fails").map { |p| p.collector_data("test")["status"] }).to eq(["failed"])
     expect(test_profiles("came after").size).to eq(1)
   end
+
+  it "does not double the profiles when installed twice on the same configuration" do
+    group = nil
+    RSpec::Core::Sandbox.sandboxed do |config|
+      described_class.install(config)
+      described_class.install(config)
+      group = RSpec.describe("Sandboxed group") { it("runs once") { expect(1).to eq(1) } }
+      group.run(RSpec::Core::NullReporter)
+    end
+
+    expect(test_profiles("runs once").size).to eq(1)
+  end
+
+  describe "automatic install by the railtie" do
+    let(:initializer) do
+      Profiler::Railtie.initializers.find { |i| i.name == "profiler.setup_test_profiler" }
+    end
+
+    def boot_initializer
+      initializer.run(nil)
+    end
+
+    # Runs the initializer in a fresh RSpec world, then an example, with no
+    # manual install, and again with one when manual is true.
+    def run_after_boot(manual: false)
+      RSpec::Core::Sandbox.sandboxed do |config|
+        boot_initializer
+        described_class.install(config) if manual
+        RSpec.describe("Sandboxed group") { it("runs") { expect(1).to eq(1) } }
+          .run(RSpec::Core::NullReporter)
+      end
+    end
+
+    before do
+      require "rails"
+      require "profiler/railtie"
+      Profiler.configure { |c| c.track_tests = true }
+    end
+
+    it "profiles a real example without a manual install" do
+      run_after_boot
+
+      expect(test_profiles("runs").size).to eq(1)
+      expect(test_data("runs")["framework"]).to eq("rspec")
+    end
+
+    it "does not double the profile when the app installs it too" do
+      run_after_boot(manual: true)
+
+      expect(test_profiles("runs").size).to eq(1)
+    end
+
+    it "installs nothing when track_tests is off" do
+      Profiler.configure { |c| c.track_tests = false }
+      run_after_boot
+
+      expect(test_profiles("runs")).to be_empty
+    end
+  end
 end

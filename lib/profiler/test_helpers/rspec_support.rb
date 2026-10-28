@@ -13,8 +13,21 @@ module Profiler
     #   RSpec.configure do |config|
     #     Profiler::TestHelpers::RSpecSupport.install(config)
     #   end
+    #
+    # The railtie calls it itself when RSpec is loaded in the test
+    # environment, and a second call on the same configuration does nothing.
     module RSpecSupport
+      @installed = {}.compare_by_identity
+
+      def self.installed?(config)
+        @installed.key?(config)
+      end
+
       def self.install(config)
+        return if installed?(config)
+
+        @installed[config] = true
+
         hook = proc do |example|
           Profiler::TestProfiler.profile(
             test_name: example.full_description,

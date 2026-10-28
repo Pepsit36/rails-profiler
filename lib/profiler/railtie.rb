@@ -93,6 +93,11 @@ module Profiler
       require_relative "test_runner/discovery"
       require_relative "test_runner/run_store"
       require_relative "test_runner/runner"
+
+      if defined?(RSpec) && RSpec.respond_to?(:configure)
+        RSpec.configure { |config| Profiler::TestHelpers::RSpecSupport.install(config) }
+      end
+      Profiler::TestHelpers::MinitestSupport.install if defined?(Minitest::Test)
     end
 
     initializer "profiler.setup_job_instrumentation" do
