@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#
+# Fails while a version stamped in master's CHANGELOG.md has no git tag: a release that
+# did not complete. Merging more on top would stack unpublished versions. Decided from
+# the CHANGELOG and the tags only, no API and no token.
+#
+# Limits, by design (no API, no token): the tag is pushed before the gem, so a publication
+# that fails after the tag is not seen here, only in the red `release` job of master. And
+# right after a merge, until its `release` job has tagged, this job is red too: retry it.
+#
+# Exempt: the branches named fix/release-*, which are the ones that repair it.
+
+set -euo pipefail
+
+branch="${CI_COMMIT_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
+case "$branch" in
+  fix/release-*)
+    echo "Branch ${branch} repairs the release pipeline: the backlog check is skipped."
+    exit 0
+    ;;
+esac
+
+git fetch --quiet --tags origin "+refs/heads/master:refs/remotes/origin/master"
+
+missing="$(git show origin/master:CHANGELOG.md | ruby -e '
+  Encoding.default_external = Encoding.find("UTF-8")
+  sections = STDIN.read.scan(/^##\s*\[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^##\s|\z)/m)
+  sections.each do |version, body|
+    next unless body.include?("<!-- stamped -->")
+    next if system("git", "rev-parse", "--verify", "--quiet", "refs/tags/v#{version}",
+                   out: File::NULL, err: File::NULL)
+
+    puts version
+  end
+')"
+
+[ -z "$missing" ] && { echo "Every stamped version of master has its tag."; exit 0; }
+
+{
+  echo "ERROR: master stamps a version that has no tag (release failed, or still running): $(echo "$missing" | paste -sd, - | sed 's/,/, /g')"
+  echo
+  echo "CHANGELOG.md on master stamps it, but no git tag v<version> exists. Either the release"
+  echo "job of the merge that brought it is still running (wait for it, then retry this job),"
+  echo "or it failed or never ran, and the version is not on RubyGems."
+  echo "This branch is blocked so that nothing piles up on top of an unpublished version."
+  echo
+  echo "What to do:"
+  echo "  1. open the pipeline of the master commit that stamped it, and read the failed"
+  echo "     \`release\` job;"
+  echo "  2. fix the cause (a token, a registry, the right to push a tag) and retry that job:"
+  echo "     it tags the commit and publishes;"
+  echo "  3. retry this job."
+  echo
+  echo "A fix to the release itself goes on a branch named fix/release-<something>: that"
+  echo "prefix is exempt from this check."
+} >&2
+exit 1

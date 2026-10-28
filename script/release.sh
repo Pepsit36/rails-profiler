@@ -430,7 +430,10 @@ main() {
     return 0
   fi
 
-  pending="$(pending_versions | head -1)"
+  # Not `| head -1`: under pipefail its early exit makes ruby die of SIGPIPE, and the job
+  # stops with status 141 before saying anything.
+  pending="$(pending_versions)"
+  pending="${pending%%$'\n'*}"
   [ -z "$pending" ] || out_of_order_failure "$pending"
 
   LAST_TAG=""

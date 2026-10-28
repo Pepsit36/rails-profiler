@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.46.1] - 2026-10-28
+
+<!-- stamped -->
+
+### Fixed
+
+- A release that did not complete now blocks the branch pipelines: the `release:backlog` job fails, naming the version and what to do, while master stamps a version without a tag (`fix/release-*` branches are exempt). The release job no longer dies silently of SIGPIPE (status 141) when several versions are waiting.
+
 ## [0.46.0] - 2026-10-28
 
 <!-- stamped -->
