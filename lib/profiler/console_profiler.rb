@@ -27,8 +27,6 @@ module Profiler
 
     RECORDING_KEY = :profiler_console_recording
 
-    SOURCES = %w[console runner].freeze
-
     # source is "console" for an expression typed in IRB or Pry, "runner" for a
     # `rails runner` execution; each has its own track_* option.
     def self.profile(expression:, source: "console", &block)

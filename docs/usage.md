@@ -172,7 +172,7 @@ end
 ```
 
 `runner_skip` lists the executions left out; by default code starting with `Profiler` (the gem's
-own calls). `rails runner -w` does not use the Rails executor and is not profiled. The MCP tool
+own calls). `rails runner -w` (Rails 7.2 and later) does not use the Rails executor and is not profiled. The code is stored as typed, without redaction, and shown in the dashboard and over MCP: keep secrets out of runner command lines, especially if you force `track_runner` outside development. The MCP tool
 `query_console_profiles` and the Console tab list both origins; filter with `source: "runner"`.
 
 ## Environment variable overrides

@@ -11,10 +11,10 @@ every test you hook it into and captures SQL queries, cache operations, exceptio
 flame graph.
 
 **RSpec and Minitest need no setup**: when the framework is loaded before Rails initializes
-(`rspec-rails`, `rails test`), the railtie installs the hook itself, and an install you already
+(the `rspec` command, `rails test`), the railtie installs the hook itself, and an install you already
 have in place is not doubled.
 
-If RSpec is not loaded yet when Rails boots, the railtie cannot see it: install the hook by hand,
+If RSpec is not loaded yet when Rails boots (a preloader such as Spring, for instance), the railtie cannot see it: install the hook by hand,
 which is safe to do even when it is already installed. In `spec/spec_helper.rb` or
 `spec/rails_helper.rb`:
 

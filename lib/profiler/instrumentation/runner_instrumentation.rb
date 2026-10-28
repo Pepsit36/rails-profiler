@@ -9,14 +9,14 @@ module Profiler
     module RunnerInstrumentation
       RUNNER_SOURCE = "application.runner.railties"
 
-      def wrap(*args, source: nil, **options, &block)
-        return super unless source == RUNNER_SOURCE && block
+      def wrap(*args, **options, &block)
+        return super unless options[:source] == RUNNER_SOURCE && block
 
         expression = RunnerInstrumentation.expression_for(block)
         return super if Profiler.configuration.runner_skipped?(expression)
 
         Profiler::ConsoleProfiler.profile(expression: expression, source: "runner") do
-          super(*args, source: source, **options, &block)
+          super(*args, **options, &block)
         end
       end
 

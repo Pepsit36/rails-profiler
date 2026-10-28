@@ -107,4 +107,17 @@ RSpec.describe "Profiling rails runner" do
   it "leaves out the profiler's own runner code by default" do
     expect(run_runner("Profiler.version")[:profiles]).to be_empty
   end
+
+  it "leaves the default source of other executor.wrap calls alone" do
+    require "rails"
+    require "active_support/executor"
+    require "profiler/instrumentation/runner_instrumentation"
+    executor = Class.new(ActiveSupport::ExecutionWrapper)
+    sources = []
+    executor.define_singleton_method(:wrap) { |source: "application.active_support", &b| sources << source; b.call }
+    executor.singleton_class.prepend(Profiler::Instrumentation::RunnerInstrumentation)
+    executor.wrap { 1 }
+
+    expect(sources).to eq(["application.active_support"])
+  end
 end
