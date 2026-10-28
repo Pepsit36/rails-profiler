@@ -5,9 +5,10 @@ require_relative "base_collector"
 module Profiler
   module Collectors
     class ConsoleCollector < BaseCollector
-      def initialize(profile, expression:)
+      def initialize(profile, expression:, source: "console")
         super(profile)
         @expression = expression
+        @source = source
         @return_value = nil
         @return_value_captured = false
       end
@@ -40,7 +41,7 @@ module Profiler
       end
 
       def collect
-        data = { expression: @expression }
+        data = { expression: @expression, source: @source }
         data[:return_value] = @return_value if @return_value_captured
         store_data(data)
       end

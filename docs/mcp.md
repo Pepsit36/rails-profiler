@@ -698,15 +698,16 @@ Search and filter ActionMailer deliveries across profiles. Returns emails sent v
 
 ### `query_console_profiles`
 
-Search and filter Rails console profiling sessions (IRB / `rails console` executions).
+Search and filter Rails console profiling sessions (IRB / Pry / `rails console` expressions and `rails runner` executions).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `expression` | string | Filter by expression content (partial match, e.g. `"User.find"`) |
+| `source` | string | `"console"` or `"runner"` |
 | `status` | string | `"completed"` or `"failed"` |
 | `min_duration` | number | Minimum duration in milliseconds |
 | `limit` | number | Max results (default: 20) |
-| `fields` | array | Columns: `time`, `expression`, `return_value`, `status`, `duration`, `queries`, `token` |
+| `fields` | array | Columns: `time`, `source`, `expression`, `return_value`, `status`, `duration`, `queries`, `token` |
 | `cursor` | string | Pagination cursor |
 
 **Example prompts:**

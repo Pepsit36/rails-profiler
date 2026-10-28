@@ -54,6 +54,7 @@ The railtie sets four options only when the application has not assigned them it
 | `enabled` | `true` | `false` |
 | `storage` | `:file` | `:memory` |
 | `track_tests` | `true` in test only | `false` |
+| `track_runner` | `true` in development only | `false` |
 | `max_profiles` | `nil` (no cap) in test, `100` in development | `100` |
 
 ## All options
@@ -181,6 +182,9 @@ Profiler.configure do |config|
   # Background jobs (ActiveJob, Sidekiq), rails console expressions
   config.track_jobs = true
   config.track_console = true
+  # rails runner executions: true in development, false elsewhere (see docs/usage.md)
+  config.track_runner = Rails.env.development?
+  config.runner_skip = [/\AProfiler\b/]
 
   # Mailers
   config.track_mailers = true

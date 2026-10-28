@@ -10,7 +10,13 @@ When `config.track_tests = true` (the default in the `test` environment), the pr
 every test you hook it into and captures SQL queries, cache operations, exceptions, timing and a
 flame graph.
 
-**RSpec**: add to `spec/spec_helper.rb` or `spec/rails_helper.rb`:
+**RSpec and Minitest need no setup**: when the framework is loaded before Rails initializes
+(the `rspec` command, `rails test`), the railtie installs the hook itself, and an install you already
+have in place is not doubled.
+
+If RSpec is not loaded yet when Rails boots (a preloader such as Spring, for instance), the railtie cannot see it: install the hook by hand,
+which is safe to do even when it is already installed. In `spec/spec_helper.rb` or
+`spec/rails_helper.rb`:
 
 ```ruby
 require 'profiler/test_helpers/rspec_support'
@@ -20,7 +26,7 @@ RSpec.configure do |config|
 end
 ```
 
-**Minitest**: add to `test/test_helper.rb`:
+**Minitest**, by hand, in `test/test_helper.rb`:
 
 ```ruby
 require 'profiler/test_helpers/minitest_support'

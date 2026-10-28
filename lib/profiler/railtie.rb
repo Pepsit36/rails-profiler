@@ -15,6 +15,7 @@ module Profiler
         config.default(:enabled, development_or_test)
         config.default(:storage, development_or_test ? :file : :memory)
         config.default(:track_tests, Rails.env.test?)
+        config.default(:track_runner, Rails.env.development?)
         # One test profile per example: no cap on the count in the test environment, so that the
         # report at the end of a suite sees all of them.
         config.default(:max_profiles, Rails.env.test? ? nil : 100)
@@ -93,6 +94,11 @@ module Profiler
       require_relative "test_runner/discovery"
       require_relative "test_runner/run_store"
       require_relative "test_runner/runner"
+
+      if defined?(RSpec) && RSpec.respond_to?(:configure)
+        RSpec.configure { |config| Profiler::TestHelpers::RSpecSupport.install(config) }
+      end
+      Profiler::TestHelpers::MinitestSupport.install if defined?(Minitest::Test)
     end
 
     initializer "profiler.setup_job_instrumentation" do
@@ -180,6 +186,16 @@ module Profiler
         require_relative "instrumentation/pry_instrumentation"
         Pry.prepend(Profiler::Instrumentation::PryInstrumentation)
       end
+    end
+
+    runner do
+      next unless Profiler.configuration.enabled && Profiler.configuration.track_runner
+
+      require_relative "console_profiler"
+      require_relative "instrumentation/runner_instrumentation"
+      executor = Rails.application.executor
+      executor.singleton_class.prepend(Profiler::Instrumentation::RunnerInstrumentation) unless
+        executor.singleton_class.include?(Profiler::Instrumentation::RunnerInstrumentation)
     end
 
     rake_tasks do

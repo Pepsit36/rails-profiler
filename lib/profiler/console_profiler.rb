@@ -27,8 +27,10 @@ module Profiler
 
     RECORDING_KEY = :profiler_console_recording
 
-    def self.profile(expression:, &block)
-      return block.call unless Profiler.enabled? && Profiler.configuration.track_console
+    # source is "console" for an expression typed in IRB or Pry, "runner" for a
+    # `rails runner` execution; each has its own track_* option.
+    def self.profile(expression:, source: "console", &block)
+      return block.call unless Profiler.enabled? && tracked?(source)
 
       # IRB and Pry can both be loaded and both evaluate the same expression: only the
       # outermost one records it.
@@ -36,14 +38,19 @@ module Profiler
 
       begin
         Thread.current[RECORDING_KEY] = true
-        new(expression: expression).run(&block)
+        new(expression: expression, source: source).run(&block)
       ensure
         Thread.current[RECORDING_KEY] = nil
       end
     end
 
-    def initialize(expression:)
+    def self.tracked?(source)
+      source == "runner" ? Profiler.configuration.track_runner : Profiler.configuration.track_console
+    end
+
+    def initialize(expression:, source: "console")
       @expression = expression
+      @source = source
     end
 
     def run(&block)
@@ -51,9 +58,9 @@ module Profiler
       profile.profile_type = "console"
       profile.gem_version = Profiler.version
       profile.path = Redaction.truncate(@expression, 200)
-      profile.method = "CONSOLE"
+      profile.method = @source == "runner" ? "RUNNER" : "CONSOLE"
 
-      console_collector = Collectors::ConsoleCollector.new(profile, expression: @expression)
+      console_collector = Collectors::ConsoleCollector.new(profile, expression: @expression, source: @source)
       collectors = [console_collector] + CONSOLE_COLLECTOR_CLASSES.map { |klass| klass.new(profile) }
       return block.call unless Collectors::Lifecycle.subscribe_all(collectors, "ConsoleProfiler")
 
@@ -71,8 +78,11 @@ module Profiler
         console_collector.set_return_value(result)
         result
       rescue Exception => e # rubocop:disable Lint/RescueException
-        console_status = "failed"
-        exception_collector&.capture(e)
+        # `exit` or `exit 0` in a runner script is a normal end, not a failure.
+        unless e.is_a?(SystemExit) && e.success?
+          console_status = "failed"
+          exception_collector&.capture(e)
+        end
         raise
       ensure
         Profiler::CurrentContext.token = previous_token

@@ -366,10 +366,11 @@ module Profiler
             input_schema: {
               properties: {
                 expression: { type: "string", description: "Filter by expression content (partial match, e.g. 'User.find')" },
+                source: { type: "string", description: "Filter by origin: 'console' (rails console) or 'runner' (rails runner)" },
                 status: { type: "string", description: "Filter by status: 'completed' or 'failed'" },
                 min_duration: { type: "number", description: "Minimum duration in milliseconds" },
                 limit: { type: "number", description: "Maximum number of results (default 20)" },
-                fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, expression, return_value, status, duration, queries, token. Omit for all." },
+                fields: { type: "array", items: { type: "string" }, description: "Columns to include. Valid values: time, source, expression, return_value, status, duration, queries, token. Omit for all." },
                 cursor: { type: "string", description: "Pagination cursor: ISO8601 timestamp of the last item seen. Returns profiles older than this." },
                 slave: slave_param
               }

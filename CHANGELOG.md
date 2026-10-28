@@ -19,6 +19,15 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-10-28
+
+<!-- stamped -->
+
+### Added
+
+- RSpec and Minitest are hooked automatically when `track_tests` is on and the framework is loaded: no `RSpecSupport.install` or `MinitestSupport.install` in the app. Installing by hand as well no longer doubles the profiles.
+- `rails runner` executions are profiled, as console profiles with `source: "runner"`: expression (code or script path), return value, failure with its exception, saved before the process exits. `track_runner` is on in development, `runner_skip` lists what to leave out. `query_console_profiles` gains a `source` filter and column. A successful `exit` in a console or runner is no longer recorded as a failure.
+
 ## [0.45.4] - 2026-10-27
 
 <!-- stamped -->
