@@ -108,6 +108,19 @@ changelog:check:
     # publication.
     - ruby bin/changelog coverage
 
+# Fails every branch pipeline while master carries a stamped version without its tag, that
+# is a release that did not complete. fix/release-* branches are exempt: they repair it.
+release:backlog:
+  stage: test
+  image: ruby:3.3
+  needs: []
+  variables:
+    GIT_DEPTH: "0"
+  rules:
+    - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "merge_request_event"'
+  script:
+    - bash script/check-release-backlog
+
 # Reports known advisories on the JavaScript build dependencies (orval, esbuild, sass,
 # typescript and what they pull in). Informational on purpose: a job failure shows as a
 # warning and the pipeline goes on. Made blocking, a new advisory on a build-only
