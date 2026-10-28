@@ -150,6 +150,31 @@ Profiler.configure do |config|
 end
 ```
 
+### rails runner
+
+`rails runner` executions are profiled too, as console profiles whose `source` is `runner`. The
+expression is the code string or the script path; the return value, the SQL, cache, HTTP, log and
+exception data are recorded as for the console, and a runner that raises gives a failed profile
+before the process exits with the error. The profile is saved before the process exits.
+
+```
+bin/rails runner "User.count"
+bin/rails runner scripts/backfill.rb
+```
+
+`track_runner` is `true` in development and `false` elsewhere. Force it either way:
+
+```ruby
+Profiler.configure do |config|
+  config.track_runner = true      # also in test, staging...
+  config.runner_skip = [/\AProfiler\b/, "scripts/noisy.rb"]   # Regexps, or Strings compared whole
+end
+```
+
+`runner_skip` lists the executions left out; by default code starting with `Profiler` (the gem's
+own calls). `rails runner -w` does not use the Rails executor and is not profiled. The MCP tool
+`query_console_profiles` and the Console tab list both origins; filter with `source: "runner"`.
+
 ## Environment variable overrides
 
 Values set, deleted or reset from the **Env** tab or the MCP env tools are saved in

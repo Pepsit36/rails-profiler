@@ -6,7 +6,7 @@ module Profiler
   module MCP
     module Tools
       class QueryConsoleProfiles
-        ALL_FIELDS = %w[time expression return_value status duration queries token].freeze
+        ALL_FIELDS = %w[time source expression return_value status duration queries token].freeze
 
         def self.call(params)
           limit = [[params["limit"]&.to_i || 20, 1].max, 500].min
@@ -21,6 +21,12 @@ module Profiler
             consoles = consoles.select do |p|
               console_data = p.collector_data("console")
               console_data && console_data["expression"].to_s.downcase.include?(term)
+            end
+          end
+
+          if params["source"]
+            consoles = consoles.select do |p|
+              (p.collector_data("console") || {}).fetch("source", "console") == params["source"]
             end
           end
 
@@ -78,6 +84,7 @@ module Profiler
             row = fields.map do |f|
               case f
               when "time"         then profile.started_at&.strftime("%H:%M:%S") || "-"
+              when "source"       then console_data.fetch("source", "console")
               when "expression"   then console_data["expression"].to_s.then { |e| e.length > 60 ? "#{e[0, 57]}..." : e }
               when "return_value" then console_data["return_value"].to_s.then { |v| v.length > 80 ? "#{v[0, 77]}..." : v }
               when "status"       then profile.status == 200 ? "completed" : "failed"
