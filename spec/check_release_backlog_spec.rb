@@ -67,7 +67,7 @@ RSpec.describe "script/check-release-backlog" do
   it "fails, naming the version, when the top stamped version has no tag" do
     status, err = check(tags: %w[v1.1.0])
     expect(status).not_to be_success
-    expect(err).to include("1.2.0").and include("never published").and include("fix/release-")
+    expect(err).to include("1.2.0").and include("no tag").and include("fix/release-")
   end
 
   it "names every untagged version" do
