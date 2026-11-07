@@ -61,7 +61,8 @@ module Profiler
             Profiler::Collectors::RoutesCollector,
             Profiler::Collectors::I18nCollector,
             Profiler::Collectors::EnvCollector,
-            Profiler::Collectors::MailerCollector
+            Profiler::Collectors::MailerCollector,
+            Profiler::Collectors::EnqueuedJobsCollector
           ]
         end
       end

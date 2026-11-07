@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+### Added
+
+- The jobs a request or a job puts on a queue are recorded when they are enqueued (`EnqueuedJobsCollector`, `enqueued_jobs` in the profile data) and listed by the toolbar route as `enqueued_jobs` until they start and get a profile of their own, matched by job id. In a custom `config.collectors` list, add `Profiler::Collectors::EnqueuedJobsCollector` to get them.
+
+### Changed
+
+- A job's save is now announced to every profile above it, up to five levels, not only to the one that enqueued it, so the request at the top sees the end of a job of a job.
+
 ## [0.46.1] - 2026-10-28
 
 <!-- stamped -->

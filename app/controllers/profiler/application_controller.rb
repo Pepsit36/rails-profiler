@@ -124,6 +124,22 @@ module Profiler
       end
     end
 
+    # The jobs this profile put on a queue that have no profile yet, because none has started:
+    # from the enqueued-jobs collector. One that started is in build_child_jobs instead.
+    def build_enqueued_jobs(profile)
+      started = child_profiles(profile).filter_map { |p| (p.collector_data("job") || {})["job_id"] }
+      jobs = (profile.collector_data("enqueued_jobs") || {})["jobs"]
+      Array(jobs).reject { |entry| started.include?(entry["job_id"]) }.map do |entry|
+        {
+          job_class: entry["job_class"],
+          job_id: entry["job_id"],
+          queue: entry["queue"],
+          enqueued_at: entry["enqueued_at"],
+          scheduled_at: entry["scheduled_at"]
+        }
+      end
+    end
+
     def build_parent_summary(profile)
       return nil unless profile.parent_token
 
