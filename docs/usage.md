@@ -106,6 +106,34 @@ jobs lists them in its **Jobs** tab. The instrumentation is installed at boot, o
 profiler is enabled: Sidekiq server and client middlewares when `Sidekiq` is loaded, and an
 ActiveJob hook when `ActiveJob::Base` is.
 
+A job only gets a profile once it starts. The jobs a request or a job puts on a queue with ActiveJob
+(`perform_later`, `set(wait:)`, `perform_all_later`) are also noted on the profile that enqueued
+them (class, queue, id, schedule) by the `EnqueuedJobsCollector`, so the toolbar route lists them
+as `enqueued_jobs` until they start, and a job of a job, up to five levels, is announced to the
+request at the top. With a custom `config.collectors` list, add
+`Profiler::Collectors::EnqueuedJobsCollector` to keep them.
+
+### Live events for the browser extension
+
+The browser extension's in-page bar follows the requests of a page, and the jobs they started,
+as they change: `GET /_profiler/api/stream` is a server-sent events stream that says which of the
+profiles a client follows changed (a job starting or ending, a call recorded after the response,
+a job of a job), including a job saved by another process such as a Sidekiq worker. It needs no
+configuration in development:
+
+```ruby
+Profiler.configure do |config|
+  config.live_events = true            # true in development, false elsewhere
+  config.live_events_max_streams = 2   # open streams per process
+end
+```
+
+Each open stream holds a server thread for up to 5 minutes, which is why it is off outside
+development and capped. Over the cap, with a Puma that has too few threads to keep two for the application, or with
+`live_events` off, the route answers `503` with `Retry-After`, and the extension asks
+`GET /_profiler/api/events/:token` every few seconds instead. A gem older than 0.47 has no stream
+(`404`): the extension falls back the same way.
+
 ## Mailers
 
 With `config.track_mailers = true` (the default), every mail an ActionMailer delivers during a
