@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-11-07
+
+<!-- stamped -->
+
 ### Added
 
 - The jobs a request or a job puts on a queue are recorded when they are enqueued (`EnqueuedJobsCollector`, `enqueued_jobs` in the profile data) and listed by the toolbar route as `enqueued_jobs` until they start and get a profile of their own, matched by job id. In a custom `config.collectors` list, add `Profiler::Collectors::EnqueuedJobsCollector` to get them.
