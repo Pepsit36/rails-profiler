@@ -27,7 +27,7 @@ module Profiler
 
         begin
           response.headers["Content-Type"] = "text/event-stream"
-          response.headers["Cache-Control"] = "no-cache"
+          response.headers["Cache-Control"] = "no-cache, no-store"
           response.headers["X-Accel-Buffering"] = "no"
           # Rack::ETag reads a body that answers to_ary whole to digest it, unless the response already
           # carries an ETag or a Last-Modified: on Rails 7 that would hold the stream back until it
