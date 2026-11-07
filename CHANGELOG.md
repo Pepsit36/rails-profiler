@@ -19,6 +19,10 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.47.1] - 2026-11-07
+
+<!-- stamped -->
+
 ### Fixed
 
 - The live event stream (`GET /_profiler/api/stream`) reached the client only when it ended, 5 minutes later, on Rails 7: `Rack::ETag` read the whole body to digest it. The response now carries a `Last-Modified`, which tells it to leave the stream alone, so the events arrive as they happen on every Rails version.
