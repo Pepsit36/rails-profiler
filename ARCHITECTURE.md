@@ -111,8 +111,21 @@ Every backend keeps at most `max_profiles` profiles. User-facing details:
 **Save notifications** (`lib/profiler/sse/`): `EventBus` keeps, per process, a version number of
 each profile's last save; `RedisEventBus` keeps it in Redis when the store is `RedisStore`, so that
 every process sees the same versions. `GET /_profiler/api/events/:token` answers at once whether
-the version moved; the toolbar polls it. Despite the directory name there is no Server-Sent Events
-stream for profiles; the only `text/event-stream` route is the test runner's output.
+the version moved; the gem's own toolbar polls it.
+
+**Live event stream** (`lib/profiler/live/`, `Api::StreamController`): `GET /_profiler/api/stream`
+is a `text/event-stream` that tells a client which of the profiles it follows (`tokens=`, at most
+20) changed, as it happens. A change is a different `Live::Signature`: the profile's status and
+end, its job status, its outbound call count and enqueued jobs, and the same for everything under
+it (AJAX calls, jobs, jobs of jobs, up to 5 levels), read from the storage, so a job saved by
+another process (a Sidekiq worker) is seen. The storage is only read when its `live_marker` moved
+(the file store's index, SQLite's `data_version`, the event bus generation for the others). A
+client passes `since=token:cursor` per profile and is told at once about any that moved, so a
+reconnection misses nothing. The stream holds a server thread for up to 5 minutes, so it is off
+outside development (`live_events`), capped (`live_events_max_streams`, 2), refused with 503 and
+`Retry-After` over the cap, when `live_events` is off, or when Puma has too few threads to spare
+one; a client falls back to `events/:token`. This replaces the earlier rule that no request ever
+waits for a save.
 
 ### 4. Rails Integration
 
@@ -532,7 +545,8 @@ Not built as of 0.32.1:
    - A query plan view richer than the raw EXPLAIN output
 
 3. **Real-time Updates**
-   - Push instead of polling for the toolbar and the lists (the toolbar polls `events/:token`)
+   - Push for the toolbar and the lists (the live stream serves the browser extension; the gem's
+     own toolbar still polls `events/:token`)
 
 4. **Enhanced MCP**
    - More analysis tools

@@ -58,5 +58,14 @@ RSpec.describe Profiler::SSE::EventBus do
       expect(bus.version("b")).to eq(0)
       expect([bus.version("a"), bus.version("c"), bus.version("d")]).to all(be > 0)
     end
+
+    it "counts the saves of every token in a generation, for the live stream to look at" do
+      expect(bus.generation).to eq(0)
+      bus.broadcast("a")
+      bus.broadcast("b")
+      bus.broadcast("a")
+
+      expect(bus.generation).to eq(3)
+    end
   end
 end

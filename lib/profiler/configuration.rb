@@ -30,7 +30,7 @@ module Profiler
 
     # Options whose default depends on the Rails environment: the railtie sets them only when
     # the application has not assigned them itself (see #default).
-    RAILS_DEFAULTED = %i[enabled storage track_tests track_runner max_profiles].freeze
+    RAILS_DEFAULTED = %i[enabled storage track_tests track_runner live_events max_profiles].freeze
 
     BACKEND_LOCK = Mutex.new
 
@@ -54,7 +54,7 @@ module Profiler
                   :track_http, :slow_http_threshold, :http_backtrace_depth,
                   :otel_enabled, :otel_service_name, :otel_otlp_endpoint,
                   :track_jobs,
-                  :track_console, :runner_skip,
+                  :track_console, :runner_skip, :live_events_max_streams,
                   :apply_env_overrides_when_disabled, :restrict_storage_permissions,
                   :test_runner_allow_undiscovered_files, :allow_explain_outside_development,
                   :test_runner_kill_grace_seconds,
@@ -72,7 +72,7 @@ module Profiler
                   :regression_query_threshold, :regression_cache_threshold,
                   :replay_enabled, :replay_max_count, :replay_timeout
 
-    attr_reader :authorize_block, :enabled, :track_tests, :track_runner, :max_profiles, :editor_url_scheme, :editor_path_map
+    attr_reader :authorize_block, :enabled, :track_tests, :track_runner, :live_events, :max_profiles, :editor_url_scheme, :editor_path_map
 
     def initialize
       @assigned = []
@@ -130,6 +130,10 @@ module Profiler
       @track_jobs = true
       @track_console = true
       @track_runner = false
+      # GET /_profiler/api/stream: pushes the changes of the profiles a client follows, instead of
+      # the client asking again and again. Each open stream holds a server thread, hence the cap.
+      @live_events = false
+      @live_events_max_streams = 2
       # Runner executions left out: Regexps matched against the code or script path, Strings
       # compared to it whole.
       @runner_skip = [/\AProfiler\b/]
@@ -332,6 +336,11 @@ module Profiler
     def enabled=(value)
       @assigned |= [:enabled]
       @enabled = value
+    end
+
+    def live_events=(value)
+      @assigned |= [:live_events]
+      @live_events = value
     end
 
     def track_runner=(value)

@@ -42,13 +42,27 @@ RSpec.describe Profiler::SSE::RedisEventBus do
     expect(bus.broadcast("tok")).to eq(2)
 
     expect(bus.version("tok")).to eq(2)
-    expect(redis.values).to eq("profiler:events:tok" => 2)
+    expect(redis.values).to eq("profiler:events:tok" => 2, "profiler:events:generation" => 2)
+  end
+
+  it "counts every save of any token in a generation, for the live stream to look at" do
+    expect(bus.generation).to eq(0)
+    bus.broadcast("one")
+    bus.broadcast("two")
+
+    expect(bus.generation).to eq(2)
+  end
+
+  it "reads the generation of a Redis that fails as 0" do
+    allow(redis).to receive(:get).and_raise(Redis::CannotConnectError)
+
+    expect(bus.generation).to eq(0)
   end
 
   it "keeps the count as long as a profile is kept" do
     bus.broadcast("tok")
 
-    expect(redis.ttls).to eq("profiler:events:tok" => 24 * 60 * 60)
+    expect(redis.ttls).to include("profiler:events:tok" => 24 * 60 * 60)
   end
 
   it "is 0 for a token never saved" do

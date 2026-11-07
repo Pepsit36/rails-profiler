@@ -14,16 +14,25 @@ module Profiler
       include Singleton
 
       KEY_PREFIX = "profiler:events"
+      GENERATION_KEY = "profiler:events:generation"
       # As long as RedisStore keeps a profile by default: past that, nobody looks at its page.
       TTL = 24 * 60 * 60
 
       def broadcast(token)
         key = key(token)
-        version, _expire = redis.multi do |transaction|
+        version, _expire, _generation = redis.multi do |transaction|
           transaction.incr(key)
           transaction.expire(key, TTL)
+          transaction.incr(GENERATION_KEY)
         end
         version
+      end
+
+      # Moves on every save of any process: see EventBus#generation.
+      def generation
+        redis.get(GENERATION_KEY).to_i
+      rescue StandardError
+        0
       end
 
       # The version of the last save of +token+, 0 when none is known or Redis cannot be read.

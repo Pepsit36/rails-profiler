@@ -22,7 +22,8 @@ module Profiler
         # The bodies as stored (gzip+base64 past compress_body_threshold): the toolbar shows none.
         render json: {
           profile: profile.to_h.merge(child_jobs: build_child_jobs(profile), enqueued_jobs: build_enqueued_jobs(profile)),
-          events_cursor: events_cursor
+          events_cursor: events_cursor,
+          live_cursor: Profiler.configuration.live_events ? Profiler::Live::Signature.of(Profiler.storage, params[:token]) : nil
         }
       end
     end

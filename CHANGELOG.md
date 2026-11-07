@@ -22,6 +22,7 @@ every commit of every tag interval is accounted for one way or the other.
 ### Added
 
 - The jobs a request or a job puts on a queue are recorded when they are enqueued (`EnqueuedJobsCollector`, `enqueued_jobs` in the profile data) and listed by the toolbar route as `enqueued_jobs` until they start and get a profile of their own, matched by job id. In a custom `config.collectors` list, add `Profiler::Collectors::EnqueuedJobsCollector` to get them.
+- `GET /_profiler/api/stream`: a server-sent events stream that announces, as it happens, a change to any of the profiles a client follows or to what is under them (AJAX calls, jobs, jobs of jobs), including a job saved by another process. `config.live_events` (true in development only) turns it on and `config.live_events_max_streams` (2) caps the threads it holds; over the cap, with too few Puma threads, or when off, it answers 503 with `Retry-After`. The toolbar route returns a `live_cursor` for the client to pass back.
 
 ### Changed
 

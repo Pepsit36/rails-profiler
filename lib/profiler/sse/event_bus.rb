@@ -21,12 +21,20 @@ module Profiler
 
       def initialize
         @versions = {}
+        @generation = 0
         @mutex = Mutex.new
+      end
+
+      # Moves on every save this process announces, whatever the profile: a cheap way for a live
+      # stream to know that something was saved, before it looks at what.
+      def generation
+        @mutex.synchronize { @generation }
       end
 
       def broadcast(token)
         now = Process.clock_gettime(Process::CLOCK_REALTIME, :microsecond)
         @mutex.synchronize do
+          @generation += 1
           # Strictly increasing within the process, even for two saves in one microsecond.
           version = [now, @versions.delete(token).to_i + 1].max
           @versions[token] = version

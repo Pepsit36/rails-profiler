@@ -18,6 +18,14 @@ module Profiler
         result
       end
 
+      # Something that changes whenever a profile is saved, by any process sharing the storage, and
+      # that is cheap to read: the live event stream only looks at the profiles once it moved.
+      # The announced saves of the event bus count for the stores that are not shared through a
+      # file; a store that is overrides this.
+      def live_marker
+        Profiler::SSE.current.generation
+      end
+
       def do_save(token, profile)
         raise NotImplementedError, "#{self.class} must implement #do_save"
       end
@@ -85,14 +93,6 @@ module Profiler
         profile.profile_type == "job" && Token.valid?(profile.parent_token)
       end
 
-      def broadcast_event(token)
-        Profiler::SSE.current.broadcast(token)
-      rescue StandardError => e
-        # Never let a broadcast failure prevent profile persistence
-        Profiler.log_error_once(:store_broadcast, "#{self.class.name.split("::").last}: could not announce a saved profile", e)
-      end
-    end
-  end
       # A job's save is recorded for the profile that enqueued it and, going up, for each job that
       # enqueued that one: the toolbar of the request lists the whole chain.
       MAX_ANCESTORS = 5
@@ -110,4 +110,12 @@ module Profiler
         Profiler.log_error_once(:store_broadcast_ancestors, "#{self.class.name.split("::").last}: could not announce a saved job to the profiles above it", e)
       end
 
+      def broadcast_event(token)
+        Profiler::SSE.current.broadcast(token)
+      rescue StandardError => e
+        # Never let a broadcast failure prevent profile persistence
+        Profiler.log_error_once(:store_broadcast, "#{self.class.name.split("::").last}: could not announce a saved profile", e)
+      end
+    end
+  end
 end
