@@ -304,6 +304,8 @@ require_relative "profiler/collectors/routes_collector"
 require_relative "profiler/collectors/i18n_collector"
 require_relative "profiler/collectors/env_collector"
 require_relative "profiler/collectors/mailer_collector"
+require_relative "profiler/collectors/enqueued_jobs_collector"
+require_relative "profiler/live/event_stream"
 
 require_relative "profiler/storage/token"
 require_relative "profiler/storage/private_files"

@@ -55,6 +55,7 @@ The railtie sets four options only when the application has not assigned them it
 | `storage` | `:file` | `:memory` |
 | `track_tests` | `true` in test only | `false` |
 | `track_runner` | `true` in development only | `false` |
+| `live_events` | `true` in development only | `false` |
 | `max_profiles` | `nil` (no cap) in test, `100` in development | `100` |
 
 ## All options
@@ -185,6 +186,10 @@ Profiler.configure do |config|
   # rails runner executions: true in development, false elsewhere (see docs/usage.md)
   config.track_runner = Rails.env.development?
   config.runner_skip = [/\AProfiler\b/]
+  # Server-sent events for the browser extension: true in development, false elsewhere. Each
+  # open stream holds a server thread, so they are capped.
+  config.live_events = Rails.env.development?
+  config.live_events_max_streams = 2
 
   # Mailers
   config.track_mailers = true

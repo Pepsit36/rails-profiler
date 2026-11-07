@@ -11,6 +11,8 @@ module Profiler
         # is refused, so the request stays under the slave's API.
         segments = params[:path].to_s.split("/", -1).map { |segment| Cluster::Security.escape_segment(segment) }
         full_path = "/_profiler/api/#{segments.join("/")}"
+        # A stream never ends before its lifetime: the proxy reads one JSON answer.
+        return head :not_found if segments.first == "stream"
 
         result = case request.method
                  when "GET"

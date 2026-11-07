@@ -155,6 +155,13 @@ module Profiler
         rows.filter_map { |row| row_to_summary(row) }
       end
 
+      # data_version moves when another connection, of another process, commits.
+      def live_marker
+        [@db.get_first_value("PRAGMA data_version"), super]
+      rescue StandardError
+        super
+      end
+
       def find_by_parent(parent_token)
         return [] unless Token.valid?(parent_token)
 

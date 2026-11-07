@@ -128,6 +128,14 @@ module Profiler
         end
       end
 
+      # The index is appended to by every process that saves a profile.
+      def live_marker
+        stat = File.stat(@index_path)
+        [stat.mtime.to_i, stat.mtime.nsec, stat.size, super]
+      rescue SystemCallError
+        super
+      end
+
       def find_by_parent(parent_token)
         return [] unless Token.valid?(parent_token)
 

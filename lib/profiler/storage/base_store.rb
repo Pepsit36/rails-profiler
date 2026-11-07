@@ -14,8 +14,16 @@ module Profiler
         Token.validate!(token)
         result = do_save(token, profile)
         broadcast_event(token)
-        broadcast_event(profile.parent_token) if job_with_parent?(profile)
+        broadcast_ancestors(profile)
         result
+      end
+
+      # Something that changes whenever a profile is saved, by any process sharing the storage, and
+      # that is cheap to read: the live event stream only looks at the profiles once it moved.
+      # The announced saves of the event bus count for the stores that are not shared through a
+      # file; a store that is overrides this.
+      def live_marker
+        Profiler::SSE.current.generation
       end
 
       def do_save(token, profile)
@@ -83,6 +91,23 @@ module Profiler
       # Not for an AJAX request linked to its page: the toolbar reads those on its own links.
       def job_with_parent?(profile)
         profile.profile_type == "job" && Token.valid?(profile.parent_token)
+      end
+
+      # A job's save is recorded for the profile that enqueued it and, going up, for each job that
+      # enqueued that one: the toolbar of the request lists the whole chain.
+      MAX_ANCESTORS = 5
+
+      def broadcast_ancestors(profile)
+        current = profile
+        MAX_ANCESTORS.times do
+          break unless job_with_parent?(current)
+
+          broadcast_event(current.parent_token)
+          current = load(current.parent_token)
+          break if current.nil?
+        end
+      rescue StandardError => e
+        Profiler.log_error_once(:store_broadcast_ancestors, "#{self.class.name.split("::").last}: could not announce a saved job to the profiles above it", e)
       end
 
       def broadcast_event(token)

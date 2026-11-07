@@ -16,6 +16,7 @@ module Profiler
         config.default(:storage, development_or_test ? :file : :memory)
         config.default(:track_tests, Rails.env.test?)
         config.default(:track_runner, Rails.env.development?)
+        config.default(:live_events, Rails.env.development?)
         # One test profile per example: no cap on the count in the test environment, so that the
         # report at the end of a suite sees all of them.
         config.default(:max_profiles, Rails.env.test? ? nil : 100)
@@ -61,7 +62,8 @@ module Profiler
             Profiler::Collectors::RoutesCollector,
             Profiler::Collectors::I18nCollector,
             Profiler::Collectors::EnvCollector,
-            Profiler::Collectors::MailerCollector
+            Profiler::Collectors::MailerCollector,
+            Profiler::Collectors::EnqueuedJobsCollector
           ]
         end
       end
