@@ -38,7 +38,7 @@ RSpec.describe "GET /_profiler/api/stream", type: :request do
 
     expect(last_response.status).to eq(200)
     expect(last_response.headers["Content-Type"]).to start_with("text/event-stream")
-    expect(last_response.headers["Cache-Control"]).to include("no-cache")
+    expect(last_response.headers["Cache-Control"]).to include("no-store")
     expect(last_response.body).to include("event: update").and include(profile.token).and include("event: end")
     expect(Profiler::Live::Streams.open_count).to eq(0)
   end
