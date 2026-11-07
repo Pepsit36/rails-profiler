@@ -10,11 +10,13 @@ module Profiler
     module Signature
       MAX_DEPTH = 5
       MAX_PROFILES = 100
+      MAX_CHILDREN = 50
       GONE = "gone"
 
       def self.of(storage, token)
         seen = {}
-        walk(storage, token, 0, seen)
+        root = storage.load(token)
+        walk(storage, root, 0, seen) if root
         return GONE if seen.empty?
 
         Digest::SHA1.hexdigest(seen.sort.inspect)[0, 16]
@@ -23,13 +25,12 @@ module Profiler
         GONE
       end
 
-      def self.walk(storage, token, depth, seen)
+      # The children come loaded from find_by_parent: they are used as they are, not read again.
+      def self.walk(storage, profile, depth, seen)
+        token = profile.token
         return if seen.key?(token) || seen.size >= MAX_PROFILES
 
-        profile = storage.load(token)
-        return if profile.nil?
-
-        children = depth < MAX_DEPTH ? storage.find_by_parent(token) : []
+        children = depth < MAX_DEPTH ? storage.find_by_parent(token).last(MAX_CHILDREN) : []
         seen[token] = [
           profile.status,
           profile.finished_at&.to_f,
@@ -38,7 +39,7 @@ module Profiler
           Array((profile.collector_data("enqueued_jobs") || {})["jobs"]).size,
           children.map(&:token).sort
         ]
-        children.each { |child| walk(storage, child.token, depth + 1, seen) }
+        children.each { |child| walk(storage, child, depth + 1, seen) }
       end
       private_class_method :walk
     end

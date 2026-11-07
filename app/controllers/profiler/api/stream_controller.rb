@@ -13,23 +13,27 @@ module Profiler
 
       def show
         return unavailable("live events are off") unless Profiler.configuration.live_events
+        # A HEAD gets the headers only: the server drops its body without iterating or closing it.
+        return head(:ok, content_type: "text/event-stream") if request.head?
+        return unavailable("the profiler storage is unavailable") if Profiler.storage.is_a?(Profiler::Storage::Unavailable)
 
         tokens = params[:tokens].to_s.split(",").uniq.select { |t| Profiler::Storage::Token.valid?(t) }.first(MAX_TOKENS)
         return render(json: { error: "tokens is required" }, status: :bad_request) if tokens.empty?
 
         limit = stream_limit
         return unavailable("this server has too few threads for a live stream") if limit < 1
-        return unavailable("too many open streams") unless Profiler::Live::Streams.acquire(limit)
+        lease = Profiler::Live::Streams.acquire(limit)
+        return unavailable("too many open streams") unless lease
 
         begin
           response.headers["Content-Type"] = "text/event-stream"
           response.headers["Cache-Control"] = "no-cache"
           response.headers["X-Accel-Buffering"] = "no"
           self.response_body = Profiler::Live::EventStream.new(
-            storage: Profiler.storage, tokens: tokens, cursors: cursors
+            storage: Profiler.storage, tokens: tokens, lease: lease, cursors: cursors
           )
         rescue StandardError
-          Profiler::Live::Streams.release
+          Profiler::Live::Streams.release(lease)
           raise
         end
       end

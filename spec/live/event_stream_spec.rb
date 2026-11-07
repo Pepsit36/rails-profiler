@@ -27,7 +27,8 @@ RSpec.describe Profiler::Live::EventStream do
   end
 
   def stream(tokens, cursors: {}, lifetime: 0.3)
-    described_class.new(storage: storage, tokens: tokens, cursors: cursors, lifetime: lifetime, tick: 0.02)
+    lease = Profiler::Live::Streams.acquire(5)
+    described_class.new(storage: storage, tokens: tokens, lease: lease, cursors: cursors, lifetime: lifetime, tick: 0.02)
   end
 
   def frames(body, max: 20)
@@ -90,7 +91,6 @@ RSpec.describe Profiler::Live::EventStream do
   end
 
   it "gives its slot back when it ends, and once only when closed as well" do
-    Profiler::Live::Streams.acquire(2)
     body = stream([page.token])
     frames(body)
     body.close
@@ -99,7 +99,6 @@ RSpec.describe Profiler::Live::EventStream do
   end
 
   it "gives its slot back when the client goes away" do
-    Profiler::Live::Streams.acquire(2)
     body = stream([page.token])
     writer = proc { raise Errno::EPIPE }
     expect { body.each(&writer) }.not_to raise_error
@@ -114,8 +113,8 @@ RSpec.describe Profiler::Live::EventStream do
       parent = Profiler::Models::Profile.new.tap { |p| p.finish(200) }
       mine.save(parent.token, parent)
       cursor = Profiler::Live::Signature.of(mine, parent.token)
-      body = described_class.new(storage: mine, tokens: [parent.token], cursors: { parent.token => cursor },
-                                 lifetime: 2, tick: 0.02)
+      body = described_class.new(storage: mine, tokens: [parent.token], lease: Profiler::Live::Streams.acquire(5),
+                                 cursors: { parent.token => cursor }, lifetime: 2, tick: 0.02)
       worker = Thread.new do
         sleep 0.2
         job = Profiler::Models::Profile.new
@@ -133,6 +132,47 @@ RSpec.describe Profiler::Live::EventStream do
       worker.join
 
       expect(updates(seen).map { |u| u["token"] }).to eq([parent.token])
+    end
+  end
+
+  it "hands back an enumerator when asked for one without a block, as Rails 7 and Puma do" do
+    body = stream([page.token])
+    enumerator = body.each
+
+    expect(enumerator).to be_a(Enumerator)
+    expect(enumerator.first).to start_with("retry:")
+    body.close
+  end
+
+  it "does not log the connection a server says is closed" do
+    gone = Class.new(StandardError)
+    stub_const("Puma::ConnectionError", gone)
+    allow(Profiler).to receive(:log_error_once)
+    body = stream([page.token])
+    writer = proc { raise Puma::ConnectionError }
+    body.each(&writer)
+
+    expect(Profiler).not_to have_received(:log_error_once)
+  end
+
+  describe Profiler::Live::Streams do
+    before { described_class.reset! }
+
+    it "caps the leases and takes a slot back on release" do
+      first = described_class.acquire(1)
+      expect(described_class.acquire(1)).to be_nil
+
+      described_class.release(first)
+      expect(described_class.acquire(1)).not_to be_nil
+    end
+
+    it "drops a lease nobody gave back after MAX_AGE" do
+      described_class.acquire(1)
+      allow(Process).to receive(:clock_gettime).and_wrap_original do |original, *args|
+        original.call(*args) + (args.first == Process::CLOCK_MONOTONIC ? described_class::MAX_AGE + 1 : 0)
+      end
+
+      expect(described_class.acquire(1)).not_to be_nil
     end
   end
 end

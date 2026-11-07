@@ -88,6 +88,20 @@ RSpec.describe "GET /_profiler/api/stream", type: :request do
     expect(last_response.body).not_to include("event: update")
   end
 
+  it "gives a HEAD the headers only and holds no slot" do
+    2.times { head "/_profiler/api/stream?tokens=#{profile.token}", {}, local }
+
+    expect(last_response.status).to eq(200)
+    expect(Profiler::Live::Streams.open_count).to eq(0)
+  end
+
+  it "answers 503 when the storage is unavailable" do
+    allow(Profiler).to receive(:storage).and_return(Profiler::Storage::Unavailable.new(RuntimeError.new("nope")))
+    stream
+
+    expect(last_response.status).to eq(503)
+  end
+
   it "adds the live cursor to the toolbar answer, only while live events are on" do
     get "/_profiler/api/toolbar/#{profile.token}", {}, local
     expect(JSON.parse(last_response.body)["live_cursor"]).to eq(Profiler::Live::Signature.of(storage, profile.token))

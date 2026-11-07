@@ -139,6 +139,18 @@ RSpec.describe "Enqueued jobs in the toolbar of a request", type: :request do
     expect(json["updated"]).to be(true)
   end
 
+  it "records the jobs of perform_all_later, which announces them together" do
+    skip "needs ActiveJob.perform_all_later (Rails 7.1+)" unless ActiveJob.respond_to?(:perform_all_later)
+    page = lambda do |_env|
+      ActiveJob.perform_all_later([ReportJob.new, ChildJob.new])
+      [200, { "content-type" => "text/html" }, ["<html><body>ok</body></html>"]]
+    end
+    response = Rack::MockRequest.new(Profiler::Middleware::ProfilerMiddleware.new(page)).get("/orders", local)
+    token = response.headers["x-profiler-token"] || response.headers["X-Profiler-Token"]
+
+    expect(toolbar(token)["profile"]["enqueued_jobs"].map { |j| j["job_class"] }).to contain_exactly("ReportJob", "ChildJob")
+  end
+
   it "records nothing when track_jobs is off" do
     Profiler.configure { |config| config.track_jobs = false }
     answer = toolbar(request_enqueueing(ReportJob))

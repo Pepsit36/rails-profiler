@@ -19,8 +19,9 @@ module Profiler
       HEARTBEAT = 5
       FULL_CHECK_TICKS = 10
 
-      def initialize(storage:, tokens:, cursors: {}, lifetime: LIFETIME, tick: TICK)
+      def initialize(storage:, tokens:, lease:, cursors: {}, lifetime: LIFETIME, tick: TICK)
         @storage = storage
+        @lease = lease
         @tokens = tokens
         @cursors = cursors.dup
         @lifetime = lifetime
@@ -30,6 +31,9 @@ module Profiler
       end
 
       def each
+        # Puma and Rails 7.x ask for an enumerator first (to_ary through the response buffer).
+        return enum_for(:each) unless block_given?
+
         yield "retry: 3000\n: ready\n\n"
         started = clock
         last_beat = started
@@ -53,7 +57,7 @@ module Profiler
         yield "event: end\ndata: {}\n\n"
       rescue StandardError => e
         # A closed connection ends the stream; anything else is worth a line in the log.
-        Profiler.log_error_once(:live_stream, "Live::EventStream: stopped", e) unless e.is_a?(IOError) || e.is_a?(SystemCallError)
+        Profiler.log_error_once(:live_stream, "Live::EventStream: stopped", e) unless client_gone?(e)
       ensure
         release
       end
@@ -74,9 +78,14 @@ module Profiler
         end
       end
 
+      # What a server raises when the client closed the connection (Puma::ConnectionError, ...).
+      def client_gone?(error)
+        error.is_a?(IOError) || error.is_a?(SystemCallError) || error.class.name.to_s.end_with?("ConnectionError")
+      end
+
       def release
         first = @mutex.synchronize { !@released && (@released = true) }
-        Streams.release if first
+        Streams.release(@lease) if first
       end
 
       def clock

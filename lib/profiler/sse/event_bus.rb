@@ -49,7 +49,10 @@ module Profiler
       end
 
       def reset!
-        @mutex.synchronize { @versions.clear }
+        @mutex.synchronize do
+          @versions.clear
+          @generation = 0
+        end
       end
     end
   end

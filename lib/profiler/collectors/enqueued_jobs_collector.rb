@@ -40,6 +40,12 @@ module Profiler
             record(job)
           end
         end
+        # perform_all_later (Rails 7.1+) announces its jobs together, with no event per job.
+        @subscriptions << subscribe_notification("enqueue_all.active_job") do |_name, _started, _finished, _id, payload|
+          next if payload[:exception_object]
+
+          Array(payload[:jobs]).each { |job| record(job) unless job.respond_to?(:successfully_enqueued?) && !job.successfully_enqueued? }
+        end
       end
 
       # Jobs enqueued from a thread that outlives the request still land here until collect.
