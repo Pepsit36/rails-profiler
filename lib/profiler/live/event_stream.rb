@@ -16,7 +16,7 @@ module Profiler
     class EventStream
       LIFETIME = 300
       TICK = 1.0
-      HEARTBEAT = 15
+      HEARTBEAT = 5
       FULL_CHECK_TICKS = 10
 
       def initialize(storage:, tokens:, cursors: {}, lifetime: LIFETIME, tick: TICK)
