@@ -43,6 +43,18 @@ RSpec.describe "GET /_profiler/api/stream", type: :request do
     expect(Profiler::Live::Streams.open_count).to eq(0)
   end
 
+  it "carries a Last-Modified, so that Rack::ETag does not read the stream whole to digest it (Rails 7)" do
+    stream
+    expect(last_response.headers["Last-Modified"]).to be_present
+
+    # What Rack::ETag does with a body that answers to_ary: it iterates it, unless the response
+    # carries an ETag or a Last-Modified. A body that fails when iterated shows it did not.
+    body = Object.new
+    def body.to_ary = raise("Rack::ETag buffered the stream")
+
+    expect { Rack::ETag.new(->(_env) { [200, last_response.headers.to_h, body] }).call({}) }.not_to raise_error
+  end
+
   it "answers 503 with Retry-After when live events are off" do
     Profiler.configure { |config| config.live_events = false }
     stream
