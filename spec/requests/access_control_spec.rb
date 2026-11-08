@@ -606,7 +606,7 @@ RSpec.describe "Profiler access control", type: :request do
     it "only lets the profiler itself, the extension and DevTools frame it" do
       get "/_profiler/", {}, local
 
-      expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: devtools:")
+      expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: moz-extension: devtools:")
       expect(last_response.headers["X-Frame-Options"]).to eq("SAMEORIGIN")
     end
 
@@ -614,7 +614,7 @@ RSpec.describe "Profiler access control", type: :request do
       get "/_profiler", {}, local
 
       expect(last_response.status).to eq(200)
-      expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: devtools:")
+      expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: moz-extension: devtools:")
       expect(last_response.headers["X-Frame-Options"]).to eq("SAMEORIGIN")
     end
 
@@ -623,14 +623,14 @@ RSpec.describe "Profiler access control", type: :request do
       get "/_profiler/profiles/5f2b8c0d9e4a4f1b8c3d2e1f0a9b8c7d", { embed: "true" }, local
 
       expect(last_response.status).to eq(200)
-      expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: devtools:")
+      expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: moz-extension: devtools:")
       expect(last_response.headers["X-Frame-Options"]).to eq("SAMEORIGIN")
     end
 
     it "keeps the policy on a refused request" do
       get "/_profiler/api/profiles", {}, remote
 
-      expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: devtools:")
+      expect(last_response.headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: moz-extension: devtools:")
     end
   end
 end

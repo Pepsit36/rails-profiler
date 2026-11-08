@@ -31,7 +31,7 @@ RSpec.describe Profiler::Middleware::CorsMiddleware do
       get "/_profiler/api/profiles"
 
       expect(last_response.headers["Content-Security-Policy"])
-        .to eq("frame-ancestors 'self' chrome-extension: devtools:")
+        .to eq("frame-ancestors 'self' chrome-extension: moz-extension: devtools:")
     end
 
     it "replaces X-Frame-Options with SAMEORIGIN, whatever the case of its key" do
@@ -143,7 +143,7 @@ RSpec.describe Profiler::Middleware::CorsMiddleware do
       env = Rack::MockRequest.env_for("/_profiler")
       _status, headers, _body = app.call(env)
 
-      expect(headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: devtools:")
+      expect(headers["Content-Security-Policy"]).to eq("frame-ancestors 'self' chrome-extension: moz-extension: devtools:")
       expect(headers["X-Frame-Options"]).to eq("SAMEORIGIN")
     end
 

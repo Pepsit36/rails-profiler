@@ -110,10 +110,11 @@ module Profiler
       @extension_cors_enabled = false
       @cors_allowed_origins = []
       @api_forgery_protection = true
-      # The Chrome extension shows the profiler in a DevTools panel: an iframe inside a
-      # chrome-extension:// page, itself inside the devtools://devtools front end. Chrome
-      # checks frame-ancestors against every ancestor, so both schemes are needed.
-      @frame_ancestors = ["'self'", "chrome-extension:", "devtools:"]
+      # The browser extension shows the profiler in a DevTools panel: an iframe inside a
+      # chrome-extension:// page (moz-extension:// on Firefox), itself inside the devtools://
+      # front end. Chrome checks frame-ancestors against every ancestor, so both schemes are
+      # needed there. On Firefox, a moz-extension: parent was enough in a test.
+      @frame_ancestors = ["'self'", "chrome-extension:", "moz-extension:", "devtools:"]
       @track_ajax = true
       @ajax_skip_paths = [/^\/_profiler/]
       @track_http = true
