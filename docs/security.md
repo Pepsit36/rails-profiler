@@ -134,13 +134,16 @@ cookie or an `Authorization` header, which only helps when `authorize_with` reli
 
 ### Framing
 
-Profiler pages may only be framed by the profiler itself and by the Chrome extension's DevTools
-panel (`Content-Security-Policy: frame-ancestors 'self' chrome-extension: devtools:`, plus
-`X-Frame-Options: SAMEORIGIN` for older browsers). Chrome checks every ancestor of a frame: the
+Profiler pages may only be framed by the profiler itself and by the browser extension's DevTools
+panel (`Content-Security-Policy: frame-ancestors 'self' chrome-extension: moz-extension: devtools:`,
+plus `X-Frame-Options: SAMEORIGIN` for older browsers). Chrome checks every ancestor of a frame: the
 panel's page is a `chrome-extension:` page, itself shown inside the `devtools:` front end, so both
-are needed. `chrome-extension:` lets **any** installed extension frame the profiler; to admit only the profiler's
-own extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension://<extension id>",
-"devtools:"]`. To change the list, set `config.frame_ancestors`; the value before 0.30.6 was
+are needed. On Firefox the panel's page is a `moz-extension:` page. `chrome-extension:` and
+`moz-extension:` let **any** installed extension frame the profiler; to admit only the profiler's
+own Chrome extension, name it: `config.frame_ancestors = ["'self'", "chrome-extension://<extension id>",
+"devtools:"]`. Firefox gives an extension a different random id in each profile (`moz-extension://<uuid>`), so
+a fixed id cannot be named there: the scheme is the practical choice, and the profiler cannot be
+restricted to its own extension on Firefox. To change the list, set `config.frame_ancestors`; the value before 0.30.6 was
 `["'self'", "http:", "https:"]`, which lets any website frame the profiler.
 
 

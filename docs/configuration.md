@@ -223,7 +223,7 @@ Profiler.configure do |config|
   config.api_forgery_protection = true
   config.extension_cors_enabled = false     # CORS headers on profiler responses
   config.cors_allowed_origins = []          # origins named in them, when enabled
-  config.frame_ancestors = ["'self'", "chrome-extension:", "devtools:"]
+  config.frame_ancestors = ["'self'", "chrome-extension:", "moz-extension:", "devtools:"]
 
   # MCP server (see docs/mcp.md). The stdio transport (rake profiler:mcp) needs neither
   # option; :http routes /_profiler/mcp, only when mcp_enabled is true as well.

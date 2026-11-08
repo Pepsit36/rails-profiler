@@ -19,6 +19,14 @@ every commit of every tag interval is accounted for one way or the other.
 
 ## [Unreleased]
 
+## [0.47.2] - 2026-11-08
+
+<!-- stamped -->
+
+### Fixed
+
+- The Firefox extension could not show the dashboard in its DevTools panel: the default `config.frame_ancestors` named `chrome-extension:` and `devtools:` but not `moz-extension:`, the scheme of a Firefox extension page, so Firefox refused the iframe. The default is now `["'self'", "chrome-extension:", "moz-extension:", "devtools:"]`. An app that sets `config.frame_ancestors` itself keeps its own list and must add `"moz-extension:"` to it.
+
 ## [0.47.1] - 2026-11-07
 
 <!-- stamped -->
