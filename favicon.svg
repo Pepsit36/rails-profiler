@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 8 112 112">
+  <!-- Source: icons/source/icon.svg of the rails-profiler-extension repository (master).
+       viewBox cropped to the tile: the 8 px margin there is the Chrome toolbar safe zone. -->
+  <rect x="8" y="8" width="112" height="112" rx="20" fill="#132020"/>
+  <!-- Flame graph: three stacked, offset bars. Every edge sits on a multiple of 8 units so
+       the bars stay crisp at 16 px (1 px = 8 units). -->
+  <rect x="24" y="32" width="80" height="16" fill="#E8A33D"/>
+  <rect x="32" y="56" width="40" height="16" fill="#E8A33D"/>
+  <rect x="48" y="80" width="48" height="16" fill="#E8A33D"/>
+</svg>
